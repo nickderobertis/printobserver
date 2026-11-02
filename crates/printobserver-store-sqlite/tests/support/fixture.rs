@@ -154,6 +154,8 @@ pub fn body(kind: &str) -> EventBody {
             "acknowledged_event_id": EventId::sample_full(),
             "disposition": "watch",
         }),
+        "periodic_observation" => json!({ "interval_s": 120 }),
+        "camera_look" => json!({ "waited_s": 0, "delivered": [] }),
         other => panic!("no fixture payload for {other}"),
     };
     EventBody {

@@ -606,7 +606,7 @@ async fn the_snapshot_is_stored_during_the_handling_under_the_defaults() {
     assert!(receipt.image_failure.is_none());
     let (stored, bytes) = stored_image(&store, &record).await;
     assert_eq!(stored.event_id, receipt.event.id);
-    assert_eq!(stored.print_id, receipt.print.expect("a print").id);
+    assert_eq!(stored.print_id, Some(receipt.print.expect("a print").id));
     assert_eq!(stored.content_type, "image/jpeg");
     assert_eq!(bytes, snapshot());
 }

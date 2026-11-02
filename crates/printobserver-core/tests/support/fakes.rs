@@ -17,9 +17,9 @@ use std::time::{Duration, Instant};
 
 use printobserver_core::store::{
     ActionStore, AuditPage, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore, FileTally,
-    HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore, SettleOutcome,
-    Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery, StoredSignal, TimelineQuery,
-    TimelineStore, resolve_history_limit,
+    HistoryQuery, ImageDraft, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore,
+    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery, StoredSignal,
+    TimelineQuery, TimelineStore, resolve_history_limit,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
@@ -1108,6 +1108,73 @@ impl EventStore for FakeStore {
         ready(Ok(record))
     }
 
+    fn append_event_with_image(
+        &self,
+        draft: EventDraft,
+        image: ImageDraft,
+    ) -> printobserver_core::store::BoxFuture<'_, Result<EventRecord, StoreError>> {
+        self.journal
+            .record(Call::AppendEventWithImage(draft.kind().clone()));
+        self.appends.pass(draft.kind());
+        // One write of both, so a failure induced at either refuses it whole.
+        if let Some(error) = self
+            .induced(StoreMethod::AppendEvent)
+            .or_else(|| self.induced(StoreMethod::PutImage))
+        {
+            return ready(Err(error));
+        }
+        if let Some((_, error)) = self
+            .refused_print
+            .lock()
+            .expect("the store holds")
+            .as_ref()
+            .filter(|(refused, _)| draft.print_id == Some(*refused))
+        {
+            return ready(Err(error.clone()));
+        }
+        let id = ImageId::new();
+        let relative_path = format!("images/{id}.bin");
+        let path = self.root.join(&relative_path);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let raw = image.bytes.as_slice();
+        if let Err(error) = std::fs::write(&path, raw) {
+            return ready(Err(StoreError::Io {
+                detail: error.to_string(),
+            }));
+        }
+        let sha256 = digest(raw);
+        let event = EventRecord {
+            id: EventId::new(),
+            print_id: draft.print_id,
+            source: draft.source,
+            received_at: draft.received_at,
+            image: Some(printobserver_types::ImageRef {
+                id,
+                sha256: sha256.clone(),
+            }),
+            body: draft.body,
+            raw: draft.raw,
+        };
+        let record = ImageRecord {
+            id,
+            print_id: draft.print_id,
+            event_id: event.id,
+            source_url: image.source_url,
+            fetched_at: self.clock.now(),
+            content_type: image.content_type,
+            byte_len: i64::try_from(raw.len()).unwrap_or(i64::MAX),
+            sha256,
+            relative_path,
+        };
+        let mut held = self.held.lock().expect("the store holds");
+        held.images.insert(id, record);
+        held.events.push(event.clone());
+        drop(held);
+        ready(Ok(event))
+    }
+
     fn history(
         &self,
         query: HistoryQuery,
@@ -1238,7 +1305,7 @@ impl ImageStore for FakeStore {
         }
         let record = ImageRecord {
             id,
-            print_id,
+            print_id: Some(print_id),
             event_id,
             source_url,
             fetched_at: self.clock.now(),

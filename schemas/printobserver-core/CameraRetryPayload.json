@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The camera answered a request for a frame with a server error, and is being\nasked again.\n\nA camera server that could not take a frame this time — go2rtc answers\n`500` with `exit status 69` — is often one that will take the next, so a\nfetch answered `500` to `599` is made again after a short wait, a bounded\nnumber of times. One of these is written down for each such answer, as it\nhappens, before the wait; a fetch whose every attempt was refused is\nrecorded as a port failure only once the attempts run out.",
+  "properties": {
+    "attempt": {
+      "description": "Which attempt the camera refused, counting from one.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "attempts": {
+      "description": "How many attempts the fetch may make in all.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "backoff_ms": {
+      "description": "How long the fetch waits before its next attempt, in milliseconds.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "excerpt": {
+      "description": "The start of what the camera answered with, as text.",
+      "type": "string"
+    },
+    "status": {
+      "description": "The HTTP status the camera answered.",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "attempt",
+    "attempts",
+    "status",
+    "excerpt",
+    "backoff_ms"
+  ],
+  "title": "CameraRetryPayload",
+  "type": "object",
+  "x-event-kind": "camera_retry"
+}

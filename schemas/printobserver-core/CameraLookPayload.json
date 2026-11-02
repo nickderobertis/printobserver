@@ -10,7 +10,7 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Somebody took a fresh look at the print.\n\nWritten down before the camera is asked for a frame, so that a frame the\ncamera would not give is recorded against a look that is already in the\nhistory; the frame itself, when there is one, is this event's image.",
+  "description": "Somebody took a fresh look at the print, or at the printer when no print\nwas named.\n\nWritten down once the camera has been asked for its frame, together with\nthat frame as this event's image, so that nobody reading the look finds it\nwithout the frame it was taken with. A frame the camera would not give is\nrecorded against the look as a port failure. A look at the printer belongs\nto no print, waits on nothing that arrives for one, and so delivers\nnothing.",
   "properties": {
     "delivered": {
       "default": [],

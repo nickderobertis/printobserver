@@ -15,9 +15,9 @@ use std::thread;
 use printobserver_core::block_on;
 use printobserver_core::store::{
     ActionStore, AuditPage, BoxFuture, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore,
-    FileTally, HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore,
-    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery, StoredSignal,
-    Stores, TimelineQuery, TimelineStore,
+    FileTally, HistoryQuery, ImageDraft, ImageLookup, ImageStore, NewSpool, Pend, PrintStore,
+    SessionStore, SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery,
+    StoredSignal, Stores, TimelineQuery, TimelineStore,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
@@ -126,6 +126,15 @@ impl EventStore for TrivialStore {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         let _ = draft;
         Box::pin(async { Ok(EventRecord::sample_minimal()) })
+    }
+
+    fn append_event_with_image(
+        &self,
+        draft: EventDraft,
+        image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        let _ = (draft, image);
+        Box::pin(async { Ok(EventRecord::sample_full()) })
     }
 
     fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
@@ -490,6 +499,17 @@ fn every_print_and_event_method_answers_its_declared_success_type() {
     assert_eq!(
         block_on(stores.events.append_event(draft())),
         Ok(EventRecord::sample_minimal())
+    );
+    assert_eq!(
+        block_on(stores.events.append_event_with_image(
+            draft(),
+            ImageDraft {
+                source_url: None,
+                content_type: "image/jpeg".to_owned(),
+                bytes: RawBytes::default(),
+            }
+        )),
+        Ok(EventRecord::sample_full())
     );
     assert_eq!(block_on(stores.events.history(query())), Ok(Vec::new()));
     assert_eq!(

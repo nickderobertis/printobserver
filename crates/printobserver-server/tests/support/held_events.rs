@@ -14,14 +14,18 @@ use std::sync::{Arc, Mutex};
 
 use printobserver_core::ImageRecord;
 use printobserver_core::store::{
-    AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
-    StoreError, StoredQuery, StoredSignal, Stores,
+    AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageDraft, ImageLookup,
+    ImageStore, StoreError, StoredQuery, StoredSignal, Stores,
 };
 use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes};
 use tokio::sync::Notify;
 
-/// What the store says when it refuses a write.
+/// What the store says when it refuses an image: its bytes could not be
+/// written.
 pub const DETAIL: &str = "the disk is full";
+
+/// What the store says when it refuses an event.
+pub const EVENT_DETAIL: &str = "the database is locked";
 
 /// The kind of event a periodic observation is written down as.
 const OBSERVATION: &str = "periodic_observation";
@@ -120,31 +124,46 @@ impl HeldEvents {
     }
 }
 
-/// The refusal this store answers a refused write with.
+/// The refusal this store answers a refused image with: its bytes could not
+/// be written, which is how a full disk refuses one.
 fn refusal<T>() -> Result<T, StoreError> {
     Err(StoreError::Io {
         detail: DETAIL.to_owned(),
     })
 }
 
-impl EventStore for HeldEvents {
-    fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+/// The refusal this store answers a refused event with: the database's own,
+/// so that nothing reads it as a frame that could not be kept.
+fn event_refusal<T>() -> Result<T, StoreError> {
+    Err(StoreError::Database {
+        detail: EVENT_DETAIL.to_owned(),
+    })
+}
+
+impl HeldEvents {
+    /// Pass one append through `write`, unless a journey has told this store
+    /// to refuse or hold it.
+    fn gated<'a>(
+        &'a self,
+        draft: EventDraft,
+        write: impl FnOnce(EventDraft) -> BoxFuture<'a, Result<EventRecord, StoreError>> + Send + 'a,
+    ) -> BoxFuture<'a, Result<EventRecord, StoreError>> {
         if self
             .refused_kinds
             .lock()
             .expect("the set is not poisoned")
             .contains(draft.kind().as_str())
         {
-            return Box::pin(async { refusal() });
+            return Box::pin(async { event_refusal() });
         }
         if draft.kind().as_str() != OBSERVATION {
-            return self.events.append_event(draft);
+            return write(draft);
         }
         if self.holding.swap(false, Ordering::SeqCst) {
             return Box::pin(async {
                 self.held.notify_one();
                 self.released.notified().await;
-                refusal()
+                event_refusal()
             });
         }
         let refused = draft.print_id.is_some_and(|print_id| {
@@ -154,9 +173,30 @@ impl EventStore for HeldEvents {
                 .contains(&print_id)
         });
         if refused {
+            return Box::pin(async { event_refusal() });
+        }
+        write(draft)
+    }
+}
+
+impl EventStore for HeldEvents {
+    fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        self.gated(draft, |draft| self.events.append_event(draft))
+    }
+
+    // An event written with its frame is refused whole when either half
+    // would be: the event as an append is, or its frame as an image is.
+    fn append_event_with_image(
+        &self,
+        draft: EventDraft,
+        image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        if self.refusing_images.load(Ordering::SeqCst) {
             return Box::pin(async { refusal() });
         }
-        self.events.append_event(draft)
+        self.gated(draft, move |draft| {
+            self.events.append_event_with_image(draft, image)
+        })
     }
 
     fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
@@ -166,7 +206,7 @@ impl EventStore for HeldEvents {
             .iter()
             .any(|kind| refused.contains(kind.as_str()))
         {
-            return Box::pin(async { refusal() });
+            return Box::pin(async { event_refusal() });
         }
         drop(refused);
         self.events.history(query)

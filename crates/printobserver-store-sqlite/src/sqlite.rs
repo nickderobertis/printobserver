@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
 use printobserver_core::store::{
-    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
-    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, StoredQuery, StoredSignal,
-    resolve_history_limit,
+    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageDraft,
+    ImageLookup, ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, StoredQuery,
+    StoredSignal, resolve_history_limit,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
@@ -16,7 +16,7 @@ use printobserver_core::{
 };
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisionSession;
-use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
+use printobserver_types::{EventId, EventRecord, ImageId, ImageRef, PrintId, RawBytes, Timestamp};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params, params_from_iter};
 
@@ -451,8 +451,64 @@ impl SqliteStore {
         content_type: String,
         bytes: &RawBytes,
     ) -> Result<ImageRecord, StoreError> {
+        let record =
+            self.image_record(Some(print_id), event_id, source_url, content_type, bytes)?;
+        self.on_connection(|connection| {
+            Self::insert_image_on(connection, &record)?;
+            Ok(record.clone())
+        })
+    }
+
+    /// Append one event and the image it arrived with, in one transaction.
+    ///
+    /// The bytes are put in place first, at the address their content gives
+    /// them, so a transaction that then rolls back leaves at most a file no
+    /// row names — which the content address makes harmless — and never a row
+    /// naming a file that is not there. The signal a follower wakes on is
+    /// raised only once the transaction has committed, so the first read any
+    /// follower makes of the event finds its image beside it.
+    fn insert_event_with_image(
+        &self,
+        draft: EventDraft,
+        image: &ImageDraft,
+    ) -> Result<EventRecord, StoreError> {
+        let print_id = draft.print_id;
+        let mut record = self.image_record(
+            print_id,
+            EventId::new(),
+            image.source_url.clone(),
+            image.content_type.clone(),
+            &image.bytes,
+        )?;
+        self.on_connection(move |connection| {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(|error| database_error(&error))?;
+            let mut event = Self::append_on(&transaction, draft)?;
+            record.event_id = event.id;
+            Self::insert_image_on(&transaction, &record)?;
+            transaction
+                .commit()
+                .map_err(|error| database_error(&error))?;
+            event.image = Some(ImageRef {
+                id: record.id,
+                sha256: record.sha256.clone(),
+            });
+            Ok(event)
+        })
+    }
+
+    /// Put one image's bytes in place and answer the row that names them.
+    fn image_record(
+        &self,
+        print_id: Option<PrintId>,
+        event_id: EventId,
+        source_url: Option<String>,
+        content_type: String,
+        bytes: &RawBytes,
+    ) -> Result<ImageRecord, StoreError> {
         let stored = store_bytes(&self.state_dir, bytes.as_slice(), &self.points)?;
-        let record = ImageRecord {
+        Ok(ImageRecord {
             id: ImageId::new(),
             print_id,
             event_id,
@@ -462,37 +518,38 @@ impl SqliteStore {
             byte_len: stored.byte_len,
             sha256: stored.sha256,
             relative_path: stored.relative_path,
-        };
-        self.on_connection(|connection| {
-            connection
-                .execute(
-                    "INSERT INTO images (id, print_id, event_id, source_url, fetched_at, \
-                     content_type, byte_len, sha256, relative_path) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                    params![
-                        record.id.to_string(),
-                        record.print_id.to_string(),
-                        record.event_id.to_string(),
-                        record.source_url,
-                        instant_text(record.fetched_at),
-                        record.content_type,
-                        record.byte_len,
-                        record.sha256,
-                        record.relative_path,
-                    ],
-                )
-                .map_err(|error| {
-                    Self::refusal(
-                        connection,
-                        &error,
-                        &[
-                            ("images.print_id", "prints", print_id.to_string()),
-                            ("images.event_id", "events", event_id.to_string()),
-                        ],
-                    )
-                })?;
-            Ok(record.clone())
         })
+    }
+
+    /// Insert one image's row on a connection, inside whatever transaction
+    /// that connection holds open.
+    fn insert_image_on(connection: &Connection, record: &ImageRecord) -> Result<(), StoreError> {
+        connection
+            .execute(
+                "INSERT INTO images (id, print_id, event_id, source_url, fetched_at, \
+                 content_type, byte_len, sha256, relative_path) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    record.id.to_string(),
+                    record.print_id.map(|id| id.to_string()),
+                    record.event_id.to_string(),
+                    record.source_url,
+                    instant_text(record.fetched_at),
+                    record.content_type,
+                    record.byte_len,
+                    record.sha256,
+                    record.relative_path,
+                ],
+            )
+            .map_err(|error| {
+                let mut candidates: Vec<(&str, &str, String)> = record
+                    .print_id
+                    .map(|id| vec![("images.print_id", "prints", id.to_string())])
+                    .unwrap_or_default();
+                candidates.push(("images.event_id", "events", record.event_id.to_string()));
+                Self::refusal(connection, &error, &candidates)
+            })?;
+        Ok(())
     }
 
     /// Read one image, saying whether its file is where the row says it is.
@@ -1089,6 +1146,14 @@ impl PrintStore for SqliteStore {
 impl EventStore for SqliteStore {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         Box::pin(async move { self.insert_event(draft) })
+    }
+
+    fn append_event_with_image(
+        &self,
+        draft: EventDraft,
+        image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        Box::pin(async move { self.insert_event_with_image(draft, &image) })
     }
 
     fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
