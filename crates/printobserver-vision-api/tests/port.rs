@@ -191,6 +191,13 @@ fn a_body_excerpt_is_bounded_text_on_one_line() {
     assert!(excerpt.len() <= STATUS_EXCERPT_MAX_BYTES);
     assert!(excerpt.chars().all(|letter| letter == 'é'), "{excerpt}");
     assert_eq!(excerpt.chars().count(), STATUS_EXCERPT_MAX_BYTES / 2);
+    let replaced = body_excerpt(&[0xff; 4 * STATUS_EXCERPT_MAX_BYTES]);
+    assert!(
+        replaced.len() <= STATUS_EXCERPT_MAX_BYTES,
+        "{} bytes of text from bytes that are not UTF-8",
+        replaced.len()
+    );
+    assert!(replaced.chars().all(|letter| letter == '\u{fffd}'));
 }
 
 /// An address is a URL naming a host over HTTP, and nothing that only begins

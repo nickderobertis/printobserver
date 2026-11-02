@@ -763,6 +763,7 @@ async fn a_host_that_refuses_the_request_says_which_status() {
         body: Vec::new(),
         delay: Duration::ZERO,
         declare_length: true,
+        stalls: false,
     })
     .await;
     let store = Arc::new(MemoryStore::new());
@@ -794,6 +795,7 @@ async fn a_server_error_carries_its_status_and_what_it_said() {
         body: said,
         delay: Duration::ZERO,
         declare_length: true,
+        stalls: false,
     })
     .await;
     let store = Arc::new(MemoryStore::new());
@@ -820,6 +822,72 @@ async fn a_server_error_carries_its_status_and_what_it_said() {
     assert!(failure.is_server_error());
     assert!(failure.to_string().contains("exit status 69"), "{failure}");
     assert_refused(&receipt, &store, &body, &failure).await;
+}
+
+/// A refusing answer whose body stalls part way still says its status and
+/// what arrived of the body before the client gave up on the rest.
+#[tokio::test]
+async fn a_refusal_whose_body_stalls_carries_what_arrived() {
+    let host = ImageHost::serving(Answer {
+        status: "503 Service Unavailable",
+        content_type: Some("text/plain".to_owned()),
+        body: b"the stream is starting".to_vec(),
+        delay: Duration::ZERO,
+        declare_length: true,
+        stalls: true,
+    })
+    .await;
+    let store = Arc::new(MemoryStore::new());
+
+    let (receipt, body) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+
+    let failure = receipt
+        .image_failure
+        .clone()
+        .expect("the fetch failed and said so");
+    assert!(
+        matches!(&failure, VisionError::Status { status: 503, excerpt, .. }
+            if excerpt == "the stream is starting"),
+        "expected the 503 with what arrived of its body, found {failure:?}"
+    );
+    assert!(failure.is_server_error());
+    assert_refused(&receipt, &store, &body, &failure).await;
+}
+
+/// What a refusing camera said is carried as text on one line and within the
+/// excerpt's bound, whatever bytes it was: control characters are spaces, bytes
+/// that are not UTF-8 are replaced, and the bound holds after the replacement.
+#[tokio::test]
+async fn a_refusal_saying_bytes_that_are_not_text_is_carried_as_bounded_text() {
+    let mut said = b"exit\tstatus\r\n69 ".to_vec();
+    said.extend(std::iter::repeat_n(0xff_u8, 4096));
+    let host = ImageHost::serving(Answer {
+        status: "500 Internal Server Error",
+        content_type: Some("application/octet-stream".to_owned()),
+        body: said,
+        delay: Duration::ZERO,
+        declare_length: true,
+        stalls: false,
+    })
+    .await;
+    let store = Arc::new(MemoryStore::new());
+
+    let (receipt, _) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+
+    let failure = receipt.image_failure.expect("the fetch failed and said so");
+    let VisionError::Status { excerpt, .. } = &failure else {
+        panic!("expected a refusal carrying its status, found {failure:?}");
+    };
+    assert!(
+        excerpt.starts_with("exit status  69 \u{fffd}"),
+        "{excerpt:?}"
+    );
+    assert!(
+        excerpt.len() <= printobserver_vision_api::STATUS_EXCERPT_MAX_BYTES,
+        "the excerpt is {} bytes",
+        excerpt.len()
+    );
+    assert!(!excerpt.chars().any(char::is_control), "{excerpt:?}");
 }
 
 /// Every notification the producer sends normalizes to its own spelling.

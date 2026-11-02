@@ -73,7 +73,7 @@ async fn body_within(mut response: Response, max_bytes: i64) -> Result<RawBytes,
 
 /// The start of a refusing answer's body, as [`body_excerpt`] reads it.
 ///
-/// Only as much is read as the excerpt can carry, under the client's own
+/// Only as much is read, and kept, as the excerpt can carry, under the client's own
 /// timeout: a body that stops arriving, or that cannot be read at all, is an
 /// excerpt of what did arrive, because the status is the answer and the body
 /// only says more about it.
@@ -81,7 +81,10 @@ async fn excerpt_of(mut response: Response) -> String {
     let mut bytes: Vec<u8> = Vec::new();
     while bytes.len() < STATUS_EXCERPT_MAX_BYTES {
         match response.chunk().await {
-            Ok(Some(chunk)) => bytes.extend_from_slice(&chunk),
+            Ok(Some(chunk)) => {
+                let room = STATUS_EXCERPT_MAX_BYTES - bytes.len();
+                bytes.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            }
             Ok(None) | Err(_) => break,
         }
     }

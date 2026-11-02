@@ -118,6 +118,22 @@ def test_a_file_or_figure_that_cannot_be_read_is_an_error_naming_why(
     contains(capsys.readouterr().err, said)
 
 
+@pytest.mark.parametrize("figure", ["NaN", "Infinity", "-Infinity"])
+def test_a_figure_that_is_not_finite_is_an_error(
+    project: Path, figure: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """JSON as Python writes it can carry NaN and the infinities; none is a figure."""
+    path = project / "telemetry" / "figures.json"
+    path.write_text(f'{{"figures": {{"seconds": {figure}}}, "detail": {{}}}}', encoding="utf-8")
+
+    result = checked(project)
+    equal(result.verdict, "error")
+    truth(result.actual is None, describing="no figure for a value that is not finite")
+
+    equal(telemetry_budget.measure(str(path), "seconds"), telemetry_budget.REFUSED)
+    contains(capsys.readouterr().err, "which is not a finite number")
+
+
 def test_a_file_that_is_not_json_is_refused_naming_it(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

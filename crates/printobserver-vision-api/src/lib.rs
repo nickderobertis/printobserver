@@ -437,10 +437,11 @@ pub const STATUS_EXCERPT_MAX_BYTES: usize = 256;
 /// The start of a refusing answer's body, as the text a
 /// [`VisionError::Status`] carries.
 ///
-/// At most [`STATUS_EXCERPT_MAX_BYTES`] of the bytes are read, cut back to
-/// the last whole character; bytes that are not UTF-8 are replaced rather
-/// than dropped, every control character is a space, and the text is
-/// trimmed. A body of nothing is an excerpt of nothing.
+/// At most [`STATUS_EXCERPT_MAX_BYTES`] of the bytes are read; bytes that are
+/// not UTF-8 are replaced rather than dropped, every control character is a
+/// space, and the text is trimmed — and then cut back to the last whole
+/// character within [`STATUS_EXCERPT_MAX_BYTES`], because a replaced byte is
+/// three bytes of text. A body of nothing is an excerpt of nothing.
 #[must_use]
 pub fn body_excerpt(bytes: &[u8]) -> String {
     let taken = &bytes[..bytes.len().min(STATUS_EXCERPT_MAX_BYTES)];
@@ -453,11 +454,21 @@ pub fn body_excerpt(bytes: &[u8]) -> String {
         }
         Err(_) => String::from_utf8_lossy(taken).into_owned(),
     };
-    text.chars()
+    let mut excerpt: String = text
+        .chars()
         .map(|letter| if letter.is_control() { ' ' } else { letter })
         .collect::<String>()
         .trim()
-        .to_owned()
+        .to_owned();
+    if excerpt.len() > STATUS_EXCERPT_MAX_BYTES {
+        let mut end = STATUS_EXCERPT_MAX_BYTES;
+        while !excerpt.is_char_boundary(end) {
+            end -= 1;
+        }
+        excerpt.truncate(end);
+        excerpt.truncate(excerpt.trim_end().len());
+    }
+    excerpt
 }
 
 /// The port external observations arrive through.
