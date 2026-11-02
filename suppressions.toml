@@ -1822,6 +1822,12 @@ reason = "The same ground the entry for this rule at `def released` in this file
 
 [[suppression]]
 rule = "external_service_suite_stays_out_of_the_affected_tier"
+file = "tests/real-prints-lfs/project.json"
+site = "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier]"
+reason = "The one external reach in this target is `test_bootstrap_git_lfs.py` downloading the git-lfs release `repo-policy.toml` holds from github.com, which is the bootstrap step itself, and the task this project was built for requires that real step be the thing tested. It is the same download, from the same forge, that `just bootstrap` makes on every gate cell that has no git-lfs, and the gate's own bootstrap journey in `tests/repo-e2e` already makes all of bootstrap's downloads inside the affected tier. It is one fetch of about 5 MB, verified against the release's own checksums. It is not a service whose behaviour the suite depends on. A loopback stand-in could serve no real git-lfs binary to report the held release, which is the claim being proven. The fixture journeys beside it reach nothing outside the host: their LFS remote is a local directory at a file URL."
+
+[[suppression]]
+rule = "external_service_suite_stays_out_of_the_affected_tier"
 file = "justfile"
 site = "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier]"
 reason = "The rule is about wiring an external-service suite INTO the pull-request gate, and this line wires none in. The three release journeys are already in `tests/repo-e2e`, which `AGENTS.md` places in `just check`'s `test-e2e` tier, and they already ran there: `just bootstrap` installed release-plz on every host until this change took it out of general bootstrap to stop every cold Windows cell compiling it for thirteen minutes. What this line restores is the tool those already-present journeys need. Deleting it moves no suite out of the tier — it only makes those three skip silently, which is the failure https://github.com/nickderobertis/printobserver/issues/86 asks to prevent. Promoting the release journeys out of the end-to-end tier is a separate decision about where that coverage lives, and the entries for `expensive_tests_stay_behind_their_own_edge` at `tests/repo-e2e/project.json` record why this repository's end-to-end tier is one project with one target."

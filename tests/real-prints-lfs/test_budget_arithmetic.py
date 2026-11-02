@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -180,3 +181,87 @@ def test_a_repository_holding_no_case_pointer_is_refused_rather_than_measured_as
     equal(answer.returncode, 1, describing="the command's exit over no cases")
     equal(result.exists(), False, describing="a figure written for no cases")
     contains(answer.stderr, "git-lfs lists no file under tests/real-prints/ at HEAD")
+
+
+def _pointer(oid: str, size: int, *, extension: str | None = None) -> bytes:
+    """A pointer's bytes, with an extension line before its oid when one is named."""
+    ext = f"ext-0-{extension} sha256:{'c' * 64}\n" if extension else ""
+    return (
+        f"version https://git-lfs.github.com/spec/v1\n{ext}oid sha256:{oid}\nsize {size}\n".encode()
+    )
+
+
+def _committed_cases(root: Path, pointers: dict[str, bytes]) -> Path:
+    """A repository at `root` whose `HEAD` holds these case pointers."""
+    init_repository(root)
+    shutil.copy2(REPO_ROOT / ".gitattributes", root / ".gitattributes")
+    for relative, data in pointers.items():
+        target = root / "tests/real-prints" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    identity = ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid"]
+    run(["git", "add", "-A"], cwd=root, check=True)
+    run(["git", *identity, "commit", "-q", "-m", "cases"], cwd=root, check=True)
+    return root
+
+
+@pytest.mark.parametrize(
+    "budget", ["lfs-bytes-per-ci-run-cache-miss", "lfs-bandwidth-gib-per-month"]
+)
+@pytest.mark.parametrize(
+    ("case", "said"),
+    [
+        (
+            "one-object-two-sizes",
+            "name one object, " + "a" * 64 + ", at two sizes: 10 and 11 bytes",
+        ),
+        ("an-extension-pointer", "what HEAD holds for it is no whole pointer"),
+        ("a-staged-change", "'s pointer names " + "a" * 64 + ", and git-lfs lists " + "e" * 64),
+    ],
+)
+def test_pointers_that_cannot_be_measured_are_refused_and_report_no_figure(
+    tmp_path: Path, budget: str, case: str, said: str
+) -> None:
+    """A set read wrong would understate the bytes, so the command refuses it, naming why."""
+    root = tmp_path / "repository"
+    match case:
+        case "one-object-two-sizes":
+            _committed_cases(
+                root, {"a/one.jpg": _pointer("a" * 64, 10), "b/two.jpg": _pointer("a" * 64, 11)}
+            )
+        case "an-extension-pointer":
+            _committed_cases(root, {"a/ext.jpg": _pointer("d" * 64, 12, extension="foo")})
+        case _:
+            _committed_cases(root, {"a/frame.jpg": _pointer("a" * 64, 10)})
+            (root / "tests/real-prints/a/frame.jpg").write_bytes(_pointer("e" * 64, 11))
+            run(["git", "add", "-A"], cwd=root, check=True)
+    result = tmp_path / "result"
+    answer = _command(budget, root, result)
+    equal(answer.returncode, 1, describing=f"{budget}'s exit over {case}:\n{answer.stderr}")
+    contains(answer.stderr, said)
+    equal(result.exists(), False, describing="a figure reported for a set that was not read")
+
+
+def test_the_existing_cases_rows_are_the_committed_pointers() -> None:
+    """The full set's rows for the cases this tree carries are those cases' pointers at `HEAD`.
+
+    The exported cases' rows are stand-ins of their measured sizes, at paths no
+    commit here carries; every other row is reconciled with what `HEAD` holds,
+    so a case changed under the fixture fails here rather than leaving the
+    budgets' arithmetic over a set that no longer exists.
+    """
+    existing = [row for row in _rows() if not row.case.startswith("exported-case-")]
+    equal(len(existing), 77, describing="rows of the cases this tree carries")
+    batch = run(
+        ["git", "cat-file", "--batch"],
+        cwd=REPO_ROOT,
+        check=True,
+        stdin="".join(f"HEAD:{row.path}\n" for row in existing),
+    ).stdout
+    committed = [
+        (found["oid"], int(found["size"]))
+        for found in re.finditer(
+            r"oid sha256:(?P<oid>[0-9a-f]{64})\nsize (?P<size>[0-9]+)\n", batch
+        )
+    ]
+    equal(committed, [(row.oid, row.size) for row in existing], describing="the rows against HEAD")

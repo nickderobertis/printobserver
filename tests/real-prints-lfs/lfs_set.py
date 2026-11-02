@@ -172,8 +172,9 @@ def tracked() -> list[Tracked]:
     """Every file of the set, with the size its committed pointer declares.
 
     Raises:
-        SetError: If a listing line or a pointer is malformed, or a pointer
-            names another object than git-lfs listed for its file.
+        SetError: If a listing line or a pointer is malformed, a pointer names
+            another object than git-lfs listed for its file — a change staged
+            and not committed — or two pointers give one object two sizes.
     """
     listed = _listed()
     files: list[Tracked] = []
@@ -186,6 +187,15 @@ def tracked() -> list[Tracked]:
             msg = f"{path}'s pointer names {pointer['oid']}, and git-lfs lists {oid}"
             raise SetError(msg)
         files.append(Tracked(path, oid, int(pointer["size"])))
+    sizes: dict[Oid, Tracked] = {}
+    for file in files:
+        first = sizes.setdefault(file.oid, file)
+        if first.size != file.size:
+            msg = (
+                f"{first.path} and {file.path} name one object, {file.oid}, at two sizes: "
+                f"{first.size} and {file.size} bytes"
+            )
+            raise SetError(msg)
     return files
 
 

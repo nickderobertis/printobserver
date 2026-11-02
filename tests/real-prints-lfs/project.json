@@ -12,6 +12,7 @@
       "command": "uv run -q ty check --extra-search-path tests/real-prints-lfs tests/real-prints-lfs && uv run -q ty check --python-platform win32 --extra-search-path tests/real-prints-lfs tests/real-prints-lfs"
     },
     "test": {
+      "metadata": { "description": "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reason." },
       "command": "uv run -q pytest tests/real-prints-lfs",
       "outputs": ["{projectRoot}/telemetry"]
     },

@@ -17,8 +17,10 @@ No figure is held to a bound here: that is the budgets' check.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import sys
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -27,6 +29,7 @@ import pytest
 import yaml
 from counting_remote import MessageError, parse
 from lfs_world import (
+    COUNTING_REMOTE,
     FIXTURE_OBJECT_BYTES,
     FIXTURE_OBJECTS,
     HERE,
@@ -380,3 +383,35 @@ def test_the_remote_refuses_a_message_it_cannot_act_on(line: str, why: str) -> N
     with pytest.raises(MessageError) as refused:
         parse(line)
     contains(str(refused.value), why)
+
+
+def test_a_session_answers_a_refused_message_and_goes_on(tmp_path: Path) -> None:
+    """Over the agent's own stdin and stdout: a bad line is answered with an error, not obeyed."""
+    remote = tmp_path / "remote.git"
+    (remote / "lfs" / "objects").mkdir(parents=True)
+    served = tmp_path / "served"
+    environment = {
+        **os.environ,
+        "LFS_FIXTURE_REMOTE": str(remote),
+        "LFS_FIXTURE_SERVED": str(served),
+        "LFS_FIXTURE_SCRATCH": str(tmp_path),
+    }
+    missing = "f" * 64
+    session = "\n".join(
+        [
+            '{"event": "download", "oid": "../../etc/passwd"}',
+            '{"event": "init", "operation": "download"}',
+            json.dumps({"event": "download", "oid": missing}),
+            '{"event": "terminate"}',
+        ]
+    )
+    answer = run(
+        [sys.executable, str(COUNTING_REMOTE)], env=environment, stdin=session + "\n", check=True
+    )
+    answers = [json.loads(line) for line in answer.stdout.splitlines()]
+    equal(len(answers), 3, describing=f"one answer a message before terminate: {answers}")
+    equal(answers[0]["error"]["code"], 400, describing="the refused message's answer")
+    contains(answers[0]["error"]["message"], "is not an object id")
+    equal(answers[1], {}, describing="the answer to init, after the refusal")
+    equal(answers[2]["error"]["code"], 404, describing="an object the store does not hold")
+    equal(served.exists(), False, describing="anything recorded as served")

@@ -75,10 +75,13 @@ def test_an_unreadable_figure_is_an_error_and_never_a_zero(
 ) -> None:
     """Missing or malformed telemetry fails the measurement, naming what is missing."""
     path = tmp_path / "telemetry.json"
-    if isinstance(document, str):
-        path.write_text(document, encoding="utf-8")
-    elif document is not None:
-        path.write_text(json.dumps(document), encoding="utf-8")
+    match document:
+        case None:
+            pass
+        case str(text):
+            path.write_text(text, encoding="utf-8")
+        case recorded:
+            path.write_text(json.dumps(recorded), encoding="utf-8")
     code, err, written = _command(path, figure, tmp_path / "result.json")
     equal(code, 1)
     contains(err, said)
