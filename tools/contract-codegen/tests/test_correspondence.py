@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from conftest import REPO_ROOT
-from contract_codegen.generate import OUTPUTS, Output, drifted, write
+from contract_codegen.generate import OUTPUTS, FormatterError, Output, drifted, write
 from contract_codegen.schemas import SCHEMAS_DIR, ContractError, load
 from repo_checks.expect import accepted, contains, equal, truth
 
@@ -239,3 +239,75 @@ def test_the_generators_own_command_surface_writes_and_checks(
     equal(main(["check", "--root", str(copy)]), 1, describing="a hand-edited client")
     equal(main(["write", "--root", str(copy)]), 0, describing="writing it back")
     equal(main(["check", "--root", str(copy)]), 0, describing="the client written back")
+
+
+def _dependencies_without_program_links(copy: Path) -> Path:
+    """Relink the copy's `node_modules` as the shared one stands mid-install.
+
+    `bun install --frozen-lockfile` unlinks and links every `node_modules/.bin`
+    entry again even when it reports no changes, so a scratch tree linking the
+    repository's one `node_modules` sees that directory without its program
+    links whenever a recipe beside it reaches `just node-modules`. Here the
+    copy's `node_modules` carries every package the shared one does, and no
+    `.bin`, which is that moment held still.
+    """
+    linked = copy / "node_modules"
+    shared = linked.resolve()
+    linked.unlink()
+    linked.mkdir()
+    for entry in shared.iterdir():
+        if entry.name != ".bin":
+            (linked / entry.name).symlink_to(entry)
+    return linked
+
+
+@pytest.mark.parametrize(
+    "output",
+    [output for output in OUTPUTS if output.client == "typescript"],
+    ids=lambda output: output.path,
+)
+def test_a_client_is_regenerated_while_the_shared_install_relinks_its_programs(
+    output: Output, scratch: Callable[[], Path]
+) -> None:
+    """The TypeScript formatter is reached through its package, not a `.bin` link."""
+    path = output.path
+    copy = scratch()
+    _dependencies_without_program_links(copy)
+    (copy / path).write_text("this is not what the generator writes\n", encoding="utf-8")
+
+    changed = write(copy)
+
+    contains(changed, path, describing="the files regeneration wrote")
+    equal(
+        (copy / path).read_text(encoding="utf-8"),
+        (REPO_ROOT / path).read_text(encoding="utf-8"),
+        describing=path,
+    )
+
+
+def test_a_tree_with_no_formatter_installed_is_refused_naming_the_install(
+    scratch: Callable[[], Path],
+) -> None:
+    """With no biome package, regeneration stops saying which recipe installs it."""
+    copy = scratch()
+    linked = _dependencies_without_program_links(copy)
+    (linked / "@biomejs").unlink()
+
+    with pytest.raises(FormatterError, match="just node-modules"):
+        write(copy)
+
+
+def test_a_formatter_package_declaring_no_program_is_refused(
+    scratch: Callable[[], Path],
+) -> None:
+    """A biome package whose manifest names no `biome` program stops regeneration."""
+    copy = scratch()
+    linked = _dependencies_without_program_links(copy)
+    (linked / "@biomejs").unlink()
+    (linked / "@biomejs" / "biome").mkdir(parents=True)
+    (linked / "@biomejs" / "biome" / "package.json").write_text(
+        json.dumps({"name": "@biomejs/biome", "bin": "bin/biome"}), encoding="utf-8"
+    )
+
+    with pytest.raises(FormatterError, match="declares no `biome` program"):
+        write(copy)
