@@ -14,8 +14,8 @@ use crate::{fetch, normalize};
 
 /// How long this adapter waits for a snapshot before giving up.
 ///
-/// Five seconds, from what a real camera server was measured to take
-/// (report `print-run-improvements-spike-check-costs-report`): go2rtc 1.9.15
+/// Five seconds, from what a real camera server was measured to take when this
+/// bound was set: go2rtc 1.9.15
 /// serving a 1920x1080 test source on loopback answered about 35 KB frames at
 /// a p99 of 0.756 s over 200 sequential fetches, 1.221 s over 200 with four
 /// fetchers at once, and at most 1.397 s over 8 fetches each after 15 s idle,

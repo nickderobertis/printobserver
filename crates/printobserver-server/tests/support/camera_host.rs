@@ -142,6 +142,10 @@ impl ScriptedHost {
     }
 
     /// Every exchange so far, in the order the requests arrived.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the host's record.
     #[must_use]
     pub fn exchanges(&self) -> Vec<Exchange> {
         self.exchanges
@@ -203,6 +207,10 @@ async fn exchange(
 
 /// The URL of a camera nothing listens for: a loopback port bound and let go,
 /// so a connection to it is refused.
+///
+/// # Panics
+///
+/// Panics when no loopback port can be bound.
 pub async fn refusing_url() -> String {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await

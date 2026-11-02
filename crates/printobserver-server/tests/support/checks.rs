@@ -48,6 +48,10 @@ pub async fn checking(url: String) -> World {
 }
 
 /// One print's events, in the order they were stored.
+///
+/// # Panics
+///
+/// Panics when the log cannot be read.
 pub async fn stored(world: &World, print_id: PrintId) -> Vec<EventRecord> {
     world
         .stores
@@ -107,6 +111,10 @@ impl FirstCheck {
 
     /// Every port failure recorded against the check, once a moment has
     /// passed for the one written just after it to be stored.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the check belongs to no print, or the log cannot be read.
     pub async fn failures(&self, world: &World) -> Vec<PortFailurePayload> {
         tokio::time::sleep(Duration::from_millis(300)).await;
         let print_id = self.observation.print_id.expect("a check is a print's");
