@@ -8,6 +8,10 @@ names a file it does not carry, an event its history does not hold, or a
 command printobserver does not have is a test that asserts nothing true.
 
 Every check here reads files and nothing else: no model, network or printer.
+The frames and G-code are Git LFS objects, so what a checkout carries for each
+is a pointer until `just real-prints-fetch` downloads it: `real-prints-lfs`
+holds every such file to being committed as one, and `real-prints-images` reads
+a pointer's own object id as the sha256 of the picture it stands for.
 Each file is validated against the contract that declares it before anything
 is read out of it — a `case.json` against `case.schema.json`, a history against
 the server's own `HistoryAnswer` — and then read into the typed records below.
@@ -20,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tomllib
 from collections.abc import Iterator
@@ -33,6 +38,7 @@ from jsonschema.exceptions import SchemaError
 from jsonschema.protocols import Validator
 
 from repo_checks.model import Repo
+from repo_checks.shell import discovered_no_higher_than, run
 
 ROOT = "tests/real-prints"
 SCHEMA = f"{ROOT}/case.schema.json"
@@ -58,6 +64,14 @@ FILE_TOKEN = re.compile(
 SECRET_FIELD = re.compile(r"(?:key|secret|token|credential|password)$")
 REDACTED = "<redacted>"
 
+#: Where the patterns Git LFS tracks are declared.
+ATTRIBUTES = ".gitattributes"
+#: The first line of every Git LFS pointer, and the most bytes one can hold.
+POINTER_VERSION = "version https://git-lfs.github.com/spec/v1"
+POINTER_LIMIT = 1024
+POINTER_OID = re.compile(r"oid sha256:(?P<oid>[0-9a-f]{64})")
+POINTER_SIZE = re.compile(r"size (?P<size>0|[1-9][0-9]*)")
+
 # An event's id in a case's history, and a scenario's id within its case.
 EventId = NewType("EventId", str)
 ScenarioId = NewType("ScenarioId", str)
@@ -82,6 +96,160 @@ def _valid_schema(schema: object, named: str) -> dict[str, Any]:
         msg = f"{named} is not a valid JSON Schema: {error.message}"
         raise UnreadableContractError(msg) from error
     return schema
+
+
+@dataclass(frozen=True, slots=True)
+class Pointer:
+    """What a Git LFS pointer says of the object it stands for."""
+
+    #: The object's sha256, which is the sha256 of the file it stands for.
+    oid: str
+    #: The object's size in bytes.
+    size: int
+
+
+def pointer(data: bytes) -> Pointer | None:
+    """The Git LFS pointer `data` is, or none when it is any other bytes.
+
+    A pointer is the three lines the specification orders — `version`, `oid`
+    and `size` — each ending in a newline, and never more than
+    `POINTER_LIMIT` bytes.
+    """
+    if len(data) > POINTER_LIMIT or not data.endswith(b"\n"):
+        return None
+    try:
+        lines = data.decode("ascii").split("\n")[:-1]
+    except UnicodeDecodeError:
+        return None
+    if len(lines) != 3 or lines[0] != POINTER_VERSION:
+        return None
+    oid = POINTER_OID.fullmatch(lines[1])
+    size = POINTER_SIZE.fullmatch(lines[2])
+    if oid is None or size is None:
+        return None
+    return Pointer(oid["oid"], int(size["size"]))
+
+
+def lfs_patterns(repo: Repo) -> tuple[str, ...]:
+    """The patterns `.gitattributes` hands to the Git LFS filter, in its order."""
+    path = repo.root / ATTRIBUTES
+    if not path.is_file():
+        return ()
+    patterns: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if fields and not fields[0].startswith("#") and "filter=lfs" in fields[1:]:
+            patterns.append(fields[0])
+    return tuple(patterns)
+
+
+def _pattern(pattern: str) -> re.Pattern[str]:
+    """A gitattributes pattern as a regular expression over a tree-relative path.
+
+    A pattern carrying a slash is anchored at the root, `**/` matches any
+    number of directories and `*` and `?` stay inside one; one carrying none
+    matches a file's name in any directory.
+    """
+    anchored = "/" in pattern.rstrip("/")
+    body = pattern.lstrip("/")
+    translated = ""
+    index = 0
+    while index < len(body):
+        if body.startswith("**/", index):
+            translated += "(?:[^/]+/)*"
+            index += 3
+        elif body[index] == "*":
+            translated += "[^/]*"
+            index += 1
+        elif body[index] == "?":
+            translated += "[^/]"
+            index += 1
+        else:
+            translated += re.escape(body[index])
+            index += 1
+    return re.compile(translated if anchored else f"(?:.*/)?{translated}")
+
+
+def lfs_tracked(repo: Repo, relative: str) -> bool:
+    """Whether `.gitattributes` hands the file at `relative` to the Git LFS filter."""
+    return any(_pattern(pattern).fullmatch(relative) for pattern in lfs_patterns(repo))
+
+
+def _committed(repo: Repo, relatives: list[str]) -> dict[str, bytes | None] | None:
+    """What the index holds for each path — none for a blob too large to be a pointer.
+
+    None at all when `repo` is no git work tree of its own, which a copy of the
+    tree with its history left behind is: there the files are what it carries.
+    Only a blob small enough to be a pointer is read, so a frame committed as
+    raw bytes is answered without reading it.
+    """
+    environment = discovered_no_higher_than(repo.root, os.environ)
+    top = run(["git", "rev-parse", "--show-toplevel"], cwd=repo.root, env=environment)
+    if top.returncode != 0 or Path(top.stdout.strip()).resolve() != repo.root.resolve():
+        return None
+    listing = run(
+        ["git", "ls-files", "-s", "-z", "--", *relatives],
+        cwd=repo.root,
+        env=environment,
+        check=True,
+    ).stdout
+    blobs: dict[str, str] = {}
+    for entry in filter(None, listing.split("\0")):
+        stage, _, name = entry.partition("\t")
+        blobs[name] = stage.split()[1]
+    sizes = run(
+        ["git", "cat-file", "--batch-check=%(objectname) %(objectsize)"],
+        cwd=repo.root,
+        env=environment,
+        check=True,
+        stdin="".join(f"{blob}\n" for blob in blobs.values()),
+    ).stdout.split()
+    size_of = dict(zip(sizes[0::2], map(int, sizes[1::2]), strict=True))
+    committed: dict[str, bytes | None] = {}
+    for name, blob in blobs.items():
+        if size_of[blob] > POINTER_LIMIT:
+            committed[name] = None
+            continue
+        shown = run(
+            ["git", "cat-file", "blob", blob], cwd=repo.root, env=environment, check=True
+        ).stdout
+        committed[name] = shown.encode("utf-8")
+    return committed
+
+
+def real_prints_lfs(repo: Repo) -> list[str]:
+    """Every case file `.gitattributes` hands to Git LFS is committed as an LFS pointer.
+
+    What is read is what git holds for the file — the index — rather than the
+    working tree, which carries the real bytes once `just real-prints-fetch`
+    has run. A host without git-lfs adds a frame as its raw bytes, and this is
+    what refuses that commit rather than a clone discovering it. A tree that is
+    no git work tree of its own is read as the files it carries.
+    """
+    root = repo.root / ROOT
+    if not root.is_dir():
+        return []
+    relatives = sorted(
+        path.relative_to(repo.root).as_posix() for path in root.rglob("*") if path.is_file()
+    )
+    tracked = [relative for relative in relatives if lfs_tracked(repo, relative)]
+    if not tracked:
+        return [f"{ATTRIBUTES} hands no file under {ROOT} to Git LFS"]
+    committed = _committed(repo, tracked)
+    findings: list[str] = []
+    for relative in tracked:
+        if committed is None:
+            held = (repo.root / relative).read_bytes()
+        elif relative not in committed:
+            continue
+        else:
+            held = committed[relative]
+        if held is None or pointer(held) is None:
+            findings.append(
+                f"{relative} is committed as its raw bytes, not as a Git LFS pointer: install "
+                f"git-lfs (`just bootstrap`), then `git add --renormalize {relative}`"
+            )
+    return findings
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,7 +499,9 @@ def real_prints_files(repo: Repo) -> list[str]:
 def real_prints_images(repo: Repo) -> list[str]:
     """Every `agent-*` image is the exact picture its event's history records.
 
-    Every `agent-*` file but the turn's own `agent-turn.json` is a picture.
+    Every `agent-*` file but the turn's own `agent-turn.json` is a picture. One
+    the checkout carries as a Git LFS pointer is the picture whose sha256 is the
+    pointer's object id, which is how git-lfs names an object.
     """
     findings: list[str] = []
     for case in _readable(repo, "real-prints-images", findings):
@@ -351,7 +521,9 @@ def real_prints_images(repo: Repo) -> list[str]:
                     f"{case.name}: {path.name}'s event {event_id} records no image in {HISTORY}"
                 )
                 continue
-            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            data = path.read_bytes()
+            stands_for = pointer(data)
+            actual = stands_for.oid if stands_for else hashlib.sha256(data).hexdigest()
             if actual != recorded:
                 findings.append(
                     f"{case.name}: {path.name} has sha256 {actual}, but {HISTORY} records "

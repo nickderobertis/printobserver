@@ -90,6 +90,7 @@ CHECKS: dict[str, Closure] = {
         (PROJECTS, WORKFLOWS, AGENTS, JUSTFILE, POLICY, "tools/printer-smoke/printer_smoke.py")
     ),
     "real-prints-schema": Closure(REAL_PRINTS),
+    "real-prints-lfs": Closure((*REAL_PRINTS, ".gitattributes")),
     "real-prints-files": Closure(REAL_PRINTS),
     "real-prints-images": Closure(REAL_PRINTS),
     "real-prints-scenarios": Closure(REAL_PRINTS),

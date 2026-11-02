@@ -82,6 +82,7 @@ CHECKS: dict[str, Check] = {
     "smoke-payload": checks_smoke.smoke_payload,
     "smoke-selection": checks_smoke.smoke_selection,
     "real-prints-schema": checks_real_prints.real_prints_schema,
+    "real-prints-lfs": checks_real_prints.real_prints_lfs,
     "real-prints-files": checks_real_prints.real_prints_files,
     "real-prints-images": checks_real_prints.real_prints_images,
     "real-prints-scenarios": checks_real_prints.real_prints_scenarios,
