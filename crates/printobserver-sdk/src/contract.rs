@@ -985,6 +985,14 @@ pub struct JobManifest {
     pub metadata: BTreeMap<String, String>,
     /// The nozzle the job is sliced for, in millimetres.
     pub nozzle_diameter_mm: f64,
+    /// The build sheet the job goes down on, as one of the sheet ids the
+    /// server's sheet table names, such as `smooth-pei` or `textured-pei`.
+    ///
+    /// Every start must declare one: a start whose manifest names none is
+    /// refused, and no override lets it through. Optional here only so that a
+    /// manifest stored before the field existed still loads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<String>,
     /// The slicer profile the job was sliced with.
     pub slicer_profile: String,
 }
@@ -1121,6 +1129,94 @@ pub struct ManifestNarrowing {
     pub applied: Range,
     /// The range the manifest asked for.
     pub requested: Range,
+}
+
+/// Why the material check objects to a start, with what it compared.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "cause")]
+pub enum MaterialObjection {
+    /// The file was sliced for another material than the loaded spool's.
+    #[serde(rename = "mismatch")]
+    Mismatch {
+        /// That spool's material.
+        loaded: String,
+        /// The material the file's own `filament_type` names for the tool.
+        sliced_for: String,
+        /// The spool loaded on it.
+        spool: PreflightSpool,
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// The file names no `filament_type`, so what it was sliced for is
+    /// unknown.
+    #[serde(rename = "undeclared")]
+    Undeclared {
+        /// The file that was to be compared.
+        file_name: String,
+        /// That spool's material.
+        loaded: String,
+        /// The spool loaded on it.
+        spool: PreflightSpool,
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// The file's settings could not be read from the printer.
+    #[serde(rename = "unread")]
+    Unread {
+        /// What the printer answered instead, in its own words.
+        detail: String,
+        /// The file whose settings could not be read.
+        file_name: String,
+        /// That spool's material.
+        loaded: String,
+        /// The spool loaded on it.
+        spool: PreflightSpool,
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+}
+
+/// Whether a file was sliced for the material of the spool loaded on tool 0,
+/// tagged by its verdict.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "verdict")]
+pub enum MaterialResult {
+    /// The file was sliced for the loaded spool's material.
+    #[serde(rename = "passed")]
+    Passed {
+        /// That spool's material.
+        loaded: String,
+        /// The material the file's own `filament_type` names for the tool.
+        sliced_for: String,
+        /// The spool loaded on it.
+        spool: PreflightSpool,
+        /// The tool, in the printer's own numbering.
+        tool: i64,
+    },
+    /// No tracked spool is loaded on tool 0, or the check is off, so nothing
+    /// was compared.
+    #[serde(rename = "unchecked")]
+    Unchecked,
+    /// The check refuses the start.
+    #[serde(rename = "refused")]
+    Refused {
+        /// What it objected to.
+        objection: MaterialObjection,
+    },
+    /// The start went ahead despite this objection, because an operator said
+    /// so.
+    #[serde(rename = "overridden")]
+    Overridden {
+        /// What it objected to.
+        objection: MaterialObjection,
+    },
+    /// The check is set to warn, and let the start go ahead despite this
+    /// objection.
+    #[serde(rename = "warned")]
+    Warned {
+        /// What it objected to.
+        objection: MaterialObjection,
+    },
 }
 
 /// Obico reported a print failure.
@@ -1372,10 +1468,22 @@ pub struct Preflight {
     pub checked_at: Timestamp,
     /// The file the print is of.
     pub file_name: String,
+    /// Whether the file was sliced for the material of the spool on tool 0.
+    /// Absent from a check recorded before this check existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<MaterialResult>,
+    /// Whether the declared build sheet suits that spool's material. Absent
+    /// from a check recorded before this check existed, and from a read that
+    /// was given no sheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetResult>,
     /// What it found for each tool.
     pub tools: Vec<PreflightTool>,
     /// The worst of the tools' verdicts, in the order insufficient,
     /// unverified spool, no analysis, warned, overridden, unchecked, passed.
+    ///
+    /// The filament weight's alone: the material and sheet checks carry
+    /// verdicts of their own, in `material` and `sheet`.
     pub verdict: PreflightVerdict,
 }
 
@@ -1616,6 +1724,18 @@ pub enum PrintAction {
         /// override's reason.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         override_filament_check: Option<bool>,
+        /// Start despite a file sliced for another material than the spool
+        /// loaded on tool 0, or naming none; only an operator's asking
+        /// counts,
+        /// and the start's own reason is the override's reason.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        override_material_check: Option<bool>,
+        /// Start despite a declared build sheet the sheet table does not
+        /// allow
+        /// the loaded spool's material on; only an operator's asking counts,
+        /// and it never lets through a manifest that declares no sheet.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        override_sheet_check: Option<bool>,
         /// Why the actor is asking for this.
         reason: String,
     },
@@ -2391,6 +2511,24 @@ pub enum RejectionReason {
         /// How long the start waited for one, in whole seconds.
         waited_s: i64,
     },
+    /// A start was refused because its file was sliced for another material
+    /// than the spool loaded on tool 0, names none, or could not be read.
+    #[serde(rename = "material_refused")]
+    MaterialRefused {
+        /// What the material check objected to, with what it compared.
+        objection: MaterialObjection,
+    },
+    /// A start was refused because its declared build sheet does not suit the
+    /// loaded spool's material by the sheet table.
+    #[serde(rename = "sheet_refused")]
+    SheetRefused {
+        /// What the sheet check objected to, with what it compared.
+        objection: SheetObjection,
+    },
+    /// A start was refused because its manifest declares no `sheet`. No
+    /// override lets this through.
+    #[serde(rename = "sheet_not_declared")]
+    SheetNotDeclared,
     /// A close was refused because the print record has already ended.
     #[serde(rename = "print_already_ended")]
     PrintAlreadyEnded,
@@ -2434,6 +2572,85 @@ pub struct Reported {
     pub out_of_range: bool,
     /// One shape of the contracts, which say nothing more about it.
     pub value: f64,
+}
+
+/// Why the sheet check objects to a start, with what it compared.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "cause")]
+pub enum SheetObjection {
+    /// The table lists the material, and not on this sheet.
+    #[serde(rename = "not_allowed")]
+    NotAllowed {
+        /// Every sheet the table allows that material.
+        allowed: Vec<String>,
+        /// The material of the spool loaded on tool 0.
+        material: String,
+        /// The build sheet the manifest declares.
+        sheet: String,
+    },
+    /// The table has no entry for the material.
+    #[serde(rename = "unlisted_material")]
+    UnlistedMaterial {
+        /// The material of the spool loaded on tool 0.
+        material: String,
+        /// The build sheet the manifest declares.
+        sheet: String,
+    },
+    /// No entry of the table lists the sheet.
+    #[serde(rename = "unknown_sheet")]
+    UnknownSheet {
+        /// Every sheet some entry lists.
+        known: Vec<String>,
+        /// The material of the spool loaded on tool 0.
+        material: String,
+        /// The build sheet the manifest declares.
+        sheet: String,
+    },
+}
+
+/// Whether the declared build sheet suits the loaded spool's material, tagged
+/// by its verdict.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "verdict")]
+pub enum SheetResult {
+    /// The table allows the material on the declared sheet.
+    #[serde(rename = "passed")]
+    Passed {
+        /// Every sheet the table allows that material.
+        allowed: Vec<String>,
+        /// The material of the spool loaded on tool 0.
+        material: String,
+        /// The build sheet the manifest declares.
+        sheet: String,
+    },
+    /// No tracked spool is loaded on tool 0, or the check is off, so nothing
+    /// was compared.
+    #[serde(rename = "unchecked")]
+    Unchecked,
+    /// The manifest declares no sheet. This refuses every start, and no
+    /// override lets it through.
+    #[serde(rename = "undeclared")]
+    Undeclared,
+    /// The check refuses the start.
+    #[serde(rename = "refused")]
+    Refused {
+        /// What it objected to.
+        objection: SheetObjection,
+    },
+    /// The start went ahead despite this objection, because an operator said
+    /// so.
+    #[serde(rename = "overridden")]
+    Overridden {
+        /// What it objected to.
+        objection: SheetObjection,
+    },
+    /// The check is set to warn, and let the start go ahead despite this
+    /// objection.
+    #[serde(rename = "warned")]
+    Warned {
+        /// What it objected to.
+        objection: SheetObjection,
+    },
 }
 
 /// The position a filament change charged up to, and how fresh it is.
@@ -3608,9 +3825,16 @@ impl Client {
     ///
     /// Returns `ClientError` when the supervisor could not be reached, when
     /// it answered something this client cannot read.
-    pub fn preflight(&self, file_name: &str) -> Result<PreflightAnswer, ClientError> {
+    pub fn preflight(
+        &self,
+        file_name: &str,
+        sheet: Option<String>,
+    ) -> Result<PreflightAnswer, ClientError> {
         let target = String::from("/v1/preflight");
-        let asked: Vec<(String, String)> = vec![("file_name".to_owned(), file_name.to_owned())];
+        let mut asked: Vec<(String, String)> = vec![("file_name".to_owned(), file_name.to_owned())];
+        if let Some(value) = sheet {
+            asked.push(("sheet".to_owned(), value));
+        }
         let sending: Option<serde_json::Value> = None;
         self.call("GET", &target, &asked, sending.as_ref())
     }
@@ -3688,6 +3912,8 @@ impl Client {
     /// when the policy refused the action — which arrives as
     /// `ClientError::Rejected`, carrying the reason, the value asked for and
     /// the range allowed.
+    // One argument per value the operation declares, as every client takes them; suppressions.toml has the reason.
+    #[expect(clippy::too_many_arguments)]
     pub fn start_print(
         &self,
         print_id: &str,
@@ -3695,6 +3921,8 @@ impl Client {
         manifest: &JobManifest,
         reason: &str,
         override_filament_check: Option<bool>,
+        override_material_check: Option<bool>,
+        override_sheet_check: Option<bool>,
     ) -> Result<ActionAnswer, ClientError> {
         crate::reason_given(reason)?;
         let target = format!("/v1/prints/{print_id}/actions/start_print");
@@ -3708,6 +3936,15 @@ impl Client {
                 "override_filament_check".to_owned(),
                 crate::as_value(&value)?,
             );
+        }
+        if let Some(value) = override_material_check {
+            sending.insert(
+                "override_material_check".to_owned(),
+                crate::as_value(&value)?,
+            );
+        }
+        if let Some(value) = override_sheet_check {
+            sending.insert("override_sheet_check".to_owned(), crate::as_value(&value)?);
         }
         sending.insert("reason".to_owned(), crate::as_value(&reason)?);
         let sending = Some(serde_json::Value::Object(sending));

@@ -1050,6 +1050,7 @@ def emit_live(contract: Contract) -> str:
         '        material: "PLA".to_owned(),',
         "        nozzle_diameter_mm: 0.4,",
         '        slicer_profile: "the all-operation walk\'s own profile".to_owned(),',
+        '        sheet: Some("smooth-pei".to_owned()),',
         "        allowed: BTreeMap::new(),",
         "        metadata: BTreeMap::new(),",
         "    }",

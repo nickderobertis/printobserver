@@ -61,6 +61,7 @@ fn manifest(file_name: &str) -> JobManifest {
         material: "PLA".to_owned(),
         nozzle_diameter_mm: 0.4,
         slicer_profile: "a journey's own profile".to_owned(),
+        sheet: Some("smooth-pei".to_owned()),
         allowed,
         metadata: BTreeMap::new(),
     }
@@ -181,7 +182,15 @@ fn starts(
     until(client, &world.print_id, &[PrinterState::Operational]);
 
     let started = client
-        .start_print(&world.print_id, &world.file_name, wanted, REASON, None)
+        .start_print(
+            &world.print_id,
+            &world.file_name,
+            wanted,
+            REASON,
+            None,
+            None,
+            None,
+        )
         .expect("a start is answered");
     assert!(matches!(started.record.decision, PolicyDecision::Accepted));
     let world = supervisor::Supervisor {
@@ -396,6 +405,8 @@ fn cancels(client: &Client, world: &supervisor::Supervisor, wanted: &JobManifest
         &world.file_name,
         wanted,
         "putting the hold print back where the bring-up left it",
+        None,
+        None,
         None,
     );
 }

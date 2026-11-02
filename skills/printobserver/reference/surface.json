@@ -384,6 +384,13 @@
           "option": "--file-name",
           "required": true,
           "supply": "value"
+        },
+        {
+          "field": "sheet",
+          "located": "query",
+          "option": "--sheet",
+          "required": false,
+          "supply": "value"
         }
       ],
       "path": "/v1/preflight"
@@ -571,6 +578,20 @@
           "field": "override_filament_check",
           "located": "body",
           "option": "--override-filament-check",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "override_material_check",
+          "located": "body",
+          "option": "--override-material-check",
+          "required": false,
+          "supply": "value"
+        },
+        {
+          "field": "override_sheet_check",
+          "located": "body",
+          "option": "--override-sheet-check",
           "required": false,
           "supply": "value"
         },

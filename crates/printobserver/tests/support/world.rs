@@ -89,7 +89,8 @@ const SETTLING_REASON: &str = "this walk is putting the machine where the next c
 /// The manifest a settling start attaches, which narrows nothing.
 const SETTLING_MANIFEST: &str = concat!(
     r#"{"file_name":"settling","material":"PLA","nozzle_diameter_mm":0.4,"#,
-    r#""slicer_profile":"the profile settling drove","allowed":{},"metadata":{}}"#
+    r#""slicer_profile":"the profile settling drove","sheet":"smooth-pei","#,
+    r#""allowed":{},"metadata":{}}"#
 );
 
 /// The file of the print record a close is about: one the machine never runs.
@@ -1139,11 +1140,19 @@ impl World {
     /// its own time to pause, and a walk that asked again every half second
     /// would be asking a machine part-way through pausing to pause.
     fn one_step_towards(&self, state: Reports) -> String {
+        // The hold print names no material, and the walk's own spool can be
+        // on tool 0 while the machine settles: settling only gets the machine
+        // printing, so it goes past the material and sheet checks as an
+        // operator at the machine would, and proves neither.
         let starting = &[
             "--file-name",
             &self.printable_file(),
             "--manifest",
             SETTLING_MANIFEST,
+            "--override-material-check",
+            "true",
+            "--override-sheet-check",
+            "true",
         ];
         match (state, self.reported_state()) {
             (Reports::Printing, Some(Reports::Paused)) => self.settle("resume", &[]),

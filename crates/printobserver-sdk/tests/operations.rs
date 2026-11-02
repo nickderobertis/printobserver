@@ -88,7 +88,7 @@ fn status_sends_what_it_declares_and_answers_what_the_server_sent() {
 /// `context` sends what it declares and answers what the server sent.
 #[test]
 fn context_sends_what_it_declares_and_answers_what_the_server_sent() {
-    let answer: Value = serde_json::from_str(r#"{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}}, "detector": {"since": null, "status": "unchecked"}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": {"source": "printer", "text": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "estimated_print_time_s": 7, "filament": [{"length_mm": 1.5, "tool": 7, "volume_cm3": 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_position_bytes": 7, "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "job_print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7, "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#)
+    let answer: Value = serde_json::from_str(r#"{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}}, "detector": {"since": null, "status": "unchecked"}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": {"source": "printer", "text": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "estimated_print_time_s": 7, "filament": [{"length_mm": 1.5, "tool": 7, "volume_cm3": 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_position_bytes": 7, "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "job_print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7, "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#)
         .expect("a generated answer is a document");
     let host = Host::answering(200, &answer.to_string());
     let client = Client::new(host.address(), actor());
@@ -199,7 +199,7 @@ fn events_sends_what_it_declares_and_answers_what_the_server_sent() {
 /// `manifest_get` sends what it declares and answers what the server sent.
 #[test]
 fn manifest_get_sends_what_it_declares_and_answers_what_the_server_sent() {
-    let answer: Value = serde_json::from_str(r#"{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}"#)
+    let answer: Value = serde_json::from_str(r#"{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}"#)
         .expect("a generated answer is a document");
     let host = Host::answering(200, &answer.to_string());
     let client = Client::new(host.address(), actor());
@@ -251,12 +251,12 @@ fn look_sends_what_it_declares_and_answers_what_the_server_sent() {
 /// `manifest_set` sends what it declares and answers what the server sent.
 #[test]
 fn manifest_set_sends_what_it_declares_and_answers_what_the_server_sent() {
-    let answer: Value = serde_json::from_str(r#"{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}"#)
+    let answer: Value = serde_json::from_str(r#"{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}"#)
         .expect("a generated answer is a document");
     let host = Host::answering(200, &answer.to_string());
     let client = Client::new(host.address(), actor());
 
-    let answered = client.manifest_set("0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#))
+    let answered = client.manifest_set("0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking", &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#))
         .expect("`manifest_set` is answered");
 
     let received = host.received();
@@ -265,7 +265,7 @@ fn manifest_set_sends_what_it_declares_and_answers_what_the_server_sent() {
         received.target,
         "/v1/prints/0198f0a1-2b3c-7d4e-8f90-123456789abc/manifest"
     );
-    let sent: Value = serde_json::from_str(r#"{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "reason": "a generated walk is asking"}"#)
+    let sent: Value = serde_json::from_str(r#"{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "reason": "a generated walk is asking"}"#)
         .expect("a generated body is a document");
     assert_eq!(
         serde_json::from_str::<Value>(&received.body).expect("a body"),
@@ -285,7 +285,7 @@ fn manifest_set_makes_no_request_when_the_reason_is_empty() {
     let host = Host::answering(200, "{}");
     let client = Client::new(host.address(), actor());
 
-    let refused = client.manifest_set("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ", &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#))
+    let refused = client.manifest_set("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ", &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#))
         .expect_err("a call with no reason is refused");
 
     assert!(matches!(refused, ClientError::NoReason));
@@ -375,20 +375,23 @@ fn printer_history_sends_what_it_declares_and_answers_what_the_server_sent() {
 /// `preflight` sends what it declares and answers what the server sent.
 #[test]
 fn preflight_sends_what_it_declares_and_answers_what_the_server_sent() {
-    let answer: Value = serde_json::from_str(r#"{"preflight": {"checked_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"result": {"need": {"buffer_g": 1.5, "required_g": 1.5}, "remaining_g": 1.5, "spool": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "verdict": "passed"}, "tool": 7}], "verdict": "passed"}}"#)
+    let answer: Value = serde_json::from_str(r#"{"preflight": {"checked_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": {"loaded": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sliced_for": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "spool": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "tool": 7, "verdict": "passed"}, "sheet": {"allowed": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "verdict": "passed"}, "tools": [{"result": {"need": {"buffer_g": 1.5, "required_g": 1.5}, "remaining_g": 1.5, "spool": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "verdict": "passed"}, "tool": 7}], "verdict": "passed"}}"#)
         .expect("a generated answer is a document");
     let host = Host::answering(200, &answer.to_string());
     let client = Client::new(host.address(), actor());
 
     let answered = client
-        .preflight("0198f0a1-2b3c-7d4e-8f90-123456789abc")
+        .preflight(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+        )
         .expect("`preflight` is answered");
 
     let received = host.received();
     assert_eq!(received.method, "GET");
     assert_eq!(
         received.target,
-        "/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc"
+        "/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc&sheet=0198f0a1-2b3c-7d4e-8f90-123456789abc"
     );
     assert_eq!(received.body, "");
     assert_eq!(
@@ -661,7 +664,7 @@ fn start_print_sends_what_it_declares_and_answers_what_the_server_sent() {
     let host = Host::answering(200, &answer.to_string());
     let client = Client::new(host.address(), actor());
 
-    let answered = client.start_print("0198f0a1-2b3c-7d4e-8f90-123456789abc", &parsed::<FileName>(r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#), &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#), "a generated walk is asking", Some(true))
+    let answered = client.start_print("0198f0a1-2b3c-7d4e-8f90-123456789abc", &parsed::<FileName>(r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#), &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#), "a generated walk is asking", Some(true), Some(true), Some(true))
         .expect("`start_print` is answered");
 
     let received = host.received();
@@ -670,7 +673,7 @@ fn start_print_sends_what_it_declares_and_answers_what_the_server_sent() {
         received.target,
         "/v1/prints/0198f0a1-2b3c-7d4e-8f90-123456789abc/actions/start_print"
     );
-    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "override_filament_check": true, "reason": "a generated walk is asking"}"#)
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "override_filament_check": true, "override_material_check": true, "override_sheet_check": true, "reason": "a generated walk is asking"}"#)
         .expect("a generated body is a document");
     assert_eq!(
         serde_json::from_str::<Value>(&received.body).expect("a body"),
@@ -692,7 +695,7 @@ fn start_print_surfaces_the_policys_own_refusal() {
     let host = Host::answering(409, &refusal.to_string());
     let client = Client::new(host.address(), actor());
 
-    let refused = client.start_print("0198f0a1-2b3c-7d4e-8f90-123456789abc", &parsed::<FileName>(r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#), &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#), "a generated walk is asking", Some(true))
+    let refused = client.start_print("0198f0a1-2b3c-7d4e-8f90-123456789abc", &parsed::<FileName>(r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#), &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#), "a generated walk is asking", Some(true), Some(true), Some(true))
         .expect_err("`start_print` is refused");
 
     let ClientError::Rejected(rejection) = refused else {
@@ -722,7 +725,7 @@ fn start_print_makes_no_request_when_the_reason_is_empty() {
     let host = Host::answering(200, "{}");
     let client = Client::new(host.address(), actor());
 
-    let refused = client.start_print("0198f0a1-2b3c-7d4e-8f90-123456789abc", &parsed::<FileName>(r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#), &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#), "   ", Some(true))
+    let refused = client.start_print("0198f0a1-2b3c-7d4e-8f90-123456789abc", &parsed::<FileName>(r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#), &parsed::<JobManifest>(r#"{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}"#), "   ", Some(true), Some(true), Some(true))
         .expect_err("a call with no reason is refused");
 
     assert!(matches!(refused, ClientError::NoReason));

@@ -299,15 +299,16 @@ Reached at `GET /v1/history`.
 
 ### preflight
 
-Whether the spools loaded hold enough for one file, read now. It records nothing, starts nothing and waits for no analysis.
+Whether the spools loaded hold enough for one file, whether the file was sliced for the material of the spool on tool 0, and — given a sheet — whether that sheet suits it, read now. It records nothing, starts nothing and waits for no analysis.
 
 Reached at `GET /v1/preflight`.
 
 **Arguments.**
 
 - `--file-name` — the file, as the printer names it (required).
+- `--sheet` — the build sheet a start would declare, such as `smooth-pei` or `textured-pei`; left out, no sheet result is reported (optional).
 
-**Output.** For each tool `OctoPrint`'s analysis of the file says it feeds: the spool loaded there and its name, what the print needs from it in grams, the buffer asked beyond that, what the spool holds, the spool's marks, and a verdict — `passed`, `insufficient`, `unverified_spool` or `unchecked`, the last for a tool no tracked spool is on — and the worst of them for the whole print. A file with no analysis yet answers `no_analysis` for every loaded spool, or `unverified_spool` for one in doubt.
+**Output.** For each tool `OctoPrint`'s analysis of the file says it feeds: the spool loaded there and its name, what the print needs from it in grams, the buffer asked beyond that, what the spool holds, the spool's marks, and a verdict — `passed`, `insufficient`, `unverified_spool` or `unchecked`, the last for a tool no tracked spool is on — and the worst of them for the whole print. A file with no analysis yet answers `no_analysis` for every loaded spool, or `unverified_spool` for one in doubt. Beside them, `material` compares the `filament_type` the file's own settings name for tool 0 with the spool loaded there, and `sheet`, when one was given, compares it with the sheets the server's table allows that material on: each `passed`, `refused` or `unchecked`, carrying what it compared.
 
 **Failures.** `refused` for a file name the printer could not have. `unreachable` and `refused` as for every command.
 
@@ -377,13 +378,17 @@ Reached at `POST /v1/prints/{print_id}/actions/start_print`.
 - `--manifest` — the manifest itself, as JSON (required).
 - `--manifest-file` — the path of a file carrying that JSON instead (optional).
 - `--override-filament-check` — written `--override-filament-check true` to start despite a spool too short or in doubt, or a file `OctoPrint` has not analysed, with this start's reason as the override's (optional). Only an operator's override counts; it is recorded on the action and on the filament check the start made.
+- `--override-material-check` — written `--override-material-check true` to start despite a file sliced for another material than the spool on tool 0, or naming none (optional). Only an operator's override counts, recorded as the filament one is.
+- `--override-sheet-check` — written `--override-sheet-check true` to start despite a declared sheet the server's table does not allow the loaded material on (optional). Only an operator's override counts, and none lets through a manifest that declares no sheet.
 - `--reason` — why this change is being made, in the actor's own words (required).
 
-Before the machine is asked, the start checks the spools loaded against what `OctoPrint`'s analysis of the file says each tool needs, waiting for that analysis when the file has none yet and a tool holds a tracked spool. In the default mode a start is refused while a loaded spool holds less than the print needs plus its buffer, while its figure is in doubt, or while the file still has no analysis; the server's `[spools]` table can set it to warn instead, or to check nothing.
+The manifest names the build sheet the print goes down on in `sheet` — one of the ids the server's sheet table names, `smooth-pei` or `textured-pei` by default — and a start whose manifest names none is refused whatever it overrides.
+
+Before the machine is asked, the start checks the spools loaded against what `OctoPrint`'s analysis of the file says each tool needs, waiting for that analysis when the file has none yet and a tool holds a tracked spool. It checks the `filament_type` the file's own settings name for tool 0 against the material of the spool loaded there, and the declared sheet against the sheets the server's `[sheets.allowed]` table allows that material on — by default PLA on `smooth-pei` alone and PETG on `textured-pei` alone. In the default mode a start is refused while a loaded spool holds less than the print needs plus its buffer, while its figure is in doubt, while the file still has no analysis, while the file was sliced for another material or names none, or while the table does not allow the material on the sheet; the server's `[spools]` table can set it to warn instead, or to check nothing.
 
 **Output.** The action record, carrying the request, who asked, the reason and the policy's decision; the bounded intervention it opened, when it opened one; and what the printer said, when the request reached it and it refused.
 
-**Failures.** `rejected` when the policy refuses, and when the filament check does: `insufficient_filament`, `unverified_spool` or `analysis_unavailable`, the record carrying the spool, its name and its figures, or the file and how long the start waited. The printer is not started, and the program says beside the record what settles it — load a spool holding enough, weigh the spool and run `adjust-spool`, start again once `OctoPrint` has analysed the file, or start again with `--override-filament-check true`. `refused` when the policy accepted it and the machine did not. `unreachable` when nothing answers at the configured address.
+**Failures.** `rejected` when the policy refuses, and when the filament check does: `insufficient_filament`, `unverified_spool` or `analysis_unavailable`, the record carrying the spool, its name and its figures, or the file and how long the start waited. The printer is not started, and the program says beside the record what settles it — load a spool holding enough, weigh the spool and run `adjust-spool`, start again once `OctoPrint` has analysed the file, or start again with `--override-filament-check true`. And when the material check does, `material_refused`, naming what the file was sliced for and what the spool is, or the file naming none, settled by loading the right spool or with `--override-material-check true`; when the sheet check does, `sheet_refused`, naming the sheet, the material and the sheets allowed, settled by the right sheet or with `--override-sheet-check true`; and `sheet_not_declared` for a manifest naming no `sheet`, which no override settles. `refused` when the policy accepted it and the machine did not. `unreachable` when nothing answers at the configured address.
 
 ### set-feedrate-factor
 

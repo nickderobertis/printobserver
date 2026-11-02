@@ -513,9 +513,12 @@ Start a print of a named file, bounded by a manifest. Valid only while the
 printer is operational. A start opens a print of its own when no print is open,
 so `record.print_id` names the print the job runs under and its manifest is
 attached to: act on that print afterwards. The examples below this one do.
+The manifest's `sheet` names the build sheet that is down; a start naming none
+is refused. `--override-material-check true` and `--override-sheet-check true`
+start one the material or sheet check refused, as the operator alone.
 
 ```console
-$ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","allowed":{},"metadata":{}}' --reason "re-running the job after clearing the bed"
+$ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "re-running the job after clearing the bed"
 record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID
@@ -529,6 +532,7 @@ record.request.action.manifest.file_name: FILE
 record.request.action.manifest.material: PLA
 record.request.action.manifest.metadata: {}
 record.request.action.manifest.nozzle_diameter_mm: 0.4
+record.request.action.manifest.sheet: smooth-pei
 record.request.action.manifest.slicer_profile: draft
 record.request.action.reason: re-running the job after clearing the bed
 record.request.actor: operator
@@ -839,12 +843,26 @@ analysis of the file, so the spool on tool 0 is `no_analysis`; with one, each to
 carries what the print needs from it, the buffer asked beyond that and what the
 spool holds. A start refused by this check prints those figures and what
 settles them, and `--override-filament-check true` on `start-print` starts it
-anyway.
+anyway. `material` says whether the file was sliced for the spool on tool 0 —
+here the machine answers none of the file's settings, so it is refused as
+`unread` — and `--sheet` adds whether that sheet suits the spool's material.
 
 ```console
-$ printobserver preflight --file-name FILE
+$ printobserver preflight --file-name FILE --sheet smooth-pei
 preflight.checked_at: TIMESTAMP
 preflight.file_name: FILE
+preflight.material.objection.cause: unread
+preflight.material.objection.detail: the printer answered something unreadable: /api/files/local/FILE answered something this port could not read: missing field `name` at line 1 column 184
+preflight.material.objection.file_name: FILE
+preflight.material.objection.loaded: PLA
+preflight.material.objection.spool.id: ID
+preflight.material.objection.spool.name: PLA black
+preflight.material.objection.tool: 0
+preflight.material.verdict: refused
+preflight.sheet.allowed.0: smooth-pei
+preflight.sheet.material: PLA
+preflight.sheet.sheet: smooth-pei
+preflight.sheet.verdict: passed
 preflight.tools.0.result.remaining_g: 650.0
 preflight.tools.0.result.spool.id: ID
 preflight.tools.0.result.spool.name: PLA black

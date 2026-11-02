@@ -161,39 +161,40 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
         ', "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456'
         '789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
         ' "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789'
-        'abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a'
-        '1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "01'
-        '98f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2'
-        'b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4'
-        'e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-1234567'
-        '89abc", "job_print_time_s": 7, "job_started_at": "0198f0a1-2'
-        'b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "'
-        '0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.'
-        '5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "op'
-        'ened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_'
-        'print_id": 7, "state": "operational"}, "printer": {"bed": {"'
-        'actual_c": {"out_of_range": true, "value": 1.5}, "offset_c":'
-        ' {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_'
-        'range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_'
-        'of_range": true, "value": 1.5}, "offset_c": {"out_of_range":'
-        ' true, "value": 1.5}, "target_c": {"out_of_range": true, "va'
-        'lue": 1.5}}, "connection": "operational", "fan_percent": {"o'
-        'ut_of_range": true, "value": 1.5}, "feedrate_factor": {"out_'
-        'of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_'
-        'range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_rang'
-        'e": true, "value": 1.5}, "offset_c": {"out_of_range": true, '
-        '"value": 1.5}, "target_c": {"out_of_range": true, "value": 1'
-        '.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-12'
-        '3456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456'
-        '789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, '
-        '"kind": "action_executed", "payload": {"action_id": "0198f0a'
-        '1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789'
-        'abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "'
-        'image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        'abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d'
+        '4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c'
+        '-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-1234'
+        '56789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "jo'
+        'b_print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1'
+        '.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "'
+        '0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": '
+        '7, "state": "operational"}, "printer": {"bed": {"actual_c": '
+        '{"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_r'
+        'ange": true, "value": 1.5}, "target_c": {"out_of_range": tru'
+        'e, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": '
+        'true, "value": 1.5}, "offset_c": {"out_of_range": true, "val'
+        'ue": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}'
+        ', "connection": "operational", "fan_percent": {"out_of_range'
+        '": true, "value": 1.5}, "feedrate_factor": {"out_of_range": '
+        'true, "value": 1.5}, "flowrate_factor": {"out_of_range": tru'
+        'e, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "tools": [{"actual_c": {"out_of_range": true, "'
+        'value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.'
+        '5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "re'
+        'cent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
+        ', "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "s'
+        'ha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "ac'
+        'tion_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", '
+        '"received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sour'
+        'ce": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
     )
 
     with Host(200, answer) as host:
@@ -307,10 +308,11 @@ def test_manifest_get_sends_what_it_declares_and_answers_what_was_sent() -> None
         '5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "m'
         'aterial": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata"'
         ': {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "noz'
-        'zle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a'
-        '1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min'
-        '": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}'
+        'zle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123'
+        '456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "r'
+        'equested": {"max": 1.5, "min": 1.5}}]}'
     )
 
     with Host(200, answer) as host:
@@ -390,10 +392,11 @@ def test_manifest_set_sends_what_it_declares_and_answers_what_was_sent() -> None
         '5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "m'
         'aterial": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata"'
         ': {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "noz'
-        'zle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a'
-        '1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min'
-        '": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}'
+        'zle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123'
+        '456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e'
+        '-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "r'
+        'equested": {"max": 1.5, "min": 1.5}}]}'
     )
 
     with Host(200, answer) as host:
@@ -409,8 +412,8 @@ def test_manifest_set_sends_what_it_declares_and_answers_what_was_sent() -> None
                     'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                     '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                     ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                    'mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-1234567'
-                    '89abc"}'
+                    'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+                    'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
                 ),
             ),
         )
@@ -425,9 +428,9 @@ def test_manifest_set_sends_what_it_declares_and_answers_what_was_sent() -> None
             '5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "m'
             'aterial": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata"'
             ': {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "noz'
-            'zle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e'
-            '-8f90-123456789abc"}, "reason": "a generated walk is asking"'
-            "}"
+            'zle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123'
+            '456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-12345'
+            '6789abc"}, "reason": "a generated walk is asking"}'
         ),
         describing="what this call sent",
     )
@@ -449,8 +452,8 @@ def test_manifest_set_makes_no_request_when_the_reason_is_empty() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-1234567'
-                        '89abc"}'
+                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
                     ),
                 ),
             )
@@ -473,8 +476,8 @@ def test_manifest_set_makes_no_request_when_the_reason_is_empty() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-1234567'
-                        '89abc"}'
+                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
                     ),
                 ),
             )
@@ -595,21 +598,33 @@ def test_preflight_sends_what_it_declares_and_answers_what_was_sent() -> None:
     answer = json.loads(
         '{"preflight": {"checked_at": "0198f0a1-2b3c-7d4e-8f90-123456'
         '789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
-        ', "tools": [{"result": {"need": {"buffer_g": 1.5, "required_'
-        'g": 1.5}, "remaining_g": 1.5, "spool": {"id": "0198f0a1-2b3c'
-        '-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-1'
-        '23456789abc"}, "verdict": "passed"}, "tool": 7}], "verdict":'
-        ' "passed"}}'
+        ', "material": {"loaded": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "sliced_for": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'spool": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name'
+        '": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "tool": 7, "verd'
+        'ict": "passed"}, "sheet": {"allowed": ["0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"], "material": "0198f0a1-2b3c-7d4e-8f90-123'
+        '456789abc", "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
+        ' "verdict": "passed"}, "tools": [{"result": {"need": {"buffe'
+        'r_g": 1.5, "required_g": 1.5}, "remaining_g": 1.5, "spool": '
+        '{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "verdict": "passed"}, "t'
+        'ool": 7}], "verdict": "passed"}}'
     )
 
     with Host(200, answer) as host:
         client = Client(host.address, ACTOR)
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        answered = client.preflight("0198f0a1-2b3c-7d4e-8f90-123456789abc")
+        answered = client.preflight(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc", "0198f0a1-2b3c-7d4e-8f90-123456789abc"
+        )
         received = host.received()
 
     equal(received.method, "GET")
-    equal(received.target, "/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc")
+    equal(
+        received.target,
+        "/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc&sheet=0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    )
     equal(received.body, "")
     equal(answered, answer, describing="what this call answered")
 
@@ -980,11 +995,13 @@ def test_start_print_sends_what_it_declares_and_answers_what_was_sent() -> None:
                     'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                     '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                     ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                    'mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-1234567'
-                    '89abc"}'
+                    'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+                    'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
                 ),
             ),
             "a generated walk is asking",
+            True,
+            True,
             True,
         )
         received = host.received()
@@ -1000,9 +1017,11 @@ def test_start_print_sends_what_it_declares_and_answers_what_was_sent() -> None:
             ', "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456'
             '789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
             ' "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789'
-            'abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a'
-            '1-2b3c-7d4e-8f90-123456789abc"}, "override_filament_check": '
-            'true, "reason": "a generated walk is asking"}'
+            'abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d'
+            '4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e'
+            '-8f90-123456789abc"}, "override_filament_check": true, "over'
+            'ride_material_check": true, "override_sheet_check": true, "r'
+            'eason": "a generated walk is asking"}'
         ),
         describing="what this call sent",
     )
@@ -1048,11 +1067,13 @@ def test_start_print_surfaces_the_policys_own_refusal() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-1234567'
-                        '89abc"}'
+                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
                     ),
                 ),
                 "a generated walk is asking",
+                True,
+                True,
                 True,
             )
         except RejectedError as refused:
@@ -1082,11 +1103,13 @@ def test_start_print_makes_no_request_when_the_reason_is_empty() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-1234567'
-                        '89abc"}'
+                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
                     ),
                 ),
                 "",
+                True,
+                True,
                 True,
             )
         except NoReasonError:
@@ -1108,11 +1131,13 @@ def test_start_print_makes_no_request_when_the_reason_is_empty() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-1234567'
-                        '89abc"}'
+                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
                     ),
                 ),
                 "   ",
+                True,
+                True,
                 True,
             )
         except NoReasonError:

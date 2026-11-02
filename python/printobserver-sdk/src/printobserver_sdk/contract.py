@@ -1028,6 +1028,13 @@ class JobManifest(TypedDict):
     metadata: dict[str, str]
     # The nozzle the job is sliced for, in millimetres.
     nozzle_diameter_mm: float
+    # The build sheet the job goes down on, as one of the sheet ids the
+    # server's sheet table names, such as `smooth-pei` or `textured-pei`.
+    #
+    # Every start must declare one: a start whose manifest names none is
+    # refused, and no override lets it through. Optional here only so that a
+    # manifest stored before the field existed still loads.
+    sheet: NotRequired[str | None]
     # The slicer profile the job was sliced with.
     slicer_profile: str
 
@@ -1172,6 +1179,129 @@ class ManifestNarrowing(TypedDict):
     applied: Range
     # The range the manifest asked for.
     requested: Range
+
+
+class MaterialObjectionMismatch(TypedDict):
+    """The `mismatch` arm of `MaterialObjection`.
+
+    The file was sliced for another material than the loaded spool's.
+    """
+
+    cause: Literal["mismatch"]
+    # That spool's material.
+    loaded: str
+    # The material the file's own `filament_type` names for the tool.
+    sliced_for: str
+    # The spool loaded on it.
+    spool: PreflightSpool
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
+class MaterialObjectionUndeclared(TypedDict):
+    """The `undeclared` arm of `MaterialObjection`.
+
+    The file names no `filament_type`, so what it was sliced for is
+    unknown.
+    """
+
+    cause: Literal["undeclared"]
+    # The file that was to be compared.
+    file_name: str
+    # That spool's material.
+    loaded: str
+    # The spool loaded on it.
+    spool: PreflightSpool
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
+class MaterialObjectionUnread(TypedDict):
+    """The `unread` arm of `MaterialObjection`.
+
+    The file's settings could not be read from the printer.
+    """
+
+    cause: Literal["unread"]
+    # What the printer answered instead, in its own words.
+    detail: str
+    # The file whose settings could not be read.
+    file_name: str
+    # That spool's material.
+    loaded: str
+    # The spool loaded on it.
+    spool: PreflightSpool
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
+# Why the material check objects to a start, with what it compared.
+MaterialObjection: TypeAlias = (
+    MaterialObjectionMismatch | MaterialObjectionUndeclared | MaterialObjectionUnread
+)
+
+
+class MaterialResultPassed(TypedDict):
+    """The `passed` arm of `MaterialResult`.
+
+    The file was sliced for the loaded spool's material.
+    """
+
+    verdict: Literal["passed"]
+    # That spool's material.
+    loaded: str
+    # The material the file's own `filament_type` names for the tool.
+    sliced_for: str
+    # The spool loaded on it.
+    spool: PreflightSpool
+    # The tool, in the printer's own numbering.
+    tool: int
+
+
+class MaterialResultRefused(TypedDict):
+    """The `refused` arm of `MaterialResult`.
+
+    The check refuses the start.
+    """
+
+    verdict: Literal["refused"]
+    # What it objected to.
+    objection: MaterialObjection
+
+
+class MaterialResultOverridden(TypedDict):
+    """The `overridden` arm of `MaterialResult`.
+
+    The start went ahead despite this objection, because an operator said
+    so.
+    """
+
+    verdict: Literal["overridden"]
+    # What it objected to.
+    objection: MaterialObjection
+
+
+class MaterialResultWarned(TypedDict):
+    """The `warned` arm of `MaterialResult`.
+
+    The check is set to warn, and let the start go ahead despite this
+    objection.
+    """
+
+    verdict: Literal["warned"]
+    # What it objected to.
+    objection: MaterialObjection
+
+
+# Whether a file was sliced for the material of the spool loaded on tool 0,
+# tagged by its verdict.
+MaterialResult: TypeAlias = (
+    MaterialResultPassed
+    | MaterialResultRefused
+    | MaterialResultOverridden
+    | MaterialResultWarned
+    | Literal["unchecked"]
+)
 
 
 class ObicoFailureAlertPayload(TypedDict):
@@ -1410,10 +1540,20 @@ class Preflight(TypedDict):
     checked_at: Timestamp
     # The file the print is of.
     file_name: str
+    # Whether the file was sliced for the material of the spool on tool 0.
+    # Absent from a check recorded before this check existed.
+    material: NotRequired[MaterialResult | None]
+    # Whether the declared build sheet suits that spool's material. Absent
+    # from a check recorded before this check existed, and from a read that
+    # was given no sheet.
+    sheet: NotRequired[SheetResult | None]
     # What it found for each tool.
     tools: list[PreflightTool]
     # The worst of the tools' verdicts, in the order insufficient,
     # unverified spool, no analysis, warned, overridden, unchecked, passed.
+    #
+    # The filament weight's alone: the material and sheet checks carry
+    # verdicts of their own, in `material` and `sheet`.
     verdict: PreflightVerdict
 
 
@@ -1700,6 +1840,14 @@ class PrintActionStartPrint(TypedDict):
     # `OctoPrint` has not analysed; the start's own reason is the
     # override's reason.
     override_filament_check: NotRequired[bool]
+    # Start despite a file sliced for another material than the spool
+    # loaded on tool 0, or naming none; only an operator's asking counts,
+    # and the start's own reason is the override's reason.
+    override_material_check: NotRequired[bool]
+    # Start despite a declared build sheet the sheet table does not allow
+    # the loaded spool's material on; only an operator's asking counts,
+    # and it never lets through a manifest that declares no sheet.
+    override_sheet_check: NotRequired[bool]
     # Why the actor is asking for this.
     reason: str
 
@@ -2712,6 +2860,48 @@ class RejectionReasonAnalysisUnavailable(TypedDict):
     analysis_unavailable: RejectionReasonAnalysisUnavailablePayload
 
 
+class RejectionReasonMaterialRefusedPayload(TypedDict):
+    """What the `material_refused` arm of `RejectionReason` carries.
+
+    A start was refused because its file was sliced for another material
+    than the spool loaded on tool 0, names none, or could not be read.
+    """
+
+    # What the material check objected to, with what it compared.
+    objection: MaterialObjection
+
+
+class RejectionReasonMaterialRefused(TypedDict):
+    """The `material_refused` arm of `RejectionReason`.
+
+    A start was refused because its file was sliced for another material
+    than the spool loaded on tool 0, names none, or could not be read.
+    """
+
+    material_refused: RejectionReasonMaterialRefusedPayload
+
+
+class RejectionReasonSheetRefusedPayload(TypedDict):
+    """What the `sheet_refused` arm of `RejectionReason` carries.
+
+    A start was refused because its declared build sheet does not suit the
+    loaded spool's material by the sheet table.
+    """
+
+    # What the sheet check objected to, with what it compared.
+    objection: SheetObjection
+
+
+class RejectionReasonSheetRefused(TypedDict):
+    """The `sheet_refused` arm of `RejectionReason`.
+
+    A start was refused because its declared build sheet does not suit the
+    loaded spool's material by the sheet table.
+    """
+
+    sheet_refused: RejectionReasonSheetRefusedPayload
+
+
 class RejectionReasonPrintStillActivePayload(TypedDict):
     """What the `print_still_active` arm of `RejectionReason` carries.
 
@@ -2811,11 +3001,13 @@ RejectionReason: TypeAlias = (
     | RejectionReasonInsufficientFilament
     | RejectionReasonUnverifiedSpool
     | RejectionReasonAnalysisUnavailable
+    | RejectionReasonMaterialRefused
+    | RejectionReasonSheetRefused
     | RejectionReasonPrintStillActive
     | RejectionReasonInterventionStillActive
     | RejectionReasonPrintNotResumable
     | RejectionReasonSpoolRefused
-    | Literal["no_active_print", "print_already_ended"]
+    | Literal["no_active_print", "sheet_not_declared", "print_already_ended"]
 )
 
 
@@ -2830,6 +3022,116 @@ class Reported(TypedDict):
     out_of_range: bool
     # One shape of the contracts, which say nothing more about it.
     value: float
+
+
+class SheetObjectionNotAllowed(TypedDict):
+    """The `not_allowed` arm of `SheetObjection`.
+
+    The table lists the material, and not on this sheet.
+    """
+
+    cause: Literal["not_allowed"]
+    # Every sheet the table allows that material.
+    allowed: list[str]
+    # The material of the spool loaded on tool 0.
+    material: str
+    # The build sheet the manifest declares.
+    sheet: str
+
+
+class SheetObjectionUnlistedMaterial(TypedDict):
+    """The `unlisted_material` arm of `SheetObjection`.
+
+    The table has no entry for the material.
+    """
+
+    cause: Literal["unlisted_material"]
+    # The material of the spool loaded on tool 0.
+    material: str
+    # The build sheet the manifest declares.
+    sheet: str
+
+
+class SheetObjectionUnknownSheet(TypedDict):
+    """The `unknown_sheet` arm of `SheetObjection`.
+
+    No entry of the table lists the sheet.
+    """
+
+    cause: Literal["unknown_sheet"]
+    # Every sheet some entry lists.
+    known: list[str]
+    # The material of the spool loaded on tool 0.
+    material: str
+    # The build sheet the manifest declares.
+    sheet: str
+
+
+# Why the sheet check objects to a start, with what it compared.
+SheetObjection: TypeAlias = (
+    SheetObjectionNotAllowed | SheetObjectionUnlistedMaterial | SheetObjectionUnknownSheet
+)
+
+
+class SheetResultPassed(TypedDict):
+    """The `passed` arm of `SheetResult`.
+
+    The table allows the material on the declared sheet.
+    """
+
+    verdict: Literal["passed"]
+    # Every sheet the table allows that material.
+    allowed: list[str]
+    # The material of the spool loaded on tool 0.
+    material: str
+    # The build sheet the manifest declares.
+    sheet: str
+
+
+class SheetResultRefused(TypedDict):
+    """The `refused` arm of `SheetResult`.
+
+    The check refuses the start.
+    """
+
+    verdict: Literal["refused"]
+    # What it objected to.
+    objection: SheetObjection
+
+
+class SheetResultOverridden(TypedDict):
+    """The `overridden` arm of `SheetResult`.
+
+    The start went ahead despite this objection, because an operator said
+    so.
+    """
+
+    verdict: Literal["overridden"]
+    # What it objected to.
+    objection: SheetObjection
+
+
+class SheetResultWarned(TypedDict):
+    """The `warned` arm of `SheetResult`.
+
+    The check is set to warn, and let the start go ahead despite this
+    objection.
+    """
+
+    verdict: Literal["warned"]
+    # What it objected to.
+    objection: SheetObjection
+
+
+# Whether the declared build sheet suits the loaded spool's material, tagged
+# by its verdict.
+SheetResult: TypeAlias = (
+    SheetResultPassed
+    | SheetResultRefused
+    | SheetResultOverridden
+    | SheetResultWarned
+    | Literal["unchecked", "undeclared"]
+)
 
 
 class SignalPosition(TypedDict):
@@ -5618,6 +5920,15 @@ SHAPES: dict[str, object] = json.loads(
       "scalar": "number"
      }
     },
+    "sheet": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
     "slicer_profile": {
      "paired_with": "",
      "required": true,
@@ -5924,6 +6235,207 @@ SHAPES: dict[str, object] = json.loads(
    },
    "tag_field": "",
    "variants": {}
+  }
+ },
+ "MaterialObjection": {
+  "union": {
+   "tag_field": "cause",
+   "variants": {
+    "mismatch": {
+     "fields": {
+      "loaded": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sliced_for": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "undeclared": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "loaded": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unread": {
+     "fields": {
+      "detail": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "loaded": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "MaterialResult": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "overridden": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "MaterialObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "passed": {
+     "fields": {
+      "loaded": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sliced_for": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "refused": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "MaterialObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "warned": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "MaterialObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
   }
  },
  "ObicoFailureAlertPayload": {
@@ -6288,6 +6800,24 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "scalar": "string"
+     }
+    },
+    "material": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "MaterialResult"
+      }
+     }
+    },
+    "sheet": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SheetResult"
+      }
      }
     },
     "tools": {
@@ -7028,6 +7558,20 @@ SHAPES: dict[str, object] = json.loads(
        }
       },
       "override_filament_check": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "override_material_check": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "override_sheet_check": {
        "paired_with": "",
        "required": false,
        "shape": {
@@ -8308,6 +8852,19 @@ SHAPES: dict[str, object] = json.loads(
      "payload": null,
      "unit": false
     },
+    "material_refused": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "MaterialObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
     "min_interval_not_elapsed": {
      "fields": {
       "interval_s": {
@@ -8385,6 +8942,24 @@ SHAPES: dict[str, object] = json.loads(
        "required": true,
        "shape": {
         "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "sheet_not_declared": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "sheet_refused": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SheetObjection"
        }
       }
      },
@@ -8481,6 +9056,179 @@ SHAPES: dict[str, object] = json.loads(
    },
    "tag_field": "",
    "variants": {}
+  }
+ },
+ "SheetObjection": {
+  "union": {
+   "tag_field": "cause",
+   "variants": {
+    "not_allowed": {
+     "fields": {
+      "allowed": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "string"
+        },
+        "non_empty": false
+       }
+      },
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sheet": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unknown_sheet": {
+     "fields": {
+      "known": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "string"
+        },
+        "non_empty": false
+       }
+      },
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sheet": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unlisted_material": {
+     "fields": {
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sheet": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "SheetResult": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "overridden": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SheetObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "passed": {
+     "fields": {
+      "allowed": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "string"
+        },
+        "non_empty": false
+       }
+      },
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sheet": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "refused": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SheetObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "undeclared": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "warned": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SheetObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
   }
  },
  "SignalPosition": {
@@ -10336,7 +11084,7 @@ class GeneratedClient(GeneratedSurface):
         # for it, so this cast names that type.
         return cast(TimelineAnswer, answered)
 
-    def preflight(self, file_name: str) -> PreflightAnswer:
+    def preflight(self, file_name: str, sheet: str | None = None) -> PreflightAnswer:
         """Call `preflight` on the configured supervisor.
 
         Raises:
@@ -10350,6 +11098,8 @@ class GeneratedClient(GeneratedSurface):
         asked: list[tuple[str, str]] = []
         if file_name is not None:
             asked.append(("file_name", str(file_name)))
+        if sheet is not None:
+            asked.append(("sheet", str(sheet)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = self.call("GET", target, asked, sending, "PreflightAnswer")
@@ -10442,6 +11192,8 @@ class GeneratedClient(GeneratedSurface):
         manifest: JobManifest,
         reason: str,
         override_filament_check: bool | None = None,
+        override_material_check: bool | None = None,
+        override_sheet_check: bool | None = None,
     ) -> ActionAnswer:
         """Call `start_print` on the configured supervisor.
 
@@ -10465,6 +11217,10 @@ class GeneratedClient(GeneratedSurface):
         sending["manifest"] = manifest
         if override_filament_check is not None:
             sending["override_filament_check"] = override_filament_check
+        if override_material_check is not None:
+            sending["override_material_check"] = override_material_check
+        if override_sheet_check is not None:
+            sending["override_sheet_check"] = override_sheet_check
         sending["reason"] = reason
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = self.call("POST", target, asked, sending, "ActionAnswer")

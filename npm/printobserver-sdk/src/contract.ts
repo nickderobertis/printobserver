@@ -781,6 +781,15 @@ export interface JobManifest {
   metadata: Record<string, string>;
   /** The nozzle the job is sliced for, in millimetres. */
   nozzle_diameter_mm: number;
+  /**
+   * The build sheet the job goes down on, as one of the sheet ids the
+   * server's sheet table names, such as `smooth-pei` or `textured-pei`.
+   *
+   * Every start must declare one: a start whose manifest names none is
+   * refused, and no override lets it through. Optional here only so that a
+   * manifest stored before the field existed still loads.
+   */
+  sheet?: string | null;
   /** The slicer profile the job was sliced with. */
   slicer_profile: string;
 }
@@ -916,6 +925,30 @@ export interface ManifestNarrowing {
   /** The range the manifest asked for. */
   requested: Range;
 }
+
+/** Why the material check objects to a start, with what it compared. */
+export type MaterialObjection =
+  | { cause: "mismatch"; loaded: string; sliced_for: string; spool: PreflightSpool; tool: number }
+  | { cause: "undeclared"; file_name: string; loaded: string; spool: PreflightSpool; tool: number }
+  | {
+      cause: "unread";
+      detail: string;
+      file_name: string;
+      loaded: string;
+      spool: PreflightSpool;
+      tool: number;
+    };
+
+/**
+ * Whether a file was sliced for the material of the spool loaded on tool 0,
+ * tagged by its verdict.
+ */
+export type MaterialResult =
+  | { verdict: "passed"; loaded: string; sliced_for: string; spool: PreflightSpool; tool: number }
+  | { verdict: "unchecked" }
+  | { verdict: "refused"; objection: MaterialObjection }
+  | { verdict: "overridden"; objection: MaterialObjection }
+  | { verdict: "warned"; objection: MaterialObjection };
 
 /**
  * Obico reported a print failure.
@@ -1117,11 +1150,25 @@ export interface Preflight {
   checked_at: Timestamp;
   /** The file the print is of. */
   file_name: string;
+  /**
+   * Whether the file was sliced for the material of the spool on tool 0.
+   * Absent from a check recorded before this check existed.
+   */
+  material?: MaterialResult | null;
+  /**
+   * Whether the declared build sheet suits that spool's material. Absent
+   * from a check recorded before this check existed, and from a read that
+   * was given no sheet.
+   */
+  sheet?: SheetResult | null;
   /** What it found for each tool. */
   tools: Array<PreflightTool>;
   /**
    * The worst of the tools' verdicts, in the order insufficient,
    * unverified spool, no analysis, warned, overridden, unchecked, passed.
+   *
+   * The filament weight's alone: the material and sheet checks carry
+   * verdicts of their own, in `material` and `sheet`.
    */
   verdict: PreflightVerdict;
 }
@@ -1237,6 +1284,8 @@ export type PrintAction =
       file_name: FileName;
       manifest: JobManifest;
       override_filament_check?: boolean;
+      override_material_check?: boolean;
+      override_sheet_check?: boolean;
       reason: string;
     }
   | {
@@ -1729,6 +1778,9 @@ export type RejectionReason =
       };
     }
   | { analysis_unavailable: { file_name: string; waited_s: number } }
+  | { material_refused: { objection: MaterialObjection } }
+  | { sheet_refused: { objection: SheetObjection } }
+  | "sheet_not_declared"
   | "print_already_ended"
   | { print_still_active: { state: PrinterState } }
   | { intervention_still_active: { intervention_id: InterventionId } }
@@ -1745,6 +1797,24 @@ export interface Reported {
   /** One shape of the contracts, which say nothing more about it. */
   value: number;
 }
+
+/** Why the sheet check objects to a start, with what it compared. */
+export type SheetObjection =
+  | { cause: "not_allowed"; allowed: Array<string>; material: string; sheet: string }
+  | { cause: "unlisted_material"; material: string; sheet: string }
+  | { cause: "unknown_sheet"; known: Array<string>; material: string; sheet: string };
+
+/**
+ * Whether the declared build sheet suits the loaded spool's material, tagged
+ * by its verdict.
+ */
+export type SheetResult =
+  | { verdict: "passed"; allowed: Array<string>; material: string; sheet: string }
+  | { verdict: "unchecked" }
+  | { verdict: "undeclared" }
+  | { verdict: "refused"; objection: SheetObjection }
+  | { verdict: "overridden"; objection: SheetObjection }
+  | { verdict: "warned"; objection: SheetObjection };
 
 /** The position a filament change charged up to, and how fresh it is. */
 export interface SignalPosition {
@@ -3914,6 +3984,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "scalar": "number"
      }
     },
+    "sheet": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
     "slicer_profile": {
      "paired_with": "",
      "required": true,
@@ -4220,6 +4299,207 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    },
    "tag_field": "",
    "variants": {}
+  }
+ },
+ "MaterialObjection": {
+  "union": {
+   "tag_field": "cause",
+   "variants": {
+    "mismatch": {
+     "fields": {
+      "loaded": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sliced_for": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "undeclared": {
+     "fields": {
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "loaded": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unread": {
+     "fields": {
+      "detail": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "file_name": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "loaded": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "MaterialResult": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "overridden": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "MaterialObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "passed": {
+     "fields": {
+      "loaded": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sliced_for": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "spool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "PreflightSpool"
+       }
+      },
+      "tool": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "refused": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "MaterialObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "warned": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "MaterialObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
   }
  },
  "ObicoFailureAlertPayload": {
@@ -4584,6 +4864,24 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "scalar": "string"
+     }
+    },
+    "material": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "MaterialResult"
+      }
+     }
+    },
+    "sheet": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SheetResult"
+      }
      }
     },
     "tools": {
@@ -5324,6 +5622,20 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        }
       },
       "override_filament_check": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "override_material_check": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "boolean"
+       }
+      },
+      "override_sheet_check": {
        "paired_with": "",
        "required": false,
        "shape": {
@@ -6604,6 +6916,19 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "payload": null,
      "unit": false
     },
+    "material_refused": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "MaterialObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
     "min_interval_not_elapsed": {
      "fields": {
       "interval_s": {
@@ -6681,6 +7006,24 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "required": true,
        "shape": {
         "ref": "PrinterState"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "sheet_not_declared": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "sheet_refused": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SheetObjection"
        }
       }
      },
@@ -6777,6 +7120,179 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    },
    "tag_field": "",
    "variants": {}
+  }
+ },
+ "SheetObjection": {
+  "union": {
+   "tag_field": "cause",
+   "variants": {
+    "not_allowed": {
+     "fields": {
+      "allowed": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "string"
+        },
+        "non_empty": false
+       }
+      },
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sheet": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unknown_sheet": {
+     "fields": {
+      "known": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "string"
+        },
+        "non_empty": false
+       }
+      },
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sheet": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unlisted_material": {
+     "fields": {
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sheet": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
+  }
+ },
+ "SheetResult": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "overridden": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SheetObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "passed": {
+     "fields": {
+      "allowed": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "string"
+        },
+        "non_empty": false
+       }
+      },
+      "material": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "sheet": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "string"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "refused": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SheetObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "unchecked": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "undeclared": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "warned": {
+     "fields": {
+      "objection": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "SheetObjection"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    }
+   }
   }
  },
  "SignalPosition": {
@@ -8594,11 +9110,14 @@ export class GeneratedClient extends GeneratedSurface {
    * the answer could not be read, and with `Refused` when the supervisor
    * said no.
    */
-  async preflight(fileName: string): Promise<PreflightAnswer> {
+  async preflight(fileName: string, sheet?: string): Promise<PreflightAnswer> {
     const target = `/v1/preflight`;
     const asked: Array<[string, string]> = [];
     if (fileName !== undefined) {
       asked.push(["file_name", String(fileName)]);
+    }
+    if (sheet !== undefined) {
+      asked.push(["sheet", String(sheet)]);
     }
     const sending = undefined;
     return await this.call<PreflightAnswer>("GET", target, asked, sending, "PreflightAnswer");
@@ -8676,6 +9195,8 @@ export class GeneratedClient extends GeneratedSurface {
     manifest: JobManifest,
     reason: string,
     overrideFilamentCheck?: boolean,
+    overrideMaterialCheck?: boolean,
+    overrideSheetCheck?: boolean,
   ): Promise<ActionAnswer> {
     reasonGiven(reason);
     const target = `/v1/prints/${printId}/actions/start_print`;
@@ -8686,6 +9207,12 @@ export class GeneratedClient extends GeneratedSurface {
     sending.manifest = manifest;
     if (overrideFilamentCheck !== undefined) {
       sending.override_filament_check = overrideFilamentCheck;
+    }
+    if (overrideMaterialCheck !== undefined) {
+      sending.override_material_check = overrideMaterialCheck;
+    }
+    if (overrideSheetCheck !== undefined) {
+      sending.override_sheet_check = overrideSheetCheck;
     }
     sending.reason = reason;
     return await this.call<ActionAnswer>("POST", target, asked, sending, "ActionAnswer");

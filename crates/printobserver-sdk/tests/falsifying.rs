@@ -163,6 +163,7 @@ fn manifest(world: &supervisor::Supervisor) -> JobManifest {
         material: "PLA".to_owned(),
         nozzle_diameter_mm: 0.4,
         slicer_profile: "a falsifying fixture's own profile".to_owned(),
+        sheet: Some("smooth-pei".to_owned()),
         allowed: BTreeMap::new(),
         metadata: BTreeMap::new(),
     }

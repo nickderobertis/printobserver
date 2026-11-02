@@ -271,6 +271,29 @@ how long the start waited, then starting again once OctoPrint has analysed the
 file, or the override. A spool command the ledger refused is printed beside its
 cause and the ledger's own `message`.
 
+## The material and sheet a start is held to
+
+Beside the weight, a start is checked twice more, under the same `[spools]`
+mode. **The material:** the `filament_type` the file's own slicer settings name
+for tool 0 — read from the end of the file, where `PrusaSlicer` writes them —
+must be the material of the spool loaded there, compared trimmed and without
+regard to case. A file naming no `filament_type`, or whose settings cannot be
+read, is refused like a mismatch, `material_refused`. **The sheet:** the start's
+manifest names the build sheet the print goes down on in `sheet`, and the
+server's `[sheets.allowed]` table, keyed by that spool's material, must allow
+the material on it. Left out, the table allows PLA on `smooth-pei` alone and
+PETG on `textured-pei` alone, because PETG can bond to smooth PEI hard enough to
+tear it without glue; written, it replaces those whole. A sheet the table does
+not allow the material on, a material it has no entry for, and a sheet no entry
+lists are each refused, `sheet_refused`, naming what was compared. With no
+tracked spool on tool 0 neither is checked.
+
+An operator starts past either with its own override,
+`--override-material-check true` or `--override-sheet-check true`, recorded as
+`overridden` with the start's own reason, exactly as the filament override is.
+A manifest naming no `sheet` is refused `sheet_not_declared` whatever the mode
+and whatever is overridden.
+
 Every check a start makes is written into the printer's history as a
 `preflight_checked`, and the start's `print_started` carries it. `printobserver
 preflight` makes the same check without starting anything, records nothing and

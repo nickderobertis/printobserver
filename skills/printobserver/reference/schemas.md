@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-180 types. The set is every type any crate declares under
+187 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -921,6 +921,13 @@ Declared by `printobserver-server`.
           "format": "double",
           "type": "number"
         },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
           "type": "string"
@@ -935,6 +942,121 @@ Declared by `printobserver-server`.
         "metadata"
       ],
       "type": "object"
+    },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "PolicyDecision": {
       "description": "The decision policy took on one request.",
@@ -958,6 +1080,25 @@ Declared by `printobserver-server`.
           "type": "object"
         }
       ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
     },
     "PrintAction": {
       "description": "The whole vocabulary an actor may ask for, and there is no other.",
@@ -1056,6 +1197,14 @@ Declared by `printobserver-server`.
             },
             "override_filament_check": {
               "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+              "type": "boolean"
+            },
+            "override_material_check": {
+              "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
+              "type": "boolean"
+            },
+            "override_sheet_check": {
+              "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
               "type": "boolean"
             },
             "reason": {
@@ -1713,6 +1862,57 @@ Declared by `printobserver-server`.
           "type": "object"
         },
         {
+          "additionalProperties": false,
+          "description": "A start was refused because its file was sliced for another material\nthan the spool loaded on tool 0, names none, or could not be read.",
+          "properties": {
+            "material_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/MaterialObjection",
+                  "description": "What the material check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "material_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because its declared build sheet does not suit the\nloaded spool's material by the sheet table.",
+          "properties": {
+            "sheet_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/SheetObjection",
+                  "description": "What the sheet check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "sheet_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "sheet_not_declared",
+          "description": "A start was refused because its manifest declares no `sheet`. No\noverride lets this through.",
+          "type": "string"
+        },
+        {
           "const": "print_already_ended",
           "description": "A close was refused because the print record has already ended.",
           "type": "string"
@@ -1811,6 +2011,99 @@ Declared by `printobserver-server`.
           },
           "required": [
             "spool_refused"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
           ],
           "type": "object"
         }
@@ -2708,6 +3001,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
           "type": "string"
@@ -2722,6 +3022,121 @@ Declared by `printobserver-core`.
         "metadata"
       ],
       "type": "object"
+    },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "PolicyDecision": {
       "description": "The decision policy took on one request.",
@@ -2745,6 +3160,25 @@ Declared by `printobserver-core`.
           "type": "object"
         }
       ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
     },
     "PrintAction": {
       "description": "The whole vocabulary an actor may ask for, and there is no other.",
@@ -2843,6 +3277,14 @@ Declared by `printobserver-core`.
             },
             "override_filament_check": {
               "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+              "type": "boolean"
+            },
+            "override_material_check": {
+              "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
+              "type": "boolean"
+            },
+            "override_sheet_check": {
+              "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
               "type": "boolean"
             },
             "reason": {
@@ -3500,6 +3942,57 @@ Declared by `printobserver-core`.
           "type": "object"
         },
         {
+          "additionalProperties": false,
+          "description": "A start was refused because its file was sliced for another material\nthan the spool loaded on tool 0, names none, or could not be read.",
+          "properties": {
+            "material_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/MaterialObjection",
+                  "description": "What the material check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "material_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because its declared build sheet does not suit the\nloaded spool's material by the sheet table.",
+          "properties": {
+            "sheet_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/SheetObjection",
+                  "description": "What the sheet check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "sheet_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "sheet_not_declared",
+          "description": "A start was refused because its manifest declares no `sheet`. No\noverride lets this through.",
+          "type": "string"
+        },
+        {
           "const": "print_already_ended",
           "description": "A close was refused because the print record has already ended.",
           "type": "string"
@@ -3598,6 +4091,99 @@ Declared by `printobserver-core`.
           },
           "required": [
             "spool_refused"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
           ],
           "type": "object"
         }
@@ -4196,6 +4782,121 @@ Declared by `printobserver-core`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "PolicyDecision": {
       "description": "The decision policy took on one request.",
       "oneOf": [
@@ -4218,6 +4919,25 @@ Declared by `printobserver-core`.
           "type": "object"
         }
       ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
     },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
@@ -4574,6 +5294,57 @@ Declared by `printobserver-core`.
           "type": "object"
         },
         {
+          "additionalProperties": false,
+          "description": "A start was refused because its file was sliced for another material\nthan the spool loaded on tool 0, names none, or could not be read.",
+          "properties": {
+            "material_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/MaterialObjection",
+                  "description": "What the material check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "material_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because its declared build sheet does not suit the\nloaded spool's material by the sheet table.",
+          "properties": {
+            "sheet_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/SheetObjection",
+                  "description": "What the sheet check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "sheet_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "sheet_not_declared",
+          "description": "A start was refused because its manifest declares no `sheet`. No\noverride lets this through.",
+          "type": "string"
+        },
+        {
           "const": "print_already_ended",
           "description": "A close was refused because the print record has already ended.",
           "type": "string"
@@ -4672,6 +5443,99 @@ Declared by `printobserver-core`.
           },
           "required": [
             "spool_refused"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
           ],
           "type": "object"
         }
@@ -5216,6 +6080,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
           "type": "string"
@@ -5328,6 +6199,14 @@ Declared by `printobserver-core`.
             },
             "override_filament_check": {
               "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+              "type": "boolean"
+            },
+            "override_material_check": {
+              "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
+              "type": "boolean"
+            },
+            "override_sheet_check": {
+              "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
               "type": "boolean"
             },
             "reason": {
@@ -5808,6 +6687,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
           "type": "string"
@@ -5920,6 +6806,14 @@ Declared by `printobserver-core`.
             },
             "override_filament_check": {
               "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+              "type": "boolean"
+            },
+            "override_material_check": {
+              "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
+              "type": "boolean"
+            },
+            "override_sheet_check": {
+              "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
               "type": "boolean"
             },
             "reason": {
@@ -7671,6 +8565,13 @@ Declared by `printobserver-server`.
           "description": "The nozzle the job is sliced for, in millimetres.",
           "format": "double",
           "type": "number"
+        },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -11242,6 +12143,13 @@ Declared by `printobserver-core`.
       "format": "double",
       "type": "number"
     },
+    "sheet": {
+      "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "slicer_profile": {
       "description": "The slicer profile the job was sliced with.",
       "type": "string"
@@ -12234,6 +13142,13 @@ Declared by `printobserver-server`.
           "format": "double",
           "type": "number"
         },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
           "type": "string"
@@ -12384,6 +13299,488 @@ Declared by `printobserver-core`.
   ],
   "title": "ManifestNarrowing",
   "type": "object"
+}
+```
+
+### MaterialComparison
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the material check compared: the spool loaded on a tool and the\nmaterial the file says that tool was sliced for.",
+  "properties": {
+    "loaded": {
+      "description": "That spool's material.",
+      "type": "string"
+    },
+    "sliced_for": {
+      "description": "The material the file's own `filament_type` names for the tool.",
+      "type": "string"
+    },
+    "spool": {
+      "$ref": "#/$defs/PreflightSpool",
+      "description": "The spool loaded on it."
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool",
+    "spool",
+    "loaded",
+    "sliced_for"
+  ],
+  "title": "MaterialComparison",
+  "type": "object"
+}
+```
+
+### MaterialObjection
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why the material check objects to a start, with what it compared.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The file was sliced for another material than the loaded spool's.",
+      "properties": {
+        "cause": {
+          "const": "mismatch",
+          "type": "string"
+        },
+        "loaded": {
+          "description": "That spool's material.",
+          "type": "string"
+        },
+        "sliced_for": {
+          "description": "The material the file's own `filament_type` names for the tool.",
+          "type": "string"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool loaded on it."
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cause",
+        "tool",
+        "spool",
+        "loaded",
+        "sliced_for"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+      "properties": {
+        "cause": {
+          "const": "undeclared",
+          "type": "string"
+        },
+        "file_name": {
+          "description": "The file that was to be compared.",
+          "type": "string"
+        },
+        "loaded": {
+          "description": "That spool's material.",
+          "type": "string"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool loaded on it."
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cause",
+        "tool",
+        "spool",
+        "loaded",
+        "file_name"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The file's settings could not be read from the printer.",
+      "properties": {
+        "cause": {
+          "const": "unread",
+          "type": "string"
+        },
+        "detail": {
+          "description": "What the printer answered instead, in its own words.",
+          "type": "string"
+        },
+        "file_name": {
+          "description": "The file whose settings could not be read.",
+          "type": "string"
+        },
+        "loaded": {
+          "description": "That spool's material.",
+          "type": "string"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool loaded on it."
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cause",
+        "tool",
+        "spool",
+        "loaded",
+        "file_name",
+        "detail"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "MaterialObjection"
+}
+```
+
+### MaterialResult
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether a file was sliced for the material of the spool loaded on tool 0,\ntagged by its verdict.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The file was sliced for the loaded spool's material.",
+      "properties": {
+        "loaded": {
+          "description": "That spool's material.",
+          "type": "string"
+        },
+        "sliced_for": {
+          "description": "The material the file's own `filament_type` names for the tool.",
+          "type": "string"
+        },
+        "spool": {
+          "$ref": "#/$defs/PreflightSpool",
+          "description": "The spool loaded on it."
+        },
+        "tool": {
+          "description": "The tool, in the printer's own numbering.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "verdict": {
+          "const": "passed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "tool",
+        "spool",
+        "loaded",
+        "sliced_for"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+      "properties": {
+        "verdict": {
+          "const": "unchecked",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The check refuses the start.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/MaterialObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "refused",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The start went ahead despite this objection, because an operator said\nso.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/MaterialObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "overridden",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/MaterialObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "warned",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "MaterialResult"
 }
 ```
 
@@ -14355,6 +15752,140 @@ Declared by `printobserver-core`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -14710,6 +16241,57 @@ Declared by `printobserver-core`.
           "type": "object"
         },
         {
+          "additionalProperties": false,
+          "description": "A start was refused because its file was sliced for another material\nthan the spool loaded on tool 0, names none, or could not be read.",
+          "properties": {
+            "material_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/MaterialObjection",
+                  "description": "What the material check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "material_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because its declared build sheet does not suit the\nloaded spool's material by the sheet table.",
+          "properties": {
+            "sheet_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/SheetObjection",
+                  "description": "What the sheet check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "sheet_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "sheet_not_declared",
+          "description": "A start was refused because its manifest declares no `sheet`. No\noverride lets this through.",
+          "type": "string"
+        },
+        {
           "const": "print_already_ended",
           "description": "A close was refused because the print record has already ended.",
           "type": "string"
@@ -14808,6 +16390,99 @@ Declared by `printobserver-core`.
           },
           "required": [
             "spool_refused"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
           ],
           "type": "object"
         }
@@ -15392,6 +17067,232 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MaterialResult": {
+      "description": "Whether a file was sliced for the material of the spool loaded on tool 0,\ntagged by its verdict.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for the loaded spool's material.",
+          "properties": {
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check refuses the start.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "PreflightNeed": {
       "additionalProperties": false,
       "description": "What a print needs from one spool, in grams: both figures a comparison\nwith what the spool holds uses, or neither.",
@@ -15805,6 +17706,221 @@ Declared by `printobserver-core`.
       "title": "PrintId",
       "type": "string"
     },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetResult": {
+      "description": "Whether the declared build sheet suits the loaded spool's material, tagged\nby its verdict.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table allows the material on the declared sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The manifest declares no sheet. This refuses every start, and no\noverride lets it through.",
+          "properties": {
+            "verdict": {
+              "const": "undeclared",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check refuses the start.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
       "format": "uuid",
@@ -15960,6 +18076,28 @@ Declared by `printobserver-core`.
       "description": "The file the print is of.",
       "type": "string"
     },
+    "material": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MaterialResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
+    },
+    "sheet": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SheetResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Whether the declared build sheet suits that spool's material. Absent\nfrom a check recorded before this check existed, and from a read that\nwas given no sheet."
+    },
     "tools": {
       "description": "What it found for each tool.",
       "items": {
@@ -15969,7 +18107,7 @@ Declared by `printobserver-core`.
     },
     "verdict": {
       "$ref": "#/$defs/PreflightVerdict",
-      "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed."
+      "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed.\n\nThe filament weight's alone: the material and sheet checks carry\nverdicts of their own, in `material` and `sheet`."
     }
   },
   "required": [
@@ -15990,6 +18128,232 @@ Declared by `printobserver-server`.
 ```json
 {
   "$defs": {
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MaterialResult": {
+      "description": "Whether a file was sliced for the material of the spool loaded on tool 0,\ntagged by its verdict.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for the loaded spool's material.",
+          "properties": {
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check refuses the start.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Preflight": {
       "additionalProperties": false,
       "description": "What a filament check found for one print.",
@@ -16002,6 +18366,28 @@ Declared by `printobserver-server`.
           "description": "The file the print is of.",
           "type": "string"
         },
+        "material": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterialResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
+        },
+        "sheet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SheetResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the declared build sheet suits that spool's material. Absent\nfrom a check recorded before this check existed, and from a read that\nwas given no sheet."
+        },
         "tools": {
           "description": "What it found for each tool.",
           "items": {
@@ -16011,7 +18397,7 @@ Declared by `printobserver-server`.
         },
         "verdict": {
           "$ref": "#/$defs/PreflightVerdict",
-          "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed."
+          "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed.\n\nThe filament weight's alone: the material and sheet checks carry\nverdicts of their own, in `material` and `sheet`."
         }
       },
       "required": [
@@ -16434,6 +18820,221 @@ Declared by `printobserver-server`.
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "PrintId",
       "type": "string"
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetResult": {
+      "description": "Whether the declared build sheet suits the loaded spool's material, tagged\nby its verdict.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table allows the material on the declared sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The manifest declares no sheet. This refuses every start, and no\noverride lets it through.",
+          "properties": {
+            "verdict": {
+              "const": "undeclared",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check refuses the start.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
@@ -16608,6 +19209,232 @@ Declared by `printobserver-core`.
       "title": "ActionId",
       "type": "string"
     },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MaterialResult": {
+      "description": "Whether a file was sliced for the material of the spool loaded on tool 0,\ntagged by its verdict.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for the loaded spool's material.",
+          "properties": {
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check refuses the start.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Preflight": {
       "additionalProperties": false,
       "description": "What a filament check found for one print.",
@@ -16620,6 +19447,28 @@ Declared by `printobserver-core`.
           "description": "The file the print is of.",
           "type": "string"
         },
+        "material": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterialResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
+        },
+        "sheet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SheetResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the declared build sheet suits that spool's material. Absent\nfrom a check recorded before this check existed, and from a read that\nwas given no sheet."
+        },
         "tools": {
           "description": "What it found for each tool.",
           "items": {
@@ -16629,7 +19478,7 @@ Declared by `printobserver-core`.
         },
         "verdict": {
           "$ref": "#/$defs/PreflightVerdict",
-          "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed."
+          "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed.\n\nThe filament weight's alone: the material and sheet checks carry\nverdicts of their own, in `material` and `sheet`."
         }
       },
       "required": [
@@ -17052,6 +19901,221 @@ Declared by `printobserver-core`.
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "PrintId",
       "type": "string"
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetResult": {
+      "description": "Whether the declared build sheet suits the loaded spool's material, tagged\nby its verdict.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table allows the material on the declared sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The manifest declares no sheet. This refuses every start, and no\noverride lets it through.",
+          "properties": {
+            "verdict": {
+              "const": "undeclared",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check refuses the start.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
@@ -18801,6 +21865,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
           "type": "string"
@@ -18960,6 +22031,14 @@ Declared by `printobserver-core`.
         },
         "override_filament_check": {
           "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+          "type": "boolean"
+        },
+        "override_material_check": {
+          "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
+          "type": "boolean"
+        },
+        "override_sheet_check": {
+          "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
           "type": "boolean"
         },
         "reason": {
@@ -19699,6 +22778,13 @@ Declared by `printobserver-core`.
           "description": "The nozzle the job is sliced for, in millimetres.",
           "format": "double",
           "type": "number"
+        },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -20789,6 +23875,232 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MaterialResult": {
+      "description": "Whether a file was sliced for the material of the spool loaded on tool 0,\ntagged by its verdict.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for the loaded spool's material.",
+          "properties": {
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check refuses the start.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Preflight": {
       "additionalProperties": false,
       "description": "What a filament check found for one print.",
@@ -20801,6 +24113,28 @@ Declared by `printobserver-core`.
           "description": "The file the print is of.",
           "type": "string"
         },
+        "material": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterialResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
+        },
+        "sheet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SheetResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the declared build sheet suits that spool's material. Absent\nfrom a check recorded before this check existed, and from a read that\nwas given no sheet."
+        },
         "tools": {
           "description": "What it found for each tool.",
           "items": {
@@ -20810,7 +24144,7 @@ Declared by `printobserver-core`.
         },
         "verdict": {
           "$ref": "#/$defs/PreflightVerdict",
-          "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed."
+          "description": "The worst of the tools' verdicts, in the order insufficient,\nunverified spool, no analysis, warned, overridden, unchecked, passed.\n\nThe filament weight's alone: the material and sheet checks carry\nverdicts of their own, in `material` and `sheet`."
         }
       },
       "required": [
@@ -21233,6 +24567,221 @@ Declared by `printobserver-core`.
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "PrintId",
       "type": "string"
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetResult": {
+      "description": "Whether the declared build sheet suits the loaded spool's material, tagged\nby its verdict.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table allows the material on the declared sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+          "properties": {
+            "verdict": {
+              "const": "unchecked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The manifest declares no sheet. This refuses every start, and no\noverride lets it through.",
+          "properties": {
+            "verdict": {
+              "const": "undeclared",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check refuses the start.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The start went ahead despite this objection, because an operator said\nso.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "overridden",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What it objected to."
+            },
+            "verdict": {
+              "const": "warned",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objection"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SpoolId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
@@ -26040,6 +29589,140 @@ Declared by `printobserver-core`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -26115,6 +29798,99 @@ Declared by `printobserver-core`.
         "max"
       ],
       "type": "object"
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "SpoolField": {
       "description": "One field of a spool command, as the command names it.",
@@ -26795,6 +30571,57 @@ Declared by `printobserver-core`.
       "type": "object"
     },
     {
+      "additionalProperties": false,
+      "description": "A start was refused because its file was sliced for another material\nthan the spool loaded on tool 0, names none, or could not be read.",
+      "properties": {
+        "material_refused": {
+          "additionalProperties": false,
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/MaterialObjection",
+              "description": "What the material check objected to, with what it compared."
+            }
+          },
+          "required": [
+            "objection"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "material_refused"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A start was refused because its declared build sheet does not suit the\nloaded spool's material by the sheet table.",
+      "properties": {
+        "sheet_refused": {
+          "additionalProperties": false,
+          "properties": {
+            "objection": {
+              "$ref": "#/$defs/SheetObjection",
+              "description": "What the sheet check objected to, with what it compared."
+            }
+          },
+          "required": [
+            "objection"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "sheet_refused"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "sheet_not_declared",
+      "description": "A start was refused because its manifest declares no `sheet`. No\noverride lets this through.",
+      "type": "string"
+    },
+    {
       "const": "print_already_ended",
       "description": "A close was refused because the print record has already ended.",
       "type": "string"
@@ -27102,6 +30929,370 @@ Declared by `printobserver-supervisor-api`.
     }
   ],
   "title": "SessionPhase"
+}
+```
+
+### SheetComparison
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the sheet check compared: the declared sheet, the loaded spool's\nmaterial, and the sheets the table allows that material.",
+  "properties": {
+    "allowed": {
+      "description": "Every sheet the table allows that material.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "material": {
+      "description": "The material of the spool loaded on tool 0.",
+      "type": "string"
+    },
+    "sheet": {
+      "description": "The build sheet the manifest declares.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "sheet",
+    "material",
+    "allowed"
+  ],
+  "title": "SheetComparison",
+  "type": "object"
+}
+```
+
+### SheetObjection
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why the sheet check objects to a start, with what it compared.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The table lists the material, and not on this sheet.",
+      "properties": {
+        "allowed": {
+          "description": "Every sheet the table allows that material.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cause": {
+          "const": "not_allowed",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material of the spool loaded on tool 0.",
+          "type": "string"
+        },
+        "sheet": {
+          "description": "The build sheet the manifest declares.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cause",
+        "sheet",
+        "material",
+        "allowed"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The table has no entry for the material.",
+      "properties": {
+        "cause": {
+          "const": "unlisted_material",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material of the spool loaded on tool 0.",
+          "type": "string"
+        },
+        "sheet": {
+          "description": "The build sheet the manifest declares.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cause",
+        "sheet",
+        "material"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No entry of the table lists the sheet.",
+      "properties": {
+        "cause": {
+          "const": "unknown_sheet",
+          "type": "string"
+        },
+        "known": {
+          "description": "Every sheet some entry lists.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "material": {
+          "description": "The material of the spool loaded on tool 0.",
+          "type": "string"
+        },
+        "sheet": {
+          "description": "The build sheet the manifest declares.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cause",
+        "sheet",
+        "material",
+        "known"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SheetObjection"
+}
+```
+
+### SheetResult
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether the declared build sheet suits the loaded spool's material, tagged\nby its verdict.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The table allows the material on the declared sheet.",
+      "properties": {
+        "allowed": {
+          "description": "Every sheet the table allows that material.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "material": {
+          "description": "The material of the spool loaded on tool 0.",
+          "type": "string"
+        },
+        "sheet": {
+          "description": "The build sheet the manifest declares.",
+          "type": "string"
+        },
+        "verdict": {
+          "const": "passed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "sheet",
+        "material",
+        "allowed"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+      "properties": {
+        "verdict": {
+          "const": "unchecked",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The manifest declares no sheet. This refuses every start, and no\noverride lets it through.",
+      "properties": {
+        "verdict": {
+          "const": "undeclared",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The check refuses the start.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/SheetObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "refused",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The start went ahead despite this objection, because an operator said\nso.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/SheetObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "overridden",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/SheetObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "warned",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SheetResult"
 }
 ```
 
@@ -28763,6 +32954,121 @@ Declared by `printobserver-server`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "PolicyDecision": {
       "description": "The decision policy took on one request.",
       "oneOf": [
@@ -28785,6 +33091,25 @@ Declared by `printobserver-server`.
           "type": "object"
         }
       ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
     },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
@@ -29147,6 +33472,57 @@ Declared by `printobserver-server`.
           "type": "object"
         },
         {
+          "additionalProperties": false,
+          "description": "A start was refused because its file was sliced for another material\nthan the spool loaded on tool 0, names none, or could not be read.",
+          "properties": {
+            "material_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/MaterialObjection",
+                  "description": "What the material check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "material_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because its declared build sheet does not suit the\nloaded spool's material by the sheet table.",
+          "properties": {
+            "sheet_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/SheetObjection",
+                  "description": "What the sheet check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "sheet_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "sheet_not_declared",
+          "description": "A start was refused because its manifest declares no `sheet`. No\noverride lets this through.",
+          "type": "string"
+        },
+        {
           "const": "print_already_ended",
           "description": "A close was refused because the print record has already ended.",
           "type": "string"
@@ -29245,6 +33621,99 @@ Declared by `printobserver-server`.
           },
           "required": [
             "spool_refused"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
           ],
           "type": "object"
         }
@@ -30057,6 +34526,121 @@ Declared by `printobserver-core`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialObjection": {
+      "description": "Why the material check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The file was sliced for another material than the loaded spool's.",
+          "properties": {
+            "cause": {
+              "const": "mismatch",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "sliced_for": {
+              "description": "The material the file's own `filament_type` names for the tool.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "sliced_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file names no `filament_type`, so what it was sliced for is\nunknown.",
+          "properties": {
+            "cause": {
+              "const": "undeclared",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file that was to be compared.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The file's settings could not be read from the printer.",
+          "properties": {
+            "cause": {
+              "const": "unread",
+              "type": "string"
+            },
+            "detail": {
+              "description": "What the printer answered instead, in its own words.",
+              "type": "string"
+            },
+            "file_name": {
+              "description": "The file whose settings could not be read.",
+              "type": "string"
+            },
+            "loaded": {
+              "description": "That spool's material.",
+              "type": "string"
+            },
+            "spool": {
+              "$ref": "#/$defs/PreflightSpool",
+              "description": "The spool loaded on it."
+            },
+            "tool": {
+              "description": "The tool, in the printer's own numbering.",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cause",
+            "tool",
+            "spool",
+            "loaded",
+            "file_name",
+            "detail"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "PolicyDecision": {
       "description": "The decision policy took on one request.",
       "oneOf": [
@@ -30079,6 +34663,25 @@ Declared by `printobserver-core`.
           "type": "object"
         }
       ]
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
     },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
@@ -30435,6 +35038,57 @@ Declared by `printobserver-core`.
           "type": "object"
         },
         {
+          "additionalProperties": false,
+          "description": "A start was refused because its file was sliced for another material\nthan the spool loaded on tool 0, names none, or could not be read.",
+          "properties": {
+            "material_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/MaterialObjection",
+                  "description": "What the material check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "material_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A start was refused because its declared build sheet does not suit the\nloaded spool's material by the sheet table.",
+          "properties": {
+            "sheet_refused": {
+              "additionalProperties": false,
+              "properties": {
+                "objection": {
+                  "$ref": "#/$defs/SheetObjection",
+                  "description": "What the sheet check objected to, with what it compared."
+                }
+              },
+              "required": [
+                "objection"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "sheet_refused"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "sheet_not_declared",
+          "description": "A start was refused because its manifest declares no `sheet`. No\noverride lets this through.",
+          "type": "string"
+        },
+        {
           "const": "print_already_ended",
           "description": "A close was refused because the print record has already ended.",
           "type": "string"
@@ -30533,6 +35187,99 @@ Declared by `printobserver-core`.
           },
           "required": [
             "spool_refused"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "material": {
+              "description": "The material of the spool loaded on tool 0.",
+              "type": "string"
+            },
+            "sheet": {
+              "description": "The build sheet the manifest declares.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
           ],
           "type": "object"
         }
@@ -36211,6 +40958,73 @@ Declared by `printobserver-core`.
 }
 ```
 
+### UncomparedMaterial
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A spool whose material the file could not be compared with.",
+  "properties": {
+    "file_name": {
+      "description": "The file that was to be compared.",
+      "type": "string"
+    },
+    "loaded": {
+      "description": "That spool's material.",
+      "type": "string"
+    },
+    "spool": {
+      "$ref": "#/$defs/PreflightSpool",
+      "description": "The spool loaded on it."
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool",
+    "spool",
+    "loaded",
+    "file_name"
+  ],
+  "title": "UncomparedMaterial",
+  "type": "object"
+}
+```
+
 ### UnverifiedMark
 
 Declared by `printobserver-core`.
@@ -37070,6 +41884,16 @@ Declared by `printobserver-server`.
           "shape": {
             "type": "string"
           }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "sheet",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/preflight",
@@ -37298,6 +42122,28 @@ Declared by `printobserver-server`.
           "required": false,
           "shape": {
             "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+            "type": "boolean"
+          }
+        },
+        {
+          "kind": "boolean",
+          "located": "body",
+          "name": "override_material_check",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
+            "type": "boolean"
+          }
+        },
+        {
+          "kind": "boolean",
+          "located": "body",
+          "name": "override_sheet_check",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
             "type": "boolean"
           }
         },

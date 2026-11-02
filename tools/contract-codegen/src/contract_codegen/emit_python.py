@@ -994,6 +994,7 @@ def emit_live(contract: Contract) -> str:
         '            "material": "PLA",',
         '            "nozzle_diameter_mm": 0.4,',
         '            "slicer_profile": "the walk over every operation",',
+        '            "sheet": "smooth-pei",',
         '            "allowed": {},',
         '            "metadata": {},',
         "        },",

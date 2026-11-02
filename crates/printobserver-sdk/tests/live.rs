@@ -44,6 +44,7 @@ fn manifest(file_name: &str) -> JobManifest {
         material: "PLA".to_owned(),
         nozzle_diameter_mm: 0.4,
         slicer_profile: "the all-operation walk's own profile".to_owned(),
+        sheet: Some("smooth-pei".to_owned()),
         allowed: BTreeMap::new(),
         metadata: BTreeMap::new(),
     }
@@ -581,6 +582,8 @@ fn step_start_print(
             manifest,
             REASON,
             Some(false),
+            Some(false),
+            Some(false),
         )
         .expect("`start_print` is answered by a real supervisor");
 
@@ -616,6 +619,16 @@ fn step_start_print(
         sent["override_filament_check"],
         serde_json::to_value(false).expect("a value renders"),
         "`start_print` sent another `override_filament_check`"
+    );
+    assert_eq!(
+        sent["override_material_check"],
+        serde_json::to_value(false).expect("a value renders"),
+        "`start_print` sent another `override_material_check`"
+    );
+    assert_eq!(
+        sent["override_sheet_check"],
+        serde_json::to_value(false).expect("a value renders"),
+        "`start_print` sent another `override_sheet_check`"
     );
     assert_eq!(
         sent["reason"],
@@ -1087,7 +1100,7 @@ fn step_preflight(client: &Client, world: &supervisor::Supervisor, proxy: &live:
     ready(client, &world.print_id, "");
 
     let answered = client
-        .preflight(&world.file_name)
+        .preflight(&world.file_name, Some("smooth-pei".to_owned()))
         .expect("`preflight` is answered by a real supervisor");
 
     let seen = proxy.last();
@@ -1095,7 +1108,7 @@ fn step_preflight(client: &Client, world: &supervisor::Supervisor, proxy: &live:
     assert_eq!(
         seen.target,
         format!(
-            "/v1/preflight?file_name={file_name}",
+            "/v1/preflight?file_name={file_name}&sheet=smooth-pei",
             file_name = world.file_name
         ),
         "`preflight`"
@@ -1529,6 +1542,8 @@ fn refused_start_print(
             &world.file_name,
             manifest,
             REASON,
+            Some(false),
+            Some(false),
             Some(false),
         )
         .expect_err("`start_print` is refused for an actor granted nothing");
