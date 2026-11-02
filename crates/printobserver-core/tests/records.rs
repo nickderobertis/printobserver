@@ -174,6 +174,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("material", "string", true),
             ("metadata", "map:string", true),
             ("nozzle_diameter_mm", "number", true),
+            ("sheet", "string", false),
             ("slicer_profile", "string", true),
         ],
     ),
@@ -187,6 +188,38 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("adjustable", "Adjustable", true),
             ("applied", "Range", true),
             ("requested", "Range", true),
+        ],
+    ),
+    (
+        "MaterialComparison",
+        &[
+            ("loaded", "string", true),
+            ("sliced_for", "string", true),
+            ("spool", "PreflightSpool", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    (
+        "MaterialObjection",
+        &[
+            ("cause", "string", true),
+            ("detail", "string", true),
+            ("file_name", "string", true),
+            ("loaded", "string", true),
+            ("sliced_for", "string", true),
+            ("spool", "PreflightSpool", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    (
+        "MaterialResult",
+        &[
+            ("loaded", "string", true),
+            ("objection", "MaterialObjection", true),
+            ("sliced_for", "string", true),
+            ("spool", "PreflightSpool", true),
+            ("tool", "integer", true),
+            ("verdict", "string", true),
         ],
     ),
     (
@@ -214,6 +247,8 @@ const DECLARED_FIELDS: &[StatedType] = &[
         &[
             ("checked_at", "Timestamp", true),
             ("file_name", "string", true),
+            ("material", "MaterialResult", false),
+            ("sheet", "SheetResult", false),
             ("tools", "array:PreflightTool", true),
             ("verdict", "PreflightVerdict", true),
         ],
@@ -268,6 +303,8 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("manifest", "JobManifest", true),
             ("outcome", "PrintOutcome", true),
             ("override_filament_check", "boolean", false),
+            ("override_material_check", "boolean", false),
+            ("override_sheet_check", "boolean", false),
             ("percent", "number", true),
             ("reason", "string", true),
             ("target_c", "number", true),
@@ -298,10 +335,12 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("insufficient_filament", "object", true),
             ("intervention_still_active", "object", true),
             ("invalid_from_state", "object", true),
+            ("material_refused", "object", true),
             ("min_interval_not_elapsed", "object", true),
             ("out_of_bounds", "object", true),
             ("print_not_resumable", "object", true),
             ("print_still_active", "object", true),
+            ("sheet_refused", "object", true),
             ("spool_refused", "object", true),
             ("unsupported_adjustable", "object", true),
             ("unverified_spool", "object", true),
@@ -321,6 +360,34 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("actions", "map:array:ActionKind", true),
             ("agent_min_interval_s", "integer", true),
             ("allowed", "map:Range", true),
+        ],
+    ),
+    (
+        "SheetComparison",
+        &[
+            ("allowed", "array:string", true),
+            ("material", "string", true),
+            ("sheet", "string", true),
+        ],
+    ),
+    (
+        "SheetObjection",
+        &[
+            ("allowed", "array:string", true),
+            ("cause", "string", true),
+            ("known", "array:string", true),
+            ("material", "string", true),
+            ("sheet", "string", true),
+        ],
+    ),
+    (
+        "SheetResult",
+        &[
+            ("allowed", "array:string", true),
+            ("material", "string", true),
+            ("objection", "SheetObjection", true),
+            ("sheet", "string", true),
+            ("verdict", "string", true),
         ],
     ),
     (
@@ -403,6 +470,15 @@ const DECLARED_FIELDS: &[StatedType] = &[
         &[
             ("remaining_g", "number", true),
             ("spool", "PreflightSpool", true),
+        ],
+    ),
+    (
+        "UncomparedMaterial",
+        &[
+            ("file_name", "string", true),
+            ("loaded", "string", true),
+            ("spool", "PreflightSpool", true),
+            ("tool", "integer", true),
         ],
     ),
     (

@@ -1,5 +1,6 @@
 //! What a running supervisor is configured with.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use crate::records::SafetyEnvelope;
@@ -83,6 +84,121 @@ impl Default for SpoolPolicy {
     }
 }
 
+/// The build sheets each material may be printed on when the configuration
+/// names no table of its own.
+///
+/// PLA on smooth PEI and PETG on textured PEI: PLA lifts off textured PEI's
+/// grain, and PETG can bond to smooth PEI hard enough to tear the sheet
+/// without glue.
+pub const DEFAULT_SHEETS: [(&str, &[&str]); 2] =
+    [("PLA", &["smooth-pei"]), ("PETG", &["textured-pei"])];
+
+/// Which build sheets each material may be printed on, keyed by material.
+///
+/// Materials and sheets are matched trimmed and without regard to case, as a
+/// spool's own material is written by whoever registered it. A table is
+/// never empty in either direction: every material lists at least one sheet
+/// and nothing is blank.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SheetTable {
+    /// Each material, as written, and the sheets it may be printed on.
+    entries: BTreeMap<String, Vec<String>>,
+}
+
+impl SheetTable {
+    /// A table of these entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the entries are no table: a blank material or sheet, a
+    /// material listing no sheet, or two materials that differ only in case
+    /// or surrounding space.
+    pub fn new(entries: BTreeMap<String, Vec<String>>) -> Result<Self, String> {
+        let mut seen: Vec<String> = Vec::new();
+        let mut table = BTreeMap::new();
+        for (material, sheets) in entries {
+            let trimmed = material.trim();
+            if trimmed.is_empty() {
+                return Err("a material is named by something other than space".to_owned());
+            }
+            let folded = trimmed.to_lowercase();
+            if seen.contains(&folded) {
+                return Err(format!(
+                    "{trimmed} is listed twice, once differing only in case or space"
+                ));
+            }
+            seen.push(folded);
+            if sheets.is_empty() {
+                return Err(format!(
+                    "{trimmed} lists no sheet; leave a material out rather than list it on none"
+                ));
+            }
+            if sheets.iter().any(|sheet| sheet.trim().is_empty()) {
+                return Err(format!("{trimmed} lists a sheet that is blank"));
+            }
+            table.insert(
+                trimmed.to_owned(),
+                sheets.iter().map(|sheet| sheet.trim().to_owned()).collect(),
+            );
+        }
+        Ok(Self { entries: table })
+    }
+
+    /// The sheets the table allows a material on, when it lists the material.
+    #[must_use]
+    pub fn allowed_for(&self, material: &str) -> Option<&[String]> {
+        self.entries
+            .iter()
+            .find(|(listed, _)| same(listed, material))
+            .map(|(_, sheets)| sheets.as_slice())
+    }
+
+    /// Whether any entry lists a sheet.
+    #[must_use]
+    pub fn lists(&self, sheet: &str) -> bool {
+        self.entries
+            .values()
+            .flatten()
+            .any(|listed| same(listed, sheet))
+    }
+
+    /// Every sheet some entry lists, once each, in order.
+    #[must_use]
+    pub fn sheets(&self) -> Vec<String> {
+        let mut known: Vec<String> = Vec::new();
+        for sheet in self.entries.values().flatten() {
+            if !known.iter().any(|listed| same(listed, sheet)) {
+                known.push(sheet.clone());
+            }
+        }
+        known.sort();
+        known
+    }
+}
+
+impl Default for SheetTable {
+    fn default() -> Self {
+        Self {
+            entries: DEFAULT_SHEETS
+                .iter()
+                .map(|(material, sheets)| {
+                    (
+                        (*material).to_owned(),
+                        sheets.iter().map(|sheet| (*sheet).to_owned()).collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Whether two names of a material or a sheet name the same one: trimmed,
+/// and without regard to case.
+#[must_use]
+pub fn same(one: &str, other: &str) -> bool {
+    one.trim().to_lowercase() == other.trim().to_lowercase()
+}
+
 /// The server configuration supervision reads.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoreConfig {
@@ -107,6 +223,8 @@ pub struct CoreConfig {
     pub observation_interval: Duration,
     /// How spools are checked before a print, and the margin asked for.
     pub spools: SpoolPolicy,
+    /// Which build sheets each material may be printed on.
+    pub sheets: SheetTable,
     /// How often the printer watch reads the machine.
     pub printer_poll: Duration,
     /// How long after an `interrupted` or `failed` ending the printer acting
@@ -132,6 +250,7 @@ impl CoreConfig {
             detector_resume_grace: DEFAULT_DETECTOR_RESUME_GRACE,
             observation_interval: DEFAULT_OBSERVATION_INTERVAL,
             spools: SpoolPolicy::default(),
+            sheets: SheetTable::default(),
             printer_poll: crate::watch::DEFAULT_PRINTER_POLL,
             unattended_window: crate::watch::DEFAULT_UNATTENDED_WINDOW,
             recovery: None,

@@ -28,8 +28,9 @@ use super::policy::{
     EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope, SpoolField, SpoolRefusalCause,
 };
 use super::preflight::{
-    DoubtedSpool, Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
-    PreflightToolResult, PreflightVerdict, ShortSpool, UnanalysedSpool,
+    DoubtedSpool, MaterialComparison, MaterialObjection, MaterialResult, Preflight, PreflightNeed,
+    PreflightObjection, PreflightSpool, PreflightTool, PreflightToolResult, PreflightVerdict,
+    SheetComparison, SheetObjection, SheetResult, ShortSpool, UnanalysedSpool, UncomparedMaterial,
 };
 use super::print::{ManifestNarrowing, PrintRecord};
 use super::spool::{
@@ -228,6 +229,8 @@ impl Sample for PrintAction {
                 file_name: FileName::sample_full(),
                 manifest: JobManifest::sample_full(),
                 override_filament_check: true,
+                override_material_check: true,
+                override_sheet_check: true,
                 reason: reason(),
                 actor: Actor::sample_full(),
             },
@@ -325,8 +328,16 @@ impl Sample for JobManifest {
             material: "PLA".to_owned(),
             nozzle_diameter_mm: 0.4,
             slicer_profile: "0.2mm standard".to_owned(),
+            sheet: Some("smooth-pei".to_owned()),
             allowed: allowed_ranges(),
             metadata: BTreeMap::from([("layer_height_mm".to_owned(), "0.2".to_owned())]),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            sheet: None,
+            ..Self::sample_full()
         }
     }
 }
@@ -395,6 +406,13 @@ impl Sample for RejectionReason {
                 cause: SpoolRefusalCause::sample_full(),
                 message: "spool Galaxy black is retired, so it takes no command".to_owned(),
             },
+            Self::MaterialRefused {
+                objection: MaterialObjection::sample_full(),
+            },
+            Self::SheetRefused {
+                objection: SheetObjection::sample_full(),
+            },
+            Self::SheetNotDeclared,
             Self::PrintAlreadyEnded,
             Self::PrintStillActive {
                 state: PrinterState::Paused,
@@ -884,8 +902,144 @@ impl Sample for Preflight {
                 PreflightTool::sample_minimal(),
             ],
             verdict: PreflightVerdict::Insufficient,
+            material: Some(MaterialResult::sample_full()),
+            sheet: Some(SheetResult::sample_full()),
             checked_at: Timestamp::sample_full(),
         }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            material: None,
+            sheet: None,
+            ..Self::sample_full()
+        }
+    }
+}
+
+impl Sample for MaterialComparison {
+    fn sample_full() -> Self {
+        Self {
+            tool: 0,
+            spool: PreflightSpool::sample_full(),
+            loaded: "PETG".to_owned(),
+            sliced_for: "PLA".to_owned(),
+        }
+    }
+}
+
+impl Sample for UncomparedMaterial {
+    fn sample_full() -> Self {
+        Self {
+            tool: 0,
+            spool: PreflightSpool::sample_full(),
+            loaded: "PETG".to_owned(),
+            file_name: "benchy.gcode".to_owned(),
+        }
+    }
+}
+
+impl Sample for MaterialObjection {
+    fn sample_full() -> Self {
+        Self::Mismatch(MaterialComparison::sample_full())
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::Undeclared(UncomparedMaterial::sample_full()),
+            Self::Unread {
+                tool: 0,
+                spool: PreflightSpool::sample_full(),
+                loaded: "PETG".to_owned(),
+                file_name: "benchy.gcode".to_owned(),
+                detail: "the printer could not be reached".to_owned(),
+            },
+        ]
+    }
+}
+
+impl Sample for MaterialResult {
+    fn sample_full() -> Self {
+        Self::Refused {
+            objection: MaterialObjection::sample_full(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self::Unchecked
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::Passed(MaterialComparison {
+                loaded: "PLA".to_owned(),
+                ..MaterialComparison::sample_full()
+            }),
+            Self::Overridden {
+                objection: MaterialObjection::sample_full(),
+            },
+            Self::Warned {
+                objection: MaterialObjection::Undeclared(UncomparedMaterial::sample_full()),
+            },
+        ]
+    }
+}
+
+impl Sample for SheetComparison {
+    fn sample_full() -> Self {
+        Self {
+            sheet: "smooth-pei".to_owned(),
+            material: "PETG".to_owned(),
+            allowed: vec!["textured-pei".to_owned()],
+        }
+    }
+}
+
+impl Sample for SheetObjection {
+    fn sample_full() -> Self {
+        Self::NotAllowed(SheetComparison::sample_full())
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::UnlistedMaterial {
+                sheet: "smooth-pei".to_owned(),
+                material: "ASA".to_owned(),
+            },
+            Self::UnknownSheet {
+                sheet: "glass".to_owned(),
+                material: "PLA".to_owned(),
+                known: vec!["smooth-pei".to_owned(), "textured-pei".to_owned()],
+            },
+        ]
+    }
+}
+
+impl Sample for SheetResult {
+    fn sample_full() -> Self {
+        Self::Refused {
+            objection: SheetObjection::sample_full(),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self::Unchecked
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::Passed(SheetComparison {
+                sheet: "textured-pei".to_owned(),
+                ..SheetComparison::sample_full()
+            }),
+            Self::Undeclared,
+            Self::Overridden {
+                objection: SheetObjection::sample_full(),
+            },
+            Self::Warned {
+                objection: SheetObjection::sample_full(),
+            },
+        ]
     }
 }
 

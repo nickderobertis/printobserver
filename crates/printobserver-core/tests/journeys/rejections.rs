@@ -119,6 +119,9 @@ fn refuse(reason: &RejectionReason) -> Refused {
         RejectionReason::InsufficientFilament { .. }
         | RejectionReason::UnverifiedSpool { .. }
         | RejectionReason::AnalysisUnavailable { .. }
+        | RejectionReason::MaterialRefused { .. }
+        | RejectionReason::SheetRefused { .. }
+        | RejectionReason::SheetNotDeclared
         | RejectionReason::SpoolRefused { .. } => {
             unreachable!("{reason:?} is the filament ledger's, which this walk does not drive")
         }
@@ -212,18 +215,22 @@ fn as_reached(stated: RejectionReason, decision: &PolicyDecision) -> RejectionRe
 }
 
 /// The rejections the filament ledger declares, which this walk does not
-/// drive because they are not reached as it reaches the others: the three a
-/// start's filament check makes are written down beside the check itself, and
+/// drive because they are not reached as it reaches the others: the six a
+/// start's filament, material and sheet checks make are written down beside
+/// the check itself, and
 /// `spool_refused` answers a spool command rather than a print action. Each is
 /// walked by the journeys of its own path — `preflight` and `spool_commands` —
 /// which assert the printer is never asked and the refusal is recorded. And
 /// `print_not_resumable` is reached only after a recovery action moved the
 /// printer under a paused print, which the server's recovery journeys drive
 /// against the virtual printer and assert the resume reaches nothing.
-const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 5] = [
+const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 8] = [
     "InsufficientFilament",
     "UnverifiedSpool",
     "AnalysisUnavailable",
+    "MaterialRefused",
+    "SheetRefused",
+    "SheetNotDeclared",
     "SpoolRefused",
     "PrintNotResumable",
 ];

@@ -34,6 +34,8 @@ fn start_under(manifest: JobManifest) -> (World, PrintRecord, PrintContext) {
                 file_name: FileName::new("benchy.gcode").expect("a name"),
                 manifest,
                 override_filament_check: false,
+                override_material_check: false,
+                override_sheet_check: false,
                 reason: "the operator started it".to_owned(),
                 actor: Actor::Operator,
             },

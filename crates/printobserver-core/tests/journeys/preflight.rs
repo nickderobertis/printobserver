@@ -362,8 +362,12 @@ fn the_check_read_reports_each_tool_and_records_nothing() {
     let events_before = timeline(&world).len();
     let writes_before = world.journal.store_writes().len();
 
-    let preflight = block_on(world.core.preflight(&FileName::new(FILE).expect("a name")))
-        .expect("the check is read");
+    let preflight = block_on(
+        world
+            .core
+            .preflight(&FileName::new(FILE).expect("a name"), None),
+    )
+    .expect("the check is read");
 
     assert_eq!(preflight.tools.len(), 2);
     let PreflightToolResult::UnverifiedSpool(zero) = &preflight.tools[0].result else {
@@ -400,8 +404,12 @@ fn a_file_that_cannot_be_read_is_checked_as_having_no_analysis() {
             detail: "the printer is unreachable".to_owned(),
         },
     );
-    let preflight = block_on(world.core.preflight(&FileName::new(FILE).expect("a name")))
-        .expect("the check is read");
+    let preflight = block_on(
+        world
+            .core
+            .preflight(&FileName::new(FILE).expect("a name"), None),
+    )
+    .expect("the check is read");
     assert_eq!(preflight.verdict, PreflightVerdict::NoAnalysis);
     assert_eq!(preflight.tools.len(), 1);
     let PreflightToolResult::NoAnalysis(unanalysed) = &preflight.tools[0].result else {
@@ -429,8 +437,12 @@ fn an_analysis_s_impossible_entries_are_left_out_of_the_check() {
         ..facts(None)
     });
     let spool = loaded_spool(&world, "Only Tool Zero", 1_000.0);
-    let preflight = block_on(world.core.preflight(&FileName::new(FILE).expect("a name")))
-        .expect("the check is read");
+    let preflight = block_on(
+        world
+            .core
+            .preflight(&FileName::new(FILE).expect("a name"), None),
+    )
+    .expect("the check is read");
     assert_eq!(preflight.tools.len(), 1);
     assert_eq!(preflight.tools[0].tool, 0);
     let PreflightToolResult::Passed { need, .. } = &preflight.tools[0].result else {

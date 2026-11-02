@@ -42,8 +42,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::records::{
-    Actor, Intervention, InterventionId, InterventionOutcome, PolicyDecision, PrintAction,
-    RejectionReason,
+    Actor, Intervention, InterventionId, InterventionOutcome, MaterialObjection, PolicyDecision,
+    PrintAction, RejectionReason, SheetObjection,
 };
 use printobserver_printer_api::Adjustable;
 use printobserver_types::{PrintId, Timestamp};
@@ -153,6 +153,56 @@ pub fn restoring_action(adjustable: Adjustable, prior_value: f64) -> PrintAction
     }
 }
 
+/// What the material check objected to, naming what it compared.
+fn material_detail(objection: &MaterialObjection) -> String {
+    match objection {
+        MaterialObjection::Mismatch(compared) => format!(
+            "the file was sliced for {}, and spool {} on tool {} is {}",
+            compared.sliced_for, compared.spool.name, compared.tool, compared.loaded
+        ),
+        MaterialObjection::Undeclared(uncompared) => format!(
+            "{} names no `filament_type`, so it cannot be compared with spool {} on tool {}, \
+             which is {}",
+            uncompared.file_name, uncompared.spool.name, uncompared.tool, uncompared.loaded
+        ),
+        MaterialObjection::Unread {
+            tool,
+            spool,
+            loaded,
+            file_name,
+            detail,
+        } => format!(
+            "the settings of {file_name} could not be read ({detail}), so it cannot be compared \
+             with spool {} on tool {tool}, which is {loaded}",
+            spool.name
+        ),
+    }
+}
+
+/// What the sheet check objected to, naming what it compared.
+fn sheet_detail(objection: &SheetObjection) -> String {
+    match objection {
+        SheetObjection::NotAllowed(compared) => format!(
+            "the sheet table allows {} on {} and not on {}",
+            compared.material,
+            compared.allowed.join(", "),
+            compared.sheet
+        ),
+        SheetObjection::UnlistedMaterial { sheet, material } => format!(
+            "the sheet table has no entry for {material}, so {sheet} is not known to suit it"
+        ),
+        SheetObjection::UnknownSheet {
+            sheet,
+            material,
+            known,
+        } => format!(
+            "no entry of the sheet table lists {sheet}, so it is not known to suit {material}; \
+             the sheets it names are {}",
+            known.join(", ")
+        ),
+    }
+}
+
 /// Why policy refused a request, in words a reader of the record can act on.
 #[must_use]
 pub fn rejection_detail(reason: &RejectionReason) -> String {
@@ -200,6 +250,11 @@ pub fn rejection_detail(reason: &RejectionReason) -> String {
             file_name,
             waited_s,
         } => format!("{file_name} had no analysis after waiting {waited_s}s for one"),
+        RejectionReason::MaterialRefused { objection } => material_detail(objection),
+        RejectionReason::SheetRefused { objection } => sheet_detail(objection),
+        RejectionReason::SheetNotDeclared => "the manifest declares no `sheet`, and every start \
+             names the build sheet it goes down on; no override lets a start without one through"
+            .to_owned(),
         RejectionReason::SpoolRefused { message, .. } => message.clone(),
         RejectionReason::PrintAlreadyEnded => "this print's record has already ended".to_owned(),
         RejectionReason::PrintStillActive { state } => {

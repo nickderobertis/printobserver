@@ -118,6 +118,8 @@ pub enum PrinterMethod {
     SetFanPercent,
     /// `file_facts`.
     FileFacts,
+    /// `filament_types`.
+    FilamentTypes,
     /// `printed_files`.
     PrintedFiles,
     /// `extruded_to`.
@@ -134,7 +136,7 @@ pub enum PrinterMethod {
 
 impl PrinterMethod {
     /// Every method the printer port declares.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::Snapshot,
         Self::Job,
         Self::Start,
@@ -147,6 +149,7 @@ impl PrinterMethod {
         Self::SetBedTargetC,
         Self::SetFanPercent,
         Self::FileFacts,
+        Self::FilamentTypes,
         Self::PrintedFiles,
         Self::ExtrudedTo,
         Self::PrintedExtent,
@@ -171,6 +174,7 @@ impl PrinterMethod {
             Self::SetBedTargetC => "set_bed_target_c",
             Self::SetFanPercent => "set_fan_percent",
             Self::FileFacts => "file_facts",
+            Self::FilamentTypes => "filament_types",
             Self::PrintedFiles => "printed_files",
             Self::ExtrudedTo => "extruded_to",
             Self::PrintedExtent => "printed_extent",
@@ -199,7 +203,14 @@ pub struct FakePrinter {
     files: Mutex<BTreeMap<String, FileFacts>>,
     /// What each file feeds up to each position a test declared.
     extrusion: Mutex<BTreeMap<(String, i64), Vec<ToolFilament>>>,
+    /// The material each tool of a file was sliced for, by file, where a test
+    /// declared it; every other file is sliced for [`SLICED_FOR`].
+    sliced: Mutex<BTreeMap<String, Vec<String>>>,
 }
+
+/// The material a file no test declared otherwise was sliced for: the one
+/// every journey's own spool is registered as.
+pub const SLICED_FOR: &str = "PLA";
 
 impl FakePrinter {
     /// A printer reporting a snapshot and a job, failing nothing.
@@ -212,7 +223,17 @@ impl FakePrinter {
             failures: Mutex::new(BTreeMap::new()),
             files: Mutex::new(BTreeMap::new()),
             extrusion: Mutex::new(BTreeMap::new()),
+            sliced: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// Answer that a file was sliced for these materials, tool 0 first; an
+    /// empty list is a file naming no `filament_type`.
+    pub fn slices(&self, file_name: &str, types: &[&str]) {
+        self.sliced.lock().expect("the printer holds").insert(
+            file_name.to_owned(),
+            types.iter().map(|named| (*named).to_owned()).collect(),
+        );
     }
 
     /// Hold this file, replacing whatever was held under its name.
@@ -418,6 +439,27 @@ impl PrinterPort for FakePrinter {
                         status: 404,
                         detail: format!("there is no file {file_name}"),
                     })
+            },
+            Err,
+        );
+        Box::pin(async move { answer })
+    }
+
+    fn filament_types(
+        &self,
+        file_name: FileName,
+    ) -> BoxFuture<'_, Result<Vec<String>, PrinterError>> {
+        self.journal
+            .record(Call::FilamentTypes(file_name.as_str().to_owned()));
+        let answer = self.induced(PrinterMethod::FilamentTypes).map_or_else(
+            || {
+                Ok(self
+                    .sliced
+                    .lock()
+                    .expect("the printer holds")
+                    .get(file_name.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| vec![SLICED_FOR.to_owned()]))
             },
             Err,
         );

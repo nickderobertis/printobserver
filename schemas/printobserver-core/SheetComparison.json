@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the sheet check compared: the declared sheet, the loaded spool's\nmaterial, and the sheets the table allows that material.",
+  "properties": {
+    "allowed": {
+      "description": "Every sheet the table allows that material.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "material": {
+      "description": "The material of the spool loaded on tool 0.",
+      "type": "string"
+    },
+    "sheet": {
+      "description": "The build sheet the manifest declares.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "sheet",
+    "material",
+    "allowed"
+  ],
+  "title": "SheetComparison",
+  "type": "object"
+}

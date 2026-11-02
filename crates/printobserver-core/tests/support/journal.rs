@@ -91,6 +91,8 @@ pub enum Call {
     SetFanPercent(f64),
     /// What the printer knows of one file was read.
     FileFacts(String),
+    /// The material one file was sliced for was read.
+    FilamentTypes(String),
     /// Every file carrying a print tally was read.
     PrintedFiles,
     /// The filament one file feeds up to a position was read.
@@ -160,6 +162,7 @@ impl Call {
             | Self::SetBedTargetC(_)
             | Self::SetFanPercent(_)
             | Self::FileFacts(_)
+            | Self::FilamentTypes(_)
             | Self::PrintedFiles
             | Self::ExtrudedTo(_, _) => Port::Printer,
             Self::Normalize | Self::FetchImage | Self::ClearDetection(_) => Port::Vision,
@@ -169,7 +172,7 @@ impl Call {
 
     /// Whether this is a call to an **action** method of the printer port.
     ///
-    /// The port's reads — `snapshot`, `job` and the three reads of the files
+    /// The port's reads — `snapshot`, `job` and the four reads of the files
     /// it holds — are deliberately not actions: the loop reads the printer
     /// without taking a decision, so an absence that covered them would be one
     /// no conforming implementation could satisfy.
@@ -181,6 +184,7 @@ impl Call {
                 Self::Snapshot
                     | Self::Job
                     | Self::FileFacts(_)
+                    | Self::FilamentTypes(_)
                     | Self::PrintedFiles
                     | Self::ExtrudedTo(_, _)
             )

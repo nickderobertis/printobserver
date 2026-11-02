@@ -619,6 +619,14 @@ impl Supervisor {
         self.printer.file_facts(file_name).await
     }
 
+    /// Read the material each tool of one file was sliced for, tool 0 first.
+    pub(crate) async fn read_filament_types(
+        &self,
+        file_name: FileName,
+    ) -> Result<Vec<String>, PrinterError> {
+        self.printer.filament_types(file_name).await
+    }
+
     /// Read every file the printer holds that carries a print tally.
     ///
     /// A read, for the same reason [`Supervisor::read_snapshot`] is.

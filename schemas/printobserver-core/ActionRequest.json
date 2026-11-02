@@ -109,6 +109,13 @@
           "format": "double",
           "type": "number"
         },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
           "type": "string"
@@ -221,6 +228,14 @@
             },
             "override_filament_check": {
               "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+              "type": "boolean"
+            },
+            "override_material_check": {
+              "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
+              "type": "boolean"
+            },
+            "override_sheet_check": {
+              "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
               "type": "boolean"
             },
             "reason": {

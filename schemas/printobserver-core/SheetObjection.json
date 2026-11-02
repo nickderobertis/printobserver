@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why the sheet check objects to a start, with what it compared.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The table lists the material, and not on this sheet.",
+      "properties": {
+        "allowed": {
+          "description": "Every sheet the table allows that material.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cause": {
+          "const": "not_allowed",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material of the spool loaded on tool 0.",
+          "type": "string"
+        },
+        "sheet": {
+          "description": "The build sheet the manifest declares.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cause",
+        "sheet",
+        "material",
+        "allowed"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The table has no entry for the material.",
+      "properties": {
+        "cause": {
+          "const": "unlisted_material",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material of the spool loaded on tool 0.",
+          "type": "string"
+        },
+        "sheet": {
+          "description": "The build sheet the manifest declares.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cause",
+        "sheet",
+        "material"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No entry of the table lists the sheet.",
+      "properties": {
+        "cause": {
+          "const": "unknown_sheet",
+          "type": "string"
+        },
+        "known": {
+          "description": "Every sheet some entry lists.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "material": {
+          "description": "The material of the spool loaded on tool 0.",
+          "type": "string"
+        },
+        "sheet": {
+          "description": "The build sheet the manifest declares.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cause",
+        "sheet",
+        "material",
+        "known"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SheetObjection"
+}

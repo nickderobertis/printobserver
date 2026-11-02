@@ -478,6 +478,7 @@ pub fn manifest(allowed: &[(Adjustable, Range)]) -> JobManifest {
         material: "PLA".to_owned(),
         nozzle_diameter_mm: 0.4,
         slicer_profile: "0.20mm SPEED".to_owned(),
+        sheet: Some("smooth-pei".to_owned()),
         allowed: allowed.iter().copied().collect(),
         metadata: BTreeMap::new(),
     }
