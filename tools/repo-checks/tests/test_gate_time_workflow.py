@@ -217,23 +217,43 @@ def test_each_required_context_runs_all_the_nx_work_it_ran(
     equal(sorted(before - now), [], describing=f"what {context} no longer runs")
 
 
+#: The Nx work each macOS lane has gained since `BASELINE`, by the project that
+#: brought it. A project added since is work no lane ran then, so it is named
+#: here target by target: a lane running less of it, or more, fails as surely as
+#: one dropping baseline work. `real-prints-lfs` is a Python tooling project,
+#: so the gate's tiers reach its `format-check`, `lint`, `typecheck` and `test`,
+#: and `just test`'s `budgets`; no lane of the integration tier reaches it.
+ADDED_SINCE_BASELINE: dict[str, frozenset[tuple[str, str]]] = {
+    "gate (macos-aarch64)": frozenset(
+        ("real-prints-lfs", target)
+        for target in ("budgets", "format-check", "lint", "test", "typecheck")
+    ),
+    "integration (macos-aarch64)": frozenset(),
+}
+
+
 @pytest.mark.parametrize("context", ["gate (macos-aarch64)", "integration (macos-aarch64)"])
 def test_the_macos_lever_runs_exactly_the_work_macos_ran(
     baseline: Repo, committed_repo: Repo, context: str
 ) -> None:
     """Each lane, once a step of the combined job, is the whole of its own macOS jobs' work.
 
-    Over the projects the baseline declares: a project added since is work no
-    lane ran then, and what this holds is the lanes' split, not the project set.
+    The whole of what the lane runs now is held: the baseline's work, and the
+    work each project added since brings, as `ADDED_SINCE_BASELINE` names it.
     """
-    then = {
-        json.loads(path.read_text(encoding="utf-8"))["name"]
-        for path in baseline.root.glob("**/project.json")
-    }
-    now = {work for work in nx_work(committed_repo, context) if work[0] in then}
-    before = nx_work(baseline, context)
+    now, before = nx_work(committed_repo, context), nx_work(baseline, context)
     truth(bool(before), describing=f"{context} ran Nx work at the baseline")
-    equal(sorted(now ^ before), [], describing=f"what {context} runs that it did not, or no longer")
+    expected = before | ADDED_SINCE_BASELINE[context]
+    equal(
+        sorted(now - expected),
+        [],
+        describing=f"what {context} runs that neither the baseline nor a named addition does",
+    )
+    equal(
+        sorted(expected - now),
+        [],
+        describing=f"what {context} no longer runs, of the baseline's or a named addition's",
+    )
     equal(
         behind(committed_repo, context),
         {
