@@ -1015,6 +1015,27 @@ version = "2.100.0"
 bootstrap = false
 install = "uv run -q python -m repo_checks install-gh {version}"
 
+# Git LFS, which carries the real-print cases' G-code and frames
+# (`tests/real-prints/`): a clone fetches them with `just real-prints-fetch`,
+# cleans a new frame into a pointer, and pushes the objects with the committed
+# `pre-push` hook. Held at the newest release on 2026-11-02. Bootstrapped, so
+# `just bootstrap` gives every host one, into `~/.local/bin` with no
+# administrator rights, from the release's own archive verified against the
+# `sha256sums.asc` it publishes; and `install-hooks` then configures this
+# clone's own LFS filter with `git lfs install --local`.
+#
+# `provided_by` is why a host already carrying one installs nothing: every
+# hosted runner and Git for Windows ship a `git-lfs` of their own, which Git
+# for Windows' `git` puts ahead of anything on PATH, so replacing it would
+# install a copy nothing runs. What the recipes ask of it — `ls-files --long`,
+# `pull --include --exclude` and `.lfsconfig`'s `fetchexclude` — every Git LFS 3
+# release answers; the held release is what a host that has none is given.
+[[toolchain.tool]]
+command = "git-lfs"
+version = "3.8.1"
+provided_by = ["git-lfs"]
+install = "uv run -q python -m repo_checks install-git-lfs {version}"
+
 # onebudgetspec, which checks the root `budgets.yaml`'s `gate-time` in the
 # `gate-time` step of every required gate and integration job, and which
 # `repo_checks gate_time_budget` reports that figure through. Held at the

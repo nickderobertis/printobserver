@@ -16,6 +16,7 @@ from repo_checks import (
     gate_tier,
     gate_time_budget,
     gh_release,
+    git_lfs_release,
     just_pin,
     powershell_release,
     release_plz_release,
@@ -45,6 +46,7 @@ class Installer(NamedTuple):
 # mean anything to.
 INSTALLERS = {
     "install-gh": Installer(gh_release.install_gh, gh_release.RELEASES),
+    "install-git-lfs": Installer(git_lfs_release.install_git_lfs, git_lfs_release.RELEASES),
     "install-release-plz": Installer(
         release_plz_release.install_release_plz, release_plz_release.RELEASES
     ),
@@ -101,8 +103,8 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "the commit-message file, for commit-msg; `measure` (the default) or `check`, for "
             "gate_time_budget; the tool, for tool-version and "
-            "install-tools; the release, for install-gh, install-release-plz and "
-            "install-powershell"
+            "install-tools; the release, for install-gh, install-git-lfs, "
+            "install-release-plz and install-powershell"
         ),
     )
     parser.add_argument("--root", default=".", help="the tree to read (default: the cwd)")
@@ -111,7 +113,8 @@ def main(argv: list[str] | None = None) -> int:
         "--releases",
         default=None,
         help=(
-            "where install-gh, install-release-plz or install-powershell downloads its artifacts "
+            "where install-gh, install-git-lfs, install-release-plz or install-powershell "
+            "downloads its artifacts "
             "from, its producer's own "
             "forge by default. Only an https address or a loopback one is fetched, which is "
             "what lets a suite serve an installer a stand-in release over real HTTP"
@@ -121,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
         "--into",
         default=None,
         help=(
-            "the directory install-gh, install-release-plz or install-powershell puts the "
+            "the directory install-gh, install-git-lfs, install-release-plz or install-powershell "
+            "puts the "
             "program in, its own default otherwise"
         ),
     )
