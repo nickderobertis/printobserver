@@ -890,6 +890,34 @@ async fn a_refusal_saying_bytes_that_are_not_text_is_carried_as_bounded_text() {
     assert!(!excerpt.chars().any(char::is_control), "{excerpt:?}");
 }
 
+/// What a refusing camera said, cut at the excerpt's bound through the middle
+/// of a character, keeps every whole character before the cut and drops the
+/// part of the one it cut.
+#[tokio::test]
+async fn a_refusal_cut_inside_a_character_keeps_only_whole_characters() {
+    let bound = printobserver_vision_api::STATUS_EXCERPT_MAX_BYTES;
+    let mut said = "a".repeat(bound - 1).into_bytes();
+    said.extend("é and more after it".as_bytes());
+    let host = ImageHost::serving(Answer {
+        status: "500 Internal Server Error",
+        content_type: Some("text/plain; charset=utf-8".to_owned()),
+        body: said,
+        delay: Duration::ZERO,
+        declare_length: true,
+        stalls: false,
+    })
+    .await;
+    let store = Arc::new(MemoryStore::new());
+
+    let (receipt, _) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+
+    let failure = receipt.image_failure.expect("the fetch failed and said so");
+    let VisionError::Status { excerpt, .. } = &failure else {
+        panic!("expected a refusal carrying its status, found {failure:?}");
+    };
+    assert_eq!(*excerpt, "a".repeat(bound - 1), "{excerpt:?}");
+}
+
 /// Every notification the producer sends normalizes to its own spelling.
 ///
 /// The producer's eight types and this system's eight are two vocabularies, and

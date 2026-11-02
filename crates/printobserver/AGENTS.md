@@ -38,3 +38,12 @@ running supervisor makes. A row written through a second connection — how
 values — raises none, so those journeys follow each such write with a `look`
 the supervisor records itself (`support/standalone.rs`'s `nudge`); without it a
 read finds the rows only at its deadline.
+
+## One command can reach two operations
+
+`printobserver-server`'s `Operation::printer_wide` names the operation a request
+that names no print is made to instead. `surface` makes that operation no
+command of its own and makes the print optional on the command that names it;
+`Call::operation` picks between the two. Today that is `look`: with no
+`--print-id` it is `printer_look`, a frame of the printer that belongs to no
+print. `tests/surface.rs` holds the fold to the server's declaration.

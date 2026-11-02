@@ -343,7 +343,7 @@ pub struct Operation {
     /// the operation named here has no command of its own: it is reached
     /// through this one's. It takes no value this operation does not, less
     /// the print.
-    pub printer_wide: Option<&'static str>,
+    pub printer_wide: Option<&'static Operation>,
 }
 
 impl Operation {
@@ -952,18 +952,10 @@ pub const OPERATIONS: [Operation; 38] = [
     Operation {
         query: &[Declared::once("wait_s", false, ValueKind::Integer)],
         image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
-        printer_wide: Some(PRINTER_LOOK),
+        printer_wide: Some(&PRINTER_LOOK_OPERATION),
         ..read("look", "/prints/{print_id}/look")
     },
-    // A fresh look at the printer with no print named: waits `wait_s` seconds,
-    // on nothing any print's agent is owed, then takes a frame, keeps it as
-    // the printer's, and reads the printer as it is now. The operator's: a
-    // turn's credential reaches its own print alone.
-    Operation {
-        query: &[Declared::once("wait_s", false, ValueKind::Integer)],
-        image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
-        ..read(PRINTER_LOOK, "/look")
-    },
+    PRINTER_LOOK_OPERATION,
     Operation {
         name: "manifest_set",
         method: Method::Put,
@@ -1167,13 +1159,25 @@ pub const BESIDE_THE_ACTIONS: [&str; 14] = [
 /// it names none.
 pub const PRINTER_LOOK: &str = "printer_look";
 
+/// A fresh look at the printer with no print named: waits `wait_s` seconds, on
+/// nothing any print's agent is owed, then takes a frame, keeps it as the
+/// printer's, and reads the printer as it is now. The operator's: a turn's
+/// credential reaches its own print alone. Declared apart from [`OPERATIONS`],
+/// which serves it, so the look's [`Operation::printer_wide`] can name it as
+/// the operation itself rather than by a name that might name none.
+const PRINTER_LOOK_OPERATION: Operation = Operation {
+    query: &[Declared::once("wait_s", false, ValueKind::Integer)],
+    image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
+    ..read(PRINTER_LOOK, "/look")
+};
+
 /// The operation whose command reaches this one, when this one is another's
 /// [`Operation::printer_wide`] form and so has no command of its own.
 #[must_use]
 pub fn printer_wide_of(name: &str) -> Option<&'static Operation> {
     OPERATIONS
         .iter()
-        .find(|declared| declared.printer_wide == Some(name))
+        .find(|declared| declared.printer_wide.is_some_and(|wide| wide.name == name))
 }
 
 /// The operation of one name, when this server serves one.
@@ -1401,7 +1405,11 @@ mod tests {
                 continue;
             };
             forms += 1;
-            let wide = operation(wide).expect("the printer-wide form is served");
+            assert_eq!(
+                operation(wide.name),
+                Some(wide),
+                "the printer-wide form is not an operation this server serves"
+            );
             assert_eq!(wide.method, declared.method, "`{}`", declared.name);
             assert_eq!(wide.effect, declared.effect, "`{}`", declared.name);
             assert_eq!(wide.image_path_field, declared.image_path_field);

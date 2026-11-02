@@ -48,20 +48,11 @@ pub struct Call {
 impl Call {
     /// The operation this call is made to: its command's, or that operation's
     /// printer-wide form when the call names no print.
-    ///
-    /// # Panics
-    ///
-    /// Panics when the command's operation names a printer-wide form the
-    /// server does not serve, which is a declaration that has come apart.
     #[must_use]
     pub fn operation(&self) -> Option<Operation> {
         let operation = self.command.operation?;
         match operation.printer_wide {
-            Some(wide) if !self.values.contains_key(PRINT_FIELD) => {
-                Some(*printobserver_server::operation(wide).unwrap_or_else(|| {
-                    panic!("`{}` names `{wide}`, which is not served", operation.name)
-                }))
-            }
+            Some(wide) if !self.values.contains_key(PRINT_FIELD) => Some(*wide),
             _ => Some(operation),
         }
     }
