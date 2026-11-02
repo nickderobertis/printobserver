@@ -61,7 +61,7 @@ const IMAGE_BYTES: &[u8] = b"not a photograph, but the bytes of one";
 /// A recorded frame of a real print, because a frame is judged before it is
 /// kept: bytes that are no picture are recorded as the camera degraded.
 pub const FRAME_BYTES: &[u8] = include_bytes!(
-    "../../../../tests/real-prints/filament-stall-air-print/01-last-frame-extruding-p76.jpg"
+    "../../../printobserver-server/tests/fixtures/recorded-frame.jpg"
 );
 
 /// Where on the camera's host a frame is answered.
