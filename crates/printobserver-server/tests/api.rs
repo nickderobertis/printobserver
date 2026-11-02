@@ -60,6 +60,8 @@ mod looking;
 mod observing;
 #[path = "journeys/operating.rs"]
 mod operating;
+#[path = "journeys/printer_looking.rs"]
+mod printer_looking;
 #[path = "journeys/reconciling.rs"]
 mod reconciling;
 #[path = "journeys/recovering.rs"]
