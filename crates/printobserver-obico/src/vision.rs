@@ -14,9 +14,20 @@ use crate::{fetch, normalize};
 
 /// How long this adapter waits for a snapshot before giving up.
 ///
-/// Long enough for a camera snapshot over a home network and short enough that
-/// a supervision decision is not held behind a host that has stopped answering.
-pub const DEFAULT_FETCH_TIMEOUT: Duration = Duration::from_secs(10);
+/// Five seconds, from what a real camera server was measured to take
+/// (report `print-run-improvements-spike-check-costs-report`): go2rtc 1.9.15
+/// serving a 1920x1080 test source on loopback answered about 35 KB frames at
+/// a p99 of 0.756 s over 200 sequential fetches, 1.221 s over 200 with four
+/// fetchers at once, and at most 1.397 s over 8 fetches each after 15 s idle,
+/// on a shared 8-CPU host under a one-minute load of 23.7 to 44.8. Five
+/// seconds is 4.1 times the concurrent p99 and 3.6 times the cold maximum.
+///
+/// It is also what bounds a scheduled check whose camera fails every
+/// attempt: the supervisor asks a camera answering a server error three times
+/// more, half a second apart, so such a check waits at most 4 × 5 s + 3 × 0.5 s
+/// = 21.5 s for its frame before it is written down without one. The ten
+/// seconds this was before made that 41.5 s.
+pub const DEFAULT_FETCH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The most bytes of snapshot this adapter will read.
 ///

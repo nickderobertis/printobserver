@@ -753,9 +753,10 @@ async fn a_host_nothing_answers_on_is_unreachable() {
     assert_refused(&receipt, &store, &body, &failure).await;
 }
 
-/// A host that answers with a status other than success is unreachable.
+/// A host that answers with a status other than success refuses the request,
+/// and the refusal carries the status it answered.
 #[tokio::test]
-async fn a_host_that_refuses_the_request_is_unreachable() {
+async fn a_host_that_refuses_the_request_says_which_status() {
     let host = ImageHost::serving(Answer {
         status: "404 Not Found",
         content_type: None,
@@ -773,9 +774,51 @@ async fn a_host_that_refuses_the_request_is_unreachable() {
         .clone()
         .expect("the fetch failed and said so");
     assert!(
-        matches!(failure, VisionError::Unreachable { .. }),
-        "expected an unreachable host, found {failure}"
+        matches!(&failure, VisionError::Status { status: 404, excerpt, .. } if excerpt.is_empty()),
+        "expected a 404 refusal, found {failure:?}"
     );
+    assert!(!failure.is_server_error(), "a 404 is no server error");
+    assert_refused(&receipt, &store, &body, &failure).await;
+}
+
+/// A camera server answering a failure is a server error carrying the start
+/// of what it said: go2rtc answers a frame it could not take with `500` and
+/// the body `exit status 69`.
+#[tokio::test]
+async fn a_server_error_carries_its_status_and_what_it_said() {
+    let mut said = b"exit status 69\n".to_vec();
+    said.extend(std::iter::repeat_n(b'x', 4096));
+    let host = ImageHost::serving(Answer {
+        status: "500 Internal Server Error",
+        content_type: Some("text/plain".to_owned()),
+        body: said,
+        delay: Duration::ZERO,
+        declare_length: true,
+    })
+    .await;
+    let store = Arc::new(MemoryStore::new());
+
+    let (receipt, body) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+
+    let failure = receipt
+        .image_failure
+        .clone()
+        .expect("the fetch failed and said so");
+    let VisionError::Status {
+        status, excerpt, ..
+    } = &failure
+    else {
+        panic!("expected a refusal carrying its status, found {failure:?}");
+    };
+    assert_eq!(*status, 500);
+    assert!(excerpt.starts_with("exit status 69"), "{excerpt}");
+    assert!(
+        excerpt.len() <= printobserver_vision_api::STATUS_EXCERPT_MAX_BYTES,
+        "the excerpt is {} bytes",
+        excerpt.len()
+    );
+    assert!(failure.is_server_error());
+    assert!(failure.to_string().contains("exit status 69"), "{failure}");
     assert_refused(&receipt, &store, &body, &failure).await;
 }
 

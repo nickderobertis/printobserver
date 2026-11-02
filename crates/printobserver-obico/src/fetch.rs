@@ -3,11 +3,14 @@
 //! The bounds are a timeout, a maximum size and a content type that must be an
 //! image, and each has a [`VisionError`] variant of its own so that a caller is
 //! told which bound refused rather than that something went wrong. A host that
-//! is not reachable at all is the fourth answer, and it is the one no served
-//! response can produce.
+//! answers with a status other than success is [`VisionError::Status`], carrying
+//! that status and the start of what it said, so a caller can tell a camera
+//! that could not answer this time (`500`) from one asked for something it does
+//! not have (`404`). A host that is not reachable at all is the last answer,
+//! and it is the one no served response can produce.
 
 use printobserver_types::RawBytes;
-use printobserver_vision_api::{FetchedImage, VisionError};
+use printobserver_vision_api::{FetchedImage, STATUS_EXCERPT_MAX_BYTES, VisionError, body_excerpt};
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Client, Response};
 
@@ -68,6 +71,23 @@ async fn body_within(mut response: Response, max_bytes: i64) -> Result<RawBytes,
     Ok(RawBytes::new(bytes))
 }
 
+/// The start of a refusing answer's body, as [`body_excerpt`] reads it.
+///
+/// Only as much is read as the excerpt can carry, under the client's own
+/// timeout: a body that stops arriving, or that cannot be read at all, is an
+/// excerpt of what did arrive, because the status is the answer and the body
+/// only says more about it.
+async fn excerpt_of(mut response: Response) -> String {
+    let mut bytes: Vec<u8> = Vec::new();
+    while bytes.len() < STATUS_EXCERPT_MAX_BYTES {
+        match response.chunk().await {
+            Ok(Some(chunk)) => bytes.extend_from_slice(&chunk),
+            Ok(None) | Err(_) => break,
+        }
+    }
+    body_excerpt(&bytes)
+}
+
 /// Retrieve the image one URL names, under the bounds given.
 pub(crate) async fn image(
     client: &Client,
@@ -81,8 +101,10 @@ pub(crate) async fn image(
         .map_err(|error| refusal_for(&error))?;
     let status = response.status();
     if !status.is_success() {
-        return Err(VisionError::Unreachable {
+        return Err(VisionError::Status {
             detail: format!("{source_url} answered {status}"),
+            status: status.as_u16(),
+            excerpt: excerpt_of(response).await,
         });
     }
     let content_type =

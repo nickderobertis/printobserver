@@ -343,6 +343,21 @@ pub enum VisionError {
         /// The content type that arrived.
         content_type: String,
     },
+    /// The source answered, with a status other than success.
+    ///
+    /// Carried apart from [`VisionError::Unreachable`], because what a caller
+    /// does next depends on what was answered: a camera answering `500` is a
+    /// camera that may answer the next request, and one answering `404` was
+    /// asked for something it does not have.
+    Status {
+        /// What was asked and what it answered, in words.
+        detail: String,
+        /// The HTTP status code it answered.
+        status: u16,
+        /// The start of the body it answered with, as text: at most
+        /// [`STATUS_EXCERPT_MAX_BYTES`] of it, read by [`body_excerpt`].
+        excerpt: String,
+    },
     /// The source could not be reached at all.
     Unreachable {
         /// What went wrong reaching it.
@@ -374,6 +389,18 @@ impl core::fmt::Display for VisionError {
                     "{content_type} is not a content type this port accepts"
                 )
             }
+            Self::Status {
+                detail, excerpt, ..
+            } => {
+                if excerpt.is_empty() {
+                    write!(formatter, "the source refused the request: {detail}")
+                } else {
+                    write!(
+                        formatter,
+                        "the source refused the request: {detail}, saying `{excerpt}`"
+                    )
+                }
+            }
             Self::Unreachable { detail } => {
                 write!(formatter, "the source is unreachable: {detail}")
             }
@@ -387,7 +414,51 @@ impl core::fmt::Display for VisionError {
     }
 }
 
+impl VisionError {
+    /// Whether the source answered a server error, `500` to `599`: the one
+    /// answer a fetch may be asked again for, because it says the source is
+    /// there and could not answer this time.
+    #[must_use]
+    pub const fn is_server_error(&self) -> bool {
+        matches!(self, Self::Status { status, .. } if *status >= 500 && *status <= 599)
+    }
+}
+
 impl core::error::Error for VisionError {}
+
+/// The most bytes of a refusing answer's body a [`VisionError::Status`]
+/// carries.
+///
+/// Enough for the line a camera server answers a failure with — go2rtc's
+/// `exit status 69` among them — and little enough that a server answering a
+/// whole page of HTML costs a history record nothing.
+pub const STATUS_EXCERPT_MAX_BYTES: usize = 256;
+
+/// The start of a refusing answer's body, as the text a
+/// [`VisionError::Status`] carries.
+///
+/// At most [`STATUS_EXCERPT_MAX_BYTES`] of the bytes are read, cut back to
+/// the last whole character; bytes that are not UTF-8 are replaced rather
+/// than dropped, every control character is a space, and the text is
+/// trimmed. A body of nothing is an excerpt of nothing.
+#[must_use]
+pub fn body_excerpt(bytes: &[u8]) -> String {
+    let taken = &bytes[..bytes.len().min(STATUS_EXCERPT_MAX_BYTES)];
+    let text = match core::str::from_utf8(taken) {
+        Ok(text) => text.to_owned(),
+        // A cut through a character leaves an incomplete sequence at the end,
+        // which is dropped; anything else that is not UTF-8 is replaced.
+        Err(error) if error.error_len().is_none() => {
+            String::from_utf8_lossy(&taken[..error.valid_up_to()]).into_owned()
+        }
+        Err(_) => String::from_utf8_lossy(taken).into_owned(),
+    };
+    text.chars()
+        .map(|letter| if letter.is_control() { ' ' } else { letter })
+        .collect::<String>()
+        .trim()
+        .to_owned()
+}
 
 /// The port external observations arrive through.
 ///
