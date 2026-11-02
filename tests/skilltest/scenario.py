@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Literal, NewType, TypedDict
 
 from answers import from_labelled, labelled, machine
+from printobserver_sdk.contract import JobManifest
 from real_prints import (
     ADJUSTABLE,
     DECISION,
@@ -514,22 +515,7 @@ def _job(reading: Reading, file_name: str) -> dict[str, Any]:
     return job
 
 
-class _Manifest(TypedDict):
-    """The manifest a composed print runs under.
-
-    Field for field as the contracts' `JobManifest` declares it.
-    """
-
-    allowed: dict[str, Any]
-    file_name: str
-    material: str
-    metadata: dict[str, str]
-    nozzle_diameter_mm: float
-    sheet: str
-    slicer_profile: str
-
-
-def _manifest(file_name: str, allowed: dict[str, Any]) -> _Manifest:
+def _manifest(file_name: str, allowed: dict[str, Any]) -> JobManifest:
     return {
         "allowed": allowed,
         "file_name": file_name,

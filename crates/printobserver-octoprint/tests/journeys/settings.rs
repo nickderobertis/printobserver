@@ -246,3 +246,92 @@ fn a_tool_the_setting_leaves_blank_names_no_material_in_its_place() {
 
     assert_eq!(types, Ok(vec![None, Some("PETG".to_owned())]));
 }
+
+/// A tail that begins part-way through a line is not read from that line,
+/// however much the end of it looks like a setting.
+#[test]
+fn a_tail_beginning_part_way_through_a_line_does_not_read_that_line() {
+    let setting = "; filament_type = ABS\n";
+    let before = format!("{}G1 X1 ", moves(5_000));
+    let mut after = String::from("G1 X2 E0.05\n");
+    while after.len() < TAIL_BYTES - setting.len() {
+        after.push_str("; padding the tail to its bound\n");
+    }
+    after.truncate(TAIL_BYTES - setting.len());
+    let text = format!("{before}{setting}{after}");
+    assert_eq!(
+        text.len() - TAIL_BYTES,
+        before.len(),
+        "the tail begins at the `;`"
+    );
+    let standin = ScriptedOctoPrint::start();
+    standin.holds_file("cut.gcode", text.into_bytes(), 1_000.0);
+
+    let types = block_on(printer_of(&standin).filament_types(named("cut.gcode")));
+
+    assert_eq!(types, Ok(Vec::new()));
+}
+
+/// Where a file names its material twice, the last setting is the one read,
+/// as the settings block a slicer writes last is the one it sliced with; and
+/// a setting naming nothing for any tool names no material.
+#[test]
+fn the_last_setting_is_read_and_a_wholly_blank_one_names_none() {
+    for (text, expected) in [
+        (
+            "; filament_type = ABS\nG28\n; filament_type = PETG\n",
+            vec![Some("PETG".to_owned())],
+        ),
+        ("G28\n; filament_type = \n", Vec::new()),
+        ("G28\n; filament_type = ; \n", Vec::new()),
+    ] {
+        let standin = ScriptedOctoPrint::start();
+        standin.holds_file("named.gcode", text.as_bytes().to_vec(), 10.0);
+
+        let types = block_on(printer_of(&standin).filament_types(named("named.gcode")));
+
+        assert_eq!(types, Ok(expected), "{text:?}");
+    }
+}
+
+/// A download refused after the file's facts were read is the instance's
+/// refusal, and one whose connection closes before it answers is a malformed
+/// answer — neither is read as a file naming no material.
+#[test]
+fn a_download_refused_or_lost_after_the_facts_is_an_error() {
+    for (download, refused) in [
+        (
+            Reply::Body(404, r#"{"error":"Not found"}"#.to_owned()),
+            true,
+        ),
+        (Reply::Raw(Vec::new()), false),
+    ] {
+        let stub = Stub::start(move |request| {
+            if request.path.starts_with("/downloads/") {
+                download.clone()
+            } else {
+                facts_of("gone.gcode", 5000)
+            }
+        });
+        let printer = OctoPrintPrinter::new(
+            OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration"),
+        );
+
+        let types = block_on(printer.filament_types(named("gone.gcode")));
+
+        if refused {
+            assert!(
+                matches!(types, Err(PrinterError::Refused { status: 404, .. })),
+                "{types:?}"
+            );
+        } else {
+            assert!(
+                matches!(
+                    types,
+                    Err(PrinterError::Malformed { .. } | PrinterError::Unreachable { .. })
+                ),
+                "{types:?}"
+            );
+        }
+    }
+}

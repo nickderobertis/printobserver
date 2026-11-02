@@ -27,7 +27,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypedDict
 
 from machine import Machine
 from printer_smoke import (
@@ -37,6 +36,7 @@ from printer_smoke import (
     PROGRAM_ENV,
     address_of,
 )
+from printobserver_sdk.contract import JobManifest
 from relay import ADDRESS as RELAY_ADDRESS
 from relay import AFTER, ARMED_BY, HANG_ON, LISTEN_ON, STATE, RelayState
 from relay import PROGRAM as RELAYED_PROGRAM
@@ -110,20 +110,8 @@ DURATION_S = "1"
 RELAY_BOUND_S = "3"
 
 
-class Manifest(TypedDict):
-    """A manifest, field for field as the contracts' `JobManifest` declares it."""
-
-    file_name: str
-    material: str
-    nozzle_diameter_mm: float
-    slicer_profile: str
-    sheet: str
-    allowed: dict[str, dict[str, float]]
-    metadata: dict[str, str]
-
-
 #: The manifest the print carries, which is one for the smoke's own payload.
-MANIFEST: Manifest = {
+MANIFEST: JobManifest = {
     "file_name": FILE_NAME,
     "material": "PLA",
     "nozzle_diameter_mm": 0.4,
