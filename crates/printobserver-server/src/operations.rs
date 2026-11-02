@@ -972,10 +972,14 @@ pub const OPERATIONS: [Operation; 37] = [
         ],
         ..read("printer_history", "/history")
     },
-    // Whether the spools loaded hold enough for one file, read now: it records
-    // nothing and starts nothing.
+    // Whether the spools loaded hold enough for one file, were it sliced for
+    // their material, and — given a sheet — whether that sheet suits it, read
+    // now: it records nothing and starts nothing.
     Operation {
-        query: &[Declared::once("file_name", true, ValueKind::Text)],
+        query: &[
+            Declared::once("file_name", true, ValueKind::Text),
+            Declared::once("sheet", false, ValueKind::Text),
+        ],
         ..read("preflight", "/preflight")
     },
     action(

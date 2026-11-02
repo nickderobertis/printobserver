@@ -481,6 +481,16 @@
           "shape": {
             "type": "string"
           }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "sheet",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/preflight",
@@ -709,6 +719,28 @@
           "required": false,
           "shape": {
             "description": "Start despite an insufficient or unverified spool, or a file\n`OctoPrint` has not analysed; the start's own reason is the\noverride's reason.",
+            "type": "boolean"
+          }
+        },
+        {
+          "kind": "boolean",
+          "located": "body",
+          "name": "override_material_check",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
+            "type": "boolean"
+          }
+        },
+        {
+          "kind": "boolean",
+          "located": "body",
+          "name": "override_sheet_check",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
             "type": "boolean"
           }
         },

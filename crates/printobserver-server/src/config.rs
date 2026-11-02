@@ -98,14 +98,26 @@
 //! the margin asked beyond what a print needs, and `analysis_wait_seconds` how
 //! long a start waits for `OctoPrint`'s analysis of a file that has none yet.
 //! Each left out takes the supervision core's own default, and a negative
-//! figure or a mode outside the three is refused naming its key.
+//! figure or a mode outside the three is refused naming its key. The same mode
+//! governs the material and sheet checks a start is held to beside it.
+//!
+//! # The sheet table
+//!
+//! `[sheets.allowed]` is optional: one key per material, each listing the
+//! build sheets a print of that material may go down on, as the ids a start's
+//! manifest declares in `sheet`. Written, it replaces the defaults
+//! ([`DEFAULT_SHEETS`](printobserver_core::DEFAULT_SHEETS)) whole; left out,
+//! PLA may go on `smooth-pei` alone and PETG on `textured-pei` alone. A blank
+//! material or sheet, a material listing no sheet, or two materials differing
+//! only in case is refused naming `sheets.allowed`.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use printobserver_core::{
     ActionKind, ActorClass, AwayFromBed, DEFAULT_CLEARANCE_MARGIN_MM, DEFAULT_MAX_LIFT_MM,
-    PreflightMode, RecoveryActionKind, RecoveryConfig, RecoveryGrants, SafetyEnvelope, SpoolPolicy,
+    PreflightMode, RecoveryActionKind, RecoveryConfig, RecoveryGrants, SafetyEnvelope, SheetTable,
+    SpoolPolicy,
 };
 use printobserver_obico::{
     AccessToken, BlankFrameBound, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, ObicoApi,
@@ -233,6 +245,8 @@ pub enum ConfigField {
     SpoolsBufferMinG,
     /// How long a start waits for a file's analysis, in seconds.
     SpoolsAnalysisWaitSeconds,
+    /// Which build sheets each material may be printed on.
+    SheetsAllowed,
     /// Which way along Z moves the nozzle away from the bed.
     RecoveryAwayFromBed,
     /// The highest Z the machine reaches, in millimetres.
@@ -257,7 +271,7 @@ pub enum ConfigField {
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 36] = [
+    pub const ALL: [Self; 37] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -284,6 +298,7 @@ impl ConfigField {
         Self::SpoolsBufferPercent,
         Self::SpoolsBufferMinG,
         Self::SpoolsAnalysisWaitSeconds,
+        Self::SheetsAllowed,
         Self::RecoveryAwayFromBed,
         Self::RecoveryMaxZMm,
         Self::RecoveryMaxLiftMm,
@@ -326,6 +341,7 @@ impl ConfigField {
             Self::SpoolsBufferPercent => "spools.buffer_percent",
             Self::SpoolsBufferMinG => "spools.buffer_min_g",
             Self::SpoolsAnalysisWaitSeconds => "spools.analysis_wait_seconds",
+            Self::SheetsAllowed => "sheets.allowed",
             Self::RecoveryAwayFromBed => "recovery.away_from_bed",
             Self::RecoveryMaxZMm => "recovery.max_z_mm",
             Self::RecoveryMaxLiftMm => "recovery.max_lift_mm",
@@ -684,6 +700,24 @@ pub struct SpoolsSection {
     pub analysis_wait_seconds: Option<i64>,
 }
 
+/// Which build sheets each material may be printed on, as written down.
+///
+/// Left out, the supervision core's defaults stand; written, `allowed`
+/// replaces them whole.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+#[serde(
+    crate = "printobserver_types::serde",
+    deny_unknown_fields,
+    rename_all = "snake_case"
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct SheetsSection {
+    /// Each material, as a spool's own material names it, and the sheet ids
+    /// a print of it may go down on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allowed: Option<std::collections::BTreeMap<String, Vec<String>>>,
+}
+
 /// The printer's own facts a recovery is checked against, as written down.
 ///
 /// Left out altogether, or written with no key, no recovery action can be
@@ -813,6 +847,9 @@ pub struct ConfigFile {
     /// How spools are checked before a print.
     #[serde(default)]
     pub spools: SpoolsSection,
+    /// Which build sheets each material may be printed on.
+    #[serde(default)]
+    pub sheets: SheetsSection,
     /// The printer's own facts a recovery is checked against.
     #[serde(default)]
     pub recovery: RecoverySection,
@@ -1146,6 +1183,8 @@ pub struct ServerConfig {
     pub obico_api: Option<ObicoApi>,
     /// How spools are checked before a print, and the margin asked for.
     pub spools: SpoolPolicy,
+    /// Which build sheets each material may be printed on.
+    pub sheets: SheetTable,
     /// The printer's own facts a recovery is checked against, when stated.
     pub recovery: Option<RecoveryConfig>,
     /// Who may ask for which recovery action.
@@ -1255,6 +1294,11 @@ impl ServerConfig {
             .transpose()?;
         let obico_api = obico_api(file.obico)?;
         let spools = spool_policy(&file.spools)?;
+        let sheets = match file.sheets.allowed {
+            None => SheetTable::default(),
+            Some(entries) => SheetTable::new(entries)
+                .map_err(|why| ConfigError::about(ConfigField::SheetsAllowed, why))?,
+        };
         let recovery = recovery_facts(&file.recovery)?;
         let recovery_grants = recovery_grants(&file.policy.recovery)?;
         Ok(Self {
@@ -1278,6 +1322,7 @@ impl ServerConfig {
             camera_snapshot_url,
             obico_api,
             spools,
+            sheets,
             recovery,
             recovery_grants,
         })

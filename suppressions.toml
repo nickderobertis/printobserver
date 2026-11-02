@@ -149,6 +149,18 @@ reason = "The plan fixes `PrintAction::StartPrint.override_sheet_check` as a `bo
 [[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-server/src/wire.rs"
+site = "pub override_material_check: bool,"
+reason = "This is the request body's copy of the plan-stated `PrintAction::StartPrint.override_material_check`, read so the option the derived surface declares is one the server accepts, and it carries exactly the action's own type; the contract is agreed between nodes and is not this change's to reshape."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/wire.rs"
+site = "pub override_sheet_check: bool,"
+reason = "This is the request body's copy of the plan-stated `PrintAction::StartPrint.override_sheet_check`, read so the option the derived surface declares is one the server accepts, and it carries exactly the action's own type; the contract is agreed between nodes and is not this change's to reshape."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/wire.rs"
 site = "pub override_filament_check: bool,"
 reason = "This is the request body's copy of the plan-stated `PrintAction::StartPrint.override_filament_check`, read so the option the derived surface declares is one the server accepts (the manager's ruling), and it carries exactly the action's own type; the manager ruled the approved contract is not changed here, and an enum for the start's filament-check disposition is proposed in the consolidated follow-up on these sites."
 

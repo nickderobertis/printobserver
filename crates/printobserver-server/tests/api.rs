@@ -56,6 +56,8 @@ mod looking;
 mod observing;
 #[path = "journeys/operating.rs"]
 mod operating;
+#[path = "journeys/pairing.rs"]
+mod pairing;
 #[path = "journeys/reconciling.rs"]
 mod reconciling;
 #[path = "journeys/recovering.rs"]

@@ -167,6 +167,7 @@ fn unacceptable(
         | ConfigField::SpoolsBufferPercent
         | ConfigField::SpoolsBufferMinG
         | ConfigField::SpoolsAnalysisWaitSeconds => unacceptable_spools(field, &mut document),
+        ConfigField::SheetsAllowed => unacceptable_sheets(&mut document),
         // The `[recovery]` keys and the `[policy.recovery]` ones.
         recovery if recovery.key().starts_with("recovery.") => {
             unacceptable_recovery(recovery, &mut document);
@@ -229,6 +230,22 @@ fn unacceptable_watch(field: ConfigField, document: &mut toml::Value) {
 }
 
 /// The `[spools]` key one field is, made unacceptable: a mode outside the
+/// Make the sheet table unacceptable: a material listed on no sheet, which
+/// no start could ever satisfy.
+fn unacceptable_sheets(document: &mut toml::Value) {
+    set(
+        document,
+        "sheets",
+        toml::Value::Table(toml::Table::from_iter([(
+            "allowed".to_owned(),
+            toml::Value::Table(toml::Table::from_iter([(
+                "PLA".to_owned(),
+                toml::Value::Array(Vec::new()),
+            )])),
+        )])),
+    );
+}
+
 /// three, a negative margin, a negative wait.
 fn unacceptable_spools(field: ConfigField, document: &mut toml::Value) {
     match field {

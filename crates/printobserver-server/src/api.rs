@@ -262,13 +262,17 @@ pub struct SpoolsParams {
     pub include_retired: Option<bool>,
 }
 
-/// The file a filament check is about.
+/// The file a filament check is about, and the sheet it would go down on.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "printobserver_types::serde")]
 pub struct PreflightParams {
     /// The file, as the printer names it.
     #[serde(default)]
     pub file_name: Option<String>,
+    /// The build sheet the sheet check is read against; absent, the check
+    /// reports no sheet result.
+    #[serde(default)]
+    pub sheet: Option<String>,
 }
 
 /// How many of a spool's own events its read carries, newest first.
@@ -833,7 +837,9 @@ async fn printer_history(
     answer(StatusCode::OK, &TimelineAnswer { events, next })
 }
 
-/// Whether the spools loaded hold enough for one file, read now.
+/// Whether the spools loaded hold enough for one file, the file was sliced
+/// for their material and, when a sheet is given, that sheet suits it — read
+/// now.
 async fn preflight(
     State(state): State<ApiState>,
     Query(params): Query<PreflightParams>,
@@ -848,7 +854,11 @@ async fn preflight(
         Ok(file_name) => file_name,
         Err(error) => return refusal(StatusCode::BAD_REQUEST, error),
     };
-    match state.supervisor.preflight(&file_name).await {
+    let sheet = params
+        .sheet
+        .as_deref()
+        .filter(|sheet| !sheet.trim().is_empty());
+    match state.supervisor.preflight(&file_name, sheet).await {
         Ok(preflight) => answer(StatusCode::OK, &PreflightAnswer { preflight }),
         Err(error) => refusal(core_status(&error), error),
     }
