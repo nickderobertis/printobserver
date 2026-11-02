@@ -56,6 +56,7 @@ pub mod convert;
 pub mod gcode;
 mod http;
 pub mod push;
+pub mod settings;
 #[cfg(feature = "standin")]
 pub mod standin;
 mod wire;

@@ -44,5 +44,7 @@ mod pushing;
 mod reading;
 #[path = "journeys/redaction.rs"]
 mod redaction;
+#[path = "journeys/settings.rs"]
+mod settings;
 #[path = "journeys/streaming.rs"]
 mod streaming;

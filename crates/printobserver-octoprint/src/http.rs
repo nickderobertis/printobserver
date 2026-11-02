@@ -17,7 +17,10 @@
 //! file's download, which can be megabytes and of which the caller wants only a
 //! prefix, is read by [`stream`], which hands its body over a piece at a time,
 //! as it arrives, and stops reading — closing the connection — the moment the
-//! reader says it has enough, so the file is never held whole.
+//! reader says it has enough, so the file is never held whole. A file's
+//! *end*, which is where a slicer writes its settings, is read by
+//! [`stream_tail`], which asks for only its last bytes with a suffix `Range`
+//! and says whether the instance honoured it.
 
 use core::fmt::Write as _;
 use core::ops::ControlFlow;
@@ -83,7 +86,7 @@ pub(crate) fn send(
     body: Option<&[u8]>,
     timeout: Duration,
 ) -> Result<Response, Transport> {
-    let mut source = Source::open(endpoint, api_key, method, path, body, timeout)?;
+    let mut source = Source::open(endpoint, api_key, method, path, body, None, timeout)?;
     let (status, framing) = framing_of(&source.head()?)?;
     source.whole(status, framing)
 }
@@ -111,13 +114,60 @@ pub(crate) fn stream(
     timeout: Duration,
     sink: &mut dyn Sink,
 ) -> Result<Option<Response>, Transport> {
-    let mut source = Source::open(endpoint, api_key, Method::Get, path, None, timeout)?;
+    let mut source = Source::open(endpoint, api_key, Method::Get, path, None, None, timeout)?;
     let (status, framing) = framing_of(&source.head()?)?;
     if !(200..300).contains(&status) {
         return source.whole(status, framing).map(Some);
     }
     source.body(framing, sink)?;
     Ok(None)
+}
+
+/// What a request for the last bytes of a body was answered with.
+#[derive(Debug)]
+pub(crate) enum Tailed {
+    /// `206 Partial Content`: the bytes asked for, and nothing before them.
+    Partial,
+    /// A success that ignored the range: the body from its first byte.
+    Whole,
+    /// A status that is not a success, read to its end.
+    Refused(Response),
+}
+
+/// Send one `GET` asking for only the last `tail_bytes` of its body, with a
+/// suffix `Range`, and hand a successful answer's body to a sink as it
+/// arrives.
+///
+/// The answer says whether the instance honoured the range, because a sink
+/// reading a tail reads the first bytes of a whole body differently.
+pub(crate) fn stream_tail(
+    endpoint: &Endpoint,
+    api_key: &ApiKey,
+    path: &str,
+    tail_bytes: usize,
+    timeout: Duration,
+    sink: &mut dyn Sink,
+) -> Result<Tailed, Transport> {
+    let range = format!("Range: bytes=-{tail_bytes}");
+    let mut source = Source::open(
+        endpoint,
+        api_key,
+        Method::Get,
+        path,
+        None,
+        Some(&range),
+        timeout,
+    )?;
+    let (status, framing) = framing_of(&source.head()?)?;
+    if !(200..300).contains(&status) {
+        return source.whole(status, framing).map(Tailed::Refused);
+    }
+    source.body(framing, sink)?;
+    Ok(if status == 206 {
+        Tailed::Partial
+    } else {
+        Tailed::Whole
+    })
 }
 
 /// How a response says where its body ends.
@@ -230,10 +280,11 @@ impl<'a> Source<'a> {
         method: Method,
         path: &str,
         body: Option<&[u8]>,
+        header: Option<&str>,
         timeout: Duration,
     ) -> Result<Self, Transport> {
         let mut stream = connect(endpoint, timeout)?;
-        let request = compose(endpoint, api_key, method, path, body);
+        let request = compose(endpoint, api_key, method, path, body, header);
         stream
             .write_all(&request)
             .and_then(|()| stream.flush())
@@ -493,6 +544,7 @@ fn compose(
     method: Method,
     path: &str,
     body: Option<&[u8]>,
+    header: Option<&str>,
 ) -> Vec<u8> {
     let mut head = format!(
         "{} {path} HTTP/1.1\r\nHost: {}:{}\r\n{API_KEY_HEADER}: {}\r\n\
@@ -502,6 +554,10 @@ fn compose(
         endpoint.port(),
         api_key.expose(),
     );
+    if let Some(line) = header {
+        head.push_str(line);
+        head.push_str("\r\n");
+    }
     if let Some(payload) = body {
         write!(
             head,

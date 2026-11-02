@@ -21,9 +21,9 @@
 //! contract rather than an omission: no method here admits a byte sequence at
 //! all, and the only string anywhere in the closure reachable from a method's
 //! parameters is the one [`FileName`] wraps, which only
-//! [`PrinterPort::start`] and the three reads of one file —
-//! [`PrinterPort::file_facts`], [`PrinterPort::extruded_to`] and
-//! [`PrinterPort::printed_extent`] — take. Every value a method takes is already
+//! [`PrinterPort::start`] and the four reads of one file —
+//! [`PrinterPort::file_facts`], [`PrinterPort::filament_types`],
+//! [`PrinterPort::extruded_to`] and [`PrinterPort::printed_extent`] — take. Every value a method takes is already
 //! bounded by the time it arrives: policy has ruled on it before it gets here.
 //!
 //! [`PrinterPort::send_command`] is no exception to that: what it takes is a
@@ -200,6 +200,20 @@ pub trait PrinterPort: Send + Sync {
     fn file_facts(&self, file_name: FileName) -> BoxFuture<'_, Result<FileFacts, PrinterError>> {
         let _ = file_name;
         Box::pin(async { Err(not_supported("file_facts")) })
+    }
+
+    /// Read the material a file was sliced for, per tool, from the slicer's
+    /// own `; filament_type = <TYPE>` setting: the first entry is tool 0's.
+    ///
+    /// Empty when the file names no `filament_type`. A printer that cannot
+    /// answer is refused with status 501, which is what an implementation that
+    /// does not override this answers.
+    fn filament_types(
+        &self,
+        file_name: FileName,
+    ) -> BoxFuture<'_, Result<Vec<String>, PrinterError>> {
+        let _ = file_name;
+        Box::pin(async { Err(not_supported("filament_types")) })
     }
 
     /// Read every file the printer holds that carries a print tally.

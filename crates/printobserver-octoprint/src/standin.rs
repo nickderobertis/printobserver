@@ -152,6 +152,25 @@ struct Script {
     /// The file whose last print the instance records as a success, its size
     /// and when that print ended, in seconds since the epoch.
     succeeded: Option<(String, i64, f64)>,
+    /// The files it holds, each with its bytes and the length of filament its
+    /// analysis says tool 0 feeds.
+    files: Vec<HeldFile>,
+    /// The file a select chose, which a start then prints.
+    selected: Option<String>,
+    /// How many bytes of a held file's download it has written, over every
+    /// download.
+    download_bytes: usize,
+}
+
+/// One file the stand-in holds.
+#[derive(Debug, Clone)]
+struct HeldFile {
+    /// Its name.
+    name: String,
+    /// Its bytes.
+    bytes: Vec<u8>,
+    /// The filament its analysis says tool 0 feeds, in millimetres.
+    analysed_mm: f64,
 }
 
 /// The endpoints a script has made fail every request they are sent.
@@ -220,6 +239,9 @@ impl ScriptedOctoPrint {
             position_reply: None,
             client_opcodes: Vec::new(),
             succeeded: None,
+            files: Vec::new(),
+            selected: None,
+            download_bytes: 0,
         }));
         let sockets = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
@@ -288,6 +310,29 @@ impl ScriptedOctoPrint {
             .expect("the clock reads after the epoch")
             .as_secs_f64();
         self.held().succeeded = Some((file.to_owned(), size, now));
+    }
+
+    /// Hold `bytes` as a file of the instance's own storage named `name`,
+    /// analysed as feeding tool 0 `analysed_mm` of filament: answered at
+    /// `GET /api/files/local/<name>` with a download link, downloaded from
+    /// that link honouring a suffix `Range` as `OctoPrint`'s own file handler
+    /// does, and selectable and startable as `OctoPrint` selects and starts
+    /// one.
+    pub fn holds_file(&self, name: &str, bytes: Vec<u8>, analysed_mm: f64) {
+        let mut held = self.held();
+        held.files.retain(|file| file.name != name);
+        held.files.push(HeldFile {
+            name: name.to_owned(),
+            bytes,
+            analysed_mm,
+        });
+    }
+
+    /// How many bytes of held files' downloads it has written, over every
+    /// download it served.
+    #[must_use]
+    pub fn download_bytes(&self) -> usize {
+        self.held().download_bytes
     }
 
     /// How many times a file's history was read, at
@@ -653,6 +698,10 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
         return;
     }
     let admitted = request.header("x-api-key") == Some(lock(script).api_key.as_str());
+    if admitted && request.method == "GET" && request.path.starts_with(DOWNLOAD_PATH) {
+        download(connection, &request, script);
+        return;
+    }
     let (status, body) = if admitted {
         answer(&request, script, sockets)
     } else {
@@ -687,6 +736,9 @@ fn answer(
 ) -> (u16, String) {
     let body: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
     let mut held = lock(script);
+    if let Some(answered) = held_files_answer(request, &mut held, &body) {
+        return answered;
+    }
     match (request.method.as_str(), request.path.as_str()) {
         ("POST", "/api/login") => match held.login_status {
             200 => (
@@ -762,8 +814,8 @@ fn answer(
         ("GET", path) if path.starts_with("/api/files?") => {
             (200, json!({ "files": [] }).to_string())
         }
-        ("GET", path) if path.starts_with("/api/files/local/") => {
-            let asked = &path["/api/files/local/".len()..];
+        ("GET", path) if path.starts_with(LOCAL_FILES) => {
+            let asked = &path[LOCAL_FILES.len()..];
             match &held.succeeded {
                 Some((file, size, at)) if file == asked => (
                     200,
@@ -785,6 +837,114 @@ fn answer(
         }
         _ => (404, r#"{"error":"Not found"}"#.to_owned()),
     }
+}
+
+/// Where a file of the instance's own storage is read and selected.
+const LOCAL_FILES: &str = "/api/files/local/";
+
+/// Where a file of the instance's own storage is downloaded from.
+const DOWNLOAD_PATH: &str = "/downloads/files/local/";
+
+/// What a request about a held file is answered with — reading its facts,
+/// selecting it, or starting the one selected — and nothing for any other.
+fn held_files_answer(request: &Request, held: &mut Script, body: &Value) -> Option<(u16, String)> {
+    let path = request.path.as_str();
+    let holds =
+        |held: &Script, name: &str| held.files.iter().find(|file| file.name == name).cloned();
+    match (request.method.as_str(), path.strip_prefix(LOCAL_FILES)) {
+        ("GET", Some(name)) => {
+            let file = holds(held, name)?;
+            Some((
+                200,
+                held_file_body(&file, request.header("host")).to_string(),
+            ))
+        }
+        ("POST", Some(name)) if body["command"] == "select" => {
+            holds(held, name)?;
+            held.selected = Some(name.to_owned());
+            Some((204, String::new()))
+        }
+        ("POST", None) if path == "/api/job" && body["command"] == "start" => {
+            let file = holds(held, held.selected.as_deref()?)?;
+            let size = i64::try_from(file.bytes.len()).unwrap_or(i64::MAX);
+            held.job = JobScript::printing(&file.name, size, 0, 0);
+            "Printing".clone_into(&mut held.connection);
+            held.job_commands.push("start".to_owned());
+            Some((204, String::new()))
+        }
+        _ => None,
+    }
+}
+
+/// What `GET /api/files/local/<name>` answers for a held file: its size, its
+/// analysis and its download link, spelled absolute with the host the request
+/// reached it by, as `OctoPrint` spells it.
+fn held_file_body(file: &HeldFile, host: Option<&str>) -> Value {
+    json!({
+        "name": file.name,
+        "origin": "local",
+        "type": "machinecode",
+        "size": file.bytes.len(),
+        "gcodeAnalysis": {
+            "filament": { "tool0": { "length": file.analysed_mm, "volume": 0.0 } },
+        },
+        "refs": {
+            "download": format!(
+                "http://{}{DOWNLOAD_PATH}{}",
+                host.unwrap_or("127.0.0.1"),
+                file.name
+            ),
+        },
+    })
+}
+
+/// Answer one download of a held file: the bytes a suffix `Range` asks for
+/// with `206 Partial Content`, as `OctoPrint`'s file handler answers one, and
+/// the whole file without one — counting every byte written.
+fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>) {
+    let asked = &request.path[DOWNLOAD_PATH.len()..];
+    let Some(file) = lock(script)
+        .files
+        .iter()
+        .find(|file| file.name == asked)
+        .cloned()
+    else {
+        let _ = connection
+            .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        return;
+    };
+    let size = file.bytes.len();
+    let suffix = request
+        .header("range")
+        .and_then(|range| range.strip_prefix("bytes=-"))
+        .and_then(|count| count.parse::<usize>().ok());
+    let (status, from) = match suffix {
+        Some(count) if count < size => ("206 Partial Content", size - count),
+        _ => ("200 OK", 0),
+    };
+    let body = &file.bytes[from..];
+    let range = if from > 0 {
+        format!("Content-Range: bytes {from}-{}/{size}\r\n", size - 1)
+    } else {
+        String::new()
+    };
+    let head = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n{range}\
+         Connection: close\r\n\r\n",
+        body.len()
+    );
+    if connection.write_all(head.as_bytes()).is_err() {
+        return;
+    }
+    // Written a piece at a time, each piece counted once it is written, so a
+    // reader that stops early is charged only what reached it.
+    for piece in body.chunks(4096) {
+        if connection.write_all(piece).is_err() {
+            return;
+        }
+        lock(script).download_bytes += piece.len();
+    }
+    let _ = connection.flush();
 }
 
 /// Lines sent through the command endpoint, each recorded with whether a job
