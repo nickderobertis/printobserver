@@ -14,6 +14,7 @@ whichever ran second would refuse what the other wrote.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,9 @@ from contract_codegen.schemas import load
 #: session pays for a cold toolchain, and a generator that gave up on that
 #: would report a drift that is nothing but a slow start.
 FORMAT_TIMEOUT_SECONDS = 300
+
+#: The package the locked install puts the TypeScript client's formatter in.
+BIOME_PACKAGE = "@biomejs/biome"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,13 +119,39 @@ def _formatter(client: str, path: str, root: Path) -> list[str]:
         # Not `bunx`: biome reads `biome.json`'s own include list, and the
         # binary the locked install put in the tree is the version that list
         # was written for.
-        return [
-            str(root / "node_modules" / ".bin" / "biome"),
-            "format",
-            f"--stdin-file-path={path}",
-        ]
+        return ["node", str(_biome(root)), "format", f"--stdin-file-path={path}"]
     msg = f"there is no `{client}` client for a generated file to be laid out for"
     raise FormatterError(msg)
+
+
+def _biome(root: Path) -> Path:
+    """The launcher the locked install's biome package declares as its `biome` program.
+
+    Read from the package itself rather than through `node_modules/.bin/biome`:
+    `bun install --frozen-lockfile` unlinks and links every `.bin` entry again
+    even when it reports no changes, and the scratch trees the suites run this
+    generator over link the repository's one `node_modules`, so any recipe
+    reaching `just node-modules` beside them opens a window in which that link
+    names nothing. The package's own directory is not touched by such an
+    install. The launcher is a Node script, run here under `node` exactly as the
+    `.bin` link's own interpreter line runs it.
+
+    Raises:
+        FormatterError: If the locked install carries no biome package, or one
+            that declares no `biome` program.
+    """
+    package = root / "node_modules" / BIOME_PACKAGE
+    try:
+        declared = json.loads((package / "package.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        msg = f"there is no `{BIOME_PACKAGE}` in {root / 'node_modules'}; run `just node-modules`"
+        raise FormatterError(msg) from None
+    programs = declared.get("bin") if isinstance(declared, dict) else None
+    program = programs.get("biome") if isinstance(programs, dict) else None
+    if not isinstance(program, str):
+        msg = f"`{BIOME_PACKAGE}`'s package.json declares no `biome` program"
+        raise FormatterError(msg)
+    return package / program
 
 
 def formatted(text: str, client: str, path: str, root: Path) -> str:
