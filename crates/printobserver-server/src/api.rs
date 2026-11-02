@@ -460,6 +460,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("history", Method::Get) => get(history),
         ("events", Method::Get) => get(crate::events::events),
         ("look", Method::Get) => get(look),
+        (crate::operations::PRINTER_LOOK, Method::Get) => get(printer_look),
         ("manifest_get", Method::Get) => get(manifest_get),
         ("manifest_set", Method::Put) => put(manifest_set),
         ("spools", Method::Get) => get(spools),
@@ -1010,6 +1011,35 @@ async fn look(
         Ok(Ok(look)) => answer(StatusCode::OK, &look),
         Ok(Err(error)) => refusal(core_status(&error), error),
         Err(error) => refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
+    }
+}
+
+/// Take a fresh look at the printer, with no print named.
+///
+/// The look and its frame belong to no print, and the wait is a plain wait:
+/// nothing any print's agent is owed can end it or be taken by it. A turn's
+/// credential reaches its own print alone, so this is the operator's; a wait
+/// longer than the supervisor allows is refused rather than shortened.
+async fn printer_look(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    Query(params): Query<LookParams>,
+) -> Response {
+    if let Some(refused) = printless_refused(&caller, "a look at the printer with no print named") {
+        return refused;
+    }
+    let wait_s = params.wait_s.unwrap_or(0);
+    if wait_s > MAX_LOOK_WAIT_S {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            format!("wait_s may be at most {MAX_LOOK_WAIT_S}; {wait_s} was asked for"),
+        );
+    }
+    let waited = Duration::from_secs(u64::from(wait_s));
+    tokio::time::sleep(waited).await;
+    match state.supervisor.take_printer_look(waited).await {
+        Ok(look) => answer(StatusCode::OK, &look),
+        Err(error) => refusal(core_status(&error), error),
     }
 }
 

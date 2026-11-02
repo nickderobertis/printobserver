@@ -21,14 +21,15 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use printobserver_server::{Located, ValueKind};
+use printobserver_server::{Located, Operation, ValueKind};
 use printobserver_types::serde_json;
 use printobserver_types::serde_json::{Map, Value, json};
 
 use crate::surface::{
     CONFIG_OPTION, CREDENTIAL_ISSUE_COMMAND, CREDENTIAL_VERIFIER_COMMAND, CREDENTIAL_WORD, Command,
-    Field, HELP_OPTION, JSON_OPTION, MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, SERVE_COMMAND,
-    SIGN_IN_COMMAND, Supply, VERSION_OPTION, WATCH_COMMAND, command, is_duration, usage,
+    Field, HELP_OPTION, JSON_OPTION, MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, PRINT_FIELD,
+    SERVE_COMMAND, SIGN_IN_COMMAND, Supply, VERSION_OPTION, WATCH_COMMAND, command, is_duration,
+    usage,
 };
 
 /// One request to a running supervisor, as the caller asked for it.
@@ -45,6 +46,26 @@ pub struct Call {
 }
 
 impl Call {
+    /// The operation this call is made to: its command's, or that operation's
+    /// printer-wide form when the call names no print.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the command's operation names a printer-wide form the
+    /// server does not serve, which is a declaration that has come apart.
+    #[must_use]
+    pub fn operation(&self) -> Option<Operation> {
+        let operation = self.command.operation?;
+        match operation.printer_wide {
+            Some(wide) if !self.values.contains_key(PRINT_FIELD) => {
+                Some(*printobserver_server::operation(wide).unwrap_or_else(|| {
+                    panic!("`{}` names `{wide}`, which is not served", operation.name)
+                }))
+            }
+            _ => Some(operation),
+        }
+    }
+
     /// The request target this call is made to.
     ///
     /// # Panics
@@ -53,11 +74,7 @@ impl Call {
     /// for.
     #[must_use]
     pub fn target(&self) -> String {
-        let operation = self
-            .command
-            .operation
-            .as_ref()
-            .expect("a call names an operation");
+        let operation = self.operation().expect("a call names an operation");
         let mut target = operation.full_path();
         let mut asked = Vec::new();
         for field in &self.command.fields {
@@ -96,7 +113,7 @@ impl Call {
     /// The body this call sends, for a call that sends one.
     #[must_use]
     pub fn body(&self) -> Option<String> {
-        let operation = self.command.operation.as_ref()?;
+        let operation = self.operation()?;
         operation.accepts?;
         let carried: Map<String, Value> = self
             .command

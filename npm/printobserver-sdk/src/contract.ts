@@ -76,6 +76,7 @@ export const OPERATION_NAMES = [
   "events",
   "manifest_get",
   "look",
+  "printer_look",
   "manifest_set",
   "spools",
   "spool",
@@ -289,11 +290,15 @@ export interface CameraDegradedPayload {
 }
 
 /**
- * Somebody took a fresh look at the print.
+ * Somebody took a fresh look at the print, or at the printer when no print
+ * was named.
  *
- * Written down before the camera is asked for a frame, so that a frame the
- * camera would not give is recorded against a look that is already in the
- * history; the frame itself, when there is one, is this event's image.
+ * Written down once the camera has been asked for its frame, together with
+ * that frame as this event's image, so that nobody reading the look finds it
+ * without the frame it was taken with. A frame the camera would not give is
+ * recorded against the look as a port failure. A look at the printer belongs
+ * to no print, waits on nothing that arrives for one, and so delivers
+ * nothing.
  */
 export interface CameraLookPayload {
   /**
@@ -306,6 +311,31 @@ export interface CameraLookPayload {
    * in whole seconds.
    */
   waited_s: number;
+}
+
+/**
+ * The camera answered a request for a frame with a server error, and is
+ * being
+ * asked again.
+ *
+ * A camera server that could not take a frame this time — go2rtc answers
+ * `500` with `exit status 69` — is often one that will take the next, so a
+ * fetch answered `500` to `599` is made again after a short wait, a bounded
+ * number of times. One of these is written down for each such answer, as it
+ * happens, before the wait; a fetch whose every attempt was refused is
+ * recorded as a port failure only once the attempts run out.
+ */
+export interface CameraRetryPayload {
+  /** Which attempt the camera refused, counting from one. */
+  attempt: number;
+  /** How many attempts the fetch may make in all. */
+  attempts: number;
+  /** How long the fetch waits before its next attempt, in milliseconds. */
+  backoff_ms: number;
+  /** The start of what the camera answered with, as text. */
+  excerpt: string;
+  /** The HTTP status the camera answered. */
+  status: number;
 }
 
 /** The durable identity of one debit, so that a replay can never debit twice. */
@@ -682,8 +712,11 @@ export interface ImageRecord {
   fetched_at: Timestamp;
   /** This image's identifier, minted by the store. */
   id: ImageId;
-  /** The print it belongs to. */
-  print_id: PrintId;
+  /**
+   * The print it belongs to, when it belongs to one: a frame taken of the
+   * printer with no print named belongs to none.
+   */
+  print_id?: PrintId | null;
   /** Where it lives, relative to the configured state directory. */
   relative_path: string;
   /** The SHA-256 of its bytes, lowercase hexadecimal. */
@@ -867,8 +900,9 @@ export interface Look {
    */
   detector_paused: boolean;
   /**
-   * The look itself, as it was written into the print's history, carrying
-   * the frame as its image when there is one.
+   * The look itself, as it was written into the print's history — or the
+   * printer's, for a look at the printer — carrying the frame as its image
+   * when there is one.
    */
   event: EventRecord;
   /**
@@ -2218,6 +2252,7 @@ export interface EventPayloads {
   agent_assessment: AgentAssessmentPayload;
   camera_degraded: CameraDegradedPayload;
   camera_look: CameraLookPayload;
+  camera_retry: CameraRetryPayload;
   charge_pended: ChargePendedPayload;
   detector_health_changed: DetectorHealthChangedPayload;
   filament_change_signalled: FilamentChangeSignalledPayload;
@@ -2261,6 +2296,7 @@ export const EVENT_KINDS = [
   "agent_assessment",
   "camera_degraded",
   "camera_look",
+  "camera_retry",
   "charge_pended",
   "detector_health_changed",
   "filament_change_signalled",
@@ -2754,6 +2790,49 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "waited_s": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraRetryPayload": {
+  "struct": {
+   "fields": {
+    "attempt": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "attempts": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "backoff_ms": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "excerpt": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "status": {
      "paired_with": "",
      "required": true,
      "shape": {
@@ -3631,9 +3710,11 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     },
     "print_id": {
      "paired_with": "",
-     "required": true,
+     "required": false,
      "shape": {
-      "ref": "PrintId"
+      "nullable": {
+       "ref": "PrintId"
+      }
      }
     },
     "relative_path": {
@@ -8484,6 +8565,23 @@ export class GeneratedClient extends GeneratedSurface {
    */
   async look(printId: string, waitS?: number): Promise<Look> {
     const target = `/v1/prints/${printId}/look`;
+    const asked: Array<[string, string]> = [];
+    if (waitS !== undefined) {
+      asked.push(["wait_s", String(waitS)]);
+    }
+    const sending = undefined;
+    return await this.call<Look>("GET", target, asked, sending, "Look");
+  }
+
+  /**
+   * Call `printer_look` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no.
+   */
+  async printerLook(waitS?: number): Promise<Look> {
+    const target = `/v1/look`;
     const asked: Array<[string, string]> = [];
     if (waitS !== undefined) {
       asked.push(["wait_s", String(waitS)]);

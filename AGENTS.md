@@ -206,7 +206,11 @@ so nothing an agent can do is a path a person cannot audit.
 out of what the server declares: one **client command** per operation
 `printobserver-server`'s `OPERATIONS` serves, and each command's options out of
 that operation's own `Operation::request` — whose body, for an action, is read at
-run time from the contracts' own `PrintAction` schema. So a vocabulary that gains
+run time from the contracts' own `PrintAction` schema. The one fold is declared
+there too: an operation's `printer_wide` names the operation a request naming no
+print is made to instead, so `look` takes `--print-id` as optional and, without
+it, takes and keeps a frame of the printer through `printer_look`, which has no
+command of its own. So a vocabulary that gains
 a variant gains a command, a variant that gains a field gains an option, and
 growing a declaration beside the parser grows nothing. Four commands sit beside
 them, and they are the only ones that are not requests to an already-running

@@ -73,9 +73,7 @@ pub struct Outcome {
 /// when the supervisor answered something this program will not act on.
 pub fn produce(call: &Call, config: &ClientConfig) -> Result<Produced, Failure> {
     let operation = call
-        .command
-        .operation
-        .as_ref()
+        .operation()
         .ok_or_else(|| Failure::of(Exit::Usage, "this command makes no request"))?;
     let answered = send(
         config,

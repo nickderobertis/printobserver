@@ -248,6 +248,68 @@ mv "$dir/look-$print.part" "$dir/look-$print""#,
     assert_eq!(watching.turns(), 1, "the arrival started a second turn");
 }
 
+/// While a print's turn is running and an event for that print is waiting to
+/// be handed to it, a look naming no print takes a frame of the printer and
+/// takes nothing the print's agent is owed: the event waits on, and the
+/// print's own next look is the one it is delivered to.
+#[test]
+fn a_look_naming_no_print_takes_no_event_meant_for_a_prints_agent() {
+    let watching = Watching::start(
+        r#"touch "$dir/started-$print"
+until [ -e "$dir/go" ]; do sleep 0.1; done
+eval "printobserver look --json --wait-s 30 $about" > "$dir/look-$print.part" 2>&1
+mv "$dir/look-$print.part" "$dir/look-$print""#,
+        |_| {},
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    watching.written(&format!("started-{print}"));
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    wait_for("the second alert to be written down", PATIENCE, || {
+        alerts(world, &print).len() == 2
+    });
+
+    let printer_look = running::read(world, &["look", "--wait-s", "1"]);
+    assert!(
+        printer_look.get("arrived").is_none(),
+        "a look naming no print took what the print's agent is owed: {printer_look}"
+    );
+    assert!(
+        printer_look["event"].get("print_id").is_none(),
+        "{printer_look}"
+    );
+    assert_eq!(
+        printer_look["event"]["payload"]["delivered"],
+        json!([]),
+        "{printer_look}"
+    );
+    assert!(printer_look["frame"].is_object(), "{printer_look}");
+    assert!(
+        events_of(world, &print, "camera_look").is_empty(),
+        "the printer's look was written into the print's history"
+    );
+
+    watching.go();
+    let look: Value = printobserver_types::serde_json::from_str(
+        &std::fs::read_to_string(watching.written(&format!("look-{print}"))).expect("the look"),
+    )
+    .expect("the look is a document");
+    let handed = alerts(world, &print);
+    let arrived = look["arrived"]
+        .as_array()
+        .expect("the print's look carries what arrived");
+    assert_eq!(arrived.len(), 1, "{look}");
+    assert_eq!(arrived[0]["id"], handed[1], "{look}");
+    assert_eq!(look["event"]["print_id"], print.as_str(), "{look}");
+    watching.settled_after(&print, 1);
+    assert_eq!(
+        watching.turns(),
+        1,
+        "the waiting alert started a second turn"
+    );
+}
+
 /// What a turn never took gets exactly one more turn, in the same session:
 /// the newest as its event, the rest as what arrived while it was busy, and
 /// each prompt carries the situation's actual values.
