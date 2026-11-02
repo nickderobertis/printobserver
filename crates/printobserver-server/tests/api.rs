@@ -7,6 +7,10 @@
 
 #[path = "support/agent.rs"]
 mod agent;
+#[path = "support/camera_host.rs"]
+mod camera_host;
+#[path = "support/checks.rs"]
+mod checks;
 #[path = "support/committing_store.rs"]
 mod committing_store;
 #[path = "support/failing_store.rs"]
@@ -69,6 +73,8 @@ mod refusing;
 mod responding;
 #[path = "journeys/restarting.rs"]
 mod restarting;
+#[path = "journeys/retrying.rs"]
+mod retrying;
 #[cfg(feature = "test-responder")]
 #[path = "journeys/skilled.rs"]
 mod skilled;
