@@ -355,6 +355,7 @@ fn started(world: &World, file: &str) -> String {
         "material": "PLA",
         "nozzle_diameter_mm": 0.4,
         "slicer_profile": "the recovery journeys' own profile",
+        "sheet": "smooth-pei",
         "allowed": {},
         "metadata": {},
     })

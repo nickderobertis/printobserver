@@ -108,6 +108,7 @@ fn manifest() -> Value {
         "material": "PLA",
         "nozzle_diameter_mm": 0.4,
         "slicer_profile": "0.20mm QUALITY",
+        "sheet": "smooth-pei",
         "allowed": { "feedrate": { "min": NARROWED.0, "max": NARROWED.1 } },
         "metadata": {},
     })

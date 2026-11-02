@@ -59,6 +59,7 @@ function manifest(fileName: string): JobManifest {
     material: "PLA",
     nozzle_diameter_mm: 0.4,
     slicer_profile: "a journey's own profile",
+    sheet: "smooth-pei",
     allowed: { feedrate: { min: 0.9, max: 1.2 } },
     metadata: {},
   };

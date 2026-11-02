@@ -521,6 +521,7 @@ def _manifest(file_name: str, allowed: dict[str, Any]) -> dict[str, Any]:
         "material": "PLA",
         "metadata": {},
         "nozzle_diameter_mm": 0.4,
+        "sheet": "smooth-pei",
         "slicer_profile": "0.20mm BALANCED",
     }
 

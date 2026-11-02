@@ -114,6 +114,7 @@ MANIFEST: dict[str, object] = {
     "material": "PLA",
     "nozzle_diameter_mm": 0.4,
     "slicer_profile": "the profile the smoke's own payload was sliced with",
+    "sheet": "smooth-pei",
     "allowed": {},
     "metadata": {},
 }
