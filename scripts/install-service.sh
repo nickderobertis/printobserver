@@ -425,12 +425,28 @@ shared_secret = ""
 # (and at least 5 g), while its figure is unverified, or while OctoPrint has
 # no analysis of the file after waiting 300 seconds for one. "warn" lets such
 # a start go ahead and records that it warned; "off" checks nothing. An
-# operator may start one anyway with "--override-filament-check true".
+# operator may start one anyway with "--override-filament-check true". The
+# same mode governs the material check, which refuses a start whose file was
+# sliced for another material than the spool on tool 0, or names none; an
+# operator may start one anyway with "--override-material-check true".
 # [spools]
 # preflight = "refuse"
 # buffer_percent = 10.0
 # buffer_min_g = 5.0
 # analysis_wait_seconds = 300
+
+# Which build sheets a print of each material may go down on, keyed by the
+# material of the spool on tool 0. Every start names its sheet in its
+# manifest's "sheet", and one naming none is refused whatever is overridden.
+# Left out, PLA may go on smooth PEI alone and PETG on textured PEI alone,
+# because PETG can bond to smooth PEI hard enough to tear it without glue;
+# written, this table replaces those whole. A start whose sheet the table does
+# not allow its material on, or whose material it has no entry for, is refused
+# under the same mode; an operator may start one anyway with
+# "--override-sheet-check true".
+# [sheets.allowed]
+# PLA = ["smooth-pei"]
+# PETG = ["textured-pei"]
 
 # What any actor may ask for at all. A manifest may narrow these; nothing may
 # widen them. The system resumes a print the detector paused once the agent's
