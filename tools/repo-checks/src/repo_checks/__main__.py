@@ -21,6 +21,7 @@ from repo_checks import (
     powershell_release,
     release_plz_release,
     release_probes,
+    telemetry_budget,
     windows_lint,
 )
 from repo_checks.checks_integration import integration_tier
@@ -68,6 +69,7 @@ COMMANDS = (
     "docs-schemas-write",
     "probe-registries",
     "gate_time_budget",
+    "telemetry_budget",
 )
 
 # The checks that read a base revision as well as the tree: what a change adds,
@@ -104,8 +106,14 @@ def main(argv: list[str] | None = None) -> int:
             "the commit-message file, for commit-msg; `measure` (the default) or `check`, for "
             "gate_time_budget; the tool, for tool-version and "
             "install-tools; the release, for install-gh, install-git-lfs, "
-            "install-release-plz and install-powershell"
+            "install-release-plz and install-powershell; the telemetry file, for "
+            "telemetry_budget"
         ),
+    )
+    parser.add_argument(
+        "figure",
+        nargs="?",
+        help="the figure the telemetry file records, for telemetry_budget",
     )
     parser.add_argument("--root", default=".", help="the tree to read (default: the cwd)")
     parser.add_argument("--base", default=None, help="a base revision to compare a change against")
@@ -138,6 +146,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parsed = parser.parse_args(argv)
+    if parsed.figure is not None and parsed.name != "telemetry_budget":
+        parser.error(f"{parsed.name} takes no second argument")
     if parsed.tier is not None and parsed.name != "coverage":
         parser.error("--tier can only be used with coverage")
     for option, value in (("--releases", parsed.releases), ("--into", parsed.into)):
@@ -188,6 +198,10 @@ def main(argv: list[str] | None = None) -> int:
             if verb == "check":
                 return gate_time_budget.check_budget(repo)
             return gate_time_budget.measure()
+        case "telemetry_budget":
+            if parsed.argument is None or parsed.figure is None:
+                parser.error("telemetry_budget needs the telemetry file and the figure it records")
+            return telemetry_budget.telemetry_budget(Path(parsed.argument), parsed.figure)
         case "lint-windows-target":
             return windows_lint.lint_windows_target(repo)
         case "pr-title":
