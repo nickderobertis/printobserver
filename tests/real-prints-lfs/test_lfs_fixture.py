@@ -415,3 +415,24 @@ def test_a_session_answers_a_refused_message_and_goes_on(tmp_path: Path) -> None
     equal(answers[1], {}, describing="the answer to init, after the refusal")
     equal(answers[2]["error"]["code"], 404, describing="an object the store does not hold")
     equal(served.exists(), False, describing="anything recorded as served")
+
+
+def test_the_cache_key_recipe_refuses_rather_than_printing_a_key_it_could_not_read(
+    host: Host, tmp_path: Path
+) -> None:
+    """Without git-lfs, or with no case pointer at `HEAD`, it names why and prints no key."""
+    clone = host.clone("unkeyable")
+    environment = {**host.env, "JUST_JUSTFILE": str(JUSTFILE), "JUST_WORKING_DIRECTORY": str(clone)}
+    bare = path_without("git-lfs", ("just", "bash", "git", "cut", "sort"), tmp_path / "shims")
+    without = run(["just", "real-prints-cache-key"], cwd=clone, env={**environment, "PATH": bare})
+    truth(without.returncode != 0, describing=f"a refusal without git-lfs, not {without.stdout!r}")
+    equal(without.stdout, "", describing="a key printed without git-lfs")
+    contains(without.stderr, "git-lfs is not installed")
+    contains(without.stderr, "run just bootstrap")
+
+    host.git("rm", "-q", "-r", "tests/real-prints", cwd=clone)
+    host.git("commit", "-q", "-m", "no cases", cwd=clone)
+    empty = run(["just", "real-prints-cache-key"], cwd=clone, env=environment)
+    truth(empty.returncode != 0, describing=f"a refusal over no pointers, not {empty.stdout!r}")
+    equal(empty.stdout, "", describing="a key printed over no pointers")
+    contains(empty.stderr, "git-lfs lists no object under tests/real-prints/ at HEAD")
