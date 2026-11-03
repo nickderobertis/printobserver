@@ -8,8 +8,8 @@ this budget was built on, and three things are held of it:
   Nx target, over every project carrying it, that the context ran at `BASELINE`
   — the two macOS contexts exactly those, so splitting the combined macOS job
   into one job per lane dropped nothing from either. A target `MOVED` records
-  is read where it went, and a project `BASELINE` had no copy of is new work
-  rather than a lane's, so the exact comparison reads only the others;
+  is read where it went, and the work each macOS lane gained since is exactly
+  what `ADDED` names, so a project's work nothing records still fails;
 * every job reporting one of the ten ends with the `gate-time` step, waived by
   no `continue-on-error`, naming its own context, and with nothing but
   `actions: read` added to the permissions it had;
@@ -64,6 +64,24 @@ MOVED = {
         "printobserver-sdk-python-integration",
         "test-integration",
     ),
+}
+
+#: The work each macOS context runs that it did not at `BASELINE`, every
+#: project and target of it, so the exact comparison holds across every project:
+#: the clients' live suites' own checks, and the scheduled-check delay budget's
+#: project.
+ADDED = {
+    "gate (macos-aarch64)": {
+        ("printobserver-sdk-node-integration", "format-check"),
+        ("printobserver-sdk-node-integration", "lint"),
+        ("printobserver-sdk-node-integration", "typecheck"),
+        ("printobserver-sdk-python-integration", "format-check"),
+        ("printobserver-sdk-python-integration", "lint"),
+        ("printobserver-sdk-python-integration", "typecheck"),
+        ("printobserver-server-check-delay-budget", "budgets"),
+        ("printobserver-server-check-delay-budget", "test"),
+    },
+    "integration (macos-aarch64)": set(),
 }
 
 RECORDED = Path(__file__).parent / "recorded"
@@ -251,10 +269,8 @@ def test_the_macos_lever_runs_exactly_the_work_macos_ran(
     """Each lane, once a step of the combined job, is the whole of its own macOS jobs' work."""
     now, before = nx_work(committed_repo, context), nx_work(baseline, context)
     truth(bool(before), describing=f"{context} ran Nx work at the baseline")
-    existing, destinations = set(projects(baseline)), set(MOVED.values())
-    known = {item for item in now if item[0] in existing or item in destinations}
     equal(
-        sorted(known ^ moved(before)),
+        sorted(now ^ (moved(before) | ADDED[context])),
         [],
         describing=f"what {context} runs that it did not, or no longer",
     )
