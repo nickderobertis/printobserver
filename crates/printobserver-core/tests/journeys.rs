@@ -104,6 +104,8 @@ mod print_timeline;
 #[path = "journeys/filament_change.rs"]
 mod filament_change;
 
+#[path = "journeys/pairing.rs"]
+mod pairing;
 #[path = "journeys/preflight.rs"]
 mod preflight;
 

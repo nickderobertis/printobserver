@@ -122,6 +122,10 @@ fn the_file_reads_a_printer_does_not_implement_are_refused_with_501() {
         Err(refused("file_facts"))
     );
     assert_eq!(
+        block_on(port.filament_types(FileName::sample_full())),
+        Err(refused("filament_types"))
+    );
+    assert_eq!(
         block_on(port.printed_files()),
         Err(refused("printed_files"))
     );

@@ -60,12 +60,13 @@ fn declared_methods() -> Vec<String> {
     trait_method_names(&parse(&read(&path)), HANDLE)
 }
 
-/// The port's reads: the printer's state, its job, the four reads of the files
+/// The port's reads: the printer's state, its job, the five reads of the files
 /// it holds, and where the head is.
-const READS: [&str; 7] = [
+const READS: [&str; 8] = [
     "snapshot",
     "job",
     "file_facts",
+    "filament_types",
     "printed_files",
     "extruded_to",
     "printed_extent",

@@ -9,6 +9,7 @@ use printobserver_types::{EventId, Range};
 
 use super::action::{ActionKind, ActorClass};
 use super::ids::{InterventionId, SpoolId};
+use super::preflight::{MaterialObjection, SheetObjection};
 use super::spool::UnverifiedReason;
 
 /// Server configuration: what any actor may ask for at all.
@@ -128,6 +129,21 @@ pub enum RejectionReason {
         /// How long the start waited for one, in whole seconds.
         waited_s: u64,
     },
+    /// A start was refused because its file was sliced for another material
+    /// than the spool loaded on tool 0, names none, or could not be read.
+    MaterialRefused {
+        /// What the material check objected to, with what it compared.
+        objection: MaterialObjection,
+    },
+    /// A start was refused because its declared build sheet does not suit the
+    /// loaded spool's material by the sheet table.
+    SheetRefused {
+        /// What the sheet check objected to, with what it compared.
+        objection: SheetObjection,
+    },
+    /// A start was refused because its manifest declares no `sheet`. No
+    /// override lets this through.
+    SheetNotDeclared,
     /// A close was refused because the print record has already ended.
     PrintAlreadyEnded,
     /// A close was refused because the printer shows a job of the record's

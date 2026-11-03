@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+  "minLength": 1,
+  "pattern": "\\S",
+  "title": "SheetId",
+  "type": "string"
+}

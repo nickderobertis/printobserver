@@ -58,6 +58,13 @@ PAIRED_WITH_MARKER = "x-paired-with"
 #: real states of what it describes, rather than a tag over other fields.
 TWO_VALUED_FACT_MARKER = "x-two-valued-fact"
 
+#: The member a string property's schema carries when the server reads it
+#: unvalidated on purpose, judging a malformed value in a check of its own.
+UNCHECKED_TEXT_MARKER = "x-unchecked-text"
+
+#: The keywords by which a string schema constrains the strings it admits.
+STRING_CONSTRAINTS = ("pattern", "format", "minLength", "maxLength", "not")
+
 #: The member a payload's schema carries naming the event kind it is under.
 EVENT_KIND_MARKER = "x-event-kind"
 NULL_IS_SENT_MARKER = "x-null-is-sent"
@@ -235,6 +242,7 @@ def _fields(schema: dict[str, Any], known: set[str], skip: str = "") -> tuple[Fi
             and property_schema.get(NULL_IS_SENT_MARKER) is True,
             paired_with=_paired_with(name, property_schema, properties),
             two_valued_fact=_two_valued_fact(name, property_schema),
+            unchecked_text=_unchecked_text(name, property_schema),
         )
         for name, property_schema in sorted(properties.items())
         if name != skip and (isinstance(property_schema, dict) or property_schema is True)
@@ -270,6 +278,25 @@ def _two_valued_fact(name: str, property_schema: object) -> bool:
         "boolean"
     ):
         msg = f"`{name}` is marked {TWO_VALUED_FACT_MARKER} but is not a boolean marked `true`"
+        raise ContractError(msg)
+    return True
+
+
+def _unchecked_text(name: str, property_schema: object) -> bool:
+    """Whether one property is marked a string the server reads unvalidated.
+
+    Raises:
+        ContractError: If the marker is there and is not `true` on a string or
+            an optional string, which would either drop it unseen or mark what
+            is no text.
+    """
+    if not isinstance(property_schema, dict) or UNCHECKED_TEXT_MARKER not in property_schema:
+        return False
+    if property_schema[UNCHECKED_TEXT_MARKER] is not True or property_schema.get("type") not in (
+        "string",
+        ["string", "null"],
+    ):
+        msg = f"`{name}` is marked {UNCHECKED_TEXT_MARKER} but is not a string marked `true`"
         raise ContractError(msg)
     return True
 
@@ -323,7 +350,13 @@ def declaration_of(name: str, schema: dict[str, Any], known: set[str]) -> Declar
         return _union(name, doc, branches, known - {name})
     if schema.get("type") == "object" and isinstance(properties, dict):
         return Struct(name=name, doc=doc, fields=_fields(schema, known - {name}))
-    return Alias(name=name, target=type_of(schema), doc=doc)
+    return Alias(
+        name=name,
+        target=type_of(schema),
+        doc=doc,
+        constrained=schema.get("type") == "string"
+        and any(keyword in schema for keyword in STRING_CONSTRAINTS),
+    )
 
 
 def _union(name: str, doc: str, branches: list[Any], known: set[str]) -> Declaration:

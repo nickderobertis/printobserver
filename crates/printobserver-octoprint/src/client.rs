@@ -4,9 +4,8 @@
 //! a check refuses one named anywhere else. Every path is a constant of this
 //! module and every body is built from a bounded value here: no method of the
 //! port takes text, so nothing a caller supplies reaches the instance except the
-//! one file name [`PrinterPort::start`], [`PrinterPort::file_facts`] and
-//! [`PrinterPort::extruded_to`] take, which is percent-encoded into a single
-//! path segment.
+//! one file name [`PrinterPort::start`] and the reads of one file take, which
+//! is percent-encoded into a single path segment.
 //!
 //! # Reading, and acting
 //!
@@ -42,6 +41,13 @@
 //! moment the position is reached, so the file is never held whole and the
 //! rest of it need never arrive.
 //!
+//! [`PrinterPort::filament_types`] follows the same link for the other end of
+//! the file: it asks for only the last [`TAIL_BYTES`] with a suffix `Range`,
+//! which is where a slicer writes the settings it sliced with
+//! ([`crate::settings`]). An instance that ignores the range is read no
+//! further than that bound, and a file longer than it is refused rather than
+//! downloaded whole.
+//!
 //! # What each status means
 //!
 //! `401` and `403` are the key: `OctoPrint` answers both to a request whose
@@ -69,11 +75,12 @@ use crate::convert::{
     FAN_PWM_PARAMETER, FAN_SET_COMMAND, fan_pwm_of_percent, percent_of_multiplier,
 };
 use crate::gcode::ExtrudedTo;
-use crate::http::{self, Method, Response, Sink, Transport};
+use crate::http::{self, Method, Response, Sink, Tailed, Transport};
 use crate::push::Taken;
+use crate::settings::{TAIL_BYTES, Tail, filament_types_in};
 use crate::wire::{
-    ConnectionPayload, DownloadLink, FilePayload, JobPayload, ListingPayload, PrinterPayload,
-    TOOL_PREFIX,
+    ConnectionPayload, DownloadLink, DownloadPath, FilePayload, JobPayload, ListingPayload,
+    PrinterPayload, TOOL_PREFIX,
 };
 
 /// Reading the printer.
@@ -284,12 +291,9 @@ impl OctoPrintPrinter {
             .map(|reader| reader.extent())
     }
 
-    /// Stream one file's G-code through the reader, up to a byte.
-    fn read_gcode_to(
-        &self,
-        file_name: &FileName,
-        position_bytes: i64,
-    ) -> Result<ExtrudedTo, PrinterError> {
+    /// The path one file's download is followed at on the configured
+    /// instance.
+    fn download_of(&self, file_name: &FileName) -> Result<DownloadPath, PrinterError> {
         let file = self.read_file(file_name)?;
         let link = file.download().cloned();
         // The record is held to what `file_facts` holds it to before its link
@@ -312,6 +316,16 @@ impl OctoPrintPrinter {
                 )));
             }
         };
+        Ok(followed)
+    }
+
+    /// Stream one file's G-code through the reader, up to a byte.
+    fn read_gcode_to(
+        &self,
+        file_name: &FileName,
+        position_bytes: i64,
+    ) -> Result<ExtrudedTo, PrinterError> {
+        let followed = self.download_of(file_name)?;
         let path = followed.as_str();
         let mut reader = Reader(ExtrudedTo::new(position_bytes));
         let outcome = http::stream(
@@ -333,6 +347,63 @@ impl OctoPrintPrinter {
                 Err(error)
             }
         }
+    }
+
+    /// Read the material each tool of one file is sliced for, from the
+    /// settings its slicer wrote at its end: the last [`TAIL_BYTES`] of the
+    /// download, asked for with a suffix `Range` so the rest never arrives.
+    ///
+    /// An instance that ignores the range is read only as far as the bound:
+    /// a file longer than it is refused rather than downloaded whole.
+    // llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
+    fn read_filament_types(
+        &self,
+        file_name: &FileName,
+    ) -> Result<Vec<Option<String>>, PrinterError> {
+        // llmlint: ignore-end[invalid_states_unrepresentable]
+        let followed = self.download_of(file_name)?;
+        let path = followed.as_str();
+        let mut tail = TailReader(Tail::new(TAIL_BYTES));
+        let answered = http::stream_tail(
+            self.config.endpoint(),
+            self.config.api_key(),
+            path,
+            TAIL_BYTES,
+            self.config.timeout(),
+            &mut tail,
+        );
+        let tailed = answered.map_err(|transport| {
+            let error = match transport {
+                Transport::Unreachable(detail) => PrinterError::Unreachable { detail },
+                Transport::Malformed(detail) => PrinterError::Malformed { detail },
+            };
+            log::warn!("octoprint GET {path} did not answer: {error}");
+            error
+        })?;
+        let starts_mid_line = match tailed {
+            Tailed::Refused(response) => {
+                return ruled(Method::Get, path, response).map(|_| Vec::new());
+            }
+            _ if tail.0.overflowed() => {
+                return Err(malformed(format!(
+                    "{path} answered more than the last {TAIL_BYTES} bytes it was asked for"
+                )));
+            }
+            Tailed::Whole => false,
+            Tailed::Partial { from, total } => {
+                let arrived = u64::try_from(tail.0.bytes().len()).unwrap_or(u64::MAX);
+                if total - from != arrived {
+                    return Err(malformed(format!(
+                        "{path} answered {arrived} bytes of a range it said is {} long",
+                        total - from
+                    )));
+                }
+                // A tail that does not begin at the file's first byte may
+                // begin part-way through a line.
+                from > 0
+            }
+        };
+        Ok(filament_types_in(tail.0.bytes(), starts_mid_line))
     }
 
     /// Select the named file, then start it.
@@ -432,6 +503,17 @@ const STARTING_ASK_EVERY: std::time::Duration = std::time::Duration::from_millis
 
 /// The G-code reader, as the sink a download is streamed into.
 struct Reader(ExtrudedTo);
+
+/// A file's tail, as the sink its ranged download is streamed into.
+struct TailReader(Tail);
+
+impl Sink for TailReader {
+    fn take(&mut self, bytes: &[u8]) -> ControlFlow<()> {
+        self.0.take(bytes)
+    }
+
+    fn end(&mut self) {}
+}
 
 impl Sink for Reader {
     fn take(&mut self, bytes: &[u8]) -> ControlFlow<()> {
@@ -598,6 +680,15 @@ impl PrinterPort for OctoPrintPrinter {
                 malformed(format!("{} answered {detail}", local_file_path(&file_name)))
             })
         })
+    }
+
+    // llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
+    fn filament_types(
+        &self,
+        file_name: FileName,
+    ) -> BoxFuture<'_, Result<Vec<Option<String>>, PrinterError>> {
+        // llmlint: ignore-end[invalid_states_unrepresentable]
+        Box::pin(async move { self.read_filament_types(&file_name) })
     }
 
     fn printed_files(&self) -> BoxFuture<'_, Result<Vec<FileFacts>, PrinterError>> {

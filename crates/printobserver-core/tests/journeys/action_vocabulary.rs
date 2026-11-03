@@ -34,6 +34,8 @@ pub(crate) fn action_for(kind: ActionKind, actor: Actor) -> PrintAction {
             file_name: FileName::new("benchy.gcode").expect("a name"),
             manifest: crate::world::manifest(&[]),
             override_filament_check: false,
+            override_material_check: false,
+            override_sheet_check: false,
             reason,
             actor,
         },

@@ -269,6 +269,8 @@ pub fn start_action(actor: Actor, override_filament_check: bool) -> PrintAction 
         file_name: FileName::new(FILE).expect("a file name"),
         manifest: manifest(&[]),
         override_filament_check,
+        override_material_check: false,
+        override_sheet_check: false,
         reason: "the next print in the queue".to_owned(),
         actor,
     }

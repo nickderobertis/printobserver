@@ -174,6 +174,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("material", "string", true),
             ("metadata", "map:string", true),
             ("nozzle_diameter_mm", "number", true),
+            ("sheet", "string", false),
             ("slicer_profile", "string", true),
         ],
     ),
@@ -187,6 +188,39 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("adjustable", "Adjustable", true),
             ("applied", "Range", true),
             ("requested", "Range", true),
+        ],
+    ),
+    (
+        "MaterialComparison",
+        &[
+            ("loaded", "MaterialName", true),
+            ("sliced_for", "MaterialName", true),
+            ("spool", "PreflightSpool", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    ("MaterialName", &[]),
+    (
+        "MaterialObjection",
+        &[
+            ("cause", "string", true),
+            ("detail", "string", true),
+            ("file_name", "FileName", true),
+            ("loaded", "MaterialName", true),
+            ("sliced_for", "MaterialName", true),
+            ("spool", "PreflightSpool", true),
+            ("tool", "integer", true),
+        ],
+    ),
+    (
+        "MaterialResult",
+        &[
+            ("loaded", "MaterialName", true),
+            ("objection", "MaterialObjection", true),
+            ("sliced_for", "MaterialName", true),
+            ("spool", "PreflightSpool", true),
+            ("tool", "integer", true),
+            ("verdict", "string", true),
         ],
     ),
     (
@@ -214,6 +248,8 @@ const DECLARED_FIELDS: &[StatedType] = &[
         &[
             ("checked_at", "Timestamp", true),
             ("file_name", "string", true),
+            ("material", "MaterialResult", false),
+            ("sheet", "SheetResult", false),
             ("tools", "array:PreflightTool", true),
             ("verdict", "PreflightVerdict", true),
         ],
@@ -268,6 +304,8 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("manifest", "JobManifest", true),
             ("outcome", "PrintOutcome", true),
             ("override_filament_check", "boolean", false),
+            ("override_material_check", "boolean", false),
+            ("override_sheet_check", "boolean", false),
             ("percent", "number", true),
             ("reason", "string", true),
             ("target_c", "number", true),
@@ -298,10 +336,12 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("insufficient_filament", "object", true),
             ("intervention_still_active", "object", true),
             ("invalid_from_state", "object", true),
+            ("material_refused", "object", true),
             ("min_interval_not_elapsed", "object", true),
             ("out_of_bounds", "object", true),
             ("print_not_resumable", "object", true),
             ("print_still_active", "object", true),
+            ("sheet_refused", "object", true),
             ("spool_refused", "object", true),
             ("unsupported_adjustable", "object", true),
             ("unverified_spool", "object", true),
@@ -321,6 +361,35 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("actions", "map:array:ActionKind", true),
             ("agent_min_interval_s", "integer", true),
             ("allowed", "map:Range", true),
+        ],
+    ),
+    (
+        "SheetComparison",
+        &[
+            ("allowed", "array:SheetId", true),
+            ("material", "MaterialName", true),
+            ("sheet", "SheetId", true),
+        ],
+    ),
+    ("SheetId", &[]),
+    (
+        "SheetObjection",
+        &[
+            ("allowed", "array:SheetId", true),
+            ("cause", "string", true),
+            ("known", "array:SheetId", true),
+            ("material", "MaterialName", true),
+            ("sheet", "SheetId", true),
+        ],
+    ),
+    (
+        "SheetResult",
+        &[
+            ("allowed", "array:SheetId", true),
+            ("material", "MaterialName", true),
+            ("objection", "SheetObjection", true),
+            ("sheet", "SheetId", true),
+            ("verdict", "string", true),
         ],
     ),
     (
@@ -403,6 +472,15 @@ const DECLARED_FIELDS: &[StatedType] = &[
         &[
             ("remaining_g", "number", true),
             ("spool", "PreflightSpool", true),
+        ],
+    ),
+    (
+        "UncomparedMaterial",
+        &[
+            ("file_name", "FileName", true),
+            ("loaded", "MaterialName", true),
+            ("spool", "PreflightSpool", true),
+            ("tool", "integer", true),
         ],
     ),
     (
@@ -911,6 +989,14 @@ fn an_absent_optional_is_absent_from_the_serialized_object() {
     assert!(checked > 0, "no optional field was checked at all");
 }
 
+/// Whether a declared type is one of this system's minted identifiers: a
+/// string its own schema declares `format: uuid`. A string type whose name
+/// ends in `Id` but which names something other than a minted record — the
+/// sheet table's `SheetId`, such as `smooth-pei` — is not one.
+fn is_uuid_identifier(entry: &TypeContract) -> bool {
+    entry.schema().get("format").and_then(Value::as_str) == Some("uuid")
+}
+
 /// Every identifier serializes as a lowercase hyphenated version 7 UUID.
 #[test]
 fn every_identifier_serializes_in_the_one_spelling() {
@@ -918,7 +1004,7 @@ fn every_identifier_serializes_in_the_one_spelling() {
     for entry in declared() {
         let full = entry.full();
         if let Some(text) = full.as_str()
-            && entry.name.ends_with("Id")
+            && is_uuid_identifier(&entry)
         {
             assert!(
                 is_lowercase_hyphenated_version_seven(text),
@@ -991,7 +1077,7 @@ fn every_identifier_field_refuses_a_spelling_this_system_does_not_mint() {
                 }
             }
         }
-        if full.is_string() && entry.name.ends_with("Id") {
+        if full.is_string() && is_uuid_identifier(&entry) {
             for refused in REFUSED_IDENTIFIERS {
                 let answer = entry.round_trip(Value::String(refused.to_owned()));
                 assert!(answer.is_err(), "{} accepted {refused}", entry.name);

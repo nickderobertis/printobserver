@@ -34,6 +34,7 @@ const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
         PrinterMethod::Snapshot
         | PrinterMethod::Job
         | PrinterMethod::FileFacts
+        | PrinterMethod::FilamentTypes
         | PrinterMethod::PrintedFiles
         | PrinterMethod::ExtrudedTo
         | PrinterMethod::PrintedExtent
@@ -59,13 +60,15 @@ const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
 /// and a failing one is not recorded as a port failure against the event being
 /// handled — the filament ledger answers it where it reads it, a charge falling
 /// back to the file's fraction with a note saying why (`print_timeline`), a
-/// file read as having no analysis (`preflight`), an accounting answered as the
+/// file read as having no analysis and a file whose settings cannot be read
+/// refused as unread (`preflight`), an accounting answered as the
 /// printer's own error (`unobserved`) — and those journeys walk it there. The
 /// two reads recovery takes — what the last print laid down and where the head
 /// is — are answered as a recovery refusal where recovery reads them, and the
 /// server's recovery journeys walk them there.
-const NOT_YET_CALLED: [PrinterMethod; 7] = [
+const NOT_YET_CALLED: [PrinterMethod; 8] = [
     PrinterMethod::FileFacts,
+    PrinterMethod::FilamentTypes,
     PrinterMethod::PrintedFiles,
     PrinterMethod::ExtrudedTo,
     PrinterMethod::PrintedExtent,

@@ -56,6 +56,7 @@ function manifest(at: Supervisor): JobManifest {
     material: "PLA",
     nozzle_diameter_mm: 0.4,
     slicer_profile: "the walk over every operation",
+    sheet: "smooth-pei",
     allowed: {},
     metadata: {},
   };
@@ -349,6 +350,8 @@ async function stepStartPrint(client: Client, proxy: Recording) {
     manifest(world),
     REASON,
     false,
+    false,
+    false,
   );
 
   const seen = proxy.last();
@@ -360,6 +363,8 @@ async function stepStartPrint(client: Client, proxy: Recording) {
   expect(sent.file_name).toEqual(world.file_name);
   expect(sent.manifest).toEqual(manifest(world));
   expect(sent.override_filament_check).toEqual(false);
+  expect(sent.override_material_check).toEqual(false);
+  expect(sent.override_sheet_check).toEqual(false);
   expect(sent.reason).toEqual(REASON);
   same("start_print", answered, seen.answer);
   // Every step after this one is about the print the start opened.
@@ -591,11 +596,11 @@ async function stepPrinterHistory(client: Client, proxy: Recording) {
 async function stepPreflight(client: Client, proxy: Recording) {
   await ready(client, world.print_id, "");
 
-  const answered = await client.preflight(world.file_name);
+  const answered = await client.preflight(world.file_name, "smooth-pei");
 
   const seen = proxy.last();
   expect(seen.method).toBe("GET");
-  expect(seen.target).toBe(`/v1/preflight?file_name=${world.file_name}`);
+  expect(seen.target).toBe(`/v1/preflight?file_name=${world.file_name}&sheet=smooth-pei`);
   expect(seen.status).toBe(200);
   expect(seen.body).toBe("");
   same("preflight", answered, seen.answer);
@@ -883,7 +888,7 @@ async function refusedRecoverCool(client: Client, proxy: Recording) {
 /** `start_print`, refused by a real supervisor's own policy. */
 async function refusedStartPrint(client: Client, proxy: Recording) {
   const refused = await client
-    .startPrint(world.print_id, world.file_name, manifest(world), REASON, false)
+    .startPrint(world.print_id, world.file_name, manifest(world), REASON, false, false, false)
     .catch((raised: unknown) => raised);
 
   expect(refused).toBeInstanceOf(Rejected);

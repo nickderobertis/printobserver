@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Literal, NewType, TypedDict
 
 from answers import from_labelled, labelled, machine
+from printobserver_sdk.contract import JobManifest
 from real_prints import (
     ADJUSTABLE,
     DECISION,
@@ -514,13 +515,14 @@ def _job(reading: Reading, file_name: str) -> dict[str, Any]:
     return job
 
 
-def _manifest(file_name: str, allowed: dict[str, Any]) -> dict[str, Any]:
+def _manifest(file_name: str, allowed: dict[str, Any]) -> JobManifest:
     return {
         "allowed": allowed,
         "file_name": file_name,
         "material": "PLA",
         "metadata": {},
         "nozzle_diameter_mm": 0.4,
+        "sheet": "smooth-pei",
         "slicer_profile": "0.20mm BALANCED",
     }
 

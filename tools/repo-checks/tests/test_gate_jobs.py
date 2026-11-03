@@ -423,5 +423,5 @@ def test_a_job_name_that_parts_ways_with_the_formats_is_drift(tree: Callable[[],
 
     findings = drifted(copy.repo)
 
-    contains("\n".join(findings), "`gate [linux-x86_64]` matches none of the gate_jobs formats")
+    contains("\n".join(findings), "`gate [linux-aarch64]` matches none of the gate_jobs formats")
     contains("\n".join(findings), "`gate (linux-aarch64)` is a required name ci.yml does not")

@@ -88,6 +88,9 @@ fn drive_every_method(printer: &OctoPrintPrinter) {
     drop(block_on(printer.file_facts(
         FileName::new("hold.gcode").expect("a file name"),
     )));
+    drop(block_on(printer.filament_types(
+        FileName::new("hold.gcode").expect("a file name"),
+    )));
     drop(block_on(printer.printed_files()));
     drop(block_on(printer.extruded_to(
         FileName::new("hold.gcode").expect("a file name"),

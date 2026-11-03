@@ -57,18 +57,18 @@ INSTALL_ROUTE_AARCH64 = (
     )
 )
 # The gate's whole matrix, down to the line that reads a cell out of it. Its
-# two Windows gates are sharded, so their shard jobs carry those cells instead.
+# `linux-x86_64` and two Windows gates are sharded, so their shard jobs carry
+# those cells instead.
 GATE_MATRIX = (
     """    strategy:
       fail-fast: false
       matrix:
         platform:
-          - id: linux-x86_64
-            runner: ubuntu-24.04
 """
     + AARCH64
-    + "          # The two Windows gates are sharded: `gate-shard-<platform>` runs\n"
-    + "          # each one's work and `gate-<platform>` reports its context.\n"
+    + "          # The `linux-x86_64` and the two Windows gates are sharded:\n"
+    + "          # `gate-shard-<platform>` runs each one's work and `gate-<platform>`\n"
+    + "          # reports its context.\n"
     + "    runs-on: ${{ matrix.platform.runner }}\n"
 )
 NO_LIST = "declares no non-empty `workflows.platform_dependent_kinds` list"
@@ -96,9 +96,13 @@ def test_the_tier_accepts_the_committed_configuration(
 def test_a_platform_dependent_job_narrowed_away_from_the_list_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """`gate` compiles the artifact, so dropping a platform drops what proves it."""
+    """`gate` compiles the artifact, so dropping a platform drops what proves it.
+
+    The gate's one unsharded cell is swapped for another platform's rather than
+    deleted, so its matrix is narrowed rather than emptied.
+    """
     broken = gate_copy()
-    broken.edit(CI, AARCH64, "")
+    broken.edit(CI, AARCH64, "          - id: linux-x86_64\n            runner: ubuntu-24.04\n")
 
     result = broken.just("check-repo")
 

@@ -52,6 +52,7 @@ def manifest(world: Supervisor) -> JobManifest:
             "material": "PLA",
             "nozzle_diameter_mm": 0.4,
             "slicer_profile": "the walk over every operation",
+            "sheet": "smooth-pei",
             "allowed": {},
             "metadata": {},
         },
@@ -467,7 +468,9 @@ def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> Supervi
     ready(client, world.print_id, "operational")
 
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    answered = client.start_print(world.print_id, world.file_name, manifest(world), REASON, False)
+    answered = client.start_print(
+        world.print_id, world.file_name, manifest(world), REASON, False, False, False
+    )
 
     seen = proxy.last()
     equal(seen.method, "POST", describing="`start_print`")
@@ -491,6 +494,16 @@ def step_start_print(client: Client, world: Supervisor, proxy: Proxy) -> Supervi
         sent["override_filament_check"],
         False,
         describing="the `override_filament_check` `start_print` sent",
+    )
+    equal(
+        sent["override_material_check"],
+        False,
+        describing="the `override_material_check` `start_print` sent",
+    )
+    equal(
+        sent["override_sheet_check"],
+        False,
+        describing="the `override_sheet_check` `start_print` sent",
     )
     equal(
         sent["reason"],
@@ -856,11 +869,15 @@ def step_preflight(client: Client, world: Supervisor, proxy: Proxy) -> None:
     ready(client, world.print_id, "")
 
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    answered = client.preflight(world.file_name)
+    answered = client.preflight(world.file_name, "smooth-pei")
 
     seen = proxy.last()
     equal(seen.method, "GET", describing="`preflight`")
-    equal(seen.target, f"/v1/preflight?file_name={world.file_name}", describing="`preflight`")
+    equal(
+        seen.target,
+        f"/v1/preflight?file_name={world.file_name}&sheet=smooth-pei",
+        describing="`preflight`",
+    )
     equal(seen.status, 200, describing="`preflight`")
     equal(seen.body, "", describing="what `preflight` sent")
     same("preflight", answered, seen.answer)
@@ -1267,7 +1284,9 @@ def refused_start_print(client: Client, world: Supervisor, proxy: Proxy) -> None
     """`start_print`, refused by a real supervisor's own policy."""
     try:
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        client.start_print(world.print_id, world.file_name, manifest(world), REASON, False)
+        client.start_print(
+            world.print_id, world.file_name, manifest(world), REASON, False, False, False
+        )
     except RejectedError as refused:
         truth(
             isinstance(refused.reason, dict) and "actor_may_not_request" in refused.reason,

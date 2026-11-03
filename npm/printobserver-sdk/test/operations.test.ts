@@ -31,6 +31,7 @@ import type {
   FileName,
   JobManifest,
   PrintOutcome,
+  SheetId,
 } from "../src/contract.ts";
 import { NoReason, Rejected } from "../src/surface.ts";
 import { Host } from "./host.ts";
@@ -74,7 +75,7 @@ test("status sends what it declares and answers what the server sent", async () 
 
 test("context sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}}, "detector": {"since": null, "status": "unchecked"}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": {"source": "printer", "text": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "estimated_print_time_s": 7, "filament": [{"length_mm": 1.5, "tool": 7, "volume_cm3": 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_position_bytes": 7, "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "job_print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7, "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+    '{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}}, "detector": {"since": null, "status": "unchecked"}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_of_range": true, "value": 1.5}, "error": {"source": "printer", "text": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "estimated_print_time_s": 7, "filament": [{"length_mm": 1.5, "tool": 7, "volume_cm3": 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_position_bytes": 7, "print_time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state": "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "job_print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7, "state": "operational"}, "printer": {"bed": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, "connection": "operational", "fan_percent": {"out_of_range": true, "value": 1.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "recent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -147,7 +148,7 @@ test("events sends what it declares and answers what the server sent", async () 
 
 test("manifest_get sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}',
+    '{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -195,7 +196,7 @@ test("printer_look sends what it declares and answers what the server sent", asy
 
 test("manifest_set sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}',
+    '{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1.5}}]}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
@@ -204,7 +205,7 @@ test("manifest_set sends what it declares and answers what the server sent", asy
     "0198f0a1-2b3c-7d4e-8f90-123456789abc",
     "a generated walk is asking",
     JSON.parse(
-      '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+      '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
     ) as JobManifest,
   );
 
@@ -213,7 +214,7 @@ test("manifest_set sends what it declares and answers what the server sent", asy
   expect(received.target).toBe("/v1/prints/0198f0a1-2b3c-7d4e-8f90-123456789abc/manifest");
   expect(JSON.parse(received.body)).toEqual(
     JSON.parse(
-      '{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "reason": "a generated walk is asking"}',
+      '{"manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "reason": "a generated walk is asking"}',
     ),
   );
   expect(answered).toEqual(answer);
@@ -229,7 +230,7 @@ test("manifest_set makes no request when the reason is empty", async () => {
         "0198f0a1-2b3c-7d4e-8f90-123456789abc",
         "",
         JSON.parse(
-          '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+          '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
         ) as JobManifest,
       );
     } catch (raised) {
@@ -247,7 +248,7 @@ test("manifest_set makes no request when the reason is empty", async () => {
         "0198f0a1-2b3c-7d4e-8f90-123456789abc",
         "   ",
         JSON.parse(
-          '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+          '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
         ) as JobManifest,
       );
     } catch (raised) {
@@ -317,16 +318,21 @@ test("printer_history sends what it declares and answers what the server sent", 
 
 test("preflight sends what it declares and answers what the server sent", async () => {
   const answer = JSON.parse(
-    '{"preflight": {"checked_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"result": {"need": {"buffer_g": 1.5, "required_g": 1.5}, "remaining_g": 1.5, "spool": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "verdict": "passed"}, "tool": 7}], "verdict": "passed"}}',
+    '{"preflight": {"checked_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": {"loaded": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sliced_for": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "spool": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "tool": 7, "verdict": "passed"}, "sheet": {"allowed": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "verdict": "passed"}, "tools": [{"result": {"need": {"buffer_g": 1.5, "required_g": 1.5}, "remaining_g": 1.5, "spool": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "verdict": "passed"}, "tool": 7}], "verdict": "passed"}}',
   );
   await using host = Host.answering(200, answer);
   const client = new Client({ server: host.address, actor: ACTOR });
 
-  const answered = await client.preflight("0198f0a1-2b3c-7d4e-8f90-123456789abc");
+  const answered = await client.preflight(
+    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    JSON.parse('"0198f0a1-2b3c-7d4e-8f90-123456789abc"') as SheetId,
+  );
 
   const received = host.received();
   expect(received.method).toBe("GET");
-  expect(received.target).toBe("/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc");
+  expect(received.target).toBe(
+    "/v1/preflight?file_name=0198f0a1-2b3c-7d4e-8f90-123456789abc&sheet=0198f0a1-2b3c-7d4e-8f90-123456789abc",
+  );
   expect(received.body).toBe("");
   expect(answered).toEqual(answer);
 });
@@ -567,9 +573,11 @@ test("start_print sends what it declares and answers what the server sent", asyn
     "0198f0a1-2b3c-7d4e-8f90-123456789abc",
     JSON.parse('"0198f0a1-2b3c-7d4e-8f90-123456789abc"') as FileName,
     JSON.parse(
-      '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+      '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
     ) as JobManifest,
     "a generated walk is asking",
+    true,
+    true,
     true,
   );
 
@@ -580,7 +588,7 @@ test("start_print sends what it declares and answers what the server sent", asyn
   );
   expect(JSON.parse(received.body)).toEqual(
     JSON.parse(
-      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "override_filament_check": true, "reason": "a generated walk is asking"}',
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "manifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "override_filament_check": true, "override_material_check": true, "override_sheet_check": true, "reason": "a generated walk is asking"}',
     ),
   );
   expect(answered).toEqual(answer);
@@ -599,9 +607,11 @@ test("start_print surfaces the policy's own refusal", async () => {
       "0198f0a1-2b3c-7d4e-8f90-123456789abc",
       JSON.parse('"0198f0a1-2b3c-7d4e-8f90-123456789abc"') as FileName,
       JSON.parse(
-        '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+        '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
       ) as JobManifest,
       "a generated walk is asking",
+      true,
+      true,
       true,
     );
   } catch (raised) {
@@ -629,9 +639,11 @@ test("start_print makes no request when the reason is empty", async () => {
         "0198f0a1-2b3c-7d4e-8f90-123456789abc",
         JSON.parse('"0198f0a1-2b3c-7d4e-8f90-123456789abc"') as FileName,
         JSON.parse(
-          '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+          '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
         ) as JobManifest,
         "",
+        true,
+        true,
         true,
       );
     } catch (raised) {
@@ -649,9 +661,11 @@ test("start_print makes no request when the reason is empty", async () => {
         "0198f0a1-2b3c-7d4e-8f90-123456789abc",
         JSON.parse('"0198f0a1-2b3c-7d4e-8f90-123456789abc"') as FileName,
         JSON.parse(
-          '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
+          '{"allowed": {"feedrate": {"max": 1.5, "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}',
         ) as JobManifest,
         "   ",
+        true,
+        true,
         true,
       );
     } catch (raised) {

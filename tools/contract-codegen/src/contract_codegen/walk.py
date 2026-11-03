@@ -338,9 +338,12 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     ("set_tool_target_c", "tool"): "0",
     ("set_tool_target_c", "target_c"): "210.0",
     ("set_bed_target_c", "target_c"): "60.0",
-    # The walk starts its print the ordinary way, with the filament check
-    # standing: an override is a decision for whoever is at the machine.
+    # The walk starts its print the ordinary way, with every check standing:
+    # an override is a decision for whoever is at the machine.
     ("start_print", "override_filament_check"): "bool:false",
+    ("start_print", "override_material_check"): "bool:false",
+    ("start_print", "override_sheet_check"): "bool:false",
+    ("preflight", "sheet"): "text:sheet",
     ("*", "spool_id"): "world.spool_id",
     ("spools", "include_retired"): "bool:true",
     ("printer_history", "kinds"): "kinds:spool_registered",
@@ -378,6 +381,7 @@ LIVE_TEXT: dict[str, str] = {
     "name": "a spool the generated walk registers",
     "material": "PLA",
     "color": "black",
+    "sheet": "smooth-pei",
 }
 
 

@@ -1,0 +1,233 @@
+{
+  "$defs": {
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
+    "SheetObjection": {
+      "description": "Why the sheet check objects to a start, with what it compared.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The table lists the material, and not on this sheet.",
+          "properties": {
+            "allowed": {
+              "description": "Every sheet the table allows that material.",
+              "items": {
+                "$ref": "#/$defs/SheetId"
+              },
+              "type": "array"
+            },
+            "cause": {
+              "const": "not_allowed",
+              "type": "string"
+            },
+            "material": {
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
+            },
+            "sheet": {
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "allowed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The table has no entry for the material.",
+          "properties": {
+            "cause": {
+              "const": "unlisted_material",
+              "type": "string"
+            },
+            "material": {
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
+            },
+            "sheet": {
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No entry of the table lists the sheet.",
+          "properties": {
+            "cause": {
+              "const": "unknown_sheet",
+              "type": "string"
+            },
+            "known": {
+              "description": "Every sheet some entry lists.",
+              "items": {
+                "$ref": "#/$defs/SheetId"
+              },
+              "type": "array"
+            },
+            "material": {
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
+            },
+            "sheet": {
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
+            }
+          },
+          "required": [
+            "cause",
+            "sheet",
+            "material",
+            "known"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether the declared build sheet suits the loaded spool's material, tagged\nby its verdict.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "The table allows the material on the declared sheet.",
+      "properties": {
+        "allowed": {
+          "description": "Every sheet the table allows that material.",
+          "items": {
+            "$ref": "#/$defs/SheetId"
+          },
+          "type": "array"
+        },
+        "material": {
+          "$ref": "#/$defs/MaterialName",
+          "description": "The material of the spool loaded on tool 0."
+        },
+        "sheet": {
+          "$ref": "#/$defs/SheetId",
+          "description": "The build sheet the manifest declares."
+        },
+        "verdict": {
+          "const": "passed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "sheet",
+        "material",
+        "allowed"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No tracked spool is loaded on tool 0, or the check is off, so nothing\nwas compared.",
+      "properties": {
+        "verdict": {
+          "const": "unchecked",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The manifest declares no sheet. This refuses every start, and no\noverride lets it through.",
+      "properties": {
+        "verdict": {
+          "const": "undeclared",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The check refuses the start.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/SheetObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "refused",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The start went ahead despite this objection, because an operator said\nso.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/SheetObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "overridden",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "The check is set to warn, and let the start go ahead despite this\nobjection.",
+      "properties": {
+        "objection": {
+          "$ref": "#/$defs/SheetObjection",
+          "description": "What it objected to."
+        },
+        "verdict": {
+          "const": "warned",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "objection"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SheetResult"
+}

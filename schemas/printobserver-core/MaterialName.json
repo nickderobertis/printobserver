@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+  "minLength": 1,
+  "pattern": "\\S",
+  "title": "MaterialName",
+  "type": "string"
+}

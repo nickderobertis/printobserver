@@ -15,6 +15,7 @@
 //! [`Supervisor::issue_decided_action`], which is the only function of this
 //! crate that reaches an action method of the printer port.
 
+use crate::preflight::Overrides;
 use crate::records::{
     AcknowledgementDisposition, ActionRecord, ActionRequest, Actor, ActorClass, Intervention,
     InterventionOutcome, PolicyDecision, Preflight, PrintAction, PrintRecord, RejectionReason,
@@ -271,8 +272,9 @@ impl Supervisor {
     /// What an accepted request is checked against beyond the decision, and
     /// what it reads first.
     ///
-    /// A start is held to the filament check ([`crate::preflight`]), whose
-    /// refusal replaces the decision and whose finding is answered. A cancel
+    /// A start is held to the filament, material and sheet checks
+    /// ([`crate::preflight`]), whose refusal replaces the decision and whose
+    /// finding is answered. A cancel
     /// reads where the print had got first: `OctoPrint` clears a job's
     /// position as it cancels, so this is where the print is known to stop.
     async fn check_accepted(
@@ -287,12 +289,20 @@ impl Supervisor {
         match action {
             PrintAction::StartPrint {
                 file_name,
+                manifest,
                 override_filament_check,
+                override_material_check,
+                override_sheet_check,
                 actor,
                 ..
             } => {
+                let asked = Overrides {
+                    filament: (*override_filament_check).into(),
+                    material: (*override_material_check).into(),
+                    sheet: (*override_sheet_check).into(),
+                };
                 let (checked, refusal) = self
-                    .check_start(file_name, actor, (*override_filament_check).into())
+                    .check_start(file_name, manifest.sheet.as_deref(), actor, asked)
                     .await?;
                 if let Some(reason) = refusal {
                     *decision = PolicyDecision::Rejected(reason);

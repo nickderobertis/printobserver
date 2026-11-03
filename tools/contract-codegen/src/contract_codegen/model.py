@@ -81,6 +81,10 @@ class Field:
     # A boolean both of whose values are real states of what it describes,
     # which the declaring type's own field says why it is not an enum.
     two_valued_fact: bool = False
+    # A string the server deliberately reads unvalidated, because what it
+    # does with a malformed one is a refusal of its own rather than a body it
+    # cannot read; the declaring field's own suppression says why.
+    unchecked_text: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +115,9 @@ class Alias:
     name: str
     target: TypeExpr
     doc: str
+    # Whether its schema constrains the string it names — a pattern, a format,
+    # a length — which a client alias of the bare string does not enforce.
+    constrained: bool = False
 
 
 @dataclass(frozen=True, slots=True)

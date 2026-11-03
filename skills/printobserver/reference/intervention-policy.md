@@ -5,8 +5,8 @@ change that was only meant to stand for a while. This document covers where the
 bounds come from, what a rejection carries, why the spool ledger refused a
 command, how a bounded intervention is restored, what expiry does when no prior value was available, what happens
 to a print the detector paused, who may command the spool ledger, the filament
-check a start is held to, and what marks a spool unverified, and what clears
-each mark.
+check a start is held to, the material and sheet a start is held to, and what
+marks a spool unverified, and what clears each mark.
 
 Every claim here is stated against the thing it describes: the fields a
 rejection carries are the fields the contracts' rejection type declares, the
@@ -108,6 +108,18 @@ carry out:
 - `spool_refused` — a spool command could not be carried out. It carries a
   tagged `cause`, which the next section lists, and a `message` saying what to
   do instead. Act on the cause; the message is for a person.
+
+Three more refuse a start for what it is printed from and on, each described
+under "The material and sheet a start is held to":
+
+- `material_refused` — the file was sliced for another material than the spool
+  on tool 0, names none, or its settings could not be read. It carries
+  `objection`, what the check compared, tagged by its own cause.
+- `sheet_refused` — the sheet table does not allow the loaded material on the
+  declared sheet. It carries `objection`, what the check compared, tagged by
+  its own cause.
+- `sheet_not_declared` — the start's manifest declares no sheet. It carries
+  nothing, and no override lets it through.
 
 The command-line program exits with its rejected status on all of these and prints
 the record,
@@ -270,6 +282,38 @@ and `adjust-spool`, or the override; and for `analysis_unavailable` the file and
 how long the start waited, then starting again once OctoPrint has analysed the
 file, or the override. A spool command the ledger refused is printed beside its
 cause and the ledger's own `message`.
+
+## The material and sheet a start is held to
+
+Beside the weight, a start is checked twice more, under the same `[spools]`
+mode. **The material:** the `filament_type` the file's own slicer settings name
+for tool 0 — read from the end of the file, where `PrusaSlicer` writes them —
+must be the material of the spool loaded there, compared trimmed and without
+regard to case. A file naming no `filament_type`, or whose settings cannot be
+read, is refused like a mismatch, `material_refused`. **The sheet:** the start's
+manifest names the build sheet the print goes down on in `sheet`, and the
+server's `[sheets.allowed]` table, keyed by that spool's material, must allow
+the material on it. Left out, the table allows PLA on `smooth-pei` alone and
+PETG on `textured-pei` alone, because PETG can bond to smooth PEI hard enough to
+tear it without glue; written, it replaces those whole. A sheet the table does
+not allow the material on, a material it has no entry for, and a sheet no entry
+lists are each refused, `sheet_refused`, naming what was compared. With no
+tracked spool on tool 0 neither is checked.
+
+Each refusal's objection is tagged by its `cause` and carries what was
+compared. A material objection is `mismatch` — the `tool`, the `spool`, the
+material it is `loaded` with and the material the file was `sliced_for` —
+`undeclared`, the same with the `file_name` in place of what it was sliced for,
+or `unread`, that with the printer's own `detail`. A sheet objection is
+`not_allowed` — the `sheet`, the `material` and the sheets `allowed` —
+`unlisted_material`, the sheet and the material, or `unknown_sheet`, those and
+the sheets the table does list, `known`.
+
+An operator starts past either with its own override,
+`--override-material-check true` or `--override-sheet-check true`, recorded as
+`overridden` with the start's own reason, exactly as the filament override is.
+A manifest naming no `sheet` is refused `sheet_not_declared` whatever the mode
+and whatever is overridden.
 
 Every check a start makes is written into the printer's history as a
 `preflight_checked`, and the start's `print_started` carries it. `printobserver

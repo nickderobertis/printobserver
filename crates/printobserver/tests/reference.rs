@@ -372,6 +372,16 @@ fn the_documents_restate_the_events_and_watch_bounds_as_the_code_has_them() {
 /// The installers that carry the spool check's defaults, commented out.
 const INSTALLERS: [&str; 2] = ["scripts/install-service.sh", "scripts/install-service.ps1"];
 
+/// Every installer that writes a configuration template: the two service
+/// installers and the two per-user ones, each carrying the sheet table's
+/// defaults, commented out.
+const TEMPLATES: [&str; 4] = [
+    "scripts/install.sh",
+    "scripts/install-service.sh",
+    "scripts/install.ps1",
+    "scripts/install-service.ps1",
+];
+
 /// The intervention policy, which restates the spool check's defaults.
 const INTERVENTION_POLICY: &str = "skills/printobserver/reference/intervention-policy.md";
 
@@ -452,4 +462,71 @@ fn the_documents_restate_the_spool_check_and_history_window_defaults_as_the_code
              {most} as the store has them"
         );
     }
+}
+
+/// The commented `[sheets.allowed]` table every installer's template carries
+/// is the configuration's own default table, line for line: the table is
+/// read from `DEFAULT_SHEETS`, which is what a configuration that leaves the
+/// table out is given. The intervention policy's prose statement of those
+/// defaults is held to the same table.
+#[test]
+fn every_template_restates_the_sheet_table_defaults_as_the_config_has_them() {
+    let defaults = printobserver_core::DEFAULT_SHEETS;
+    let mut expected = vec!["# [sheets.allowed]".to_owned()];
+    for (material, sheets) in defaults {
+        let listed: Vec<String> = sheets.iter().map(|sheet| format!("\"{sheet}\"")).collect();
+        expected.push(format!("# {material} = [{}]", listed.join(", ")));
+    }
+    let table = printobserver_core::SheetTable::default();
+    for (material, sheets) in defaults {
+        let named = printobserver_core::MaterialName::try_from((*material).to_owned())
+            .expect("a default material is named by something");
+        let allowed: Option<Vec<&str>> = table.allowed_for(&named).map(|allowed| {
+            allowed
+                .iter()
+                .map(printobserver_core::SheetId::as_str)
+                .collect()
+        });
+        assert_eq!(
+            allowed.as_deref(),
+            Some(sheets),
+            "the default table is not DEFAULT_SHEETS"
+        );
+    }
+    for template in TEMPLATES {
+        let text = document(template);
+        let lines: Vec<&str> = text.lines().collect();
+        let start = lines
+            .iter()
+            .position(|line| *line == expected[0])
+            .unwrap_or_else(|| panic!("{template} carries no commented `[sheets.allowed]`"));
+        let written: Vec<&str> = lines[start..]
+            .iter()
+            .take_while(|line| line.starts_with("# ") && !line.trim_start_matches("# ").is_empty())
+            .copied()
+            .collect();
+        assert_eq!(
+            written, expected,
+            "{template}'s commented sheet table is not the configuration's default"
+        );
+    }
+
+    // The intervention policy is the one document that states the defaults in
+    // prose, and every other reference document points to it.
+    let pairings: Vec<String> = defaults
+        .iter()
+        .map(|(material, sheets)| {
+            let named: Vec<String> = sheets.iter().map(|sheet| format!("`{sheet}`")).collect();
+            format!("{material} on {} alone", named.join(" or "))
+        })
+        .collect();
+    let said = format!("Left out, the table allows {}", pairings.join(" and "));
+    let policy = document(INTERVENTION_POLICY)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        policy.contains(&said),
+        "{INTERVENTION_POLICY} does not say `{said}`, the configuration's default sheet table"
+    );
 }

@@ -36,6 +36,7 @@ from printer_smoke import (
     PROGRAM_ENV,
     address_of,
 )
+from printobserver_sdk.contract import JobManifest
 from relay import ADDRESS as RELAY_ADDRESS
 from relay import AFTER, ARMED_BY, HANG_ON, LISTEN_ON, STATE, RelayState
 from relay import PROGRAM as RELAYED_PROGRAM
@@ -108,12 +109,14 @@ DURATION_S = "1"
 #: for, and every hang the test did ask for costs the whole bound.
 RELAY_BOUND_S = "3"
 
+
 #: The manifest the print carries, which is one for the smoke's own payload.
-MANIFEST: dict[str, object] = {
+MANIFEST: JobManifest = {
     "file_name": FILE_NAME,
     "material": "PLA",
     "nozzle_diameter_mm": 0.4,
     "slicer_profile": "the profile the smoke's own payload was sliced with",
+    "sheet": "smooth-pei",
     "allowed": {},
     "metadata": {},
 }

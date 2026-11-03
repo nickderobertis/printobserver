@@ -270,7 +270,14 @@ fn started(world: &World, overridden: bool) -> Ran {
         &manifest,
     ];
     if overridden {
-        asked.extend_from_slice(&["--override-filament-check", "true"]);
+        // The machine this world stands in serves no file's settings, so the
+        // material check refuses as unread; this start goes ahead past it too.
+        asked.extend_from_slice(&[
+            "--override-filament-check",
+            "true",
+            "--override-material-check",
+            "true",
+        ]);
     }
     changed(world, &asked)
 }

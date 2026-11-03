@@ -79,6 +79,8 @@ mod formats;
 mod looking;
 #[path = "journeys/materializing.rs"]
 mod materializing;
+#[path = "journeys/pairing.rs"]
+mod pairing;
 #[path = "journeys/redaction.rs"]
 mod redaction;
 #[path = "journeys/running.rs"]
@@ -175,6 +177,28 @@ fn the_listing_and_a_refused_start_say_what_each_spool_holds() {
     );
 
     spooling::the_listing_and_the_start_say_what_each_spool_holds(&world);
+}
+
+/// A start naming no sheet is rejected, and each override gets a start past
+/// its own check, through this program.
+///
+/// A world of its own, whose starts wait a second for an analysis rather than
+/// the five minutes a supervisor waits by default, and whose spool is the
+/// journey's alone.
+#[test]
+fn each_override_gets_a_start_past_its_own_check_through_this_program() {
+    let world = World::configured(
+        world::STOOD_IN,
+        &world::committed_skill(),
+        None,
+        |document| {
+            document["spools"] = printobserver_types::serde_json::json!({
+                "analysis_wait_seconds": spooling::ANALYSIS_WAIT_S,
+            });
+        },
+    );
+
+    pairing::each_override_gets_a_start_past_its_own_check(&world);
 }
 
 /// `printobserver server` refuses a configuration granting the agent

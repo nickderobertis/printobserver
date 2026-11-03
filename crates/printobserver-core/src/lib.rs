@@ -86,7 +86,8 @@ pub use bounds::{Bounds, effective_bounds};
 pub use clock::{Clock, SystemClock, plus_seconds, seconds_between, unix_seconds};
 pub use config::{
     CoreConfig, DEFAULT_DETECTOR_RESUME_GRACE, DEFAULT_EXPIRY_POLL, DEFAULT_OBSERVATION_INTERVAL,
-    DEFAULT_RECENT_EVENTS, MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER, PreflightMode, SpoolPolicy,
+    DEFAULT_RECENT_EVENTS, DEFAULT_SHEETS, MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER, PreflightMode,
+    SheetTable, SpoolPolicy,
 };
 pub use context::PrintContext;
 pub use decision::{DecisionInput, adjustment, changes_the_machine, decide, valid_from};
@@ -119,11 +120,13 @@ pub use records::{
     AcknowledgementDisposition, ActionId, ActionKind, ActionRecord, ActionRequest, Actor,
     ActorClass, ChargeKey, ChargeMethod, ChargedFilament, ClearedMark, DoubtedSpool,
     EffectiveBounds, ExecutionOutcome, FilePosition, ImageRecord, Intervention, InterventionId,
-    InterventionOutcome, JobManifest, LoadedSpool, ManifestNarrowing, PendingCharge, PendingTaken,
-    PolicyDecision, Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
+    InterventionOutcome, JobManifest, LoadedSpool, ManifestNarrowing, MaterialComparison,
+    MaterialName, MaterialObjection, MaterialResult, PendingCharge, PendingTaken, PolicyDecision,
+    Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
     PreflightToolResult, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, PrintSegmentKey,
-    RejectionReason, SafetyEnvelope, ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle,
-    SpoolRecord, SpoolRefusalCause, SpoolTrust, UnanalysedSpool, UnverifiedMark, UnverifiedMarks,
+    RejectionReason, SafetyEnvelope, SheetComparison, SheetId, SheetObjection, SheetResult,
+    ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle, SpoolRecord, SpoolRefusalCause,
+    SpoolTrust, UnanalysedSpool, UncomparedMaterial, UnverifiedMark, UnverifiedMarks,
     UnverifiedReason, UnverifiedReasonKind,
 };
 pub use records::{

@@ -296,9 +296,11 @@ Whether the spools loaded hold enough for one file, by `OctoPrint`'s analysis of
 
 `GET /v1/preflight` — answers success.
 
-Takes `file_name` (query). It answers `PreflightAnswer`: `preflight`, a
-`Preflight` — each tool's spool, figures, marks and verdict, and the worst
-verdict. It records nothing and waits for no analysis.
+Takes `file_name` (query) and `sheet` (query, optional). It answers
+`PreflightAnswer`: `preflight`, a `Preflight` — each tool's spool, figures,
+marks and verdict, and the worst verdict; the `material` result for tool 0; and
+the `sheet` result when `sheet` was given. It records nothing and waits for no
+analysis.
 
 ### pause
 
@@ -330,12 +332,18 @@ Start a print of a named file, bounded by a manifest.
 
 `POST /v1/prints/{print_id}/actions/start_print` — answers success, rejected.
 
-Takes `print_id` (path), `actor` (body), `file_name` (body), `manifest` (body), `override_filament_check` (body, optional), `reason` (body).
+Takes `print_id` (path), `actor` (body), `file_name` (body), `manifest` (body), `override_filament_check` (body, optional), `override_material_check` (body, optional), `override_sheet_check` (body, optional), `reason` (body).
 
-A start the policy accepted is held to the filament check before the printer is
-asked anything, and a refusal turns into `insufficient_filament`,
-`unverified_spool` or `analysis_unavailable`; `override_filament_check` set
-`true` by the operator lets it go ahead, recorded as overridden.
+The manifest's `sheet` names the build sheet the print goes down on, one of the
+ids the server's sheet table names; a start whose manifest names none is refused
+`sheet_not_declared`,
+and no override lets it through. A start the policy accepted is held to the
+filament, material and sheet checks before the printer is asked anything, and a
+refusal turns into `insufficient_filament`, `unverified_spool`,
+`analysis_unavailable`, `material_refused` or `sheet_refused`, each carrying
+what it compared. `override_filament_check`, `override_material_check` and
+`override_sheet_check` set `true` by the operator each let their own check's
+refusal go ahead, recorded as overridden.
 
 A start reads the printer first, ending every open print that read finds over, and
 when no print is then open it opens one for the file — so the action, its events

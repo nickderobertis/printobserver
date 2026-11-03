@@ -100,6 +100,11 @@ fn printer_port_declares_exactly_the_stated_methods() {
             "BoxFuture<'_,Result<FileFacts,PrinterError>>",
         ),
         method(
+            "filament_types",
+            &[("file_name", "FileName")],
+            "BoxFuture<'_,Result<Vec<Option<String>>,PrinterError>>",
+        ),
+        method(
             "printed_files",
             &[],
             "BoxFuture<'_,Result<Vec<FileFacts>,PrinterError>>",
@@ -288,6 +293,7 @@ fn only_start_and_the_file_reads_take_a_file_name() {
         vec![
             ("start".to_owned(), 1),
             ("file_facts".to_owned(), 1),
+            ("filament_types".to_owned(), 1),
             ("extruded_to".to_owned(), 1),
             ("printed_extent".to_owned(), 1),
         ]

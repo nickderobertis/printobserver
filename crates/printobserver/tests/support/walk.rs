@@ -212,6 +212,7 @@ pub fn manifest_of(command: &str, feedrate_max: f64, file: &str) -> Value {
         "material": "PLA",
         "nozzle_diameter_mm": 0.4,
         "slicer_profile": format!("the profile `{command}` drove"),
+        "sheet": "smooth-pei",
         "allowed": { "feedrate": { "min": 0.9, "max": feedrate_max } },
         "metadata": {},
     })
@@ -313,7 +314,10 @@ fn ledger(world: &World) -> Vec<Entry> {
         named(
             "preflight",
             Reports::Operational,
-            vec![value("file_name", &printable(world))],
+            vec![
+                value("file_name", &printable(world)),
+                value("sheet", "smooth-pei"),
+            ],
         ),
         acting(
             "register-spool",
@@ -458,6 +462,8 @@ fn actions(world: &World) -> Vec<Entry> {
                     manifest_of("start-print", 1.3, &world.printable_file()).to_string(),
                 ),
                 ("override_filament_check".to_owned(), "true".to_owned()),
+                ("override_material_check".to_owned(), "true".to_owned()),
+                ("override_sheet_check".to_owned(), "true".to_owned()),
             ],
         ),
     ]

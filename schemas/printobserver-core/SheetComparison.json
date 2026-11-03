@@ -1,0 +1,45 @@
+{
+  "$defs": {
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the sheet check compared: the declared sheet, the loaded spool's\nmaterial, and the sheets the table allows that material.",
+  "properties": {
+    "allowed": {
+      "description": "Every sheet the table allows that material.",
+      "items": {
+        "$ref": "#/$defs/SheetId"
+      },
+      "type": "array"
+    },
+    "material": {
+      "$ref": "#/$defs/MaterialName",
+      "description": "The material of the spool loaded on tool 0."
+    },
+    "sheet": {
+      "$ref": "#/$defs/SheetId",
+      "description": "The build sheet the manifest declares."
+    }
+  },
+  "required": [
+    "sheet",
+    "material",
+    "allowed"
+  ],
+  "title": "SheetComparison",
+  "type": "object"
+}

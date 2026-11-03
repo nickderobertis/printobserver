@@ -135,6 +135,60 @@ site = "override_filament_check: bool,"
 reason = "The plan states `PrintAction::StartPrint` gains `override_filament_check: bool`, defaulted and left off the wire when false so every stored start reads as before, and the domain, the command surface and the three clients are built against it concurrently; the manager ruled the approved contract is not changed here, and an enum for the start's filament-check disposition is proposed in the consolidated follow-up on these sites."
 
 [[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-core/src/expiry.rs"
+site = "fn material_detail("
+reason = "`rejection_detail` is reached at run time only when a restoration the expiry driver issues is refused, and a restoration is never a start, so no journey can reach a material refusal's sentence there; the arm exists because the match is exhaustive over the rejection vocabulary. The start's own refusal is proven end to end by the server's `pairing` journeys through the real route, and these sentences by the core's `each_material_and_sheet_refusal_reads_back_naming_what_was_compared`."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-core/src/expiry.rs"
+site = "fn sheet_detail("
+reason = "`rejection_detail` is reached at run time only when a restoration the expiry driver issues is refused, and a restoration is never a start, so no journey can reach a sheet refusal's sentence there; the arm exists because the match is exhaustive over the rejection vocabulary. The start's own refusal is proven end to end by the server's `pairing` journeys through the real route, and these sentences by the core's `each_material_and_sheet_refusal_reads_back_naming_what_was_compared`."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/client.rs"
+site = "(\"material_refused\", \"mismatch\") => format!("
+reason = "The program's own tier stands in a machine that answers no file's settings (no crate but the OctoPrint adapter may spell the download it would serve), so a start through the subprocess reaches the material check only as `unread`, which the `pairing` journey drives. A mismatch is proven end to end by the server's `pairing` journeys against the scripted OctoPrint serving recorded PrusaSlicer G-code, and this note's words by `each_material_and_sheet_refusal_note_names_what_was_compared`."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/src/client.rs"
+site = "(\"material_refused\", \"undeclared\") => format!("
+reason = "The program's own tier stands in a machine that answers no file's settings (no crate but the OctoPrint adapter may spell the download it would serve), so a start through the subprocess reaches the material check only as `unread`, which the `pairing` journey drives. A file naming no material is proven end to end by the server's `pairing` journeys against the scripted OctoPrint, and this note's words by `each_material_and_sheet_refusal_note_names_what_was_compared`."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/manifest.rs"
+site = "pub sheet: Option<String>,"
+reason = "The plan fixes the manifest's `sheet` as a string, and fixes that a start whose manifest has none is rejected with the rejected class naming `sheet`. A blank one is that same start: the check reads it as declaring no sheet and refuses it `sheet_not_declared`. Validating it into a non-blank type at the body would turn that start into a body refusal of another class, so the field stays the contract's own string, and every value the check compares it with is a validated `SheetId`."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/action.rs"
+site = "override_material_check: bool,"
+reason = "The plan fixes `PrintAction::StartPrint.override_material_check` as a `bool` beside `override_filament_check`, defaulted and left off the wire when false so every stored start reads as before; it is an agreed contract the CLI flag `--override-material-check true` and the three clients are built against, and changing its shape is not this change's to make."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/records/action.rs"
+site = "override_sheet_check: bool,"
+reason = "The plan fixes `PrintAction::StartPrint.override_sheet_check` as a `bool` beside `override_filament_check`, defaulted and left off the wire when false so every stored start reads as before; it is an agreed contract the CLI flag `--override-sheet-check true` and the three clients are built against, and changing its shape is not this change's to make."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/wire.rs"
+site = "pub override_material_check: bool,"
+reason = "This is the request body's copy of the plan-stated `PrintAction::StartPrint.override_material_check`, read so the option the derived surface declares is one the server accepts, and it carries exactly the action's own type; the contract is agreed between nodes and is not this change's to reshape."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/wire.rs"
+site = "pub override_sheet_check: bool,"
+reason = "This is the request body's copy of the plan-stated `PrintAction::StartPrint.override_sheet_check`, read so the option the derived surface declares is one the server accepts, and it carries exactly the action's own type; the contract is agreed between nodes and is not this change's to reshape."
+
+[[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-server/src/wire.rs"
 site = "pub override_filament_check: bool,"
@@ -1234,6 +1288,12 @@ rule = "clippy::too_many_arguments"
 file = "crates/printobserver-sdk/src/contract.rs"
 site = "pub fn register_spool("
 reason = "A generated method takes one argument per value its operation declares, in the order every client takes them, and the contracts' `register_spool` declares nine: the spool's name, material, colour, diameter, density, full and current figures and tare, and the reason. Gathering them into a struct for this one method would give the Rust client a calling convention its sixteen other methods and the two other clients do not have, and would be a second, hand-kept copy of the `SpoolCommand` variant the method is generated from. The generator writes this directive only above a method past the lint's limit, so a later operation within it carries none."
+
+[[suppression]]
+rule = "clippy::too_many_arguments"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub fn start_print("
+reason = "A generated method takes one argument per value its operation declares, in the order every client takes them, and the contracts' `start_print` declares eight: the print, the file, the manifest and the reason, and the filament, material and sheet overrides, each an optional boolean the plan fixes as a field of its own. Gathering them into a struct for this one method would give the Rust client a calling convention its other methods and the two other clients do not have, and would be a second, hand-kept copy of the `PrintAction` variant the method is generated from. The generator writes this directive only above a method past the lint's limit."
 
 [[suppression]]
 rule = "clippy::too_many_arguments"
@@ -2909,6 +2969,18 @@ reason = "Generated from core's `RecoveryAction`, whose `clearance_asserted` the
 [[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-sdk/src/contract.rs"
+site = "override_material_check: Option<bool>,"
+reason = "Generated from core's `PrintAction::StartPrint`, whose `override_material_check` the schema marks `x-two-valued-fact`, both in the variant and in the `start_print` method taking it: the start-print contract fixes it as a boolean defaulting to false, the operator's yes-or-no word to start despite a material refusal. Both values are requests the server rules on, an agent's asking is refused rather than honoured, and absent and false are the same request, which is why a caller may leave it out; core's own entry for the field says so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "override_sheet_check: Option<bool>,"
+reason = "Generated from core's `PrintAction::StartPrint`, whose `override_sheet_check` the schema marks `x-two-valued-fact`, both in the variant and in the `start_print` method taking it: the start-print contract fixes it as a boolean defaulting to false, the operator's yes-or-no word to start despite a sheet refusal, which never lets through a manifest declaring no sheet. Both values are requests the server rules on, an agent's asking is refused rather than honoured, and absent and false are the same request, which is why a caller may leave it out; core's own entry for the field says so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
 site = "bed_clear_asserted: Option<bool>,"
 reason = "Generated from core's `RecoveryAction`, whose `bed_clear_asserted` the schema marks `x-two-valued-fact`, both in its variant and in the method taking it: the recovery contract fixes it as a boolean defaulting to false, the operator's yes-or-no word that homing Z will meet nothing on the bed. Both values are requests the policy rules on — false is refused `assertion_required` — so neither is an invalid state; core's own entry for the field says so."
 
@@ -4252,3 +4324,142 @@ rule = "boundary_inputs_validated"
 file = "scripts/install.sh"
 site = "Lingering account authorization"
 reason = "The contract deliberately selects USER in this unprivileged per-user installer. logind authorizes enabling lingering for the selected account and refuses another account without authorization, so forging USER grants no permission to enable lingering for someone else. The installer preserves that authorization boundary and reports refusal without escalating."
+
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type ActionId = String;"
+reason = "Generated: the schema of `ActionId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type Adjustable = String;"
+reason = "Generated: the schema of `Adjustable` constrains the string it admits (a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type EventId = String;"
+reason = "Generated: the schema of `EventId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type EventKind = String;"
+reason = "Generated: the schema of `EventKind` constrains the string it admits (a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type FileName = String;"
+reason = "Generated: the schema of `FileName` constrains the string it admits (`minLength: 1`, a `pattern`, a `not` exclusion), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type ImageId = String;"
+reason = "Generated: the schema of `ImageId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type InterventionId = String;"
+reason = "Generated: the schema of `InterventionId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type MaterialName = String;"
+reason = "Generated: the schema of `MaterialName` constrains the string it admits (`minLength: 1`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type PrintId = String;"
+reason = "Generated: the schema of `PrintId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type SheetId = String;"
+reason = "Generated: the schema of `SheetId` constrains the string it admits (`minLength: 1`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type SpoolId = String;"
+reason = "Generated: the schema of `SpoolId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type Timestamp = String;"
+reason = "Generated: the schema of `Timestamp` constrains the string it admits (format `date-time`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub sheet: Option<String>,"
+reason = "Generated from core's `JobManifest`, whose `sheet` the schema marks `x-unchecked-text`: the start-print contract fixes it as a string, and a blank one is the same start as a missing one, refused `sheet_not_declared` with the rejected class, rather than a body the server cannot read. Core's own entry for the field says so; the Rust emitter writes this directive above every field the schema marks so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = "ALIAS_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated Rust alias of a string its schema constrains, so that the directives standing in `crates/printobserver-sdk/src/contract.rs` are regenerated rather than lost on the next `just generate-clients`. The reasons are that file's entries for this rule."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = "UNCHECKED_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated Rust field the schema marks `x-unchecked-text`, so that the directive standing in `crates/printobserver-sdk/src/contract.rs` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/api.rs"
+site = "pub sheet: Option<String>,"
+reason = "The preflight read's query value, read as text and turned into a `SheetId` on the handler's first line, where a blank one is refused with the server's own structured 400 naming the sheet. Typing the query field as `SheetId` would move that refusal into the query extractor and answer it with the extractor's own body instead; the operation declares the value's shape as `SheetId`, so every client sends one."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub allowed: Option<std::collections::BTreeMap<String, Vec<String>>>,"
+reason = "The sheet table as the configuration file writes it, read as text the way every field of the server's configuration is, and validated where it is read: `SheetTable::new` builds each material as a `MaterialName` and each sheet as a `SheetId`, and a blank or duplicated one refuses the configuration with an error naming `sheets.allowed`. Typing the file's own field with those types would refuse the same file with the parser's message, which names no configuration field."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-printer-api/src/lib.rs"
+site = "fn filament_types("
+reason = "The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-octoprint/src/client.rs"
+site = "fn read_filament_types("
+reason = "The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-octoprint/src/client.rs"
+site = "fn filament_types("
+reason = "The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-octoprint/src/settings.rs"
+site = "pub fn filament_types_in("
+reason = "The parser behind the printer port's material read: it trims each `filament_type` entry and answers a blank one as `None`, which is the invariant a material name carries, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type, which this adapter does not depend on; moving it into `printobserver-types` so the port can carry it is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/preflight.rs"
+site = "fn judged_material("
+reason = "The material judgment takes the printer port's answer as the port gives it, text per tool with `None` for a blank entry, and builds the `MaterialName` it compares from the tool-0 entry, judging an entry that does not make one as a file that names no material. The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/supervisor.rs"
+site = "pub(crate) async fn read_filament_types("
+reason = "The supervisor hands the printer port's answer on unchanged to the preflight, which builds the `MaterialName` it compares. The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."

@@ -100,13 +100,13 @@ def test_a_stale_bare_matrix_job_name_is_refused(tree: Callable[[], Tree]) -> No
 def test_a_record_naming_only_one_of_a_jobs_cells_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """A gate required on one platform is a merge path the other never blocked."""
+    """A tier required on one platform is a merge path the other never blocked."""
     broken = tree()
-    _replace_required(broken, ["gate (linux-x86_64)", "llmlint", "pr-title"])
+    _replace_required(broken, ["integration (linux-x86_64)", "llmlint", "pr-title"])
 
     findings = merge_model(broken.repo)
 
-    refused_naming(findings, "some but not all", "gate (linux-aarch64)")
+    refused_naming(findings, "some but not all", "integration (linux-aarch64)")
 
 
 def test_the_integration_job_is_required_once_per_platform_under_its_id_alone(
@@ -228,8 +228,8 @@ def test_an_appended_field_no_name_can_be_built_from_is_refused(
     broken.edit(CI, QUALIFIED, "    name: gate\n")
     broken.edit(
         CI,
-        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
-        "          - id: linux-x86_64\n            runner: [ubuntu, 24.04]\n",
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
+        "          - id: linux-aarch64\n            runner: [ubuntu, 24.04-arm]\n",
     )
 
     findings = merge_model(broken.repo)

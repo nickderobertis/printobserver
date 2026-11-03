@@ -312,12 +312,26 @@ def test_every_required_job_ends_with_the_gate_time_step(
     now_workflow, before_workflow = workflow(committed_repo), workflow(baseline)
     now_jobs, before_jobs = jobs_of(now_workflow), jobs_of(before_workflow)
     reporting = reporting_jobs(committed_repo)
+    # A job new since the baseline is held to the permissions of the job that
+    # reported its context then: `gate-linux-x86_64` to the gate job's, whose
+    # cell reported `gate (linux-x86_64)` before that platform was sharded.
+    reported_before = {
+        context.name: context.job
+        for context in status_contexts(baseline)
+        if context.file == "ci.yml" and context.name in REQUIRED
+    }
+    contexts_now = {
+        context.job: context.name
+        for context in status_contexts(committed_repo)
+        if context.file == "ci.yml" and context.name in REQUIRED
+    }
 
     equal(
         sorted(reporting),
         sorted(
             [
                 "gate",
+                "gate-linux-x86_64",
                 "gate-windows-aarch64",
                 "gate-windows-x86_64",
                 "gate-macos",
@@ -336,7 +350,8 @@ def test_every_required_job_ends_with_the_gate_time_step(
         environment = {**job.get("env", {}), **last.get("env", {})}
         equal(environment.get(KIND), kind, describing=f"{key}'s kind")
         truth(PLATFORM in environment, describing=f"{key} names its platform")
-        before = _permissions(before_workflow, before_jobs[key])
+        before_key = key if key in before_jobs else reported_before[contexts_now[key]]
+        before = _permissions(before_workflow, before_jobs[before_key])
         equal(
             _permissions(now_workflow, job),
             {**before, "actions": "read"},

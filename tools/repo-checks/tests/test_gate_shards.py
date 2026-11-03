@@ -641,15 +641,17 @@ def test_a_shard_job_that_is_not_every_shard_of_one_platform_is_refused(
     refused(sharded_jobs(copy.repo), naming)
 
 
-def test_a_sharded_platform_the_gate_job_also_carries_is_refused(tree: Callable[[], Tree]) -> None:
-    """Two jobs reporting `gate (windows-aarch64)` are two answers to one required context."""
+@pytest.mark.parametrize(
+    ("platform", "runner"),
+    [("windows-aarch64", "windows-11-arm"), ("linux-x86_64", "ubuntu-24.04")],
+)
+def test_a_sharded_platform_the_gate_job_also_carries_is_refused(
+    tree: Callable[[], Tree], platform: str, runner: str
+) -> None:
+    """Two jobs reporting one sharded platform's `gate` are two answers to one required context."""
     copy = tree()
-    copy.edit(
-        CI,
-        "          # The two Windows gates are sharded",
-        "          - id: windows-aarch64\n            runner: windows-11-arm\n"
-        "          # The two Windows gates are sharded",
-    )
+    anchor = "          # The `linux-x86_64` and the two Windows gates are sharded"
+    copy.edit(CI, anchor, f"          - id: {platform}\n            runner: {runner}\n{anchor}")
 
     refused(sharded_jobs(copy.repo), "the unsharded job's matrix leaves a sharded platform out")
 

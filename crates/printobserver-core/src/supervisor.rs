@@ -619,6 +619,16 @@ impl Supervisor {
         self.printer.file_facts(file_name).await
     }
 
+    /// Read the material each tool of one file was sliced for, tool 0 first.
+    // llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
+    pub(crate) async fn read_filament_types(
+        &self,
+        file_name: FileName,
+    ) -> Result<Vec<Option<String>>, PrinterError> {
+        // llmlint: ignore-end[invalid_states_unrepresentable]
+        self.printer.filament_types(file_name).await
+    }
+
     /// Read every file the printer holds that carries a print tally.
     ///
     /// A read, for the same reason [`Supervisor::read_snapshot`] is.

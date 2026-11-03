@@ -92,12 +92,11 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - id: linux-x86_64
-            runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          # The two Windows gates are sharded: `gate-shard-<platform>` runs
-          # each one's work and `gate-<platform>` reports its context.
+          # The `linux-x86_64` and the two Windows gates are sharded:
+          # `gate-shard-<platform>` runs each one's work and `gate-<platform>`
+          # reports its context.
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -133,7 +132,10 @@ jobs:
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
       - run: just check "$(just gate-tier)"
-      # Only the release pull request pays for the two-build maintenance workload.
+      # Only the release pull request pays for the two-build maintenance
+      # workload, and only on `linux-x86_64`, whose gate is sharded below: on
+      # this job's cells the recipe does nothing, and a dispatch of `gate` on
+      # `linux-x86_64` runs it here.
       - run: just budgets-release-pr
       - if: always()
         run: just runner-temp cleanup
@@ -142,6 +144,108 @@ jobs:
         run: just gate-time
         env:
           GATE_TIME_KIND: gate
+
+  # `linux-x86_64`'s gate reaches past 1,800 s on one 4-processor runner once a
+  # change reaches the whole graph — 1,980 s on run 41558713748 and 2,006 s on
+  # the release sweep 41532109264 — because its `test` and `test-e2e` tiers run
+  # side by side on the same processors. Four shards give the Rust crates'
+  # tests, every other project's tests beside the other tiers, and each half of
+  # the end-to-end tier a runner of their own.
+  gate-shard-linux-x86_64:
+    env:
+      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
+      PRINTOBSERVER_SERVICE_JOURNEY: required
+    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+            shard: 1
+            shards: 4
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+            shard: 2
+            shards: 4
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+            shard: 3
+            shards: 4
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+            shard: 4
+            shards: 4
+    runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+          # The affected tier, the end-to-end tier and the suppression check all
+          # diff against the base branch, which a shallow checkout omits.
+          fetch-depth: 0
+      # The base the affected tier is diffed against, derived explicitly and
+      # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
+      # request, and the last commit this workflow passed on for a push to it.
+      - uses: nrwl/nx-set-shas@v4
+      # A cache per shard: the first compiles the Rust crates' instrumented
+      # test builds, the second the lints, the debug program the Python suites
+      # run and the build tier, the last two the debug program the end-to-end
+      # tier runs — and one key shared by all would hold whichever shard saved
+      # first.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: just runner-temp
+      - run: just bootstrap
+      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
+      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
+        env:
+          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
+      # The release pull request's maintenance measurement, on one shard
+      # alone so that it is taken once, after that shard's work has passed.
+      - if: matrix.platform.shard == 1
+        run: just budgets-release-pr
+      - if: always()
+        run: just runner-temp cleanup
+
+  # The required `gate (linux-x86_64)` context: it waits on every shard
+  # whatever each concluded, and fails unless each succeeded.
+  gate-linux-x86_64:
+    name: gate (linux-x86_64)
+    needs: [gate-shard-linux-x86_64]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - run: just shard-verdict gate linux-x86_64
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+      - name: gate-time
+        run: just gate-time
+        env:
+          GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: linux-x86_64
+          GITHUB_TOKEN: ${{ github.token }}
 
   # A platform whose gate does not fit one runner in the 30 minutes each
   # platform is held to is split: one matrix cell per shard, each running the

@@ -165,7 +165,9 @@ fn rejection_note(document: &Value) -> String {
     let refusal = document
         .pointer("/record/decision/rejected")
         .or_else(|| document.pointer("/decision/rejected"));
-    if let Some(note) = refusal.and_then(spool_note) {
+    if let Some(note) =
+        refusal.and_then(|refused| spool_note(refused).or_else(|| pairing_note(refused)))
+    {
         return note;
     }
     let named = |at: &str| {
@@ -259,6 +261,111 @@ fn spool_note(refusal: &Value) -> Option<String> {
                 .and_then(Value::as_str)
                 .unwrap_or("?"),
             text("message")
+        ),
+        _ => return None,
+    })
+}
+
+/// The option a start goes ahead despite the material check with.
+const OVERRIDE_MATERIAL: &str = "--override-material-check true";
+
+/// The option a start goes ahead despite the sheet check with.
+const OVERRIDE_SHEET: &str = "--override-sheet-check true";
+
+/// What a refusal of the material or sheet check says to do next, naming
+/// what the check compared; nothing for any other refusal.
+fn pairing_note(refusal: &Value) -> Option<String> {
+    if refusal.as_str() == Some("sheet_not_declared") {
+        return Some(
+            "the supervisor refused this start: sheet_not_declared. Its manifest declares no \
+             `sheet`: name the build sheet the print goes down on in the manifest's `sheet`, \
+             such as `smooth-pei` or `textured-pei`. No override lets a start without one through"
+                .to_owned(),
+        );
+    }
+    let (reason, said) = refusal.as_object()?.iter().next()?;
+    let objection = said.get("objection")?;
+    let text = |at: &str| {
+        objection
+            .get(at)
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+            .to_owned()
+    };
+    let listed = |at: &str| {
+        objection.get(at).and_then(Value::as_array).map_or_else(
+            || "?".to_owned(),
+            |sheets| {
+                sheets
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(|sheet| format!("`{sheet}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
+        )
+    };
+    let spool = || {
+        format!(
+            "spool `{}` on tool {}, which is `{}`",
+            objection
+                .pointer("/spool/name")
+                .and_then(Value::as_str)
+                .unwrap_or("?"),
+            objection
+                .get("tool")
+                .map_or_else(|| "?".to_owned(), ToString::to_string),
+            text("loaded"),
+        )
+    };
+    let cause = text("cause");
+    Some(match (reason.as_str(), cause.as_str()) {
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+        ("material_refused", "mismatch") => format!(
+            "the supervisor's material check refused this start: material_refused (mismatch). \
+             The file was sliced for `{}`, and {}. Load a spool of the material it was sliced \
+             for, slice it again for the spool loaded, or start again with `{OVERRIDE_MATERIAL}`",
+            text("sliced_for"),
+            spool(),
+        ),
+        // llmlint: ignore[changed_behavior_has_e2e] suppressions.toml has the reason.
+        ("material_refused", "undeclared") => format!(
+            "the supervisor's material check refused this start: material_refused (undeclared). \
+             `{}` names no `filament_type`, so it cannot be compared with {}. Slice it again \
+             with a slicer that writes its settings, or start again with `{OVERRIDE_MATERIAL}`",
+            text("file_name"),
+            spool(),
+        ),
+        ("material_refused", _) => format!(
+            "the supervisor's material check refused this start: material_refused ({cause}). \
+             The settings of `{}` could not be read ({}), so it cannot be compared with {}. \
+             Start again once the printer answers, or with `{OVERRIDE_MATERIAL}`",
+            text("file_name"),
+            text("detail"),
+            spool(),
+        ),
+        ("sheet_refused", "not_allowed") => format!(
+            "the supervisor's sheet check refused this start: sheet_refused (not_allowed). The \
+             sheet table allows `{}` on {} and not on `{}`. Put down a sheet it allows and name \
+             it in the manifest's `sheet`, or start again with `{OVERRIDE_SHEET}`",
+            text("material"),
+            listed("allowed"),
+            text("sheet"),
+        ),
+        ("sheet_refused", "unlisted_material") => format!(
+            "the supervisor's sheet check refused this start: sheet_refused (unlisted_material). \
+             The sheet table has no entry for `{}`, so `{}` is not known to suit it. Add one \
+             under `[sheets.allowed]` in the supervisor's configuration, or start again with \
+             `{OVERRIDE_SHEET}`",
+            text("material"),
+            text("sheet"),
+        ),
+        ("sheet_refused", _) => format!(
+            "the supervisor's sheet check refused this start: sheet_refused ({cause}). No entry \
+             of the sheet table lists `{}`; the sheets it names are {}. Name one of them in the \
+             manifest's `sheet`, or start again with `{OVERRIDE_SHEET}`",
+            text("sheet"),
+            listed("known"),
         ),
         _ => return None,
     })
@@ -446,5 +553,100 @@ mod tests {
             verified.contains("needs 6.0 g plus a 5.0 g buffer. Load"),
             "{verified}"
         );
+    }
+
+    /// Every refusal of the material and sheet checks names what it compared
+    /// and the next step, and a missing sheet says no override lets it through.
+    #[test]
+    fn each_material_and_sheet_refusal_note_names_what_was_compared() {
+        let spool = json!({ "id": "x", "name": "PETG roll" });
+        let refused = |reason: &str, objection: &printobserver_types::serde_json::Value| {
+            rejection_note(&json!({
+                "record": { "decision": { "rejected": { reason: { "objection": objection } } } }
+            }))
+        };
+        for (note, said) in [
+            (
+                refused(
+                    "material_refused",
+                    &json!({ "cause": "mismatch", "tool": 0, "spool": spool,
+                             "loaded": "PETG", "sliced_for": "PLA" }),
+                ),
+                vec![
+                    "sliced for `PLA`",
+                    "spool `PETG roll` on tool 0, which is `PETG`",
+                    "--override-material-check true",
+                ],
+            ),
+            (
+                refused(
+                    "material_refused",
+                    &json!({ "cause": "undeclared", "tool": 0, "spool": spool,
+                             "loaded": "PETG", "file_name": "a.gcode" }),
+                ),
+                vec![
+                    "`a.gcode` names no `filament_type`",
+                    "--override-material-check true",
+                ],
+            ),
+            (
+                refused(
+                    "material_refused",
+                    &json!({ "cause": "unread", "tool": 0, "spool": spool, "loaded": "PETG",
+                             "file_name": "a.gcode", "detail": "nothing answered" }),
+                ),
+                vec![
+                    "could not be read (nothing answered)",
+                    "--override-material-check true",
+                ],
+            ),
+            (
+                refused(
+                    "sheet_refused",
+                    &json!({ "cause": "not_allowed", "sheet": "smooth-pei",
+                             "material": "PETG", "allowed": ["textured-pei"] }),
+                ),
+                vec![
+                    "allows `PETG` on `textured-pei` and not on `smooth-pei`",
+                    "--override-sheet-check true",
+                ],
+            ),
+            (
+                refused(
+                    "sheet_refused",
+                    &json!({ "cause": "unlisted_material", "sheet": "smooth-pei",
+                             "material": "ASA" }),
+                ),
+                vec![
+                    "no entry for `ASA`",
+                    "[sheets.allowed]",
+                    "--override-sheet-check true",
+                ],
+            ),
+            (
+                refused(
+                    "sheet_refused",
+                    &json!({ "cause": "unknown_sheet", "sheet": "glass", "material": "PLA",
+                             "known": ["smooth-pei", "textured-pei"] }),
+                ),
+                vec![
+                    "lists `glass`",
+                    "`smooth-pei`, `textured-pei`",
+                    "--override-sheet-check true",
+                ],
+            ),
+            (
+                rejection_note(&json!({
+                    "record": { "decision": { "rejected": "sheet_not_declared" } }
+                })),
+                vec!["sheet_not_declared", "`sheet`", "No override"],
+            ),
+        ] {
+            for expected in said {
+                assert!(note.contains(expected), "{note} does not say {expected:?}");
+            }
+        }
+        let other = refused("out_of_bounds", &json!({ "cause": "mismatch" }));
+        assert!(other.contains("policy refused this action"), "{other}");
     }
 }

@@ -80,6 +80,16 @@ pub struct ActionBody {
     // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default)]
     pub override_filament_check: bool,
+    /// Whether a start goes ahead despite the material check; absent, it does
+    /// not.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
+    #[serde(default)]
+    pub override_material_check: bool,
+    /// Whether a start goes ahead despite the sheet check; absent, it does
+    /// not.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
+    #[serde(default)]
+    pub override_sheet_check: bool,
     /// The event an acknowledgement is about.
     #[serde(default)]
     pub event_id: Option<EventId>,
@@ -190,6 +200,8 @@ impl ActionBody {
                 file_name: needed(self.file_name, "file_name")?,
                 manifest: needed(self.manifest, "manifest")?,
                 override_filament_check: self.override_filament_check,
+                override_material_check: self.override_material_check,
+                override_sheet_check: self.override_sheet_check,
                 reason,
                 actor,
             },
@@ -760,6 +772,8 @@ mod tests {
             file_name: None,
             manifest: None,
             override_filament_check: false,
+            override_material_check: false,
+            override_sheet_check: false,
             event_id: None,
             disposition: None,
             outcome: None,

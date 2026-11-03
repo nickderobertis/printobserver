@@ -453,6 +453,14 @@
           "format": "double",
           "type": "number"
         },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "x-unchecked-text": true
+        },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
           "type": "string"

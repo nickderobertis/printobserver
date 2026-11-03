@@ -134,7 +134,13 @@ def test_a_job_that_does_not_take_a_route_still_carries_a_platform_answered_no(
         AARCH64,
         AARCH64.replace("install path: yes", "install path: no — no runner has been proven yet"),
     )
-    broken.edit(".github/workflows/ci.yml", MATRIX_AARCH64, "")
+    # Swapped for another platform's cell rather than deleted: it is the gate
+    # job's one unsharded cell, and an empty matrix is a different refusal.
+    broken.edit(
+        ".github/workflows/ci.yml",
+        MATRIX_AARCH64,
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
+    )
 
     findings = platforms(broken.repo)
 

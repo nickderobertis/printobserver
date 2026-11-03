@@ -3,7 +3,7 @@
   "root": "tests/skilltest",
   "projectType": "library",
   "tags": ["lang:python", "type:e2e"],
-  "implicitDependencies": ["repo-checks"],
+  "implicitDependencies": ["printobserver-sdk-python", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tests/skilltest" },
     "format-check": { "command": "uv run -q ruff format --check tests/skilltest" },

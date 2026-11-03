@@ -1,0 +1,67 @@
+{
+  "$defs": {
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
+    "PreflightSpool": {
+      "additionalProperties": false,
+      "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool's identifier."
+        },
+        "name": {
+          "description": "The spool's name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the material check compared: the spool loaded on a tool and the\nmaterial the file says that tool was sliced for.",
+  "properties": {
+    "loaded": {
+      "$ref": "#/$defs/MaterialName",
+      "description": "That spool's material."
+    },
+    "sliced_for": {
+      "$ref": "#/$defs/MaterialName",
+      "description": "The material the file's own `filament_type` names for the tool."
+    },
+    "spool": {
+      "$ref": "#/$defs/PreflightSpool",
+      "description": "The spool loaded on it."
+    },
+    "tool": {
+      "description": "The tool, in the printer's own numbering.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "tool",
+    "spool",
+    "loaded",
+    "sliced_for"
+  ],
+  "title": "MaterialComparison",
+  "type": "object"
+}
