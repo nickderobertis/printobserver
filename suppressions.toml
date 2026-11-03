@@ -4277,7 +4277,6 @@ file = "scripts/install.sh"
 site = "Lingering account authorization"
 reason = "The contract deliberately selects USER in this unprivileged per-user installer. logind authorizes enabling lingering for the selected account and refuses another account without authorization, so forging USER grants no permission to enable lingering for someone else. The installer preserves that authorization boundary and reports refusal without escalating."
 
-# --- the generated Rust client's constrained strings ---------------------------
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
