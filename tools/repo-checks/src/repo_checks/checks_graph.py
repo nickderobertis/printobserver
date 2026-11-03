@@ -196,6 +196,10 @@ def python_edges(repo: Repo, graph: list[Project]) -> dict[str, dict[str, str]]:
             continue
         found: dict[str, str] = {}
         for path in _python_files(repo, project.root):
+            # A file under a project nested inside this one is that project's,
+            # as Nx assigns it, and draws that project's edges rather than this one's.
+            if _owner(path.relative_to(repo.root).as_posix(), by_root) != project.name:
+                continue
             for name in sorted(_imported(path)):
                 owner = offered.get(name)
                 if owner is not None and owner != project.name:

@@ -209,13 +209,19 @@ async fn the_composed_agent_runs_this_programs_commands_and_no_other() {
         .filter(|argument| argument.starts_with("Bash("))
         .map(String::as_str)
         .collect();
+    // An operation reached through another's command has none of its own.
     let expected: Vec<String> = OPERATIONS
         .iter()
+        .filter(|operation| printobserver_server::printer_wide_of(operation.name).is_none())
         .map(|operation| format!("Bash(printobserver {}:*)", command_for(operation.name)))
         .collect();
     assert_eq!(
         rules, expected,
-        "the shell is not allowed exactly one command per operation the server serves"
+        "the shell is not allowed exactly one command per command the server's operations make"
+    );
+    assert!(
+        !rules.contains(&"Bash(printobserver printer-look:*)"),
+        "the agent is allowed a command this program does not have: {rules:?}"
     );
     assert!(
         rules.contains(&"Bash(printobserver acknowledge-failure:*)"),

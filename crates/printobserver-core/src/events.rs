@@ -691,11 +691,21 @@ impl Supervisor {
         print_id: PrintId,
         body: EventBody,
     ) -> Result<EventRecord, CoreError> {
+        self.append_system_event_to(Some(print_id), body).await
+    }
+
+    /// Append one event the supervisor itself raised, to a print's history or
+    /// to the printer's when it names none.
+    pub(crate) async fn append_system_event_to(
+        &self,
+        print_id: Option<PrintId>,
+        body: EventBody,
+    ) -> Result<EventRecord, CoreError> {
         Ok(self
             .stores()
             .events
             .append_event(EventDraft {
-                print_id: Some(print_id),
+                print_id,
                 source: system_source(),
                 received_at: self.clock().now(),
                 body,
@@ -730,6 +740,20 @@ impl Supervisor {
         site: PortFailureSite,
         detail: String,
     ) {
+        self.record_port_failure_to(Some(print_id), event_id, site, detail)
+            .await;
+    }
+
+    /// Record that a port failed while one event was being handled, in the
+    /// history that event is in: a print's, or the printer's when it names
+    /// none.
+    pub(crate) async fn record_port_failure_to(
+        &self,
+        print_id: Option<PrintId>,
+        event_id: printobserver_types::EventId,
+        site: PortFailureSite,
+        detail: String,
+    ) {
         // A record that will not render is dropped exactly as one the store
         // refuses is: the failure it was about has already been answered, and
         // the loop survives not having written it down.
@@ -740,6 +764,6 @@ impl Supervisor {
         }) else {
             return;
         };
-        let _ = self.append_system_event(print_id, body).await;
+        let _ = self.append_system_event_to(print_id, body).await;
     }
 }

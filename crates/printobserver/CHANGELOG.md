@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.5](https://github.com/nickderobertis/printobserver/compare/v0.10.3...v0.10.5) - 2026-11-02
+
+### Added
+
+- *(install)* make a per-user, no-admin install the recommended path on Linux and macOS ([#296](https://github.com/nickderobertis/printobserver/pull/296))
+
+## [0.10.4](https://github.com/nickderobertis/printobserver/compare/v0.10.3...v0.10.4) - 2026-11-02
+
+### Added
+
+- *(install)* make a per-user, no-admin install the recommended path on Linux and macOS ([#296](https://github.com/nickderobertis/printobserver/pull/296))
+
 ## [0.10.3](https://github.com/nickderobertis/printobserver/compare/v0.10.1...v0.10.3) - 2026-10-28
 
 ### Added

@@ -7,7 +7,9 @@ this budget was built on, and three things are held of it:
   each of the ten required gate and integration contexts by jobs running every
   Nx target, over every project carrying it, that the context ran at `BASELINE`
   — the two macOS contexts exactly those, so splitting the combined macOS job
-  into one job per lane dropped nothing from either;
+  into one job per lane dropped nothing from either. A target `MOVED` records
+  is read where it went, and the work each macOS lane gained since is exactly
+  what `ADDED` names, so a project's work nothing records still fails;
 * every job reporting one of the ten ends with the `gate-time` step, waived by
   no `continue-on-error`, naming its own context, and with nothing but
   `actions: read` added to the permissions it had;
@@ -49,6 +51,44 @@ REQUIRED = tuple(
 )
 #: What a baseline tree needs for `status_contexts` and for the targets read here.
 READ = (".github", "AGENTS.md", "justfile", "repo-policy.toml", "release-targets.toml")
+
+#: Each (project, target) moved since `BASELINE` to a project of its own, and
+#: where it runs now: the clients' live suites became projects of their own,
+#: and the integration contexts run them there.
+MOVED = {
+    ("printobserver-sdk-node", "test-integration"): (
+        "printobserver-sdk-node-integration",
+        "test-integration",
+    ),
+    ("printobserver-sdk-python", "test-integration"): (
+        "printobserver-sdk-python-integration",
+        "test-integration",
+    ),
+}
+
+#: The work each macOS context runs that it did not at `BASELINE`, every
+#: project and target of it, so the exact comparison holds across every project:
+#: the clients' live suites' own checks, the scheduled-check delay budget's
+#: project, and `real-prints-lfs`, a Python tooling project the gate's tiers
+#: reach and no lane of the integration tier does.
+ADDED = {
+    "gate (macos-aarch64)": {
+        ("printobserver-sdk-node-integration", "format-check"),
+        ("printobserver-sdk-node-integration", "lint"),
+        ("printobserver-sdk-node-integration", "typecheck"),
+        ("printobserver-sdk-python-integration", "format-check"),
+        ("printobserver-sdk-python-integration", "lint"),
+        ("printobserver-sdk-python-integration", "typecheck"),
+        ("printobserver-server-check-delay-budget", "budgets"),
+        ("printobserver-server-check-delay-budget", "test"),
+        ("real-prints-lfs", "budgets"),
+        ("real-prints-lfs", "format-check"),
+        ("real-prints-lfs", "lint"),
+        ("real-prints-lfs", "test"),
+        ("real-prints-lfs", "typecheck"),
+    },
+    "integration (macos-aarch64)": set(),
+}
 
 RECORDED = Path(__file__).parent / "recorded"
 #: The finished pull-request run whose combined macOS job ran 2,573 s, so both
@@ -181,17 +221,28 @@ def nx_work(repo: Repo, context: str) -> set[tuple[str, str]]:
                 continue
             recipe = "check" if called["recipe"] == "check-shard" else called["recipe"]
             targets |= _expand(recipe, bodies, set())
-    carrying = set()
+    return {
+        (name, target)
+        for name, declared in projects(repo).items()
+        for target in declared
+        if target in targets
+    }
+
+
+def projects(repo: Repo) -> dict[str, set[str]]:
+    """Every Nx project the tree declares, and the targets it carries."""
+    declared: dict[str, set[str]] = {}
     for project in repo.root.glob("**/project.json"):
         if "node_modules" in project.parts:
             continue
-        declared = json.loads(project.read_text(encoding="utf-8"))
-        carrying |= {
-            (declared["name"], target)
-            for target in declared.get("targets", {})
-            if target in targets
-        }
-    return carrying
+        document = json.loads(project.read_text(encoding="utf-8"))
+        declared[document["name"]] = set(document.get("targets", {}))
+    return declared
+
+
+def moved(work: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """Baseline work read where it runs now, through `MOVED`."""
+    return {MOVED.get(item, item) for item in work}
 
 
 def test_every_context_a_pull_request_reported_is_reported_still(
@@ -214,45 +265,20 @@ def test_each_required_context_runs_all_the_nx_work_it_ran(
     before, now = nx_work(baseline, context), nx_work(committed_repo, context)
 
     truth(bool(before), describing=f"{context} ran Nx work at the baseline")
-    equal(sorted(before - now), [], describing=f"what {context} no longer runs")
-
-
-#: The Nx work each macOS lane has gained since `BASELINE`, by the project that
-#: brought it. A project added since is work no lane ran then, so it is named
-#: here target by target: a lane running less of it, or more, fails as surely as
-#: one dropping baseline work. `real-prints-lfs` is a Python tooling project,
-#: so the gate's tiers reach its `format-check`, `lint`, `typecheck` and `test`,
-#: and `just test`'s `budgets`; no lane of the integration tier reaches it.
-ADDED_SINCE_BASELINE: dict[str, frozenset[tuple[str, str]]] = {
-    "gate (macos-aarch64)": frozenset(
-        ("real-prints-lfs", target)
-        for target in ("budgets", "format-check", "lint", "test", "typecheck")
-    ),
-    "integration (macos-aarch64)": frozenset(),
-}
+    equal(sorted(moved(before) - now), [], describing=f"what {context} no longer runs")
 
 
 @pytest.mark.parametrize("context", ["gate (macos-aarch64)", "integration (macos-aarch64)"])
 def test_the_macos_lever_runs_exactly_the_work_macos_ran(
     baseline: Repo, committed_repo: Repo, context: str
 ) -> None:
-    """Each lane, once a step of the combined job, is the whole of its own macOS jobs' work.
-
-    The whole of what the lane runs now is held: the baseline's work, and the
-    work each project added since brings, as `ADDED_SINCE_BASELINE` names it.
-    """
+    """Each lane, once a step of the combined job, is the whole of its own macOS jobs' work."""
     now, before = nx_work(committed_repo, context), nx_work(baseline, context)
     truth(bool(before), describing=f"{context} ran Nx work at the baseline")
-    expected = before | ADDED_SINCE_BASELINE[context]
     equal(
-        sorted(now - expected),
+        sorted(now ^ (moved(before) | ADDED[context])),
         [],
-        describing=f"what {context} runs that neither the baseline nor a named addition does",
-    )
-    equal(
-        sorted(expected - now),
-        [],
-        describing=f"what {context} no longer runs, of the baseline's or a named addition's",
+        describing=f"what {context} runs that it did not, or no longer",
     )
     equal(
         behind(committed_repo, context),

@@ -20,8 +20,8 @@ use std::sync::Mutex;
 
 use printobserver_core::records::PrinterState;
 use printobserver_core::store::{
-    AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup, ImageStore,
-    PrintStore, StoreError, StoredQuery, StoredSignal,
+    AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageDraft, ImageLookup,
+    ImageStore, PrintStore, StoreError, StoredQuery, StoredSignal,
 };
 use printobserver_core::{ImageRecord, JobManifest, ManifestNarrowing, PrintRecord};
 use printobserver_types::{EventId, EventRecord, ImageId, PrintId, RawBytes, Timestamp};
@@ -234,6 +234,16 @@ impl EventStore for MemoryStore {
         })
     }
 
+    // The ingress keeps an alert's snapshot after its event, through the image
+    // store; only the supervisor writes an event and its frame as one.
+    fn append_event_with_image(
+        &self,
+        _draft: EventDraft,
+        _image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        unsupported("append_event_with_image")
+    }
+
     fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {
         Box::pin(async move {
             let limit = usize::try_from(query.resolved_limit()?).unwrap_or(usize::MAX);
@@ -324,7 +334,7 @@ impl ImageStore for MemoryStore {
             })?;
             let record = ImageRecord {
                 id,
-                print_id,
+                print_id: Some(print_id),
                 event_id,
                 source_url,
                 fetched_at: Timestamp::now(),
@@ -457,6 +467,14 @@ impl PrintStore for RefusingStore {
 
 impl EventStore for RefusingStore {
     fn append_event(&self, _draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        refused()
+    }
+
+    fn append_event_with_image(
+        &self,
+        _draft: EventDraft,
+        _image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         refused()
     }
 

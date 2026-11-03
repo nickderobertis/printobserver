@@ -181,11 +181,12 @@ schema with an `x-event-kind` marker through `event_schema_of`, and the
 generated clients' kind-to-payload tables are produced from the marker — with
 `just check-repo`'s `generated-clients` check red when a generated copy parts
 from what the schema set writes, and the codegen refusing two schemas under one
-kind name. Thirty-nine kinds are
+kind name. Forty kinds are
 declared today, each by its owner: `printobserver-core` writes
 `action_requested`, `action_executed`, `action_rejected`,
 `intervention_expired`, `agent_assessment`, `operator_acknowledgement`,
-`port_failure`, `camera_look`, `periodic_observation` and `camera_degraded`,
+`port_failure`, `camera_look`, `periodic_observation`, `camera_degraded` and
+`camera_retry`,
 and the twenty-three of the printer timeline — `print_started`, `print_ended`,
 `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`,
 `spool_adjusted`, `spool_retired`, `spool_command_rejected`,

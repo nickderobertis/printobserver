@@ -162,6 +162,10 @@ impl RecordingPrinter {
     ///
     /// Two callers nothing keeps apart are made to overlap at the read, and two
     /// that something does keep apart each wait a moment alone and go on.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn job_reads_meet(&self, callers: usize) {
         *self.meeting.lock().expect("the meeting is not poisoned") = (callers, 0);
     }
@@ -184,12 +188,20 @@ impl RecordingPrinter {
     ///
     /// What a journey about a read made while a start is in flight needs: the
     /// machine is idle until the start answers and running the job after.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn starts_jobs_after(&self, delay: Duration) {
         *self.starting.lock().expect("the start is not poisoned") = Some(delay);
     }
 
     /// A switched-off machine: while set, both its snapshot and its job are
     /// refused as unreachable, which is how a listing is shown to answer anyway.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn unreadable(&self, unreadable: bool) {
         self.held
             .lock()
@@ -211,6 +223,10 @@ impl RecordingPrinter {
     /// Hold one file, `size_bytes` long, whose analysis says each tool feeds
     /// `filament` — or, given none, that has no analysis yet — replacing any
     /// file of that name, tally and all, as a re-upload does.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn holds_file(&self, name: &str, size_bytes: i64, filament: Option<Vec<ToolFilament>>) {
         let mut held = self.held.lock().expect("the machine is not poisoned");
         held.files.retain(|file| file.file_name != name);
@@ -247,6 +263,10 @@ impl RecordingPrinter {
 
     /// Report the job at this byte of its file, as a print part-way through
     /// it does.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn at_byte(&self, position_bytes: i64) {
         self.held
             .lock()
@@ -257,6 +277,10 @@ impl RecordingPrinter {
 
     /// Report the job read to its file's end with its completion at 1.0, as
     /// `OctoPrint` reports a print it finished.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn reports_finished(&self) {
         let mut held = self.held.lock().expect("the machine is not poisoned");
         held.job.file_position_bytes = held.job.size_bytes;
@@ -268,6 +292,10 @@ impl RecordingPrinter {
 
     /// Report the job with no position in its file, as a job read taken while
     /// the printer is busy with a filament change can.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn reports_no_position(&self) {
         self.held
             .lock()
@@ -277,6 +305,10 @@ impl RecordingPrinter {
     }
 
     /// Everything it has been asked, in order.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     #[must_use]
     pub fn calls(&self) -> Vec<Call> {
         self.held
@@ -287,6 +319,10 @@ impl RecordingPrinter {
     }
 
     /// Forget what it has been asked, so a journey's next step starts clean.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn forget(&self) {
         self.held
             .lock()
@@ -296,6 +332,10 @@ impl RecordingPrinter {
     }
 
     /// The state it holds now.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     #[must_use]
     pub fn snapshot(&self) -> PrinterSnapshot {
         self.held
@@ -306,6 +346,10 @@ impl RecordingPrinter {
     }
 
     /// Put it in one state, which is what a journey about a state conflict needs.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn in_state(&self, state: PrinterState) {
         let mut held = self.held.lock().expect("the machine is not poisoned");
         held.snapshot.connection = state.clone();
@@ -315,6 +359,10 @@ impl RecordingPrinter {
     /// Report `state` as the printer's own while its job goes on reporting
     /// what it did, as a firmware that faulted under a host still reporting
     /// the job does.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn reports_connection(&self, state: PrinterState) {
         self.held
             .lock()
@@ -327,6 +375,10 @@ impl RecordingPrinter {
     ///
     /// The running time is what tells one job of a file from another, so this
     /// is how a journey stands a later job, a pause or a resume up.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn runs_job(&self, file: &str, state: PrinterState, print_time_s: Option<i64>) {
         let mut held = self.held.lock().expect("the machine is not poisoned");
         held.snapshot.connection = state.clone();
@@ -341,6 +393,10 @@ impl RecordingPrinter {
     /// produce one, and the contracts refuse to emit one rather than writing
     /// `null` for it — so this is what a machine having that kind of bad day
     /// looks like from here.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
     pub fn reporting_nothing_denotable(&self) {
         let mut held = self.held.lock().expect("the machine is not poisoned");
         held.snapshot.feedrate_factor = Some(feedrate(f64::NAN));

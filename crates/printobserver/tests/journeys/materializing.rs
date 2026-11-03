@@ -26,9 +26,12 @@ use super::{formats, running};
 ///
 /// Read off the server's own declared response shapes rather than off a list
 /// kept here, so a route that later grows such a path cannot fall outside this.
+/// An operation reached through another's command — the look at the printer,
+/// which is `look` naming no print — is that command's, and is driven as it.
 fn commands_carrying_a_path() -> Vec<(String, &'static str)> {
     OPERATIONS
         .iter()
+        .filter(|operation| printobserver_server::printer_wide_of(operation.name).is_none())
         .filter_map(|operation| {
             operation
                 .image_path_field

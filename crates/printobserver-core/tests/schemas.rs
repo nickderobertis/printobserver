@@ -24,8 +24,8 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraDegradedPayload, CameraLookPayload, ChargePendedPayload, DetectorHealth,
-    DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
+    CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, ChargePendedPayload,
+    DetectorHealth, DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
     FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
     InterventionExpiredPayload, Look, OperatorAcknowledgementPayload, PeriodicObservationPayload,
     PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
@@ -112,6 +112,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<CameraLookPayload>("CameraLookPayload"),
         kind_of::<PeriodicObservationPayload>("PeriodicObservationPayload"),
         kind_of::<CameraDegradedPayload>("CameraDegradedPayload"),
+        kind_of::<CameraRetryPayload>("CameraRetryPayload"),
         kind_of::<PrintStartedPayload>("PrintStartedPayload"),
         kind_of::<PrintEndedPayload>("PrintEndedPayload"),
         kind_of::<FilamentConsumedPayload>("FilamentConsumedPayload"),
@@ -216,6 +217,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("CameraLookPayload", "camera_look"),
             ("PeriodicObservationPayload", "periodic_observation"),
             ("CameraDegradedPayload", "camera_degraded"),
+            ("CameraRetryPayload", "camera_retry"),
             ("PrintStartedPayload", "print_started"),
             ("PrintEndedPayload", "print_ended"),
             ("FilamentConsumedPayload", "filament_consumed"),

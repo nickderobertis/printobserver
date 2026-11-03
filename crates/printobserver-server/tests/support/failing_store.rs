@@ -16,9 +16,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use printobserver_core::store::{
     ActionStore, AuditPage, BoxFuture, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore,
-    FileTally, HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore,
-    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery, StoredSignal,
-    Stores, TimelineQuery, TimelineStore,
+    FileTally, HistoryQuery, ImageDraft, ImageLookup, ImageStore, NewSpool, Pend, PrintStore,
+    SessionStore, SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery,
+    StoredSignal, Stores, TimelineQuery, TimelineStore,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
@@ -155,6 +155,14 @@ impl PrintStore for FailingStore {
 
 impl EventStore for FailingStore {
     fn append_event(&self, _draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        failed()
+    }
+
+    fn append_event_with_image(
+        &self,
+        _draft: EventDraft,
+        _image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         failed()
     }
 

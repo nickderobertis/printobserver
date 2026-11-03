@@ -1,0 +1,37 @@
+schema_version: 1
+budgets:
+  - id: scheduled-check-worst-delay-seconds
+    description: >-
+      Worst-case delay of a scheduled check with a failing camera: the time
+      from a scheduled check's due moment to its `periodic_observation` event
+      being appended, when the camera answers a 5xx on every attempt just
+      before the per-fetch timeout. Workload: one scheduled check of an active
+      print, the camera answering 500 `exit status 69` on all 4 attempts (3
+      retries, 500 ms apart), each answer held until shortly before the default
+      5 s per-fetch timeout; 76 checks a 2.5 h print at the default 120 s
+      interval. Detail: each attempt's duration, each backoff and the configured
+      per-fetch timeout. Basis: arithmetic over measured fetch times — go2rtc
+      1.9.15 serving a 1920x1080 test source on loopback answered at a p99 of
+      1.221 s under 4 concurrent fetchers and a cold maximum of 1.397 s, and the
+      rest of the check path took at most 0.068 s, so 4 x 5 s + 3 x 0.5 s +
+      0.07 s = 21.57 s, and 23 s is that plus 1.4 s for runner scheduling
+      jitter. Read from the telemetry the
+      `printobserver-server-check-delay-budget:test` journey records; the
+      command changes to the repository root first, because onebudgetspec runs
+      it in this file's directory.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../../../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - crates/printobserver-server/tests/check_delay_budget/telemetry/scheduled-check-delay.json
+      - seconds
+    unit: seconds
+    direction: max
+    threshold: 23
+    timeout_seconds: 60

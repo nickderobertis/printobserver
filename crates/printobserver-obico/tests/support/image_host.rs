@@ -29,6 +29,9 @@ pub struct Answer {
     pub delay: Duration,
     /// Whether it declares the body's length, or ends the body by closing.
     pub declare_length: bool,
+    /// Whether it declares more body than it sends, and then holds the
+    /// connection open sending nothing: a body that stalls part way.
+    pub stalls: bool,
 }
 
 impl Answer {
@@ -40,6 +43,7 @@ impl Answer {
             body,
             delay: Duration::ZERO,
             declare_length: true,
+            stalls: false,
         }
     }
 }
@@ -139,13 +143,20 @@ async fn respond(mut stream: TcpStream, answer: Answer, received: &Mutex<Vec<Str
         let _ = write!(head, "Content-Type: {content_type}\r\n");
     }
     if answer.declare_length {
-        let _ = write!(head, "Content-Length: {}\r\n", answer.body.len());
+        let declared = answer.body.len() + if answer.stalls { 1024 } else { 0 };
+        let _ = write!(head, "Content-Length: {declared}\r\n");
     }
     head.push_str("Connection: close\r\n\r\n");
     if stream.write_all(head.as_bytes()).await.is_err() {
         return;
     }
     if stream.write_all(&answer.body).await.is_err() {
+        return;
+    }
+    if answer.stalls {
+        // Nothing more is sent: the client gives up on the rest of the body.
+        let _ = stream.flush().await;
+        let _ = stream.read(&mut buffer).await;
         return;
     }
     let _ = stream.shutdown().await;

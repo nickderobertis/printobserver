@@ -832,3 +832,164 @@ fn the_ledger_step_creates_exactly_the_stated_schema() {
 
     assert_the_ledger_indexes(&after);
 }
+
+/// The version before an image could belong to no print.
+const BEFORE_PRINTLESS_IMAGES: u32 = 6;
+
+/// A second image the version before held, of the second seeded event.
+const SECOND_IMAGE: &str = "0191f0a0-0000-7000-8000-0000000000a7";
+
+/// Seed a second image at version 6, of the second seeded event.
+fn seed_a_second_image(connection: &Connection) {
+    connection
+        .execute(
+            "INSERT INTO images (id, print_id, event_id, source_url, fetched_at, content_type, \
+             byte_len, sha256, relative_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                SECOND_IMAGE,
+                PRINT,
+                UNDECLARED_EVENT,
+                "http://camera.local/frame.jpeg",
+                SEEDED_LATER,
+                "image/png",
+                9_i64,
+                "ef01",
+                "images/ef/ef01",
+            ],
+        )
+        .expect("a second image applies at version 6");
+}
+
+/// Both seeded images read back as they were written, each its event's.
+fn read_both_images_back(port: &dyn Store) {
+    let read = |id: &str| match block_on(port.image(identifier::<ImageId>(id)))
+        .expect("the image reads")
+    {
+        ImageLookup::Found { record, .. } | ImageLookup::FileMissing { record } => record,
+    };
+    let first = read(IMAGE);
+    assert_eq!(first.print_id, Some(identifier::<PrintId>(PRINT)));
+    assert_eq!(first.event_id, identifier::<EventId>(EVENT));
+    assert_eq!(
+        (first.byte_len, first.relative_path.as_str()),
+        (4, "images/ab/abcd")
+    );
+    let second = read(SECOND_IMAGE);
+    assert_eq!(second.print_id, Some(identifier::<PrintId>(PRINT)));
+    assert_eq!(second.event_id, identifier::<EventId>(UNDECLARED_EVENT));
+    assert_eq!(
+        second.source_url.as_deref(),
+        Some("http://camera.local/frame.jpeg")
+    );
+    assert_eq!(second.fetched_at, identifier::<Timestamp>(SEEDED_LATER));
+    assert_eq!(
+        (
+            second.content_type.as_str(),
+            second.byte_len,
+            second.sha256.as_str()
+        ),
+        ("image/png", 9, "ef01")
+    );
+    let history = block_on(port.history(HistoryQuery {
+        print_id: identifier(PRINT),
+        kinds: Vec::new(),
+        since: None,
+        until: None,
+        limit: None,
+    }))
+    .expect("the history reads");
+    let carried: Vec<Option<ImageId>> = history
+        .iter()
+        .map(|event| event.image.as_ref().map(|image| image.id))
+        .collect();
+    assert_eq!(
+        carried,
+        vec![Some(identifier(SECOND_IMAGE)), Some(identifier(IMAGE))],
+        "an event no longer carries the image it held before the migration"
+    );
+}
+
+/// The images table after the step is the one before it, but for its print
+/// being optional, and it still declares its references and its index.
+fn assert_the_images_table_after_the_step(after: &Connection, before: Vec<Column>) {
+    let expected: Vec<Column> = before
+        .into_iter()
+        .map(|(name, ty, not_null, key)| {
+            let not_null = not_null && name != "print_id";
+            (name, ty, not_null, key)
+        })
+        .collect();
+    assert_eq!(
+        table_columns(after, "images"),
+        expected,
+        "the images table changed beyond its print becoming optional"
+    );
+    assert_eq!(
+        table_keys(after, "images"),
+        vec!["event_id -> events(id)", "print_id -> prints(id)"],
+        "the images table no longer declares its references"
+    );
+    assert_eq!(
+        table_indexes(after, "images"),
+        vec![(
+            "images_by_event".to_owned(),
+            false,
+            false,
+            vec!["event_id".to_owned()]
+        )]
+    );
+}
+
+/// A frame of no print is stored, and read back as belonging to none.
+fn store_a_printless_frame(port: &dyn Store) {
+    let frame = b"a frame of the printer".to_vec();
+    let event = block_on(port.append_event_with_image(
+        printobserver_core::store::EventDraft {
+            print_id: None,
+            source: printobserver_types::EventSource::new("system"),
+            received_at: Timestamp::now(),
+            body: EventBody {
+                kind: EventKind::new("camera_look").expect("a kind name"),
+                payload: json!({ "waited_s": 0, "delivered": [] }),
+            },
+            raw: None,
+        },
+        printobserver_core::store::ImageDraft {
+            source_url: Some("http://camera.local/frame.jpeg".to_owned()),
+            content_type: "image/jpeg".to_owned(),
+            bytes: printobserver_types::RawBytes::new(frame.clone()),
+        },
+    ))
+    .expect("a printless frame is stored in the migrated database");
+    let image = event.image.expect("the event carries its frame");
+    match block_on(port.image(image.id)).expect("the frame reads") {
+        ImageLookup::Found { record, path } => {
+            assert_eq!(record.print_id, None, "a printless frame names a print");
+            assert_eq!(record.event_id, event.id);
+            assert_eq!(std::fs::read(path).expect("the bytes are on disk"), frame);
+        }
+        ImageLookup::FileMissing { .. } => panic!("the frame's bytes are not on disk"),
+    }
+}
+
+/// A database at version 6 keeps every image it held, each still its print's
+/// and its event's, under a table whose print is now optional and still a
+/// declared reference — and then holds a frame taken of the printer with no
+/// print named.
+#[test]
+fn a_database_at_version_6_keeps_its_images_and_then_holds_a_printless_one() {
+    let dir = TempDir::new().expect("a temporary state directory");
+    let path = dir.path().join(DATABASE_FILE_NAME);
+    let before = database_at(&path, BEFORE_PRINTLESS_IMAGES);
+    seed_a_second_image(&before);
+    let images_before = table_columns(&before, "images");
+    drop(before);
+
+    let store = SqliteStore::open(dir.path()).expect("a version 6 database opens");
+    read_every_seeded_record_back(&store);
+    read_both_images_back(&store);
+    let after = Connection::open(&path).expect("the migrated database opens");
+    assert_the_images_table_after_the_step(&after, images_before);
+    drop(after);
+    store_a_printless_frame(&store);
+}

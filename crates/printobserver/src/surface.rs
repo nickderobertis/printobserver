@@ -4,7 +4,11 @@
 //!
 //! [`surface`] folds over
 //! [`OPERATIONS`](printobserver_server::OPERATIONS) — one client command per
-//! public operation the server serves — and puts the four commands that are not
+//! public operation the server serves, but for an operation the server
+//! declares as another's printer-wide form
+//! ([`printer_wide_of`](printobserver_server::printer_wide_of)), which is
+//! reached through that one's command when it names no print — and puts the
+//! four commands that are not
 //! requests to a running server beside them: the one that runs the server, the
 //! one that signs its harness in, and the two that issue and verify the
 //! operator's credential. One more composes an operation rather than being
@@ -25,7 +29,9 @@
 //! configuration file's path is one of them while the address and the
 //! credential it carries are not.
 
-use printobserver_server::{Located, OPERATIONS, Operation, Parameter, ValueKind, operation};
+use printobserver_server::{
+    Located, OPERATIONS, Operation, Parameter, ValueKind, operation, printer_wide_of,
+};
 
 /// The flag that asks for machine-readable output.
 pub const JSON_OPTION: &str = "--json";
@@ -255,6 +261,10 @@ pub use printobserver_server::command_for;
 /// those four takes a value of its own: the server and sign-in commands read
 /// the configuration file the global option names, the credential commands
 /// refuse it, and only `credential issue` takes a flag.
+///
+/// An operation with a printer-wide form makes a command whose print is
+/// optional, and that form makes none of its own: a call naming no print is
+/// made to it ([`Call::operation`](crate::parse::Call::operation)).
 #[must_use]
 pub fn surface() -> Vec<Command> {
     let mut found: Vec<Command> = LOCAL_COMMANDS
@@ -266,14 +276,44 @@ pub fn surface() -> Vec<Command> {
             flags: local_flags(name),
         })
         .collect();
-    found.extend(OPERATIONS.iter().map(|operation| Command {
-        name: command_for(operation.name),
-        operation: Some(*operation),
-        fields: operation.request().into_iter().map(Field::of).collect(),
-        flags: Vec::new(),
-    }));
+    found.extend(
+        OPERATIONS
+            .iter()
+            .filter(|operation| printer_wide_of(operation.name).is_none())
+            .map(|operation| Command {
+                name: command_for(operation.name),
+                operation: Some(*operation),
+                fields: operation
+                    .request()
+                    .into_iter()
+                    .map(|parameter| optional_when_printer_wide(operation, parameter))
+                    .map(Field::of)
+                    .collect(),
+                flags: Vec::new(),
+            }),
+    );
     found.push(watch_command());
     found
+}
+
+/// The field one print's operation names its print by.
+pub const PRINT_FIELD: &str = "print_id";
+
+/// One value of an operation's request, as its command takes it: the print an
+/// operation with a printer-wide form names is optional, because a call
+/// naming none is that form's.
+fn optional_when_printer_wide(operation: &Operation, parameter: Parameter) -> Parameter {
+    if operation.printer_wide.is_some()
+        && parameter.name == PRINT_FIELD
+        && parameter.located == Located::Path
+    {
+        Parameter {
+            required: false,
+            ..parameter
+        }
+    } else {
+        parameter
+    }
 }
 
 /// The command that follows the event log as one stream.

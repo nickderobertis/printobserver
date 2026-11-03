@@ -85,6 +85,14 @@ fn vision_error_carries_exactly_the_stated_variants() {
         variant("TimedOut", &[]),
         variant("TooLarge", &[("limit", "i64")]),
         variant("UnacceptableContentType", &[("content_type", "String")]),
+        variant(
+            "Status",
+            &[
+                ("detail", "String"),
+                ("status", "u16"),
+                ("excerpt", "String"),
+            ],
+        ),
         variant("Unreachable", &[("detail", "String")]),
         variant("NotConfigured", &[("detail", "String")]),
     ];

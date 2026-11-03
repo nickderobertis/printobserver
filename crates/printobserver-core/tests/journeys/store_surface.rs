@@ -154,6 +154,11 @@ fn stated_event_methods() -> Vec<Method> {
             "BoxFuture<'_,Result<EventRecord,StoreError>>",
         ),
         method(
+            "append_event_with_image",
+            &[("draft", "EventDraft"), ("image", "ImageDraft")],
+            "BoxFuture<'_,Result<EventRecord,StoreError>>",
+        ),
+        method(
             "history",
             &[("query", "HistoryQuery")],
             "BoxFuture<'_,Result<Vec<EventRecord>,StoreError>>",
@@ -407,18 +412,21 @@ fn each_store_trait_declares_exactly_the_stated_methods() {
 /// identifier of a record another aggregate holds in order to relate to it —
 /// so a type that is an identifier is not a record of the aggregate it names.
 ///
-/// Two crossings are stated rather than refused, and they are the only ones:
+/// Three crossings are stated rather than refused, and they are the only ones:
 /// the filament ledger takes the drafts of the events it writes and answers
 /// them, because a spool, its charge and the event that says so are one
-/// transaction; and the timeline answers events, because it is a reading of
-/// the event log. Each of the two is still refused every other aggregate's
-/// records.
+/// transaction; the event log takes the draft of the image an event arrives
+/// with, because a frame and the scheduled check or look it was taken for are
+/// one write, read together by everybody following the log; and the timeline
+/// answers events, because it is a reading of the event log. Each of the three
+/// is still refused every other aggregate's records.
 #[test]
-fn no_trait_acts_on_another_traits_aggregate_beyond_the_two_stated_crossings() {
+fn no_trait_acts_on_another_traits_aggregate_beyond_the_three_stated_crossings() {
     let source = parse(&store_source());
-    let crossings: [(&str, &str); 3] = [
+    let crossings: [(&str, &str); 4] = [
         ("FilamentStore", "EventDraft"),
         ("FilamentStore", "EventRecord"),
+        ("EventStore", "ImageDraft"),
         ("TimelineStore", "EventRecord"),
     ];
     let records: [(&str, &[&str]); 7] = [
@@ -430,7 +438,7 @@ fn no_trait_acts_on_another_traits_aggregate_beyond_the_two_stated_crossings() {
             "EventStore",
             &["EventDraft", "EventRecord", "HistoryQuery", "AuditPage"],
         ),
-        ("ImageStore", &["ImageRecord", "ImageLookup"]),
+        ("ImageStore", &["ImageRecord", "ImageLookup", "ImageDraft"]),
         (
             "ActionStore",
             &[

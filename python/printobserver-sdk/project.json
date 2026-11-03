@@ -24,9 +24,6 @@
     },
     "test": {
       "command": "uv run -q coverage run -m pytest python/printobserver-sdk/tests"
-    },
-    "test-integration": {
-      "command": "uv run -q pytest python/printobserver-sdk/integration"
     }
   }
 }
