@@ -388,14 +388,20 @@ async fn the_sheet_a_start_declares_must_suit_the_loaded_material() {
         let sheet = &checked.last().expect("a print_started")["payload"]["preflight"]["sheet"];
         assert_eq!(sheet["verdict"], "passed", "{sheet}");
         assert_eq!(sheet["sheet"], passes_on, "{sheet}");
+        watch.server.stop().await;
 
+        // The print just started has not been charged to its spool, so a
+        // second start on that spool is refused before any sheet is read: the
+        // override is taken on a printer of its own with a fresh roll loaded.
+        let watch = watching(|_| {}).await;
+        loaded_with(&watch, material).await;
         let (status, overridden) = started_by_operator(
             &watch,
             &start(&operator, file, Some(refused_on), &["override_sheet_check"]),
         )
         .await;
         assert_eq!(status, reqwest::StatusCode::OK, "{overridden}");
-        assert_eq!(starts(&watch), 2);
+        assert_eq!(starts(&watch), 1);
         let started = overridden["record"]["print_id"].as_str().expect("a print");
         let checked = events_of(&watch, started, "print_started").await;
         let sheet = &checked.last().expect("a print_started")["payload"]["preflight"]["sheet"];
