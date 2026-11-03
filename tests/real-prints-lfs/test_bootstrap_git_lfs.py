@@ -64,7 +64,9 @@ def test_bootstrap_installs_the_held_git_lfs_per_user_and_configures_the_clone(
     home = tmp_path / "home"
     home.mkdir()
     user_bin = home / ".local" / "bin"
-    uv_cache = run(["uv", "cache", "dir"], check=True).stdout.strip()
+    # `--color never`: a runner forcing colour has uv print the path wrapped in
+    # escape codes, which Windows refuses as a directory name.
+    uv_cache = run(["uv", "cache", "dir", "--color", "never"], check=True).stdout.strip()
     path = os.pathsep.join([str(user_bin), path_without("git-lfs", tmp_path / "shims")])
     environment = {
         **os.environ,
