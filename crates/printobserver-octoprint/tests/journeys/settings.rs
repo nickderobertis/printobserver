@@ -20,8 +20,7 @@ use crate::stub::{Reply, Stub};
 /// its end. It is this crate's plain copy under `tests/fixtures/real-prints/`,
 /// because the cases under `tests/real-prints/` are Git LFS pointers until the
 /// real-print suite fetches them.
-const RECORDED: &[u8] =
-    include_bytes!("../fixtures/real-prints/under-extrusion-lace.clean.gcode");
+const RECORDED: &[u8] = include_bytes!("../fixtures/real-prints/under-extrusion-lace.clean.gcode");
 
 /// A printer configured against the stand-in.
 fn printer_of(standin: &ScriptedOctoPrint) -> OctoPrintPrinter {
