@@ -278,6 +278,20 @@ async fn a_start_sliced_for_another_material_is_refused_unless_the_operator_over
     );
     assert_eq!(starts(&watch), 0, "OctoPrint was told to start");
 
+    // Before anything starts: once the override has started a print, that
+    // print is uncharged to the spool until it ends, and a second start on the
+    // spool is refused for that before its file is read at all.
+    let (status, unnamed) = started_by_operator(
+        &watch,
+        &start(&operator, UNNAMED_FILE, Some("textured-pei"), &[]),
+    )
+    .await;
+    assert_eq!(status, reqwest::StatusCode::CONFLICT, "{unnamed}");
+    let objection = &rejection(&unnamed)["material_refused"]["objection"];
+    assert_eq!(objection["cause"], "undeclared", "{unnamed}");
+    assert_eq!(objection["file_name"], UNNAMED_FILE, "{unnamed}");
+    assert_eq!(starts(&watch), 0, "OctoPrint was told to start");
+
     let (print, turn) = held_turn(&watch).await;
     let (status, by_agent) = started_by_agent(
         &watch,
@@ -317,16 +331,6 @@ async fn a_start_sliced_for_another_material_is_refused_unless_the_operator_over
         assert_eq!(material["objection"]["sliced_for"], "PLA", "{kind}");
     }
 
-    let (status, unnamed) = started_by_operator(
-        &watch,
-        &start(&operator, UNNAMED_FILE, Some("textured-pei"), &[]),
-    )
-    .await;
-    assert_eq!(status, reqwest::StatusCode::CONFLICT, "{unnamed}");
-    let objection = &rejection(&unnamed)["material_refused"]["objection"];
-    assert_eq!(objection["cause"], "undeclared", "{unnamed}");
-    assert_eq!(objection["file_name"], UNNAMED_FILE, "{unnamed}");
-    assert_eq!(starts(&watch), 1);
     watch.server.stop().await;
 }
 
