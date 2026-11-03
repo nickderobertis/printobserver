@@ -97,6 +97,15 @@ PAIRED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppr
 #: carrying over the declaring field's own directive.
 TWO_VALUED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
 
+#: The directive written above an alias of a string its schema constrains,
+#: which a client alias does not enforce: the generator has no validated
+#: string type yet in any of the three clients.
+ALIAS_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
+
+#: The directive written above a string field the schema marks
+#: `x-unchecked-text`, carrying over the declaring field's own directive.
+UNCHECKED_DIRECTIVE = "// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml."
+
 
 PRESENT = "present"
 """The deserializer of a field whose null is sent: whatever was sent, as sent."""
@@ -191,6 +200,10 @@ def _field(entry: Field, indent: str, *, public: bool = True) -> list[str]:
         # A yes-or-no fact both of whose answers are real; the declaring
         # field's own suppression says why, and this one carries it over.
         lines.append(f"{indent}{TWO_VALUED_DIRECTIVE}")
+    if entry.unchecked_text:
+        # A string the server judges in a check of its own rather than at the
+        # body; the declaring field's own suppression says why.
+        lines.append(f"{indent}{UNCHECKED_DIRECTIVE}")
     if not entry.required and entry.null_is_sent:
         # Absent, null and a value are three answers here, so the outer option
         # is whether it was sent and the inner whether it was null.
@@ -233,7 +246,11 @@ def _declaration(declaration: Declaration) -> list[str]:
     """One named type of the contracts, as Rust declares it."""
     lines = doc_lines(declaration.doc)
     match declaration:
-        case Alias(name, target, _):
+        case Alias(name, target, _, constrained):
+            if constrained:
+                # The schema constrains the string, and an alias of it does
+                # not: the generator has no validated string type yet.
+                lines.append(ALIAS_DIRECTIVE)
             lines.append(f"pub type {name} = {type_name(target)};")
         case Enumeration(name, _, values):
             lines.append("#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]")
@@ -407,10 +424,15 @@ TOO_MANY_REASON = (
 )
 
 
-def _query_owned(parameter: Parameter) -> str:
+def _is_text(shape: TypeExpr, texts: frozenset[str]) -> bool:
+    """Whether a value is already the text it travels as: a string, or an alias of one."""
+    return shape == Scalar("string") or (isinstance(shape, Ref) and shape.name in texts)
+
+
+def _query_owned(parameter: Parameter, texts: frozenset[str]) -> str:
     """One required query value, as the owned text a request carries it as."""
     spelled = rust_identifier(parameter.name)
-    if parameter.carried == Scalar("string"):
+    if _is_text(parameter.carried, texts):
         return f"{spelled}.to_owned()"
     return f"{spelled}.to_string()"
 
@@ -424,7 +446,7 @@ def _target(operation: Operation) -> str:
     return path
 
 
-def _method(operation: Operation) -> list[str]:
+def _method(operation: Operation, texts: frozenset[str]) -> list[str]:
     """One operation, as the Rust client's own method."""
     supplied = operation.supplied()
     # A two-valued argument carries its field's directive on the line above
@@ -481,7 +503,8 @@ def _method(operation: Operation) -> list[str]:
         # The values every call carries are the list's own start; the rest
         # are pushed onto it when they are given.
         start = ", ".join(
-            f'("{parameter.name}".to_owned(), {_query_owned(parameter)})' for parameter in required
+            f'("{parameter.name}".to_owned(), {_query_owned(parameter, texts)})'
+            for parameter in required
         )
         mutable = "mut " if len(required) < len(query) else ""
         initial = f"vec![{start}]" if required else "Vec::new()"
@@ -497,8 +520,8 @@ def _method(operation: Operation) -> list[str]:
                 lines.append(f"        for value in {spelled}.into_iter().flatten() {{")
             else:
                 lines.append(f"        if let Some(value) = {spelled} {{")
-            # A string is already the text it travels as.
-            text = "value" if item == Scalar("string") else "value.to_string()"
+            # A string, or an alias of one, is already the text it travels as.
+            text = "value" if _is_text(item, texts) else "value.to_string()"
             lines.append(f'            asked.push(("{parameter.name}".to_owned(), {text}));')
             lines.append("        }")
     else:
@@ -592,6 +615,12 @@ def _kind_table(contract: Contract) -> list[str]:
 
 def emit(contract: Contract) -> str:
     """The whole generated module of the Rust client."""
+    # The aliases of a bare string, which a request carries as they are.
+    texts = frozenset(
+        declaration.name
+        for declaration in contract.declarations
+        if isinstance(declaration, Alias) and declaration.target == Scalar("string")
+    )
     lines = [
         line.rstrip()
         for line in banner("//!", "the Rust client's request and response types").split("\n")
@@ -637,7 +666,7 @@ def emit(contract: Contract) -> str:
 
     lines.append("impl Client {")
     for operation in contract.operations:
-        lines.extend(_method(operation))
+        lines.extend(_method(operation, texts))
         lines.append("")
     lines.append("}")
     return "\n".join(lines) + "\n"

@@ -1005,7 +1005,11 @@ pub const OPERATIONS: [Operation; 38] = [
     Operation {
         query: &[
             Declared::once("file_name", true, ValueKind::Text),
-            Declared::once("sheet", false, ValueKind::Text),
+            // Read into a `SheetId`, and refused when blank.
+            Declared {
+                shape: Some("SheetId"),
+                ..Declared::once("sheet", false, ValueKind::Text)
+            },
         ],
         ..read("preflight", "/preflight")
     },

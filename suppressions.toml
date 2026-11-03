@@ -4276,3 +4276,95 @@ rule = "boundary_inputs_validated"
 file = "scripts/install.sh"
 site = "Lingering account authorization"
 reason = "The contract deliberately selects USER in this unprivileged per-user installer. logind authorizes enabling lingering for the selected account and refuses another account without authorization, so forging USER grants no permission to enable lingering for someone else. The installer preserves that authorization boundary and reports refusal without escalating."
+
+# --- the generated Rust client's constrained strings ---------------------------
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type ActionId = String;"
+reason = "Generated: the schema of `ActionId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type Adjustable = String;"
+reason = "Generated: the schema of `Adjustable` constrains the string it admits (a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type EventId = String;"
+reason = "Generated: the schema of `EventId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type EventKind = String;"
+reason = "Generated: the schema of `EventKind` constrains the string it admits (a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type FileName = String;"
+reason = "Generated: the schema of `FileName` constrains the string it admits (`minLength: 1`, a `pattern`, a `not` exclusion), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type ImageId = String;"
+reason = "Generated: the schema of `ImageId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type InterventionId = String;"
+reason = "Generated: the schema of `InterventionId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type MaterialName = String;"
+reason = "Generated: the schema of `MaterialName` constrains the string it admits (`minLength: 1`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type PrintId = String;"
+reason = "Generated: the schema of `PrintId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type SheetId = String;"
+reason = "Generated: the schema of `SheetId` constrains the string it admits (`minLength: 1`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type SpoolId = String;"
+reason = "Generated: the schema of `SpoolId` constrains the string it admits (format `uuid`, a `pattern`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub type Timestamp = String;"
+reason = "Generated: the schema of `Timestamp` constrains the string it admits (format `date-time`), and the Rust client names it as an alias of `String`, which does not enforce that constraint. The contract generator has no validated string type yet in any of the three clients; the server validates every such value where it reads it and refuses one that breaks the constraint, and the alias's own documentation states the constraint. `tools/contract-codegen`'s Rust emitter writes this directive above every alias of a constrained string, and validated client newtypes are a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub sheet: Option<String>,"
+reason = "Generated from core's `JobManifest`, whose `sheet` the schema marks `x-unchecked-text`: the start-print contract fixes it as a string, and a blank one is the same start as a missing one, refused `sheet_not_declared` with the rejected class, rather than a body the server cannot read. Core's own entry for the field says so; the Rust emitter writes this directive above every field the schema marks so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = "ALIAS_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above every generated Rust alias of a string its schema constrains, so that the directives standing in `crates/printobserver-sdk/src/contract.rs` are regenerated rather than lost on the next `just generate-clients`. The reasons are that file's entries for this rule."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
+site = "UNCHECKED_DIRECTIVE = "
+reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated Rust field the schema marks `x-unchecked-text`, so that the directive standing in `crates/printobserver-sdk/src/contract.rs` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."

@@ -31,6 +31,7 @@ import type {
   FileName,
   JobManifest,
   PrintOutcome,
+  SheetId,
 } from "../src/contract.ts";
 import { NoReason, Rejected } from "../src/surface.ts";
 import { Host } from "./host.ts";
@@ -324,7 +325,7 @@ test("preflight sends what it declares and answers what the server sent", async 
 
   const answered = await client.preflight(
     "0198f0a1-2b3c-7d4e-8f90-123456789abc",
-    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    JSON.parse('"0198f0a1-2b3c-7d4e-8f90-123456789abc"') as SheetId,
   );
 
   const received = host.received();

@@ -11216,7 +11216,7 @@ class GeneratedClient(GeneratedSurface):
         # for it, so this cast names that type.
         return cast(TimelineAnswer, answered)
 
-    def preflight(self, file_name: str, sheet: str | None = None) -> PreflightAnswer:
+    def preflight(self, file_name: str, sheet: SheetId | None = None) -> PreflightAnswer:
         """Call `preflight` on the configured supervisor.
 
         Raises:

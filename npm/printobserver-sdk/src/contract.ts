@@ -9249,7 +9249,7 @@ export class GeneratedClient extends GeneratedSurface {
    * the answer could not be read, and with `Refused` when the supervisor
    * said no.
    */
-  async preflight(fileName: string, sheet?: string): Promise<PreflightAnswer> {
+  async preflight(fileName: string, sheet?: SheetId): Promise<PreflightAnswer> {
     const target = `/v1/preflight`;
     const asked: Array<[string, string]> = [];
     if (fileName !== undefined) {

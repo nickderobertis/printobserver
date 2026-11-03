@@ -181,6 +181,7 @@ pub struct ActionExecutedPayload {
 }
 
 /// A lowercase hyphenated version 7 UUID identifying one requested action.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type ActionId = String;
 
 /// One action of the closed vocabulary, named without its payload.
@@ -326,6 +327,7 @@ pub enum ActorClass {
 }
 
 /// One thing an adjustment may change.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type Adjustable = String;
 
 /// The agent's written record of one supervision turn.
@@ -632,10 +634,12 @@ pub enum ErrorSource {
 }
 
 /// A lowercase hyphenated version 7 UUID identifying one event.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type EventId = String;
 
 /// The name one kind of event is written down under: lowercase `snake_case`,
 /// declared by the domain that owns the event.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type EventKind = String;
 
 /// One event, as the store holds it and the server serves it.
@@ -757,6 +761,7 @@ pub struct FilamentConsumedPayload {
 
 /// A file name a printer's own file API can be asked for: no path separator,
 /// no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type FileName = String;
 
 /// How far into its file a print had got, and when that was read.
@@ -876,6 +881,7 @@ pub struct ImageAnswer {
 }
 
 /// A lowercase hyphenated version 7 UUID identifying one image.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type ImageId = String;
 
 /// One image, stored beside the event it arrived with.
@@ -962,6 +968,7 @@ pub struct InterventionExpiredPayload {
 
 /// A lowercase hyphenated version 7 UUID identifying one bounded
 /// intervention.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type InterventionId = String;
 
 /// What became of a bounded change.
@@ -1022,6 +1029,7 @@ pub struct JobManifest {
     /// Every start must declare one: a start whose manifest names none is
     /// refused, and no override lets it through. Optional here only so that a
     /// manifest stored before the field existed still loads.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sheet: Option<String>,
     /// The slicer profile the job was sliced with.
@@ -1166,6 +1174,7 @@ pub struct ManifestNarrowing {
 /// A filament material as a spool's registration or a slicer's settings name
 /// it, such as `PLA`: never blank, and trimmed of surrounding space as it is
 /// read.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type MaterialName = String;
 
 /// Why the material check objects to a start, with what it compared.
@@ -1925,6 +1934,7 @@ pub struct PrintEndedPayload {
 }
 
 /// A lowercase hyphenated version 7 UUID identifying one print.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type PrintId = String;
 
 /// How a print ended.
@@ -2615,6 +2625,7 @@ pub struct Reported {
 
 /// A build sheet's identifier as the sheet table names it, such as
 /// `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type SheetId = String;
 
 /// Why the sheet check objects to a start, with what it compared.
@@ -2890,6 +2901,7 @@ pub enum SpoolField {
 }
 
 /// A lowercase hyphenated version 7 UUID identifying one registered spool.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type SpoolId = String;
 
 /// Where a spool is in its life.
@@ -3256,6 +3268,7 @@ pub struct TimelineAnswer {
 }
 
 /// An instant in UTC, as an RFC 3339 string with a zero offset.
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type Timestamp = String;
 
 /// The filament one tool feeds, as a length and, when it is known, a volume.
@@ -3892,7 +3905,7 @@ impl Client {
     pub fn preflight(
         &self,
         file_name: &str,
-        sheet: Option<String>,
+        sheet: Option<SheetId>,
     ) -> Result<PreflightAnswer, ClientError> {
         let target = String::from("/v1/preflight");
         let mut asked: Vec<(String, String)> = vec![("file_name".to_owned(), file_name.to_owned())];

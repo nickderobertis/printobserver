@@ -926,7 +926,8 @@ Declared by `printobserver-server`.
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -3022,7 +3023,8 @@ Declared by `printobserver-core`.
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -6141,7 +6143,8 @@ Declared by `printobserver-core`.
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -6750,7 +6753,8 @@ Declared by `printobserver-core`.
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -8684,7 +8688,8 @@ Declared by `printobserver-server`.
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -12273,7 +12278,8 @@ Declared by `printobserver-core`.
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "x-unchecked-text": true
     },
     "slicer_profile": {
       "description": "The slicer profile the job was sliced with.",
@@ -13272,7 +13278,8 @@ Declared by `printobserver-server`.
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -22147,7 +22154,8 @@ Declared by `printobserver-core`.
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -23063,7 +23071,8 @@ Declared by `printobserver-core`.
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",
@@ -42372,7 +42381,7 @@ Declared by `printobserver-server`.
           "repeated": false,
           "required": false,
           "shape": {
-            "type": "string"
+            "$ref": "#/$defs/SheetId"
           }
         }
       ],

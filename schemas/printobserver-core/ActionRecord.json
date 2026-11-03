@@ -296,7 +296,8 @@
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "x-unchecked-text": true
         },
         "slicer_profile": {
           "description": "The slicer profile the job was sliced with.",

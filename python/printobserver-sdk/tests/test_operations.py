@@ -36,6 +36,7 @@ from printobserver_sdk.contract import (
     FileName,
     JobManifest,
     PrintOutcome,
+    SheetId,
     payload_of,
 )
 from repo_checks.expect import equal, truth
@@ -674,7 +675,8 @@ def test_preflight_sends_what_it_declares_and_answers_what_was_sent() -> None:
         client = Client(host.address, ACTOR)
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = client.preflight(
-            "0198f0a1-2b3c-7d4e-8f90-123456789abc", "0198f0a1-2b3c-7d4e-8f90-123456789abc"
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+            cast(SheetId, json.loads('"0198f0a1-2b3c-7d4e-8f90-123456789abc"')),
         )
         received = host.received()
 

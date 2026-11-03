@@ -32,6 +32,7 @@ pub struct JobManifest {
     /// manifest stored before the field existed still loads.
     // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(extend("x-unchecked-text" = true))]
     pub sheet: Option<String>,
     /// The range each named adjustable may take, inclusive.
     pub allowed: BTreeMap<Adjustable, Range>,

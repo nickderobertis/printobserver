@@ -18,7 +18,7 @@ mod host;
 use host::Host;
 use printobserver_sdk::{
     AcknowledgementDisposition, ActionExecutedPayload, Actor, Client, ClientError, EVENT_KINDS,
-    EventId, FileName, JobManifest, PrintOutcome, RecoveryRejection, RejectionReason,
+    EventId, FileName, JobManifest, PrintOutcome, RecoveryRejection, RejectionReason, SheetId,
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -406,7 +406,9 @@ fn preflight_sends_what_it_declares_and_answers_what_the_server_sent() {
     let answered = client
         .preflight(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc",
-            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some(parsed::<SheetId>(
+                r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#,
+            )),
         )
         .expect("`preflight` is answered");
 
