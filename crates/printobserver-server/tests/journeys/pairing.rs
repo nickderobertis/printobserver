@@ -223,6 +223,21 @@ async fn held_turn(watch: &Watch) -> (String, reqwest::Client) {
     (print.id.to_string(), presenting(&pass.credential))
 }
 
+/// Release the held turn and wait until its handling has finished.
+///
+/// A turn holds its print until it returns, and a read cannot close a print
+/// a turn holds — so a start made before then finds that print still open and
+/// is recorded against the identifier it was asked for, which nothing holds.
+async fn turn_ended(watch: &Watch) {
+    let mut completions = watch.server.completions();
+    let before = *completions.borrow_and_update();
+    watch.agent.release_turns();
+    completions
+        .wait_for(|finished| *finished > before)
+        .await
+        .expect("the turn's handling finishes");
+}
+
 /// The agent's start on the print its turn is about.
 async fn started_by_agent(
     watch: &Watch,
@@ -302,7 +317,7 @@ async fn a_start_sliced_for_another_material_is_refused_unless_the_operator_over
         &["override_material_check"],
     )
     .await;
-    watch.agent.release_turns();
+    turn_ended(&watch).await;
     assert_forbidden_start(&(status, by_agent));
     assert_eq!(starts(&watch), 0, "the agent's override started a print");
 
@@ -382,7 +397,7 @@ async fn the_sheet_a_start_declares_must_suit_the_loaded_material() {
             &["override_sheet_check"],
         )
         .await;
-        watch.agent.release_turns();
+        turn_ended(&watch).await;
         assert_forbidden_start(&(status, by_agent));
         assert_eq!(starts(&watch), 0, "the agent's override started a print");
 
