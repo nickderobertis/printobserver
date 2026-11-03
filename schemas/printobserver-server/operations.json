@@ -757,7 +757,8 @@
           "required": false,
           "shape": {
             "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
@@ -768,7 +769,8 @@
           "required": false,
           "shape": {
             "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {

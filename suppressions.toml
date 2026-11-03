@@ -2921,6 +2921,18 @@ reason = "Generated from core's `RecoveryAction`, whose `clearance_asserted` the
 [[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-sdk/src/contract.rs"
+site = "override_material_check: Option<bool>,"
+reason = "Generated from core's `PrintAction::StartPrint`, whose `override_material_check` the schema marks `x-two-valued-fact`, both in the variant and in the `start_print` method taking it: the start-print contract fixes it as a boolean defaulting to false, the operator's yes-or-no word to start despite a material refusal. Both values are requests the server rules on, an agent's asking is refused rather than honoured, and absent and false are the same request, which is why a caller may leave it out; core's own entry for the field says so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "override_sheet_check: Option<bool>,"
+reason = "Generated from core's `PrintAction::StartPrint`, whose `override_sheet_check` the schema marks `x-two-valued-fact`, both in the variant and in the `start_print` method taking it: the start-print contract fixes it as a boolean defaulting to false, the operator's yes-or-no word to start despite a sheet refusal, which never lets through a manifest declaring no sheet. Both values are requests the server rules on, an agent's asking is refused rather than honoured, and absent and false are the same request, which is why a caller may leave it out; core's own entry for the field says so."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
 site = "bed_clear_asserted: Option<bool>,"
 reason = "Generated from core's `RecoveryAction`, whose `bed_clear_asserted` the schema marks `x-two-valued-fact`, both in its variant and in the method taking it: the recovery contract fixes it as a boolean defaulting to false, the operator's yes-or-no word that homing Z will meet nothing on the bed. Both values are requests the policy rules on — false is refused `assertion_required` — so neither is an invalid state; core's own entry for the field says so."
 

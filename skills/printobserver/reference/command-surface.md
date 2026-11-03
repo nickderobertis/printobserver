@@ -387,7 +387,7 @@ Reached at `POST /v1/prints/{print_id}/actions/start_print`.
 - `--override-sheet-check` — written `--override-sheet-check true` to start despite a declared sheet the server's table does not allow the loaded material on (optional). Only an operator's override counts, and none lets through a manifest that declares no sheet.
 - `--reason` — why this change is being made, in the actor's own words (required).
 
-The manifest names the build sheet the print goes down on in `sheet` — one of the ids the server's sheet table names, whose defaults [the intervention policy](intervention-policy.md) states — and a start whose manifest names none is refused whatever it overrides.
+The manifest names the build sheet the print goes down on in `sheet` — one of the ids the server's sheet table names — and a start whose manifest names none is refused whatever it overrides.
 
 Before the machine is asked, the start checks the spools loaded against what `OctoPrint`'s analysis of the file says each tool needs, waiting for that analysis when the file has none yet and a tool holds a tracked spool. It checks the `filament_type` the file's own settings name for tool 0 against the material of the spool loaded there, and the declared sheet against the sheets the server's `[sheets.allowed]` table allows that material on. In the default mode a start is refused while a loaded spool holds less than the print needs plus its buffer, while its figure is in doubt, while the file still has no analysis, while the file was sliced for another material or names none, or while the table does not allow the material on the sheet; the server's `[spools]` table can set it to warn instead, or to check nothing.
 

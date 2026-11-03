@@ -17,6 +17,13 @@
       "title": "FileName",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -29,12 +36,12 @@
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -68,8 +75,8 @@
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -107,8 +114,8 @@
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -140,12 +147,12 @@
           "description": "The file was sliced for the loaded spool's material.",
           "properties": {
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -710,6 +717,13 @@
       "title": "PrintId",
       "type": "string"
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -720,7 +734,7 @@
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -729,12 +743,12 @@
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -754,12 +768,12 @@
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -780,17 +794,17 @@
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -813,17 +827,17 @@
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             },
             "verdict": {
               "const": "passed",

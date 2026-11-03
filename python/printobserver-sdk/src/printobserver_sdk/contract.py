@@ -1221,6 +1221,12 @@ class ManifestNarrowing(TypedDict):
     requested: Range
 
 
+# A filament material as a spool's registration or a slicer's settings name
+# it, such as `PLA`: never blank, and trimmed of surrounding space as it is
+# read.
+MaterialName: TypeAlias = str
+
+
 class MaterialObjectionMismatch(TypedDict):
     """The `mismatch` arm of `MaterialObjection`.
 
@@ -1229,9 +1235,9 @@ class MaterialObjectionMismatch(TypedDict):
 
     cause: Literal["mismatch"]
     # That spool's material.
-    loaded: str
+    loaded: MaterialName
     # The material the file's own `filament_type` names for the tool.
-    sliced_for: str
+    sliced_for: MaterialName
     # The spool loaded on it.
     spool: PreflightSpool
     # The tool, in the printer's own numbering.
@@ -1249,7 +1255,7 @@ class MaterialObjectionUndeclared(TypedDict):
     # The file that was to be compared.
     file_name: FileName
     # That spool's material.
-    loaded: str
+    loaded: MaterialName
     # The spool loaded on it.
     spool: PreflightSpool
     # The tool, in the printer's own numbering.
@@ -1268,7 +1274,7 @@ class MaterialObjectionUnread(TypedDict):
     # The file whose settings could not be read.
     file_name: FileName
     # That spool's material.
-    loaded: str
+    loaded: MaterialName
     # The spool loaded on it.
     spool: PreflightSpool
     # The tool, in the printer's own numbering.
@@ -1289,9 +1295,9 @@ class MaterialResultPassed(TypedDict):
 
     verdict: Literal["passed"]
     # That spool's material.
-    loaded: str
+    loaded: MaterialName
     # The material the file's own `filament_type` names for the tool.
-    sliced_for: str
+    sliced_for: MaterialName
     # The spool loaded on it.
     spool: PreflightSpool
     # The tool, in the printer's own numbering.
@@ -3064,6 +3070,11 @@ class Reported(TypedDict):
     value: float
 
 
+# A build sheet's identifier as the sheet table names it, such as
+# `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
+SheetId: TypeAlias = str
+
+
 class SheetObjectionNotAllowed(TypedDict):
     """The `not_allowed` arm of `SheetObjection`.
 
@@ -3072,11 +3083,11 @@ class SheetObjectionNotAllowed(TypedDict):
 
     cause: Literal["not_allowed"]
     # Every sheet the table allows that material.
-    allowed: list[str]
+    allowed: list[SheetId]
     # The material of the spool loaded on tool 0.
-    material: str
+    material: MaterialName
     # The build sheet the manifest declares.
-    sheet: str
+    sheet: SheetId
 
 
 class SheetObjectionUnlistedMaterial(TypedDict):
@@ -3087,9 +3098,9 @@ class SheetObjectionUnlistedMaterial(TypedDict):
 
     cause: Literal["unlisted_material"]
     # The material of the spool loaded on tool 0.
-    material: str
+    material: MaterialName
     # The build sheet the manifest declares.
-    sheet: str
+    sheet: SheetId
 
 
 class SheetObjectionUnknownSheet(TypedDict):
@@ -3100,11 +3111,11 @@ class SheetObjectionUnknownSheet(TypedDict):
 
     cause: Literal["unknown_sheet"]
     # Every sheet some entry lists.
-    known: list[str]
+    known: list[SheetId]
     # The material of the spool loaded on tool 0.
-    material: str
+    material: MaterialName
     # The build sheet the manifest declares.
-    sheet: str
+    sheet: SheetId
 
 
 # Why the sheet check objects to a start, with what it compared.
@@ -3121,11 +3132,11 @@ class SheetResultPassed(TypedDict):
 
     verdict: Literal["passed"]
     # Every sheet the table allows that material.
-    allowed: list[str]
+    allowed: list[SheetId]
     # The material of the spool loaded on tool 0.
-    material: str
+    material: MaterialName
     # The build sheet the manifest declares.
-    sheet: str
+    sheet: SheetId
 
 
 class SheetResultRefused(TypedDict):
@@ -6327,6 +6338,11 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "MaterialName": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
  "MaterialObjection": {
   "union": {
    "tag_field": "cause",
@@ -6337,14 +6353,14 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sliced_for": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "spool": {
@@ -6378,7 +6394,7 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "spool": {
@@ -6419,7 +6435,7 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "spool": {
@@ -6466,14 +6482,14 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sliced_for": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "spool": {
@@ -9148,6 +9164,11 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "SheetId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
  "SheetObjection": {
   "union": {
    "tag_field": "cause",
@@ -9159,7 +9180,7 @@ SHAPES: dict[str, object] = json.loads(
        "required": true,
        "shape": {
         "list": {
-         "scalar": "string"
+         "ref": "SheetId"
         },
         "non_empty": false
        }
@@ -9168,14 +9189,14 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sheet": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "SheetId"
        }
       }
      },
@@ -9189,7 +9210,7 @@ SHAPES: dict[str, object] = json.loads(
        "required": true,
        "shape": {
         "list": {
-         "scalar": "string"
+         "ref": "SheetId"
         },
         "non_empty": false
        }
@@ -9198,14 +9219,14 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sheet": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "SheetId"
        }
       }
      },
@@ -9218,14 +9239,14 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sheet": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "SheetId"
        }
       }
      },
@@ -9259,7 +9280,7 @@ SHAPES: dict[str, object] = json.loads(
        "required": true,
        "shape": {
         "list": {
-         "scalar": "string"
+         "ref": "SheetId"
         },
         "non_empty": false
        }
@@ -9268,14 +9289,14 @@ SHAPES: dict[str, object] = json.loads(
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sheet": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "SheetId"
        }
       }
      },

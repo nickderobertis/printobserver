@@ -250,18 +250,20 @@ fn named_text(text: &str, what: &str) -> Result<String, String> {
 pub struct MaterialName(String);
 
 impl JsonSchema for MaterialName {
-    fn inline_schema() -> bool {
-        true
-    }
-
     fn schema_name() -> std::borrow::Cow<'static, str> {
-        String::schema_name()
+        std::borrow::Cow::Borrowed("MaterialName")
     }
 
     fn json_schema(
-        generator: &mut printobserver_types::schemars::SchemaGenerator,
+        _generator: &mut printobserver_types::schemars::SchemaGenerator,
     ) -> printobserver_types::schemars::Schema {
-        String::json_schema(generator)
+        printobserver_types::schemars::json_schema!({
+            "type": "string",
+            "title": "MaterialName",
+            "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+            "minLength": 1,
+            "pattern": "\\S"
+        })
     }
 }
 
@@ -310,18 +312,20 @@ impl core::fmt::Display for MaterialName {
 pub struct SheetId(String);
 
 impl JsonSchema for SheetId {
-    fn inline_schema() -> bool {
-        true
-    }
-
     fn schema_name() -> std::borrow::Cow<'static, str> {
-        String::schema_name()
+        std::borrow::Cow::Borrowed("SheetId")
     }
 
     fn json_schema(
-        generator: &mut printobserver_types::schemars::SchemaGenerator,
+        _generator: &mut printobserver_types::schemars::SchemaGenerator,
     ) -> printobserver_types::schemars::Schema {
-        String::json_schema(generator)
+        printobserver_types::schemars::json_schema!({
+            "type": "string",
+            "title": "SheetId",
+            "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+            "minLength": 1,
+            "pattern": "\\S"
+        })
     }
 }
 

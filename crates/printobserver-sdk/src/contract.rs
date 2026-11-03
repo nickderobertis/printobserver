@@ -1163,6 +1163,11 @@ pub struct ManifestNarrowing {
     pub requested: Range,
 }
 
+/// A filament material as a spool's registration or a slicer's settings name
+/// it, such as `PLA`: never blank, and trimmed of surrounding space as it is
+/// read.
+pub type MaterialName = String;
+
 /// Why the material check objects to a start, with what it compared.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cause")]
@@ -1171,9 +1176,9 @@ pub enum MaterialObjection {
     #[serde(rename = "mismatch")]
     Mismatch {
         /// That spool's material.
-        loaded: String,
+        loaded: MaterialName,
         /// The material the file's own `filament_type` names for the tool.
-        sliced_for: String,
+        sliced_for: MaterialName,
         /// The spool loaded on it.
         spool: PreflightSpool,
         /// The tool, in the printer's own numbering.
@@ -1186,7 +1191,7 @@ pub enum MaterialObjection {
         /// The file that was to be compared.
         file_name: FileName,
         /// That spool's material.
-        loaded: String,
+        loaded: MaterialName,
         /// The spool loaded on it.
         spool: PreflightSpool,
         /// The tool, in the printer's own numbering.
@@ -1200,7 +1205,7 @@ pub enum MaterialObjection {
         /// The file whose settings could not be read.
         file_name: FileName,
         /// That spool's material.
-        loaded: String,
+        loaded: MaterialName,
         /// The spool loaded on it.
         spool: PreflightSpool,
         /// The tool, in the printer's own numbering.
@@ -1217,9 +1222,9 @@ pub enum MaterialResult {
     #[serde(rename = "passed")]
     Passed {
         /// That spool's material.
-        loaded: String,
+        loaded: MaterialName,
         /// The material the file's own `filament_type` names for the tool.
-        sliced_for: String,
+        sliced_for: MaterialName,
         /// The spool loaded on it.
         spool: PreflightSpool,
         /// The tool, in the printer's own numbering.
@@ -1760,12 +1765,14 @@ pub enum PrintAction {
         /// loaded on tool 0, or naming none; only an operator's asking
         /// counts,
         /// and the start's own reason is the override's reason.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         override_material_check: Option<bool>,
         /// Start despite a declared build sheet the sheet table does not
         /// allow
         /// the loaded spool's material on; only an operator's asking counts,
         /// and it never lets through a manifest that declares no sheet.
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         override_sheet_check: Option<bool>,
         /// Why the actor is asking for this.
@@ -2606,6 +2613,10 @@ pub struct Reported {
     pub value: f64,
 }
 
+/// A build sheet's identifier as the sheet table names it, such as
+/// `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
+pub type SheetId = String;
+
 /// Why the sheet check objects to a start, with what it compared.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cause")]
@@ -2614,29 +2625,29 @@ pub enum SheetObjection {
     #[serde(rename = "not_allowed")]
     NotAllowed {
         /// Every sheet the table allows that material.
-        allowed: Vec<String>,
+        allowed: Vec<SheetId>,
         /// The material of the spool loaded on tool 0.
-        material: String,
+        material: MaterialName,
         /// The build sheet the manifest declares.
-        sheet: String,
+        sheet: SheetId,
     },
     /// The table has no entry for the material.
     #[serde(rename = "unlisted_material")]
     UnlistedMaterial {
         /// The material of the spool loaded on tool 0.
-        material: String,
+        material: MaterialName,
         /// The build sheet the manifest declares.
-        sheet: String,
+        sheet: SheetId,
     },
     /// No entry of the table lists the sheet.
     #[serde(rename = "unknown_sheet")]
     UnknownSheet {
         /// Every sheet some entry lists.
-        known: Vec<String>,
+        known: Vec<SheetId>,
         /// The material of the spool loaded on tool 0.
-        material: String,
+        material: MaterialName,
         /// The build sheet the manifest declares.
-        sheet: String,
+        sheet: SheetId,
     },
 }
 
@@ -2649,11 +2660,11 @@ pub enum SheetResult {
     #[serde(rename = "passed")]
     Passed {
         /// Every sheet the table allows that material.
-        allowed: Vec<String>,
+        allowed: Vec<SheetId>,
         /// The material of the spool loaded on tool 0.
-        material: String,
+        material: MaterialName,
         /// The build sheet the manifest declares.
-        sheet: String,
+        sheet: SheetId,
     },
     /// No tracked spool is loaded on tool 0, or the check is off, so nothing
     /// was compared.
@@ -3974,7 +3985,9 @@ impl Client {
         manifest: &JobManifest,
         reason: &str,
         override_filament_check: Option<bool>,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         override_material_check: Option<bool>,
+        // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
         override_sheet_check: Option<bool>,
     ) -> Result<ActionAnswer, ClientError> {
         crate::reason_given(reason)?;

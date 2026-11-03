@@ -929,6 +929,18 @@ fn sheet(id: &str) -> SheetId {
     SheetId::try_from(id.to_owned()).expect("a sheet named by something")
 }
 
+impl Sample for MaterialName {
+    fn sample_full() -> Self {
+        material("PLA")
+    }
+}
+
+impl Sample for SheetId {
+    fn sample_full() -> Self {
+        sheet("smooth-pei")
+    }
+}
+
 impl Sample for MaterialComparison {
     fn sample_full() -> Self {
         Self {

@@ -960,13 +960,26 @@ export interface ManifestNarrowing {
   requested: Range;
 }
 
+/**
+ * A filament material as a spool's registration or a slicer's settings name
+ * it, such as `PLA`: never blank, and trimmed of surrounding space as it is
+ * read.
+ */
+export type MaterialName = string;
+
 /** Why the material check objects to a start, with what it compared. */
 export type MaterialObjection =
-  | { cause: "mismatch"; loaded: string; sliced_for: string; spool: PreflightSpool; tool: number }
+  | {
+      cause: "mismatch";
+      loaded: MaterialName;
+      sliced_for: MaterialName;
+      spool: PreflightSpool;
+      tool: number;
+    }
   | {
       cause: "undeclared";
       file_name: FileName;
-      loaded: string;
+      loaded: MaterialName;
       spool: PreflightSpool;
       tool: number;
     }
@@ -974,7 +987,7 @@ export type MaterialObjection =
       cause: "unread";
       detail: string;
       file_name: FileName;
-      loaded: string;
+      loaded: MaterialName;
       spool: PreflightSpool;
       tool: number;
     };
@@ -984,7 +997,13 @@ export type MaterialObjection =
  * tagged by its verdict.
  */
 export type MaterialResult =
-  | { verdict: "passed"; loaded: string; sliced_for: string; spool: PreflightSpool; tool: number }
+  | {
+      verdict: "passed";
+      loaded: MaterialName;
+      sliced_for: MaterialName;
+      spool: PreflightSpool;
+      tool: number;
+    }
   | { verdict: "unchecked" }
   | { verdict: "refused"; objection: MaterialObjection }
   | { verdict: "overridden"; objection: MaterialObjection }
@@ -1838,18 +1857,24 @@ export interface Reported {
   value: number;
 }
 
+/**
+ * A build sheet's identifier as the sheet table names it, such as
+ * `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
+ */
+export type SheetId = string;
+
 /** Why the sheet check objects to a start, with what it compared. */
 export type SheetObjection =
-  | { cause: "not_allowed"; allowed: Array<string>; material: string; sheet: string }
-  | { cause: "unlisted_material"; material: string; sheet: string }
-  | { cause: "unknown_sheet"; known: Array<string>; material: string; sheet: string };
+  | { cause: "not_allowed"; allowed: Array<SheetId>; material: MaterialName; sheet: SheetId }
+  | { cause: "unlisted_material"; material: MaterialName; sheet: SheetId }
+  | { cause: "unknown_sheet"; known: Array<SheetId>; material: MaterialName; sheet: SheetId };
 
 /**
  * Whether the declared build sheet suits the loaded spool's material, tagged
  * by its verdict.
  */
 export type SheetResult =
-  | { verdict: "passed"; allowed: Array<string>; material: string; sheet: string }
+  | { verdict: "passed"; allowed: Array<SheetId>; material: MaterialName; sheet: SheetId }
   | { verdict: "unchecked" }
   | { verdict: "undeclared" }
   | { verdict: "refused"; objection: SheetObjection }
@@ -4388,6 +4413,11 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "MaterialName": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
  "MaterialObjection": {
   "union": {
    "tag_field": "cause",
@@ -4398,14 +4428,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sliced_for": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "spool": {
@@ -4439,7 +4469,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "spool": {
@@ -4480,7 +4510,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "spool": {
@@ -4527,14 +4557,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sliced_for": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "spool": {
@@ -7209,6 +7239,11 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "SheetId": {
+  "alias": {
+   "scalar": "string"
+  }
+ },
  "SheetObjection": {
   "union": {
    "tag_field": "cause",
@@ -7220,7 +7255,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "required": true,
        "shape": {
         "list": {
-         "scalar": "string"
+         "ref": "SheetId"
         },
         "non_empty": false
        }
@@ -7229,14 +7264,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sheet": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "SheetId"
        }
       }
      },
@@ -7250,7 +7285,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "required": true,
        "shape": {
         "list": {
-         "scalar": "string"
+         "ref": "SheetId"
         },
         "non_empty": false
        }
@@ -7259,14 +7294,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sheet": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "SheetId"
        }
       }
      },
@@ -7279,14 +7314,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sheet": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "SheetId"
        }
       }
      },
@@ -7320,7 +7355,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "required": true,
        "shape": {
         "list": {
-         "scalar": "string"
+         "ref": "SheetId"
         },
         "non_empty": false
        }
@@ -7329,14 +7364,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "MaterialName"
        }
       },
       "sheet": {
        "paired_with": "",
        "required": true,
        "shape": {
-        "scalar": "string"
+        "ref": "SheetId"
        }
       }
      },

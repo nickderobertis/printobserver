@@ -193,20 +193,21 @@ const DECLARED_FIELDS: &[StatedType] = &[
     (
         "MaterialComparison",
         &[
-            ("loaded", "string", true),
-            ("sliced_for", "string", true),
+            ("loaded", "MaterialName", true),
+            ("sliced_for", "MaterialName", true),
             ("spool", "PreflightSpool", true),
             ("tool", "integer", true),
         ],
     ),
+    ("MaterialName", &[]),
     (
         "MaterialObjection",
         &[
             ("cause", "string", true),
             ("detail", "string", true),
             ("file_name", "FileName", true),
-            ("loaded", "string", true),
-            ("sliced_for", "string", true),
+            ("loaded", "MaterialName", true),
+            ("sliced_for", "MaterialName", true),
             ("spool", "PreflightSpool", true),
             ("tool", "integer", true),
         ],
@@ -214,9 +215,9 @@ const DECLARED_FIELDS: &[StatedType] = &[
     (
         "MaterialResult",
         &[
-            ("loaded", "string", true),
+            ("loaded", "MaterialName", true),
             ("objection", "MaterialObjection", true),
-            ("sliced_for", "string", true),
+            ("sliced_for", "MaterialName", true),
             ("spool", "PreflightSpool", true),
             ("tool", "integer", true),
             ("verdict", "string", true),
@@ -365,28 +366,29 @@ const DECLARED_FIELDS: &[StatedType] = &[
     (
         "SheetComparison",
         &[
-            ("allowed", "array:string", true),
-            ("material", "string", true),
-            ("sheet", "string", true),
+            ("allowed", "array:SheetId", true),
+            ("material", "MaterialName", true),
+            ("sheet", "SheetId", true),
         ],
     ),
+    ("SheetId", &[]),
     (
         "SheetObjection",
         &[
-            ("allowed", "array:string", true),
+            ("allowed", "array:SheetId", true),
             ("cause", "string", true),
-            ("known", "array:string", true),
-            ("material", "string", true),
-            ("sheet", "string", true),
+            ("known", "array:SheetId", true),
+            ("material", "MaterialName", true),
+            ("sheet", "SheetId", true),
         ],
     ),
     (
         "SheetResult",
         &[
-            ("allowed", "array:string", true),
-            ("material", "string", true),
+            ("allowed", "array:SheetId", true),
+            ("material", "MaterialName", true),
             ("objection", "SheetObjection", true),
-            ("sheet", "string", true),
+            ("sheet", "SheetId", true),
             ("verdict", "string", true),
         ],
     ),
@@ -476,7 +478,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
         "UncomparedMaterial",
         &[
             ("file_name", "FileName", true),
-            ("loaded", "string", true),
+            ("loaded", "MaterialName", true),
             ("spool", "PreflightSpool", true),
             ("tool", "integer", true),
         ],
@@ -987,6 +989,14 @@ fn an_absent_optional_is_absent_from_the_serialized_object() {
     assert!(checked > 0, "no optional field was checked at all");
 }
 
+/// Whether a declared type is one of this system's minted identifiers: a
+/// string its own schema declares `format: uuid`. A string type whose name
+/// ends in `Id` but which names something other than a minted record — the
+/// sheet table's `SheetId`, such as `smooth-pei` — is not one.
+fn is_uuid_identifier(entry: &TypeContract) -> bool {
+    entry.schema().get("format").and_then(Value::as_str) == Some("uuid")
+}
+
 /// Every identifier serializes as a lowercase hyphenated version 7 UUID.
 #[test]
 fn every_identifier_serializes_in_the_one_spelling() {
@@ -994,7 +1004,7 @@ fn every_identifier_serializes_in_the_one_spelling() {
     for entry in declared() {
         let full = entry.full();
         if let Some(text) = full.as_str()
-            && entry.name.ends_with("Id")
+            && is_uuid_identifier(&entry)
         {
             assert!(
                 is_lowercase_hyphenated_version_seven(text),
@@ -1067,7 +1077,7 @@ fn every_identifier_field_refuses_a_spelling_this_system_does_not_mint() {
                 }
             }
         }
-        if full.is_string() && entry.name.ends_with("Id") {
+        if full.is_string() && is_uuid_identifier(&entry) {
             for refused in REFUSED_IDENTIFIERS {
                 let answer = entry.round_trip(Value::String(refused.to_owned()));
                 assert!(answer.is_err(), "{} accepted {refused}", entry.name);

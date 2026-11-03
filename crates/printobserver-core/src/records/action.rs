@@ -186,12 +186,14 @@ pub enum PrintAction {
         /// and the start's own reason is the override's reason.
         // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[schemars(extend("x-two-valued-fact" = true))]
         override_material_check: bool,
         /// Start despite a declared build sheet the sheet table does not allow
         /// the loaded spool's material on; only an operator's asking counts,
         /// and it never lets through a manifest that declares no sheet.
         // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[schemars(extend("x-two-valued-fact" = true))]
         override_sheet_check: bool,
         /// Why the actor is asking for this.
         reason: String,

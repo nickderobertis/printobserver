@@ -1,5 +1,12 @@
 {
   "$defs": {
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "PreflightSpool": {
       "additionalProperties": false,
       "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
@@ -32,12 +39,12 @@
   "description": "What the material check compared: the spool loaded on a tool and the\nmaterial the file says that tool was sliced for.",
   "properties": {
     "loaded": {
-      "description": "That spool's material.",
-      "type": "string"
+      "$ref": "#/$defs/MaterialName",
+      "description": "That spool's material."
     },
     "sliced_for": {
-      "description": "The material the file's own `filament_type` names for the tool.",
-      "type": "string"
+      "$ref": "#/$defs/MaterialName",
+      "description": "The material the file's own `filament_type` names for the tool."
     },
     "spool": {
       "$ref": "#/$defs/PreflightSpool",

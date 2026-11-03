@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-188 types. The set is every type any crate declares under
+190 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -943,6 +943,13 @@ Declared by `printobserver-server`.
       ],
       "type": "object"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -955,12 +962,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -994,8 +1001,8 @@ Declared by `printobserver-server`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -1033,8 +1040,8 @@ Declared by `printobserver-server`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -1201,11 +1208,13 @@ Declared by `printobserver-server`.
             },
             "override_material_check": {
               "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "override_sheet_check": {
               "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "reason": {
               "description": "Why the actor is asking for this.",
@@ -2016,6 +2025,13 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -2026,7 +2042,7 @@ Declared by `printobserver-server`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -2035,12 +2051,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -2060,12 +2076,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -2086,17 +2102,17 @@ Declared by `printobserver-server`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -3023,6 +3039,13 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -3035,12 +3058,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -3074,8 +3097,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -3113,8 +3136,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -3281,11 +3304,13 @@ Declared by `printobserver-core`.
             },
             "override_material_check": {
               "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "override_sheet_check": {
               "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "reason": {
               "description": "Why the actor is asking for this.",
@@ -4096,6 +4121,13 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -4106,7 +4138,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -4115,12 +4147,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -4140,12 +4172,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -4166,17 +4198,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -4792,6 +4824,13 @@ Declared by `printobserver-core`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -4804,12 +4843,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -4843,8 +4882,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -4882,8 +4921,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -5458,6 +5497,13 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -5468,7 +5514,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -5477,12 +5523,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -5502,12 +5548,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -5528,17 +5574,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -6213,11 +6259,13 @@ Declared by `printobserver-core`.
             },
             "override_material_check": {
               "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "override_sheet_check": {
               "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "reason": {
               "description": "Why the actor is asking for this.",
@@ -6820,11 +6868,13 @@ Declared by `printobserver-core`.
             },
             "override_material_check": {
               "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "override_sheet_check": {
               "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
-              "type": "boolean"
+              "type": "boolean",
+              "x-two-valued-fact": true
             },
             "reason": {
               "description": "Why the actor is asking for this.",
@@ -13384,6 +13434,13 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "PreflightSpool": {
       "additionalProperties": false,
       "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
@@ -13416,12 +13473,12 @@ Declared by `printobserver-core`.
   "description": "What the material check compared: the spool loaded on a tool and the\nmaterial the file says that tool was sliced for.",
   "properties": {
     "loaded": {
-      "description": "That spool's material.",
-      "type": "string"
+      "$ref": "#/$defs/MaterialName",
+      "description": "That spool's material."
     },
     "sliced_for": {
-      "description": "The material the file's own `filament_type` names for the tool.",
-      "type": "string"
+      "$ref": "#/$defs/MaterialName",
+      "description": "The material the file's own `filament_type` names for the tool."
     },
     "spool": {
       "$ref": "#/$defs/PreflightSpool",
@@ -13444,6 +13501,21 @@ Declared by `printobserver-core`.
 }
 ```
 
+### MaterialName
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+  "minLength": 1,
+  "pattern": "\\S",
+  "title": "MaterialName",
+  "type": "string"
+}
+```
+
 ### MaterialObjection
 
 Declared by `printobserver-core`.
@@ -13459,6 +13531,13 @@ Declared by `printobserver-core`.
       },
       "pattern": "^[^/\\\\\u0000]+$",
       "title": "FileName",
+      "type": "string"
+    },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
       "type": "string"
     },
     "PreflightSpool": {
@@ -13500,12 +13579,12 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         "loaded": {
-          "description": "That spool's material.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "That spool's material."
         },
         "sliced_for": {
-          "description": "The material the file's own `filament_type` names for the tool.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "The material the file's own `filament_type` names for the tool."
         },
         "spool": {
           "$ref": "#/$defs/PreflightSpool",
@@ -13539,8 +13618,8 @@ Declared by `printobserver-core`.
           "description": "The file that was to be compared."
         },
         "loaded": {
-          "description": "That spool's material.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "That spool's material."
         },
         "spool": {
           "$ref": "#/$defs/PreflightSpool",
@@ -13578,8 +13657,8 @@ Declared by `printobserver-core`.
           "description": "The file whose settings could not be read."
         },
         "loaded": {
-          "description": "That spool's material.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "That spool's material."
         },
         "spool": {
           "$ref": "#/$defs/PreflightSpool",
@@ -13623,6 +13702,13 @@ Declared by `printobserver-core`.
       "title": "FileName",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -13635,12 +13721,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -13674,8 +13760,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -13713,8 +13799,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -13773,12 +13859,12 @@ Declared by `printobserver-core`.
       "description": "The file was sliced for the loaded spool's material.",
       "properties": {
         "loaded": {
-          "description": "That spool's material.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "That spool's material."
         },
         "sliced_for": {
-          "description": "The material the file's own `filament_type` names for the tool.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "The material the file's own `filament_type` names for the tool."
         },
         "spool": {
           "$ref": "#/$defs/PreflightSpool",
@@ -15857,6 +15943,13 @@ Declared by `printobserver-core`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -15869,12 +15962,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -15908,8 +16001,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -15947,8 +16040,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -16500,6 +16593,13 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -16510,7 +16610,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -16519,12 +16619,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -16544,12 +16644,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -16570,17 +16670,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -17182,6 +17282,13 @@ Declared by `printobserver-core`.
       "title": "FileName",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -17194,12 +17301,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -17233,8 +17340,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -17272,8 +17379,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -17305,12 +17412,12 @@ Declared by `printobserver-core`.
           "description": "The file was sliced for the loaded spool's material.",
           "properties": {
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -17821,6 +17928,13 @@ Declared by `printobserver-core`.
       "title": "PrintId",
       "type": "string"
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -17831,7 +17945,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -17840,12 +17954,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -17865,12 +17979,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -17891,17 +18005,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -17924,17 +18038,17 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             },
             "verdict": {
               "const": "passed",
@@ -18253,6 +18367,13 @@ Declared by `printobserver-server`.
       "title": "FileName",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -18265,12 +18386,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -18304,8 +18425,8 @@ Declared by `printobserver-server`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -18343,8 +18464,8 @@ Declared by `printobserver-server`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -18376,12 +18497,12 @@ Declared by `printobserver-server`.
           "description": "The file was sliced for the loaded spool's material.",
           "properties": {
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -18946,6 +19067,13 @@ Declared by `printobserver-server`.
       "title": "PrintId",
       "type": "string"
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -18956,7 +19084,7 @@ Declared by `printobserver-server`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -18965,12 +19093,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -18990,12 +19118,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -19016,17 +19144,17 @@ Declared by `printobserver-server`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -19049,17 +19177,17 @@ Declared by `printobserver-server`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             },
             "verdict": {
               "const": "passed",
@@ -19344,6 +19472,13 @@ Declared by `printobserver-core`.
       "title": "FileName",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -19356,12 +19491,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -19395,8 +19530,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -19434,8 +19569,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -19467,12 +19602,12 @@ Declared by `printobserver-core`.
           "description": "The file was sliced for the loaded spool's material.",
           "properties": {
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -20037,6 +20172,13 @@ Declared by `printobserver-core`.
       "title": "PrintId",
       "type": "string"
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -20047,7 +20189,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -20056,12 +20198,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -20081,12 +20223,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -20107,17 +20249,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -20140,17 +20282,17 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             },
             "verdict": {
               "const": "passed",
@@ -22170,11 +22312,13 @@ Declared by `printobserver-core`.
         },
         "override_material_check": {
           "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-two-valued-fact": true
         },
         "override_sheet_check": {
           "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
-          "type": "boolean"
+          "type": "boolean",
+          "x-two-valued-fact": true
         },
         "reason": {
           "description": "Why the actor is asking for this.",
@@ -24020,6 +24164,13 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -24032,12 +24183,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -24071,8 +24222,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -24110,8 +24261,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -24143,12 +24294,12 @@ Declared by `printobserver-core`.
           "description": "The file was sliced for the loaded spool's material.",
           "properties": {
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -24713,6 +24864,13 @@ Declared by `printobserver-core`.
       "title": "PrintId",
       "type": "string"
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -24723,7 +24881,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -24732,12 +24890,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -24757,12 +24915,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -24783,17 +24941,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -24816,17 +24974,17 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             },
             "verdict": {
               "const": "passed",
@@ -29744,6 +29902,13 @@ Declared by `printobserver-core`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -29756,12 +29921,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -29795,8 +29960,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -29834,8 +29999,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -29954,6 +30119,13 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -29964,7 +30136,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -29973,12 +30145,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -29998,12 +30170,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -30024,17 +30196,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -31093,6 +31265,22 @@ Declared by `printobserver-core`.
 
 ```json
 {
+  "$defs": {
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "What the sheet check compared: the declared sheet, the loaded spool's\nmaterial, and the sheets the table allows that material.",
@@ -31100,17 +31288,17 @@ Declared by `printobserver-core`.
     "allowed": {
       "description": "Every sheet the table allows that material.",
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/SheetId"
       },
       "type": "array"
     },
     "material": {
-      "description": "The material of the spool loaded on tool 0.",
-      "type": "string"
+      "$ref": "#/$defs/MaterialName",
+      "description": "The material of the spool loaded on tool 0."
     },
     "sheet": {
-      "description": "The build sheet the manifest declares.",
-      "type": "string"
+      "$ref": "#/$defs/SheetId",
+      "description": "The build sheet the manifest declares."
     }
   },
   "required": [
@@ -31123,12 +31311,43 @@ Declared by `printobserver-core`.
 }
 ```
 
+### SheetId
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+  "minLength": 1,
+  "pattern": "\\S",
+  "title": "SheetId",
+  "type": "string"
+}
+```
+
 ### SheetObjection
 
 Declared by `printobserver-core`.
 
 ```json
 {
+  "$defs": {
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Why the sheet check objects to a start, with what it compared.",
   "oneOf": [
@@ -31139,7 +31358,7 @@ Declared by `printobserver-core`.
         "allowed": {
           "description": "Every sheet the table allows that material.",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/SheetId"
           },
           "type": "array"
         },
@@ -31148,12 +31367,12 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         "material": {
-          "description": "The material of the spool loaded on tool 0.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "The material of the spool loaded on tool 0."
         },
         "sheet": {
-          "description": "The build sheet the manifest declares.",
-          "type": "string"
+          "$ref": "#/$defs/SheetId",
+          "description": "The build sheet the manifest declares."
         }
       },
       "required": [
@@ -31173,12 +31392,12 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         "material": {
-          "description": "The material of the spool loaded on tool 0.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "The material of the spool loaded on tool 0."
         },
         "sheet": {
-          "description": "The build sheet the manifest declares.",
-          "type": "string"
+          "$ref": "#/$defs/SheetId",
+          "description": "The build sheet the manifest declares."
         }
       },
       "required": [
@@ -31199,17 +31418,17 @@ Declared by `printobserver-core`.
         "known": {
           "description": "Every sheet some entry lists.",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/SheetId"
           },
           "type": "array"
         },
         "material": {
-          "description": "The material of the spool loaded on tool 0.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "The material of the spool loaded on tool 0."
         },
         "sheet": {
-          "description": "The build sheet the manifest declares.",
-          "type": "string"
+          "$ref": "#/$defs/SheetId",
+          "description": "The build sheet the manifest declares."
         }
       },
       "required": [
@@ -31232,6 +31451,20 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -31242,7 +31475,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -31251,12 +31484,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -31276,12 +31509,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -31302,17 +31535,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -31336,17 +31569,17 @@ Declared by `printobserver-core`.
         "allowed": {
           "description": "Every sheet the table allows that material.",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/SheetId"
           },
           "type": "array"
         },
         "material": {
-          "description": "The material of the spool loaded on tool 0.",
-          "type": "string"
+          "$ref": "#/$defs/MaterialName",
+          "description": "The material of the spool loaded on tool 0."
         },
         "sheet": {
-          "description": "The build sheet the manifest declares.",
-          "type": "string"
+          "$ref": "#/$defs/SheetId",
+          "description": "The build sheet the manifest declares."
         },
         "verdict": {
           "const": "passed",
@@ -33119,6 +33352,13 @@ Declared by `printobserver-server`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -33131,12 +33371,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -33170,8 +33410,8 @@ Declared by `printobserver-server`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -33209,8 +33449,8 @@ Declared by `printobserver-server`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -33791,6 +34031,13 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -33801,7 +34048,7 @@ Declared by `printobserver-server`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -33810,12 +34057,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -33835,12 +34082,12 @@ Declared by `printobserver-server`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -33861,17 +34108,17 @@ Declared by `printobserver-server`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -34701,6 +34948,13 @@ Declared by `printobserver-core`.
       "title": "InterventionId",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "MaterialObjection": {
       "description": "Why the material check objects to a start, with what it compared.",
       "oneOf": [
@@ -34713,12 +34967,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "sliced_for": {
-              "description": "The material the file's own `filament_type` names for the tool.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material the file's own `filament_type` names for the tool."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -34752,8 +35006,8 @@ Declared by `printobserver-core`.
               "description": "The file that was to be compared."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -34791,8 +35045,8 @@ Declared by `printobserver-core`.
               "description": "The file whose settings could not be read."
             },
             "loaded": {
-              "description": "That spool's material.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "That spool's material."
             },
             "spool": {
               "$ref": "#/$defs/PreflightSpool",
@@ -35367,6 +35621,13 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "SheetId": {
+      "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "SheetId",
+      "type": "string"
+    },
     "SheetObjection": {
       "description": "Why the sheet check objects to a start, with what it compared.",
       "oneOf": [
@@ -35377,7 +35638,7 @@ Declared by `printobserver-core`.
             "allowed": {
               "description": "Every sheet the table allows that material.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
@@ -35386,12 +35647,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -35411,12 +35672,12 @@ Declared by `printobserver-core`.
               "type": "string"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -35437,17 +35698,17 @@ Declared by `printobserver-core`.
             "known": {
               "description": "Every sheet some entry lists.",
               "items": {
-                "type": "string"
+                "$ref": "#/$defs/SheetId"
               },
               "type": "array"
             },
             "material": {
-              "description": "The material of the spool loaded on tool 0.",
-              "type": "string"
+              "$ref": "#/$defs/MaterialName",
+              "description": "The material of the spool loaded on tool 0."
             },
             "sheet": {
-              "description": "The build sheet the manifest declares.",
-              "type": "string"
+              "$ref": "#/$defs/SheetId",
+              "description": "The build sheet the manifest declares."
             }
           },
           "required": [
@@ -41150,6 +41411,13 @@ Declared by `printobserver-core`.
       "title": "FileName",
       "type": "string"
     },
+    "MaterialName": {
+      "description": "A filament material as a spool's registration or a slicer's settings name it, such as `PLA`: never blank, and trimmed of surrounding space as it is read.",
+      "minLength": 1,
+      "pattern": "\\S",
+      "title": "MaterialName",
+      "type": "string"
+    },
     "PreflightSpool": {
       "additionalProperties": false,
       "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
@@ -41186,8 +41454,8 @@ Declared by `printobserver-core`.
       "description": "The file that was to be compared."
     },
     "loaded": {
-      "description": "That spool's material.",
-      "type": "string"
+      "$ref": "#/$defs/MaterialName",
+      "description": "That spool's material."
     },
     "spool": {
       "$ref": "#/$defs/PreflightSpool",
@@ -42345,7 +42613,8 @@ Declared by `printobserver-server`.
           "required": false,
           "shape": {
             "description": "Start despite a file sliced for another material than the spool\nloaded on tool 0, or naming none; only an operator's asking counts,\nand the start's own reason is the override's reason.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
@@ -42356,7 +42625,8 @@ Declared by `printobserver-server`.
           "required": false,
           "shape": {
             "description": "Start despite a declared build sheet the sheet table does not allow\nthe loaded spool's material on; only an operator's asking counts,\nand it never lets through a manifest that declares no sheet.",
-            "type": "boolean"
+            "type": "boolean",
+            "x-two-valued-fact": true
           }
         },
         {
