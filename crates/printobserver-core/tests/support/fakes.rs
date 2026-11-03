@@ -1585,6 +1585,10 @@ pub struct FakeVision {
     failure: Mutex<Option<VisionError>>,
     /// The failure induced at `clear_detection`, if one is.
     clearing_failure: Mutex<Option<VisionError>>,
+    /// A failure answered to the next retrievals only, and how many more.
+    counted_failure: Mutex<Option<(VisionError, u32)>>,
+    /// When each retrieval was asked for, in order.
+    asked_at: Mutex<Vec<std::time::Instant>>,
 }
 
 impl FakeVision {
@@ -1599,7 +1603,20 @@ impl FakeVision {
             }),
             failure: Mutex::new(None),
             clearing_failure: Mutex::new(None),
+            counted_failure: Mutex::new(None),
+            asked_at: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Fail the next `times` retrievals with `error`, and serve the image after.
+    pub fn fails_first(&self, error: VisionError, times: u32) {
+        *self.counted_failure.lock().expect("the vision port holds") = Some((error, times));
+    }
+
+    /// When each retrieval was asked for, in order.
+    #[must_use]
+    pub fn asked_at(&self) -> Vec<std::time::Instant> {
+        self.asked_at.lock().expect("the vision port holds").clone()
     }
 
     /// Fail every retrieval from now on.
@@ -1647,6 +1664,23 @@ impl VisionPort for FakeVision {
     ) -> printobserver_vision_api::BoxFuture<'_, Result<FetchedImage, VisionError>> {
         self.journal.record(Call::FetchImage);
         let _ = source_url;
+        self.asked_at
+            .lock()
+            .expect("the vision port holds")
+            .push(std::time::Instant::now());
+        let counted = {
+            let mut counted = self.counted_failure.lock().expect("the vision port holds");
+            match counted.as_mut() {
+                Some((error, remaining)) if *remaining > 0 => {
+                    *remaining -= 1;
+                    Some(error.clone())
+                }
+                _ => None,
+            }
+        };
+        if let Some(error) = counted {
+            return Box::pin(async move { Err(error) });
+        }
         let answer = self
             .failure
             .lock()
