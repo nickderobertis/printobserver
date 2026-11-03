@@ -502,3 +502,84 @@ async fn the_read_only_check_reports_the_material_and_a_given_sheet() {
     assert_eq!(starts(&watch), 0);
     watch.server.stop().await;
 }
+
+/// A server whose `[spools] preflight` mode is `mode`.
+async fn watching_in(mode: &str) -> Watch {
+    watching(|document| {
+        set(
+            document,
+            "spools",
+            toml::Value::Table(toml::Table::from_iter([(
+                "preflight".to_owned(),
+                toml::Value::String(mode.to_owned()),
+            )])),
+        );
+    })
+    .await
+}
+
+/// The `[spools] preflight` mode governs the material and sheet checks as it
+/// does the weight: `warn` starts a file sliced for another material on a
+/// sheet the material may not use, recording both objections as warned; `off`
+/// starts it without reading the file, recording both as unchecked. Neither
+/// mode lets through a manifest that declares no sheet.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_preflight_mode_governs_the_material_and_sheet_checks() {
+    let operator = json!("operator");
+    for mode in ["warn", "off"] {
+        let watch = watching_in(mode).await;
+        loaded_with(&watch, "PETG").await;
+
+        let (status, sheetless) =
+            started_by_operator(&watch, &start(&operator, PLA_FILE, None, &[])).await;
+        assert_eq!(status, reqwest::StatusCode::CONFLICT, "{mode}: {sheetless}");
+        assert_eq!(
+            rejection(&sheetless),
+            &json!("sheet_not_declared"),
+            "{mode}: {sheetless}"
+        );
+        assert_eq!(starts(&watch), 0, "{mode}: a sheetless start started");
+
+        let read_before = watch.octoprint.download_bytes();
+        let (status, passed) =
+            started_by_operator(&watch, &start(&operator, PLA_FILE, Some("smooth-pei"), &[])).await;
+        assert_eq!(status, reqwest::StatusCode::OK, "{mode}: {passed}");
+        assert_eq!(starts(&watch), 1, "{mode}");
+        let started = passed["record"]["print_id"].as_str().expect("a print");
+        for kind in ["preflight_checked", "print_started"] {
+            let events = events_of(&watch, started, kind).await;
+            let preflight = &events.last().expect("the event")["payload"]["preflight"];
+            let (material, sheet) = (&preflight["material"], &preflight["sheet"]);
+            if mode == "warn" {
+                assert_eq!(material["verdict"], "warned", "{kind}: {preflight}");
+                assert_eq!(
+                    (&material["objection"]["sliced_for"], &sheet["verdict"]),
+                    (&json!("PLA"), &json!("warned")),
+                    "{kind}: {preflight}"
+                );
+                assert_eq!(
+                    (
+                        &sheet["objection"]["sheet"],
+                        &sheet["objection"]["material"]
+                    ),
+                    (&json!("smooth-pei"), &json!("PETG")),
+                    "{kind}: {preflight}"
+                );
+            } else {
+                assert_eq!(
+                    (&material["verdict"], &sheet["verdict"]),
+                    (&json!("unchecked"), &json!("unchecked")),
+                    "{kind}: {preflight}"
+                );
+            }
+        }
+        if mode == "off" {
+            assert_eq!(
+                watch.octoprint.download_bytes(),
+                read_before,
+                "the check that is off read the file"
+            );
+        }
+        watch.server.stop().await;
+    }
+}
