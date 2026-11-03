@@ -360,6 +360,7 @@ impl OctoPrintPrinter {
         &self,
         file_name: &FileName,
     ) -> Result<Vec<Option<String>>, PrinterError> {
+        // llmlint: ignore-end[invalid_states_unrepresentable]
         let path = self.download_of(file_name)?;
         let mut tail = TailReader(Tail::new(TAIL_BYTES));
         let answered = http::stream_tail(
@@ -685,6 +686,7 @@ impl PrinterPort for OctoPrintPrinter {
         &self,
         file_name: FileName,
     ) -> BoxFuture<'_, Result<Vec<Option<String>>, PrinterError>> {
+        // llmlint: ignore-end[invalid_states_unrepresentable]
         Box::pin(async move { self.read_filament_types(&file_name) })
     }
 

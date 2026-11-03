@@ -296,6 +296,7 @@ fn judged_material(
     loaded: MaterialName,
     read: Result<Vec<Option<String>>, String>,
 ) -> MaterialResult {
+    // llmlint: ignore-end[invalid_states_unrepresentable]
     let types = match read {
         Ok(types) => types,
         Err(detail) => {

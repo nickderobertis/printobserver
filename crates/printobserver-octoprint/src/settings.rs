@@ -75,6 +75,7 @@ impl Tail {
 #[must_use]
 // llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
 pub fn filament_types_in(tail: &[u8], starts_mid_line: bool) -> Vec<Option<String>> {
+    // llmlint: ignore-end[invalid_states_unrepresentable]
     let text = String::from_utf8_lossy(tail);
     let mut lines = text.lines();
     if starts_mid_line {

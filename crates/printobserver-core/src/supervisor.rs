@@ -625,6 +625,7 @@ impl Supervisor {
         &self,
         file_name: FileName,
     ) -> Result<Vec<Option<String>>, PrinterError> {
+        // llmlint: ignore-end[invalid_states_unrepresentable]
         self.printer.filament_types(file_name).await
     }
 

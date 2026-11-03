@@ -214,6 +214,7 @@ pub trait PrinterPort: Send + Sync {
         &self,
         file_name: FileName,
     ) -> BoxFuture<'_, Result<Vec<Option<String>>, PrinterError>> {
+        // llmlint: ignore-end[invalid_states_unrepresentable]
         let _ = file_name;
         Box::pin(async { Err(not_supported("filament_types")) })
     }
