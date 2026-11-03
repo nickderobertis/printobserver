@@ -714,6 +714,7 @@ pub struct SpoolsSection {
 pub struct SheetsSection {
     /// Each material, as a spool's own material names it, and the sheet ids
     /// a print of it may go down on.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allowed: Option<std::collections::BTreeMap<String, Vec<String>>>,
 }

@@ -288,6 +288,7 @@ pub struct PreflightParams {
     pub file_name: Option<String>,
     /// The build sheet the sheet check is read against; absent, the check
     /// reports no sheet result, and a blank one is refused.
+    // llmlint: ignore[invalid_states_unrepresentable] suppressions.toml has the reason.
     #[serde(default)]
     pub sheet: Option<String>,
 }

@@ -289,6 +289,7 @@ fn material_of(spool: &SpoolRecord) -> Option<MaterialName> {
 
 /// Whether the spool's material is the one the file was sliced for, by what
 /// the printer read of the file's settings.
+// llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
 fn judged_material(
     file_name: &FileName,
     spool: &SpoolRecord,

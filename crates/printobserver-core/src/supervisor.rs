@@ -620,6 +620,7 @@ impl Supervisor {
     }
 
     /// Read the material each tool of one file was sliced for, tool 0 first.
+    // llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
     pub(crate) async fn read_filament_types(
         &self,
         file_name: FileName,

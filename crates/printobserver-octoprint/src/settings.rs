@@ -73,6 +73,7 @@ impl Tail {
 /// `starts_mid_line` says the tail does not begin at the file's first byte,
 /// so its first line may be the end of a longer one and is not read.
 #[must_use]
+// llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
 pub fn filament_types_in(tail: &[u8], starts_mid_line: bool) -> Vec<Option<String>> {
     let text = String::from_utf8_lossy(tail);
     let mut lines = text.lines();

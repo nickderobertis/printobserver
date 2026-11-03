@@ -4367,3 +4367,51 @@ rule = "invalid_states_unrepresentable"
 file = "tools/contract-codegen/src/contract_codegen/emit_rust.py"
 site = "UNCHECKED_DIRECTIVE = "
 reason = "Not a directive over this file's own code: it is the text the emitter writes above a generated Rust field the schema marks `x-unchecked-text`, so that the directive standing in `crates/printobserver-sdk/src/contract.rs` is regenerated rather than lost on the next `just generate-clients`. The reason is that file's entry for this rule."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/api.rs"
+site = "pub sheet: Option<String>,"
+reason = "The preflight read's query value, read as text and turned into a `SheetId` on the handler's first line, where a blank one is refused with the server's own structured 400 naming the sheet. Typing the query field as `SheetId` would move that refusal into the query extractor and answer it with the extractor's own body instead; the operation declares the value's shape as `SheetId`, so every client sends one."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-server/src/config.rs"
+site = "pub allowed: Option<std::collections::BTreeMap<String, Vec<String>>>,"
+reason = "The sheet table as the configuration file writes it, read as text the way every field of the server's configuration is, and validated where it is read: `SheetTable::new` builds each material as a `MaterialName` and each sheet as a `SheetId`, and a blank or duplicated one refuses the configuration with an error naming `sheets.allowed`. Typing the file's own field with those types would refuse the same file with the parser's message, which names no configuration field."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-printer-api/src/lib.rs"
+site = "fn filament_types("
+reason = "The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-octoprint/src/client.rs"
+site = "fn read_filament_types("
+reason = "The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-octoprint/src/client.rs"
+site = "fn filament_types("
+reason = "The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-octoprint/src/settings.rs"
+site = "pub fn filament_types_in("
+reason = "The parser behind the printer port's material read: it trims each `filament_type` entry and answers a blank one as `None`, which is the invariant a material name carries, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type, which this adapter does not depend on; moving it into `printobserver-types` so the port can carry it is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/preflight.rs"
+site = "fn judged_material("
+reason = "The material judgment takes the printer port's answer as the port gives it, text per tool with `None` for a blank entry, and builds the `MaterialName` it compares from the tool-0 entry, judging an entry that does not make one as a file that names no material. The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-core/src/supervisor.rs"
+site = "pub(crate) async fn read_filament_types("
+reason = "The supervisor hands the printer port's answer on unchanged to the preflight, which builds the `MaterialName` it compares. The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."

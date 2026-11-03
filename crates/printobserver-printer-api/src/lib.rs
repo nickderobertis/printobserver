@@ -209,6 +209,7 @@ pub trait PrinterPort: Send + Sync {
     /// Empty when the file names no `filament_type`. A printer that cannot
     /// answer is refused with status 501, which is what an implementation that
     /// does not override this answers.
+    // llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
     fn filament_types(
         &self,
         file_name: FileName,

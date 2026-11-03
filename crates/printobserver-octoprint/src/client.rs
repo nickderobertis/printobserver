@@ -355,6 +355,7 @@ impl OctoPrintPrinter {
     ///
     /// An instance that ignores the range is read only as far as the bound:
     /// a file longer than it is refused rather than downloaded whole.
+    // llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
     fn read_filament_types(
         &self,
         file_name: &FileName,
@@ -679,6 +680,7 @@ impl PrinterPort for OctoPrintPrinter {
         })
     }
 
+    // llmlint: ignore-block[invalid_states_unrepresentable] suppressions.toml has the reason.
     fn filament_types(
         &self,
         file_name: FileName,
