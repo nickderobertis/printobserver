@@ -269,3 +269,53 @@ async fn a_frame_the_store_will_not_keep_is_recorded_against_the_look() {
     );
     world.server.stop().await;
 }
+
+/// A look at the printer, with no print named, takes a frame now and keeps it
+/// with its look in the printer's own history rather than any print's: an
+/// open print's history gains nothing, and the look waits the seconds it was
+/// asked to on nothing that arrives.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_look_at_the_printer_is_kept_as_the_printers_own() {
+    let host = image_host(snapshot_bytes()).await;
+    let world = with_camera(StandInAgent::new(), host.url()).await;
+    let print_id = world.open_print().await;
+
+    let started = Instant::now();
+    let (status, look) = world.get(&world.url("/look?wait_s=1")).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(
+        started.elapsed() >= Duration::from_secs(1),
+        "the look did not wait the second it was asked to"
+    );
+    assert_eq!(look["event"]["kind"], "camera_look", "{look}");
+    assert!(look["event"].get("print_id").is_none(), "{look}");
+    assert_eq!(look["event"]["payload"]["waited_s"], 1, "{look}");
+    assert_eq!(look["detector_paused"], false, "{look}");
+    let path = look["image_path"].as_str().expect("the frame's path");
+    assert_eq!(
+        std::fs::read(path).expect("the frame is on disk"),
+        snapshot_bytes()
+    );
+    let history = world
+        .stores
+        .events
+        .history(HistoryQuery {
+            print_id,
+            kinds: Vec::new(),
+            since: None,
+            until: None,
+            limit: Some(10),
+        })
+        .await
+        .expect("the history reads");
+    assert!(
+        history
+            .iter()
+            .all(|event| event.payload_as::<CameraLookPayload>().is_none()),
+        "the printer's look was written into an open print's history: {history:?}"
+    );
+
+    let (status, refused) = world.get(&world.url("/look?wait_s=91")).await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+    world.server.stop().await;
+}

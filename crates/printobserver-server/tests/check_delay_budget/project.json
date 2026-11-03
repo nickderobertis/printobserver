@@ -1,0 +1,30 @@
+{
+  "name": "printobserver-server-check-delay-budget",
+  "root": "crates/printobserver-server/tests/check_delay_budget",
+  "projectType": "library",
+  "tags": ["type:budget"],
+  "implicitDependencies": ["printobserver-server"],
+  "targets": {
+    "test": {
+      "command": "cargo nextest run -p printobserver-server --features test-responder --test check_delay_budget",
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/**/*",
+        "{workspaceRoot}/crates/printobserver-server/src/observation.rs",
+        "{workspaceRoot}/crates/printobserver-core/src/observation.rs",
+        "{workspaceRoot}/crates/printobserver-core/src/look.rs",
+        "{workspaceRoot}/crates/printobserver-obico/src/fetch.rs",
+        "{workspaceRoot}/crates/printobserver-obico/src/vision.rs",
+        "{workspaceRoot}/crates/printobserver-store-sqlite/src/sqlite.rs",
+        "{workspaceRoot}/crates/printobserver-store-sqlite/src/memory.rs",
+        "sharedGlobals"
+      ],
+      "outputs": ["{projectRoot}/telemetry"]
+    },
+    "budgets": {
+      "command": "bunx onebudgetspec check crates/printobserver-server/tests/check_delay_budget/budgets.yaml",
+      "dependsOn": ["test"],
+      "cache": false
+    }
+  }
+}

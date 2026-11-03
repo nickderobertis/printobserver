@@ -9,9 +9,12 @@
 //! [`Supervisor::observe_active_prints`]: printobserver_core::Supervisor::observe_active_prints
 //! [`Supervisor::run_supervision`]: printobserver_core::Supervisor::run_supervision
 
+use std::time::Duration;
+
 use printobserver_core::store::StoreError;
 use printobserver_core::{
-    PendingTurn, PeriodicObservationPayload, PortFailurePayload, PortFailureSite, block_on,
+    CameraRetry, CameraRetryPayload, PendingTurn, PeriodicObservationPayload, PortFailurePayload,
+    PortFailureSite, block_on,
 };
 use printobserver_printer_api::{PrinterError, PrinterState};
 use printobserver_types::{EventKind, EventPayload, EventRecord, PrintId};
@@ -285,6 +288,136 @@ fn a_frame_that_is_not_had_is_recorded_against_the_observation() {
             "{failing}"
         );
     }
+}
+
+/// What a camera that could not answer this time says.
+fn server_error() -> VisionError {
+    VisionError::Status {
+        detail: "http://camera.invalid/frame.jpeg answered 500 Internal Server Error".to_owned(),
+        status: 500,
+        excerpt: "exit status 69".to_owned(),
+    }
+}
+
+/// The retries one print's history records, oldest first.
+fn retries_of(world: &World, print_id: PrintId) -> Vec<CameraRetryPayload> {
+    world
+        .store
+        .events_of(print_id)
+        .iter()
+        .filter_map(|record| record.payload_as::<CameraRetryPayload>()?.ok())
+        .collect()
+}
+
+/// A retry policy of no retries asks a camera answering a server error once,
+/// writes no retry down, and records the one port failure against the
+/// observation, which carries no frame.
+#[test]
+fn a_policy_of_no_retries_asks_a_failing_camera_once() {
+    let world = World::with_camera_retry(CameraRetry {
+        retries: 0,
+        backoff: Duration::from_millis(500),
+    });
+    let print = world.open_print(7);
+    world.vision.fails(server_error());
+
+    assert_eq!(observe_and_supervise(&world), 1);
+
+    let turn = &world.agent.turns()[0];
+    assert!(turn.event.image.is_none());
+    assert_eq!(
+        world.vision.asked_at().len(),
+        1,
+        "the camera was asked once"
+    );
+    assert_eq!(retries_of(&world, print.id), []);
+    assert_eq!(
+        failures_against(&world, print.id, &turn.event),
+        [PortFailureSite::CameraLook]
+    );
+}
+
+/// A configured retry count and backoff are the ones a fetch keeps: a camera
+/// answering a server error every time is asked once more than the count, each
+/// later attempt at least the configured backoff after the one before, and
+/// each retry written down with that count and that backoff.
+#[test]
+fn a_configured_retry_count_and_backoff_are_kept() {
+    let backoff = Duration::from_millis(150);
+    let world = World::with_camera_retry(CameraRetry {
+        retries: 1,
+        backoff,
+    });
+    let print = world.open_print(7);
+    world.vision.fails(server_error());
+
+    assert_eq!(observe_and_supervise(&world), 1);
+
+    let asked = world.vision.asked_at();
+    assert_eq!(asked.len(), 2, "one attempt and one retry");
+    assert!(
+        asked[1] - asked[0] >= backoff,
+        "the retry came {:?} after the first attempt",
+        asked[1] - asked[0]
+    );
+    assert_eq!(
+        retries_of(&world, print.id),
+        [CameraRetryPayload {
+            attempt: 1,
+            attempts: 2,
+            status: 500,
+            excerpt: "exit status 69".to_owned(),
+            backoff_ms: 150,
+        }]
+    );
+    let turn = &world.agent.turns()[0];
+    assert_eq!(
+        failures_against(&world, print.id, &turn.event),
+        [PortFailureSite::CameraLook]
+    );
+}
+
+/// A camera that answers server errors fewer times than the configured count
+/// is retried until it gives its frame, which the observation then carries
+/// with no port failure.
+#[test]
+fn a_camera_recovering_within_the_configured_retries_gives_the_frame() {
+    let backoff = Duration::from_millis(120);
+    let world = World::with_camera_retry(CameraRetry {
+        retries: 2,
+        backoff,
+    });
+    let print = world.open_print(7);
+    world.vision.fails_first(server_error(), 2);
+
+    assert_eq!(observe_and_supervise(&world), 1);
+
+    let asked = world.vision.asked_at();
+    assert_eq!(
+        asked.len(),
+        3,
+        "two refused attempts and the one that answered"
+    );
+    for pair in asked.windows(2) {
+        assert!(
+            pair[1] - pair[0] >= backoff,
+            "a retry came {:?} after",
+            pair[1] - pair[0]
+        );
+    }
+    assert_eq!(
+        retries_of(&world, print.id)
+            .iter()
+            .map(|retry| (retry.attempt, retry.attempts, retry.backoff_ms))
+            .collect::<Vec<_>>(),
+        [(1, 3, 120), (2, 3, 120)]
+    );
+    let turn = &world.agent.turns()[0];
+    assert!(
+        turn.event.image.is_some(),
+        "the observation carries its frame"
+    );
+    assert_eq!(failures_against(&world, print.id, &turn.event), []);
 }
 
 /// An observation the store will not write down claims no turn and is

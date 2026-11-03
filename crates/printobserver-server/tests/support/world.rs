@@ -53,6 +53,10 @@ pub fn committed_skill() -> PathBuf {
 ///
 /// Built from values rather than from a string, so a journey that makes one
 /// field unacceptable changes that field and nothing else.
+///
+/// # Panics
+///
+/// Panics when the base configuration written here is not a TOML document.
 #[must_use]
 pub fn document(root: &Path, octoprint_url: &str) -> toml::Value {
     let text = format!(
@@ -146,6 +150,11 @@ fn table_of<'a>(document: &'a mut toml::Value, dotted: &str) -> (&'a mut toml::T
 }
 
 /// Write one configuration document into a root, and answer its path.
+#[must_use]
+///
+/// # Panics
+///
+/// Panics when the configuration cannot be written under the root.
 pub fn write(root: &Path, document: &toml::Value) -> PathBuf {
     let path = root.join(CONFIG_FILE);
     std::fs::write(
@@ -202,6 +211,11 @@ impl World {
 
     /// The same, with the durable stores as one journey stands something
     /// between them and the server.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the journey's root cannot be made, the configuration is
+    /// refused, or the server does not start.
     pub async fn configured_over(
         printer: Arc<RecordingPrinter>,
         agent: Arc<StandInAgent>,
@@ -353,6 +367,10 @@ impl World {
     }
 
     /// One spool operation's URL, about one spool.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the server declares no operation of that name.
     #[must_use]
     pub fn spool_url(&self, operation: &str, spool_id: &str) -> String {
         let declared =
@@ -361,6 +379,10 @@ impl World {
     }
 
     /// Open one print to act on.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the store will not open a print.
     pub async fn open_print(&self) -> PrintId {
         self.stores
             .prints
@@ -372,6 +394,11 @@ impl World {
 
     /// Read one answer without asking it to be JSON, for a journey about a
     /// path this server serves nothing at.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the server does not answer, or answers with a body that
+    /// cannot be read.
     pub async fn raw_get(&self, url: &str) -> (reqwest::StatusCode, String, String) {
         let response = self
             .client
@@ -391,6 +418,11 @@ impl World {
     }
 
     /// Read one JSON answer, and the status it came under.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the server does not answer, or answers with a body that
+    /// cannot be read.
     pub async fn get(&self, url: &str) -> (reqwest::StatusCode, serde_json::Value) {
         let response = self
             .client
@@ -403,6 +435,11 @@ impl World {
     }
 
     /// Send one JSON body, and read the JSON answer.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the server does not answer, or answers with a body that
+    /// cannot be read.
     pub async fn post(
         &self,
         url: &str,
@@ -419,6 +456,11 @@ impl World {
     }
 
     /// Replace one record with a JSON body, and read the JSON answer.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the server does not answer, or answers with a body that
+    /// cannot be read.
     pub async fn put(
         &self,
         url: &str,
@@ -507,6 +549,11 @@ async fn start(
 /// A body one spool command takes, carrying a reason, the operator as its
 /// actor, and whatever else the command needs: the registration of a spool of
 /// PLA, a load onto tool 0, an adjustment to a figure.
+///
+/// # Panics
+///
+/// Panics when the body it starts from is not an object, which would be a
+/// change to this function rather than to any journey.
 #[must_use]
 pub fn spool_body(kind: printobserver_core::ActionKind) -> serde_json::Value {
     use printobserver_core::ActionKind;
@@ -533,6 +580,7 @@ pub fn spool_body(kind: printobserver_core::ActionKind) -> serde_json::Value {
 }
 
 /// One recovery action's body, which its own bounds accept.
+#[must_use]
 pub fn recovery_body(
     kind: printobserver_server::RecoveryActionKind,
 ) -> printobserver_types::serde_json::Value {
@@ -570,6 +618,10 @@ pub fn manifest_write(manifest: &serde_json::Value) -> serde_json::Value {
 /// The committed sample is what the ingress journeys post; this is what a
 /// journey that needs a *second* alert about the same print, or an alert naming
 /// an image host it controls, builds from it.
+///
+/// # Panics
+///
+/// Panics when the committed sample is not JSON.
 #[must_use]
 pub fn failure_alert(obico_print_id: i64, image_url: &str) -> serde_json::Value {
     let mut sample: serde_json::Value =

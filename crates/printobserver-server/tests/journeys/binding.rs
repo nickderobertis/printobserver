@@ -692,3 +692,57 @@ async fn reads_during_a_turn_reflect_the_operators_latest_action() {
     world.agent.release_turns();
     world.server.stop().await;
 }
+
+/// What belongs to no print is the operator's: a turn's credential is refused
+/// a look at the printer and a frame of the printer, before anything is
+/// looked at, while the operator's is served both.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_credential_is_refused_what_belongs_to_no_print() {
+    let world = World::open().await;
+    let (print_id, pass) = held_turn(&world).await;
+    let turn = presenting(&pass.credential);
+    let session = session_of(print_id);
+
+    let answer = sent(turn.get(world.url("/look"))).await;
+    assert_forbidden(&answer, "a turn's look at the printer", &[&session]);
+
+    let (status, look) = world.get(&world.url("/look")).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(look["event"].get("print_id").is_none(), "{look}");
+    let printless = world
+        .stores
+        .events
+        .append_event_with_image(
+            printobserver_core::store::EventDraft {
+                print_id: None,
+                source: printobserver_core::system_source(),
+                received_at: printobserver_types::Timestamp::now(),
+                body: printobserver_types::EventBody {
+                    kind: printobserver_types::EventKind::new("camera_look").expect("a kind"),
+                    payload: json!({ "waited_s": 0, "delivered": [] }),
+                },
+                raw: None,
+            },
+            printobserver_core::store::ImageDraft {
+                source_url: None,
+                content_type: "image/jpeg".to_owned(),
+                bytes: printobserver_types::RawBytes::new(b"a frame of the printer".to_vec()),
+            },
+        )
+        .await
+        .expect("a frame of no print is stored");
+    let frame = printless.image.expect("the frame is the event's image");
+    let path = format!("/images/{}", frame.id);
+    let answer = sent(turn.get(world.url(&path))).await;
+    assert_forbidden(
+        &answer,
+        "a turn reading a frame of the printer",
+        &[&session, "no print"],
+    );
+    let (status, image) = world.get(&world.url(&path)).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{image}");
+    assert!(image["record"].get("print_id").is_none(), "{image}");
+    assert!(image["path"].is_string(), "{image}");
+    world.agent.release_turns();
+    world.server.stop().await;
+}

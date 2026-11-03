@@ -702,6 +702,7 @@ fn every_operation_beside_the_vocabulary_is_driven_somewhere() {
     covered.push("image");
     covered.push("prints");
     covered.push("look");
+    covered.push("printer_look");
     covered.push("events");
     covered.extend(crate::spooling::DRIVEN_THERE);
     covered.sort_unstable();

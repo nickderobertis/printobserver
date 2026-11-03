@@ -77,6 +77,31 @@ def test_an_import_from_a_test_module_counts_like_one_from_the_package(
     )
 
 
+def test_a_nested_projects_imports_are_its_own_and_not_its_parents(
+    tree: Callable[[], Tree],
+) -> None:
+    """A file under a nested project draws that project's edges, as Nx assigns the file.
+
+    The Python client's live suite is a project nested inside the client's: its
+    import of its own `live` module is no edge of the client's, and its import of
+    `repo_checks` is an edge the suite's own project must declare.
+    """
+    copy = tree()
+    accepted(graph_edges(copy.repo))
+    without_edge(copy, "python/printobserver-sdk/integration/project.json", "repo-checks")
+
+    found = graph_edges(copy.repo)
+    refused_naming(
+        found,
+        "`printobserver-sdk-python-integration` imports `repo-checks`",
+        "python/printobserver-sdk/integration/",
+    )
+    truth(
+        not any(finding.startswith("`printobserver-sdk-python` imports") for finding in found),
+        describing="the client is charged none of its nested suite's imports",
+    )
+
+
 def test_a_cargo_dependency_the_graph_does_not_declare_is_refused(
     tree: Callable[[], Tree],
 ) -> None:

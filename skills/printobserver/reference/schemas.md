@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-180 types. The set is every type any crate declares under
+181 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -6628,7 +6628,7 @@ Declared by `printobserver-core`.
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Somebody took a fresh look at the print.\n\nWritten down before the camera is asked for a frame, so that a frame the\ncamera would not give is recorded against a look that is already in the\nhistory; the frame itself, when there is one, is this event's image.",
+  "description": "Somebody took a fresh look at the print, or at the printer when no print\nwas named.\n\nWritten down once the camera has been asked for its frame, together with\nthat frame as this event's image, so that nobody reading the look finds it\nwithout the frame it was taken with. A frame the camera would not give is\nrecorded against the look as a port failure. A look at the printer belongs\nto no print, waits on nothing that arrives for one, and so delivers\nnothing.",
   "properties": {
     "delivered": {
       "default": [],
@@ -6651,6 +6651,59 @@ Declared by `printobserver-core`.
   "title": "CameraLookPayload",
   "type": "object",
   "x-event-kind": "camera_look"
+}
+```
+
+### CameraRetryPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The camera answered a request for a frame with a server error, and is being\nasked again.\n\nA camera server that could not take a frame this time \u2014 go2rtc answers\n`500` with `exit status 69` \u2014 is often one that will take the next, so a\nfetch answered `500` to `599` is made again after a short wait, a bounded\nnumber of times. One of these is written down for each such answer, as it\nhappens, before the wait; a fetch whose every attempt was refused is\nrecorded as a port failure only once the attempts run out.",
+  "properties": {
+    "attempt": {
+      "description": "Which attempt the camera refused, counting from one.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "attempts": {
+      "description": "How many attempts the fetch may make in all.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "backoff_ms": {
+      "description": "How long the fetch waits before its next attempt, in milliseconds.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "excerpt": {
+      "description": "The start of what the camera answered with, as text.",
+      "type": "string"
+    },
+    "status": {
+      "description": "The HTTP status the camera answered.",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "attempt",
+    "attempts",
+    "status",
+    "excerpt",
+    "backoff_ms"
+  ],
+  "title": "CameraRetryPayload",
+  "type": "object",
+  "x-event-kind": "camera_retry"
 }
 ```
 
@@ -10526,8 +10579,15 @@ Declared by `printobserver-server`.
           "description": "This image's identifier, minted by the store."
         },
         "print_id": {
-          "$ref": "#/$defs/PrintId",
-          "description": "The print it belongs to."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrintId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The print it belongs to, when it belongs to one: a frame taken of the\nprinter with no print named belongs to none."
         },
         "relative_path": {
           "description": "Where it lives, relative to the configured state directory.",
@@ -10547,7 +10607,6 @@ Declared by `printobserver-server`.
       },
       "required": [
         "id",
-        "print_id",
         "event_id",
         "fetched_at",
         "content_type",
@@ -10670,8 +10729,15 @@ Declared by `printobserver-core`.
       "description": "This image's identifier, minted by the store."
     },
     "print_id": {
-      "$ref": "#/$defs/PrintId",
-      "description": "The print it belongs to."
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PrintId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The print it belongs to, when it belongs to one: a frame taken of the\nprinter with no print named belongs to none."
     },
     "relative_path": {
       "description": "Where it lives, relative to the configured state directory.",
@@ -10691,7 +10757,6 @@ Declared by `printobserver-core`.
   },
   "required": [
     "id",
-    "print_id",
     "event_id",
     "fetched_at",
     "content_type",
@@ -12111,7 +12176,7 @@ Declared by `printobserver-core`.
     },
     "event": {
       "$ref": "#/$defs/EventRecord",
-      "description": "The look itself, as it was written into the print's history, carrying\nthe frame as its image when there is one."
+      "description": "The look itself, as it was written into the print's history \u2014 or the\nprinter's, for a look at the printer \u2014 carrying the frame as its image\nwhen there is one."
     },
     "frame": {
       "anyOf": [
@@ -36865,6 +36930,33 @@ Declared by `printobserver-server`.
         }
       ],
       "path": "/v1/prints/{print_id}/look",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "Look"
+        }
+      ]
+    },
+    {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": "image_path",
+      "method": "GET",
+      "name": "printer_look",
+      "parameters": [
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "wait_s",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/look",
       "responses": [
         {
           "answer": "success",

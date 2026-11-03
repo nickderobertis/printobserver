@@ -88,7 +88,7 @@ pub(crate) fn event_from_row(row: &Row<'_>) -> rusqlite::Result<EventRecord> {
 pub(crate) fn image_from_row(row: &Row<'_>) -> rusqlite::Result<ImageRecord> {
     Ok(ImageRecord {
         id: parsed(row, 0)?,
-        print_id: parsed(row, 1)?,
+        print_id: parsed_option(row, 1)?,
         event_id: parsed(row, 2)?,
         source_url: row.get(3)?,
         fetched_at: parsed(row, 4)?,

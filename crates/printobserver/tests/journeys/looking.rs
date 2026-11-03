@@ -219,20 +219,28 @@ fn a_wait_above_ninety_is_refused() {
 
 /// A camera that fails, or answers something that is not an image, is
 /// recorded as a port failure at the camera against the look — which is
-/// already in the history — and the look answers with no frame.
+/// already in the history — and the look answers with no frame. A camera
+/// answering a server error is asked again first, each answer written down as
+/// a retry, and is a port failure only once every attempt was refused.
 #[test]
 fn a_camera_that_gives_no_frame_is_recorded_against_the_look() {
-    for camera in [
-        Answer {
-            status: "500 Internal Server Error",
-            content_type: "text/plain",
-            body: b"the camera is not ready".to_vec(),
-        },
-        Answer {
-            status: "200 OK",
-            content_type: "text/html",
-            body: b"<html>a login page, not a frame</html>".to_vec(),
-        },
+    for (camera, attempts) in [
+        (
+            Answer {
+                status: "500 Internal Server Error",
+                content_type: "text/plain",
+                body: b"the camera is not ready".to_vec(),
+            },
+            4,
+        ),
+        (
+            Answer {
+                status: "200 OK",
+                content_type: "text/html",
+                body: b"<html>a login page, not a frame</html>".to_vec(),
+            },
+            1,
+        ),
     ] {
         let failing = Host::answering(camera);
         let url = failing.url(FRAME_PATH);
@@ -250,8 +258,92 @@ fn a_camera_that_gives_no_frame_is_recorded_against_the_look() {
         assert_eq!(looked.len(), 1);
         assert_eq!(looked[0]["id"], look["event"]["id"]);
         assert!(looked[0].get("image").is_none());
-        assert_eq!(failing.received().len(), 1);
+        assert_eq!(failing.received().len(), attempts);
+        let retried = events_of(&world, &world.print_id(), "camera_retry");
+        assert_eq!(retried.len(), attempts - 1, "{retried:?}");
+        for (index, retry) in retried.iter().enumerate() {
+            assert_eq!(retry["payload"]["attempt"], index + 1, "{retry}");
+            assert_eq!(retry["payload"]["status"], 500, "{retry}");
+            assert_eq!(
+                retry["payload"]["excerpt"], "the camera is not ready",
+                "{retry}"
+            );
+        }
     }
+}
+
+/// The open prints the listing answers, by identifier.
+fn open_prints(world: &World) -> Vec<Value> {
+    running::read(world, &["prints"])["prints"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|print| print.get("ended_at").is_none())
+        .collect()
+}
+
+/// A look with no print named, before any print and with none open, takes a
+/// frame of the printer now, keeps it as the printer's own, and answers the
+/// path the frame is at — which the operator's credential reads back through
+/// `image` as a frame that belongs to no print.
+#[test]
+fn a_look_naming_no_print_takes_and_keeps_a_frame_of_the_printer() {
+    let world = World::open(STOOD_IN);
+    world.wants(Reports::Operational);
+    assert!(
+        open_prints(&world).is_empty(),
+        "a print is still open on an idle machine"
+    );
+
+    let look = running::read(&world, &["look", "--wait-s", "0"]);
+
+    assert_eq!(look["event"]["kind"], "camera_look", "{look}");
+    assert!(look["event"].get("print_id").is_none(), "{look}");
+    assert_eq!(look["event"]["payload"]["waited_s"], 0, "{look}");
+    assert!(look.get("arrived").is_none(), "{look}");
+    assert_eq!(look["frame"]["sha256"], World::frame_digest(), "{look}");
+    assert_eq!(look["event"]["image"], look["frame"], "{look}");
+    let path = look["image_path"].as_str().expect("the frame's path");
+    assert_eq!(
+        std::fs::read(path).expect("the frame's path opens"),
+        crate::world::FRAME_BYTES
+    );
+    assert!(look["printer"].is_object(), "{look}");
+    assert_eq!(
+        world.camera.received().len(),
+        1,
+        "the camera was not asked once"
+    );
+
+    let image_id = look["frame"]["id"]
+        .as_str()
+        .expect("the frame's identifier");
+    let image = running::read(&world, &["image", "--image-id", image_id]);
+    assert_eq!(image["path"].as_str(), Some(path), "{image}");
+    assert_eq!(image["record"]["event_id"], look["event"]["id"], "{image}");
+    assert!(
+        image["record"].get("print_id").is_none(),
+        "a frame of the printer belongs to a print: {image}"
+    );
+    assert!(open_prints(&world).is_empty(), "the look opened a print");
+}
+
+/// A look naming no print is refused a wait above ninety seconds, as a look
+/// at a print is, and nothing is looked at.
+#[test]
+fn a_look_naming_no_print_is_refused_a_wait_above_ninety() {
+    let world = World::open(STOOD_IN);
+    let ran = running::command(&world, &["look", "--wait-s", "91"]);
+
+    assert_eq!(
+        ran.code,
+        Some(i32::from(Exit::Refused.status())),
+        "{}",
+        ran.said()
+    );
+    assert!(ran.said().contains("90"), "{}", ran.said());
+    assert!(world.camera.received().is_empty());
 }
 
 /// With no adjustment asked for, the detector's pause holds past the grace an

@@ -785,16 +785,18 @@ fn without_dialect(
 }
 
 /// The commands the supervising agent may run: this program's own, one per
-/// operation the server serves, and no other.
+/// operation the server serves that has a command, and no other.
 ///
 /// Every one of them is a request to this server, so what the agent can change
 /// is still exactly what the policy grants its actor. Derived from
 /// [`OPERATIONS`] through the command-line program's own spelling, so an
 /// operation the server gains is a command the agent may run from the same
-/// change.
+/// change. An operation reached through another's command
+/// ([`printer_wide_of`](crate::operations::printer_wide_of)) adds none.
 fn agent_commands() -> Result<Vec<AgentCommand>, StartError> {
     OPERATIONS
         .iter()
+        .filter(|operation| crate::operations::printer_wide_of(operation.name).is_none())
         .map(|operation| {
             AgentCommand::new(&format!(
                 "{CONTEXT_PROGRAM} {}",

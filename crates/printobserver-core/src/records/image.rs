@@ -1,4 +1,4 @@
-//! Images fetched for a print.
+//! Images fetched for a print, or for the printer when no print is named.
 //!
 //! The handle an image travels in context under is the envelope's own
 //! ([`ImageRef`](printobserver_types::ImageRef)); the record of it is this
@@ -19,8 +19,10 @@ use printobserver_types::{EventId, ImageId, PrintId, Timestamp};
 pub struct ImageRecord {
     /// This image's identifier, minted by the store.
     pub id: ImageId,
-    /// The print it belongs to.
-    pub print_id: PrintId,
+    /// The print it belongs to, when it belongs to one: a frame taken of the
+    /// printer with no print named belongs to none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub print_id: Option<PrintId>,
     /// The event it arrived with.
     pub event_id: EventId,
     /// Where it was fetched from, when it was fetched from somewhere.

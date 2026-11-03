@@ -606,7 +606,7 @@ async fn the_snapshot_is_stored_during_the_handling_under_the_defaults() {
     assert!(receipt.image_failure.is_none());
     let (stored, bytes) = stored_image(&store, &record).await;
     assert_eq!(stored.event_id, receipt.event.id);
-    assert_eq!(stored.print_id, receipt.print.expect("a print").id);
+    assert_eq!(stored.print_id, Some(receipt.print.expect("a print").id));
     assert_eq!(stored.content_type, "image/jpeg");
     assert_eq!(bytes, snapshot());
 }
@@ -753,15 +753,17 @@ async fn a_host_nothing_answers_on_is_unreachable() {
     assert_refused(&receipt, &store, &body, &failure).await;
 }
 
-/// A host that answers with a status other than success is unreachable.
+/// A host that answers with a status other than success refuses the request,
+/// and the refusal carries the status it answered.
 #[tokio::test]
-async fn a_host_that_refuses_the_request_is_unreachable() {
+async fn a_host_that_refuses_the_request_says_which_status() {
     let host = ImageHost::serving(Answer {
         status: "404 Not Found",
         content_type: None,
         body: Vec::new(),
         delay: Duration::ZERO,
         declare_length: true,
+        stalls: false,
     })
     .await;
     let store = Arc::new(MemoryStore::new());
@@ -773,10 +775,147 @@ async fn a_host_that_refuses_the_request_is_unreachable() {
         .clone()
         .expect("the fetch failed and said so");
     assert!(
-        matches!(failure, VisionError::Unreachable { .. }),
-        "expected an unreachable host, found {failure}"
+        matches!(&failure, VisionError::Status { status: 404, excerpt, .. } if excerpt.is_empty()),
+        "expected a 404 refusal, found {failure:?}"
     );
+    assert!(!failure.is_server_error(), "a 404 is no server error");
     assert_refused(&receipt, &store, &body, &failure).await;
+}
+
+/// A camera server answering a failure is a server error carrying the start
+/// of what it said: go2rtc answers a frame it could not take with `500` and
+/// the body `exit status 69`.
+#[tokio::test]
+async fn a_server_error_carries_its_status_and_what_it_said() {
+    let mut said = b"exit status 69\n".to_vec();
+    said.extend(std::iter::repeat_n(b'x', 4096));
+    let host = ImageHost::serving(Answer {
+        status: "500 Internal Server Error",
+        content_type: Some("text/plain".to_owned()),
+        body: said,
+        delay: Duration::ZERO,
+        declare_length: true,
+        stalls: false,
+    })
+    .await;
+    let store = Arc::new(MemoryStore::new());
+
+    let (receipt, body) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+
+    let failure = receipt
+        .image_failure
+        .clone()
+        .expect("the fetch failed and said so");
+    let VisionError::Status {
+        status, excerpt, ..
+    } = &failure
+    else {
+        panic!("expected a refusal carrying its status, found {failure:?}");
+    };
+    assert_eq!(*status, 500);
+    assert!(excerpt.starts_with("exit status 69"), "{excerpt}");
+    assert!(
+        excerpt.len() <= printobserver_vision_api::STATUS_EXCERPT_MAX_BYTES,
+        "the excerpt is {} bytes",
+        excerpt.len()
+    );
+    assert!(failure.is_server_error());
+    assert!(failure.to_string().contains("exit status 69"), "{failure}");
+    assert_refused(&receipt, &store, &body, &failure).await;
+}
+
+/// A refusing answer whose body stalls part way still says its status and
+/// what arrived of the body before the client gave up on the rest.
+#[tokio::test]
+async fn a_refusal_whose_body_stalls_carries_what_arrived() {
+    let host = ImageHost::serving(Answer {
+        status: "503 Service Unavailable",
+        content_type: Some("text/plain".to_owned()),
+        body: b"the stream is starting".to_vec(),
+        delay: Duration::ZERO,
+        declare_length: true,
+        stalls: true,
+    })
+    .await;
+    let store = Arc::new(MemoryStore::new());
+
+    let (receipt, body) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+
+    let failure = receipt
+        .image_failure
+        .clone()
+        .expect("the fetch failed and said so");
+    assert!(
+        matches!(&failure, VisionError::Status { status: 503, excerpt, .. }
+            if excerpt == "the stream is starting"),
+        "expected the 503 with what arrived of its body, found {failure:?}"
+    );
+    assert!(failure.is_server_error());
+    assert_refused(&receipt, &store, &body, &failure).await;
+}
+
+/// What a refusing camera said is carried as text on one line and within the
+/// excerpt's bound, whatever bytes it was: control characters are spaces, bytes
+/// that are not UTF-8 are replaced, and the bound holds after the replacement.
+#[tokio::test]
+async fn a_refusal_saying_bytes_that_are_not_text_is_carried_as_bounded_text() {
+    let mut said = b"exit\tstatus\r\n69 ".to_vec();
+    said.extend(std::iter::repeat_n(0xff_u8, 4096));
+    let host = ImageHost::serving(Answer {
+        status: "500 Internal Server Error",
+        content_type: Some("application/octet-stream".to_owned()),
+        body: said,
+        delay: Duration::ZERO,
+        declare_length: true,
+        stalls: false,
+    })
+    .await;
+    let store = Arc::new(MemoryStore::new());
+
+    let (receipt, _) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+
+    let failure = receipt.image_failure.expect("the fetch failed and said so");
+    let VisionError::Status { excerpt, .. } = &failure else {
+        panic!("expected a refusal carrying its status, found {failure:?}");
+    };
+    assert!(
+        excerpt.starts_with("exit status  69 \u{fffd}"),
+        "{excerpt:?}"
+    );
+    assert!(
+        excerpt.len() <= printobserver_vision_api::STATUS_EXCERPT_MAX_BYTES,
+        "the excerpt is {} bytes",
+        excerpt.len()
+    );
+    assert!(!excerpt.chars().any(char::is_control), "{excerpt:?}");
+}
+
+/// What a refusing camera said, cut at the excerpt's bound through the middle
+/// of a character, keeps every whole character before the cut and drops the
+/// part of the one it cut.
+#[tokio::test]
+async fn a_refusal_cut_inside_a_character_keeps_only_whole_characters() {
+    let bound = printobserver_vision_api::STATUS_EXCERPT_MAX_BYTES;
+    let mut said = "a".repeat(bound - 1).into_bytes();
+    said.extend("é and more after it".as_bytes());
+    let host = ImageHost::serving(Answer {
+        status: "500 Internal Server Error",
+        content_type: Some("text/plain; charset=utf-8".to_owned()),
+        body: said,
+        delay: Duration::ZERO,
+        declare_length: true,
+        stalls: false,
+    })
+    .await;
+    let store = Arc::new(MemoryStore::new());
+
+    let (receipt, _) = post_alert_for(&store, host.snapshot_url(), prompt_bounds()).await;
+
+    let failure = receipt.image_failure.expect("the fetch failed and said so");
+    let VisionError::Status { excerpt, .. } = &failure else {
+        panic!("expected a refusal carrying its status, found {failure:?}");
+    };
+    assert_eq!(*excerpt, "a".repeat(bound - 1), "{excerpt:?}");
 }
 
 /// Every notification the producer sends normalizes to its own spelling.

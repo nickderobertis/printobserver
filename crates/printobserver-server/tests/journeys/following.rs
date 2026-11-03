@@ -514,3 +514,54 @@ async fn a_read_examines_past_every_event_its_filters_reject_to_the_one_that_pas
     assert_eq!(answer["cursor"], json!(passing.id.to_string()), "{answer}");
     world.server.stop().await;
 }
+
+/// Someone following one print's events while a scheduled check runs reads
+/// the check carrying its frame the first time they read it — against a
+/// camera that holds its answer, so a check written before its frame was kept
+/// would be read without one, and nothing would send it again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_scheduled_check_is_first_read_carrying_its_frame() {
+    use crate::camera_host::{Scripted, ScriptedHost};
+
+    let camera = ScriptedHost::answering(vec![
+        Scripted::frame(crate::ingress::snapshot_bytes()).held(Duration::from_millis(1_500)),
+    ])
+    .await;
+    let world = crate::checks::checking(camera.url()).await;
+    let print_id = world.open_print().await;
+    let mut cursor: Option<String> = None;
+    let deadline = Instant::now() + crate::checks::PATIENCE;
+    let first = 'following: loop {
+        assert!(Instant::now() < deadline, "no scheduled check was followed");
+        let mut asked = vec![
+            ("print_id", print_id.to_string()),
+            ("wait_s", "30".to_owned()),
+        ];
+        if let Some(after) = &cursor {
+            asked.push(("after", after.clone()));
+        }
+        let (status, answer) = world.get(&events_url(&world, &asked)).await;
+        assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+        for event in answer["events"].as_array().cloned().unwrap_or_default() {
+            if event["kind"] == "periodic_observation" {
+                break 'following event;
+            }
+        }
+        if let Some(next) = answer["cursor"].as_str() {
+            cursor = Some(next.to_owned());
+        }
+    };
+    assert!(
+        first["image"].is_object(),
+        "the first read of the scheduled check carried no frame: {first}"
+    );
+    assert!(
+        camera
+            .exchanges()
+            .first()
+            .and_then(|exchange| exchange.answered)
+            .is_some(),
+        "the camera never answered the check it was holding"
+    );
+    world.server.stop().await;
+}

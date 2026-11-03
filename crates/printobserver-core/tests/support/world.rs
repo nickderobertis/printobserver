@@ -122,6 +122,17 @@ impl World {
         })
     }
 
+    /// A world whose camera answers at a fixed address, served by the vision
+    /// port, and whose fetches of it are retried under `retry`.
+    #[must_use]
+    pub fn with_camera_retry(retry: printobserver_core::CameraRetry) -> Self {
+        Self::configured(permissive_envelope(), true, |config| {
+            config.camera_snapshot_url =
+                Some(WebAddress::new(CAMERA_URL).expect("the camera's address is one"));
+            config.camera_retry = retry;
+        })
+    }
+
     /// A world under one envelope and a configuration one journey edits, its
     /// turn authority installed.
     #[must_use]

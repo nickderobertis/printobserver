@@ -269,6 +269,22 @@ fn step_look(client: &Client, world: &supervisor::Supervisor, proxy: &live::Prox
     live::same("look", &answered, &seen.answer);
 }
 
+/// `printer_look`, answered by a real supervisor.
+fn step_printer_look(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .printer_look(Some(0))
+        .expect("`printer_look` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "GET", "`printer_look`");
+    assert_eq!(seen.target, "/v1/look?wait_s=0", "`printer_look`");
+    assert_eq!(seen.status, 200, "`printer_look`");
+    assert_eq!(seen.body, "", "`printer_look` sends no body");
+    live::same("printer_look", &answered, &seen.answer);
+}
+
 /// `cancel`, answered by a real supervisor.
 fn step_cancel(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
     ready(client, &world.print_id, "printing");
@@ -1876,6 +1892,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_history(&client, &world, &proxy);
     step_events(&client, &world, &proxy);
     step_look(&client, &world, &proxy);
+    step_printer_look(&client, &world, &proxy);
     step_cancel(&client, &world, &proxy);
     step_recover_status(&client, &world, &proxy);
     step_recover_lift(&client, &world, &proxy);
@@ -1906,7 +1923,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_retire_spool(&client, &world, &proxy);
     step_prints(&client, &world, &proxy);
 
-    assert!(proxy.calls() >= 37, "every call went through the proxy");
+    assert!(proxy.calls() >= 38, "every call went through the proxy");
     standing.stop();
 }
 
