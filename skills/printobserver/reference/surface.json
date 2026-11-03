@@ -218,7 +218,7 @@
           "field": "print_id",
           "located": "path",
           "option": "--print-id",
-          "required": true,
+          "required": false,
           "supply": "value"
         },
         {

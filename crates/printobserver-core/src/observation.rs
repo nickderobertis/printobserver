@@ -31,16 +31,21 @@
 //! given still runs under the same one-agent-per-print rule and the same action
 //! policy, `safety.agent_min_interval_s` included.
 //!
-//! # The reads precede the append
+//! # The reads, and the frame, precede the append
 //!
 //! Everywhere else the event append is the first thing the loop does
 //! ([`crate::events`]), because an alert arrives from outside and must be in
 //! the history before anything can fail on its behalf. An observation is
 //! raised here, and what it records *is* the reads, so they are taken first and
-//! the event carries them; a read that failed is then recorded against the
-//! event as a port failure, as the loop records one, and the camera is asked
-//! for its frame only once the event is there to record a refusal against.
-//! A camera that gives only bad frames ([`crate::look`]) is recorded as a
+//! the event carries them. The camera is asked for its frame before the event
+//! is written too, and the event is written together with that frame as its
+//! image in one store write, so anybody following the log — the `events` read,
+//! `printobserver watch` — reads the check with its frame the first time it
+//! reads it, rather than an event with no image that nothing sends again. A
+//! read that failed, a camera that would not answer however often it was
+//! asked ([`crate::look`]), and a store that would not keep the frame are each
+//! recorded against the event once it is written, as a port failure, as the
+//! loop records one. A camera that gives only bad frames is recorded as a
 //! `camera_degraded` after the observation, and that is the event the turn is
 //! given, so the agent is told there is no frame rather than handed one.
 
@@ -140,8 +145,8 @@ impl Supervisor {
         }
     }
 
-    /// Write one observation down, recording a read that failed against it,
-    /// and take the camera's frame as its image.
+    /// Take the camera's frame, write one observation down with it as its
+    /// image, and record a read that failed against it.
     async fn write_observation_down(
         &self,
         print: &PrintRecord,
@@ -153,8 +158,15 @@ impl Supervisor {
             printer: printer.as_ref().ok().cloned(),
             job: job.as_ref().ok().cloned(),
         };
-        let mut event = self
-            .append_system_event(print.id, EventBody::of(&payload)?)
+        let fetched = self.fetch_configured_frame(Some(print.id)).await;
+        // The observation keeps the telemetry it read whatever the camera
+        // gave; a camera giving only bad frames is the turn's event instead.
+        let (fetched, degraded) = match fetched {
+            Some((_, Frame::Degraded(degraded))) => (None, Some(degraded)),
+            fetched => (fetched, None),
+        };
+        let event = self
+            .write_with_frame(Some(print.id), &payload, fetched)
             .await?;
         if let Err(error) = printer {
             self.record_port_failure(
@@ -174,22 +186,14 @@ impl Supervisor {
             )
             .await;
         }
-        if let Some(url) = &self.config().camera_snapshot_url {
-            let url = url.as_str().to_owned();
-            match self.fetch_frame(&url).await {
-                Frame::Degraded(degraded) => {
-                    // The observation keeps the telemetry it read; the turn is
-                    // given the camera's failure in place of a frame.
-                    let degraded = self
-                        .append_system_event(print.id, EventBody::of(&degraded)?)
-                        .await?;
-                    return Ok(Arrival {
-                        event: degraded,
-                        detection: None,
-                    });
-                }
-                fetched => event.image = self.keep_frame(print.id, &event, url, fetched).await,
-            }
+        if let Some(degraded) = degraded {
+            let degraded = self
+                .append_system_event(print.id, EventBody::of(&degraded)?)
+                .await?;
+            return Ok(Arrival {
+                event: degraded,
+                detection: None,
+            });
         }
         Ok(Arrival {
             event,

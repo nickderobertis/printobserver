@@ -228,6 +228,21 @@ takes a frame from the configured camera and reads the printer as it is now.
 
 Takes `print_id` (path), `wait_s` (query, optional).
 
+With no print named, a look is the printer's — before a print, between prints,
+after one, the bed check before a start among them. It waits `wait_s` seconds —
+at most 90, and a longer wait is refused — on nothing any print's agent is owed,
+then takes a frame from the configured camera, writes the look and the frame
+together into the printer's own history, belonging to no print, and reads the
+printer as it is now; it never answers anything under `arrived`. A supervision
+turn's credential is refused it `403`, and so is a read through `image` of a
+frame it kept: what belongs to no print is the operator's. The server serves it
+as an operation of its own, `printer_look`, and the command-line program reaches
+it as `look` with no `--print-id`.
+
+`GET /v1/look` — answers success.
+
+Takes `wait_s` (query, optional).
+
 ### manifest_get
 
 The manifest a print is running under, and every range it asked wider than the envelope allows.
@@ -614,6 +629,12 @@ the answer's `cursor` as `after` to read on.
 #### look
 
 `client.look(print_id, wait_s)` returns the `Look`; `wait_s` is optional.
+
+#### printer_look
+
+`client.printer_look(wait_s)` takes a frame of the printer with no print named
+and returns the `Look`, whose event and frame belong to no print; `wait_s` is
+optional.
 
 #### manifest_get
 

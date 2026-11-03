@@ -242,6 +242,9 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     # A look at once rather than a wait: nothing arrives for a print no turn is
     # running for, so a wait here would only be the walk's own time spent.
     Ordered("look", ""),
+    # A look at the printer with no print named, at once for the same reason:
+    # the frame is the printer's, taken whatever the machine is doing.
+    Ordered("printer_look", ""),
     # The bring-up left a print running, so the walk sets it down and starts
     # one — which is also the only order in which both are answered.
     Ordered("cancel", "printing"),
@@ -322,6 +325,7 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     ("*", "duration_s"): "60",
     ("*", "limit"): "20",
     ("look", "wait_s"): "0",
+    ("printer_look", "wait_s"): "0",
     ("events", "wait_s"): "0",
     ("events", "after"): ABSENT,
     ("events", "kinds"): ABSENT,

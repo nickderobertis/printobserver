@@ -12,8 +12,8 @@ use std::thread;
 use crate::block_on::block_on;
 use crate::fixture::{Fixture, Store, draft, instant, manifest, request, session};
 use printobserver_core::store::{
-    DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageLookup, MAX_HISTORY_LIMIT, SettleOutcome,
-    StoreError, StoredQuery,
+    DEFAULT_HISTORY_WINDOW, HistoryQuery, ImageDraft, ImageLookup, MAX_HISTORY_LIMIT,
+    SettleOutcome, StoreError, StoredQuery,
 };
 use printobserver_core::{
     ExecutionOutcome, InterventionId, InterventionOutcome, PolicyDecision, PrintRecord,
@@ -1329,5 +1329,179 @@ fn every_write_that_stores_an_event_raises_the_signal_once_it_is_kept() {
             vec![Some(appended.id), Some(registered)],
             "{name}: each write's signal did not read back the event it stored"
         );
+    }
+}
+
+/// One frame on its way into the store beside the event it arrives with.
+fn frame(bytes: &[u8]) -> ImageDraft {
+    ImageDraft {
+        source_url: Some("http://camera.local/frame.jpeg".to_owned()),
+        content_type: "image/jpeg".to_owned(),
+        bytes: RawBytes::new(bytes.to_vec()),
+    }
+}
+
+/// The record an image lookup answers, whether or not its file is there.
+fn record_of(lookup: ImageLookup) -> printobserver_core::ImageRecord {
+    match lookup {
+        ImageLookup::Found { record, .. } | ImageLookup::FileMissing { record } => record,
+    }
+}
+
+/// An event and the image it arrived with are written as one: the event
+/// answered carries the image, every read of the event finds it beside it,
+/// and the image belongs to the event's print — or to none, for an event of
+/// no print.
+#[test]
+fn an_event_and_its_image_are_written_as_one() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = block_on(port.open_print(None, None)).expect("a print opens");
+
+        let observed = block_on(port.append_event_with_image(
+            draft(
+                Some(print.id),
+                "periodic_observation",
+                instant("2026-03-01T12:00:00Z"),
+            ),
+            frame(b"a frame of the print"),
+        ))
+        .expect("an event and its image are stored");
+        let carried = observed
+            .image
+            .clone()
+            .unwrap_or_else(|| panic!("{name}: the event answered carries no image"));
+        assert_eq!(
+            block_on(port.history(whole_window(print.id))),
+            Ok(vec![observed.clone()]),
+            "{name}: the history does not read the event back with its image"
+        );
+        assert_eq!(
+            block_on(port.stored_after(stored(None, Some(print.id), None))),
+            Ok(vec![observed.clone()]),
+            "{name}: the cursor read does not read the event back with its image"
+        );
+        let Ok(ImageLookup::Found { record, path }) = block_on(port.image(carried.id)) else {
+            panic!("{name}: the image stored beside the event is not found");
+        };
+        assert_eq!(record.print_id, Some(print.id), "{name}");
+        assert_eq!(record.event_id, observed.id, "{name}");
+        assert_eq!(record.sha256, carried.sha256, "{name}");
+        assert_eq!(
+            record.source_url.as_deref(),
+            Some("http://camera.local/frame.jpeg"),
+            "{name}"
+        );
+        assert_eq!(
+            std::fs::read(path).expect("the bytes are on disk"),
+            b"a frame of the print",
+            "{name}"
+        );
+
+        let printless = block_on(port.append_event_with_image(
+            draft(None, "camera_look", instant("2026-03-01T12:01:00Z")),
+            frame(b"a frame of the printer"),
+        ))
+        .expect("an event of no print and its image are stored");
+        let carried = printless
+            .image
+            .clone()
+            .unwrap_or_else(|| panic!("{name}: the printless event carries no image"));
+        assert_eq!(
+            block_on(port.stored_after(stored(Some(observed.id), None, None))),
+            Ok(vec![printless.clone()]),
+            "{name}: the printless event does not read back with its image"
+        );
+        let record = record_of(block_on(port.image(carried.id)).expect("the image reads"));
+        assert_eq!(
+            record.print_id, None,
+            "{name}: a frame of no print belongs to one"
+        );
+        assert_eq!(record.event_id, printless.id, "{name}");
+    }
+}
+
+/// A write of an event and its image that is refused stores neither, so no
+/// follower its signal wakes can find half of it; it raises that signal at
+/// most once.
+#[test]
+fn a_refused_event_and_image_write_stores_neither() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let raised: Arc<Mutex<u32>> = Arc::default();
+        let counted = Arc::clone(&raised);
+        let (_, event) = print_and_event(&port);
+        port.on_stored(Arc::new(move || {
+            *counted.lock().expect("the count holds") += 1;
+        }));
+
+        assert_eq!(
+            block_on(port.append_event_with_image(
+                draft(
+                    Some(PrintId::new()),
+                    "periodic_observation",
+                    instant("2026-03-01T12:00:00Z"),
+                ),
+                frame(b"an orphan frame"),
+            )),
+            Err(StoreError::ConstraintRefused {
+                constraint: "events.print_id".to_owned()
+            }),
+            "{name}: an event naming no print was stored with its image"
+        );
+        assert_eq!(
+            block_on(port.newest_stored()),
+            Ok(Some(event.id)),
+            "{name}: a refused write left an event behind"
+        );
+        assert_eq!(
+            block_on(port.stored_after(stored(Some(event.id), None, None))),
+            Ok(Vec::new()),
+            "{name}: a refused write left an event behind"
+        );
+        // The durable store raises the signal for a unit of work that rolled
+        // back too, which costs a follower one read that finds nothing; what
+        // neither may do is let that read find half of the write.
+        let woke = *raised.lock().expect("the count holds");
+        assert!(woke <= 1, "{name}: one refused write raised {woke} signals");
+    }
+}
+
+/// A follower woken by the signal of an event written with its image reads
+/// the event carrying that image, on its first read.
+#[test]
+fn a_follower_woken_by_an_event_written_with_its_image_reads_the_image() {
+    for store in Fixture::both() {
+        let name = store.name();
+        let port = store.port();
+        let print = block_on(port.open_print(None, None)).expect("a print opens");
+        let first_reads: Arc<Mutex<Vec<EventRecord>>> = Arc::default();
+        let reader = Arc::clone(&port);
+        let noted = Arc::clone(&first_reads);
+        port.on_stored(Arc::new(move || {
+            let read =
+                block_on(reader.stored_after(stored(None, None, None))).expect("the log reads");
+            noted.lock().expect("the list holds").extend(read);
+        }));
+
+        let observed = block_on(port.append_event_with_image(
+            draft(
+                Some(print.id),
+                "periodic_observation",
+                instant("2026-03-01T12:00:00Z"),
+            ),
+            frame(b"a frame a follower reads"),
+        ))
+        .expect("an event and its image are stored");
+
+        let read = first_reads.lock().expect("the list holds").clone();
+        assert_eq!(
+            read,
+            vec![observed.clone()],
+            "{name}: the follower's first read did not find the event with its image"
+        );
+        assert!(read[0].image.is_some(), "{name}");
     }
 }

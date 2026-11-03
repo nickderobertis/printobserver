@@ -43,6 +43,9 @@ pub enum Call {
     AppendEvent(EventKind),
     /// An image's bytes were stored.
     PutImage,
+    /// An event was appended, of a kind, together with its image, in one
+    /// write.
+    AppendEventWithImage(EventKind),
     /// An image was looked up.
     ReadImage,
     /// A request and the decision on it were recorded.
@@ -138,6 +141,7 @@ impl Call {
             | Self::RecordNarrowing(_)
             | Self::AppendEvent(_)
             | Self::PutImage
+            | Self::AppendEventWithImage(_)
             | Self::ReadImage
             | Self::RecordAction(_)
             | Self::RecordExecution(_)

@@ -139,7 +139,7 @@ impl Sample for ImageRecord {
     fn sample_full() -> Self {
         Self {
             id: ImageId::sample_full(),
-            print_id: PrintId::sample_full(),
+            print_id: Some(PrintId::sample_full()),
             event_id: EventId::sample_full(),
             source_url: Some("https://detector.example/snapshots/1.jpg".to_owned()),
             fetched_at: Timestamp::sample_full(),
@@ -152,6 +152,7 @@ impl Sample for ImageRecord {
 
     fn sample_minimal() -> Self {
         Self {
+            print_id: None,
             source_url: None,
             ..Self::sample_full()
         }

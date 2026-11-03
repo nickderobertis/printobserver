@@ -154,6 +154,21 @@ impl EventDraft {
     }
 }
 
+/// One image on its way into the store beside the event it arrives with,
+/// before the store mints either identifier.
+///
+/// It belongs to whatever print its event belongs to, which is why it names
+/// none of its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageDraft {
+    /// Where it was fetched from, when it was fetched from somewhere.
+    pub source_url: Option<String>,
+    /// The content type it was served as.
+    pub content_type: String,
+    /// Its bytes, exactly as served.
+    pub bytes: RawBytes,
+}
+
 /// Which of a print's events to read.
 ///
 /// An empty `kinds` means every kind rather than no kinds, and an absent
@@ -444,6 +459,26 @@ pub trait PrintStore: Send + Sync {
 pub trait EventStore: Send + Sync {
     /// Append one event, minting its identifier.
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>>;
+
+    /// Append one event together with the image it arrived with, minting both
+    /// identifiers, and answer the event carrying that image.
+    ///
+    /// The event and its image row are **one write**: no read of the event —
+    /// a history read, a cursor read, or a follower woken by
+    /// [`EventStore::on_stored`] — can find it without its image, and a write
+    /// refused leaves neither. The image belongs to the print the event does,
+    /// or to none when the event belongs to none.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an event naming a print nothing holds, as
+    /// [`EventStore::append_event`] does, and answers [`StoreError::Io`] when
+    /// the image's bytes cannot be written — in which case no event is stored.
+    fn append_event_with_image(
+        &self,
+        draft: EventDraft,
+        image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>>;
 
     /// Read a print's events, newest first.
     ///

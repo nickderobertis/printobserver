@@ -284,6 +284,33 @@
       ]
     },
     {
+      "accepts": null,
+      "answers": "application/json",
+      "effect": "read",
+      "image_path_field": "image_path",
+      "method": "GET",
+      "name": "printer_look",
+      "parameters": [
+        {
+          "kind": "integer",
+          "located": "query",
+          "name": "wait_s",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "integer"
+          }
+        }
+      ],
+      "path": "/v1/look",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "Look"
+        }
+      ]
+    },
+    {
       "accepts": "application/json",
       "answers": "application/json",
       "effect": "write",

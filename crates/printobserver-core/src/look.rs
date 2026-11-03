@@ -1,5 +1,5 @@
 //! A fresh look at a print: what arrived, what the camera shows, and what the
-//! printer says, now.
+//! printer says, now — or at the printer, with no print named.
 //!
 //! The context a turn reads is the one collected when its event arrived; a
 //! look is how the agent sees the print as it is *now*, as often as it wants,
@@ -22,6 +22,32 @@
 //! A look is written down as a [`CameraLookPayload`] event, and the frame is
 //! that event's image, so a print's whole record of what it looked like is in
 //! its history rather than in whatever scratch directory asked.
+//!
+//! # The frame is fetched first, and kept with its event in one write
+//!
+//! The camera is asked before anything is written, and the event is then
+//! written together with its frame
+//! ([`EventStore::append_event_with_image`](crate::store::EventStore::append_event_with_image)),
+//! so the first read anybody following the log makes of a look or a scheduled
+//! check already finds its image. A store that will not keep the frame leaves
+//! the event written without it, with the store's refusal recorded against it.
+//!
+//! # A look at the printer
+//!
+//! [`Supervisor::take_printer_look`] is a look with no print named: before a
+//! print, between prints, after one — the bed check before a start among
+//! them. Its event and its frame belong to no print. It waits on nothing that
+//! arrives for a print, so it can never take an event meant for a print's
+//! agent, and it delivers nothing.
+//!
+//! # A camera answering a server error is asked again
+//!
+//! A fetch the camera answered `500` to `599` is made again after
+//! [`CameraRetry::backoff`], up to [`CameraRetry::retries`] more times, each
+//! refusal written down as a [`CameraRetryPayload`] as it happens. Only a
+//! fetch whose attempts all ran out is the port failure it always was. Any
+//! other refusal — a `404`, a timeout, a host refusing the connection — is one
+//! a second attempt would not change, and fails the fetch at once.
 //!
 //! # A frame that shows nothing is not handed over as one
 //!
@@ -46,9 +72,12 @@ use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId};
 
 use crate::error::CoreError;
 use crate::inbox::Arrival;
-use crate::kinds::{CameraDegradedPayload, CameraLookPayload, FrameCause, PortFailureSite};
+use crate::kinds::{
+    CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, FrameCause, PortFailureSite,
+};
+use crate::store::{EventDraft, ImageDraft};
 use crate::supervisor::Supervisor;
-use printobserver_vision_api::{FetchedImage, FrameFault};
+use printobserver_vision_api::{FetchedImage, FrameFault, VisionError};
 
 /// One fresh look at a print.
 ///
@@ -59,8 +88,9 @@ use printobserver_vision_api::{FetchedImage, FrameFault};
 #[serde(crate = "printobserver_types::serde")]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct Look {
-    /// The look itself, as it was written into the print's history, carrying
-    /// the frame as its image when there is one.
+    /// The look itself, as it was written into the print's history — or the
+    /// printer's, for a look at the printer — carrying the frame as its image
+    /// when there is one.
     pub event: EventRecord,
     /// The events for this print that arrived while the look waited, oldest
     /// first; the look returned early when there were any.
@@ -121,7 +151,7 @@ impl Supervisor {
         self.inboxes().wait_and_take(print_id, wait)
     }
 
-    /// Write one look down, take a frame, and read the printer.
+    /// Take a frame, write one look down with it, and read the printer.
     ///
     /// # Errors
     ///
@@ -140,20 +170,21 @@ impl Supervisor {
         waited: Duration,
         arrived: Vec<Arrival>,
     ) -> Result<Look, CoreError> {
-        let url = self
-            .config()
-            .camera_snapshot_url
-            .as_ref()
-            .map(|url| url.as_str().to_owned());
-        let fetched = match &url {
-            Some(url) => Some(self.fetch_frame(url).await),
-            None => None,
+        let written = match self.stores().prints.print(print_id).await {
+            Ok(Some(print)) => {
+                let fetched = self.fetch_configured_frame(Some(print.id)).await;
+                let payload = CameraLookPayload {
+                    waited_s: u32::try_from(waited.as_secs()).unwrap_or(u32::MAX),
+                    delivered: arrived.iter().map(|each| each.event.id).collect(),
+                };
+                self.write_with_frame(Some(print.id), &payload, fetched)
+                    .await
+                    .map(|event| (print, event))
+            }
+            Ok(None) => Err(CoreError::NoSuchPrint { print_id }),
+            Err(error) => Err(error.into()),
         };
-        let written = match &fetched {
-            Some(Frame::Degraded(degraded)) => self.write_degraded_down(print_id, degraded).await,
-            _ => self.write_look_down(print_id, waited, &arrived).await,
-        };
-        let (print, mut event) = match written {
+        let (print, event) = match written {
             Ok(written) => written,
             Err(error) => {
                 self.inboxes().put_back(print_id, arrived);
@@ -161,15 +192,6 @@ impl Supervisor {
             }
         };
         let arrived: Vec<EventRecord> = arrived.into_iter().map(|each| each.event).collect();
-        let frame = match (fetched, url) {
-            (Some(fetched), Some(url)) => self.keep_frame(print.id, &event, url, fetched).await,
-            _ => None,
-        };
-        let image_path = match &frame {
-            Some(reference) => self.image_path(reference).await,
-            None => None,
-        };
-        event.image.clone_from(&frame);
         let printer = self.read_snapshot().await.ok();
         let job = self.read_job().await.ok();
         // `OctoPrint` clears a job's position when it is cancelled or fails,
@@ -188,7 +210,50 @@ impl Supervisor {
             && printer
                 .as_ref()
                 .is_some_and(|taken| taken.connection == PrinterState::Paused);
-        Ok(Look {
+        Ok(self
+            .answered(event, arrived, printer, job, detector_paused)
+            .await)
+    }
+
+    /// Take a frame of the printer with no print named, write the look down
+    /// with it, and read the printer.
+    ///
+    /// The look and its frame belong to no print. Nothing is waited on here
+    /// and nothing is delivered: a look at the printer takes no event any
+    /// print's agent is owed.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when the look could not be written down.
+    /// A camera or printer that will not answer is recorded and answered as an
+    /// absence rather than as an error.
+    pub async fn take_printer_look(&self, waited: Duration) -> Result<Look, CoreError> {
+        let fetched = self.fetch_configured_frame(None).await;
+        let payload = CameraLookPayload {
+            waited_s: u32::try_from(waited.as_secs()).unwrap_or(u32::MAX),
+            delivered: Vec::new(),
+        };
+        let event = self.write_with_frame(None, &payload, fetched).await?;
+        let printer = self.read_snapshot().await.ok();
+        let job = self.read_job().await.ok();
+        Ok(self.answered(event, Vec::new(), printer, job, false).await)
+    }
+
+    /// The answer to one look, its frame's path read off the store.
+    async fn answered(
+        &self,
+        event: EventRecord,
+        arrived: Vec<EventRecord>,
+        printer: Option<PrinterSnapshot>,
+        job: Option<JobSnapshot>,
+        detector_paused: bool,
+    ) -> Look {
+        let frame = event.image.clone();
+        let image_path = match &frame {
+            Some(reference) => self.image_path(reference).await,
+            None => None,
+        };
+        Look {
             event,
             arrived,
             frame,
@@ -196,57 +261,97 @@ impl Supervisor {
             printer,
             job,
             detector_paused,
-        })
+        }
     }
 
-    /// Write one degraded look down in its print's history, in place of the
-    /// look.
-    async fn write_degraded_down(
+    /// Fetch a frame from the configured camera, when one is configured: the
+    /// URL it was fetched from, and what the fetch came to.
+    pub(crate) async fn fetch_configured_frame(
         &self,
-        print_id: PrintId,
-        degraded: &CameraDegradedPayload,
-    ) -> Result<(crate::records::PrintRecord, EventRecord), CoreError> {
-        let print = self
-            .stores()
-            .prints
-            .print(print_id)
-            .await?
-            .ok_or(CoreError::NoSuchPrint { print_id })?;
-        let event = self
-            .append_system_event(print.id, EventBody::of(degraded)?)
-            .await?;
-        Ok((print, event))
+        print_id: Option<PrintId>,
+    ) -> Option<(String, Frame)> {
+        let url = self
+            .config()
+            .camera_snapshot_url
+            .as_ref()?
+            .as_str()
+            .to_owned();
+        let fetched = self.fetch_frame(&url, print_id).await;
+        Some((url, fetched))
     }
 
-    /// Write one look down in its print's history, naming what it delivered.
-    async fn write_look_down(
+    /// Write one event down with what a fetch gave as its image.
+    ///
+    /// A good frame is kept with the event in one write. A camera whose
+    /// frames were all bad is written down as a [`CameraDegradedPayload`] in
+    /// the event's place, carrying no frame. A camera that would not answer
+    /// leaves the event written without one, and the refusal recorded against
+    /// it; so does a store that could not write the frame's bytes
+    /// ([`StoreError::Io`](crate::store::StoreError::Io)), which stored
+    /// nothing of the write.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when the event could not be written down
+    /// at all.
+    pub(crate) async fn write_with_frame<P: printobserver_types::EventPayload>(
         &self,
-        print_id: PrintId,
-        waited: Duration,
-        arrived: &[Arrival],
-    ) -> Result<(crate::records::PrintRecord, EventRecord), CoreError> {
-        let print = self
-            .stores()
-            .prints
-            .print(print_id)
-            .await?
-            .ok_or(CoreError::NoSuchPrint { print_id })?;
-        let payload = CameraLookPayload {
-            waited_s: u32::try_from(waited.as_secs()).unwrap_or(u32::MAX),
-            delivered: arrived.iter().map(|each| each.event.id).collect(),
+        print_id: Option<PrintId>,
+        payload: &P,
+        fetched: Option<(String, Frame)>,
+    ) -> Result<EventRecord, CoreError> {
+        let draft = |body: EventBody| EventDraft {
+            print_id,
+            source: crate::kinds::system_source(),
+            received_at: self.clock().now(),
+            body,
+            raw: None,
         };
-        let event = self
-            .append_system_event(print.id, EventBody::of(&payload)?)
-            .await?;
-        Ok((print, event))
+        let body = EventBody::of(payload)?;
+        let Some((url, fetched)) = fetched else {
+            return Ok(self.stores().events.append_event(draft(body)).await?);
+        };
+        let refused = match fetched {
+            Frame::Good(image) => {
+                let image = ImageDraft {
+                    source_url: Some(url),
+                    content_type: image.content_type,
+                    bytes: image.bytes,
+                };
+                match self
+                    .stores()
+                    .events
+                    .append_event_with_image(draft(body.clone()), image)
+                    .await
+                {
+                    Ok(event) => return Ok(event),
+                    // The frame's bytes could not be written, and nothing was
+                    // stored: the event is written without its frame. Any
+                    // other refusal is the event's own, and answered as one.
+                    Err(error @ crate::store::StoreError::Io { .. }) => error.to_string(),
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            Frame::Failed(detail) => detail,
+            Frame::Degraded(degraded) => {
+                return self
+                    .append_system_event_to(print_id, EventBody::of(&degraded)?)
+                    .await;
+            }
+        };
+        let event = self.stores().events.append_event(draft(body)).await?;
+        self.record_port_failure_to(print_id, event.id, PortFailureSite::CameraLook, refused)
+            .await;
+        Ok(event)
     }
 
     /// Fetch frames from the camera until one is good, up to
-    /// [`FRAME_ATTEMPTS`] of them.
-    pub(crate) async fn fetch_frame(&self, url: &str) -> Frame {
+    /// [`FRAME_ATTEMPTS`] of them, each asked again while the camera answers a
+    /// server error.
+    pub(crate) async fn fetch_frame(&self, url: &str, print_id: Option<PrintId>) -> Frame {
         let mut faults: Vec<FrameFault> = Vec::new();
         while faults.len() < FRAME_ATTEMPTS as usize {
-            let fetched = match self.vision().fetch_image(url.to_owned()).await {
+            let fetched = match self.fetch_retrying(url, print_id).await {
                 Ok(fetched) => fetched,
                 Err(error) => return Frame::Failed(error.to_string()),
             };
@@ -272,54 +377,83 @@ impl Supervisor {
         })
     }
 
-    /// Keep what one fetch gave as an event's image: a good frame stored,
-    /// a camera that would not answer recorded against the event, and a
-    /// degraded one kept as nothing.
-    pub(crate) async fn keep_frame(
+    /// Fetch one frame, asking again after [`CameraRetry::backoff`] each time
+    /// the camera answers a server error, up to [`CameraRetry::retries`] more
+    /// times — and writing each such answer down, as it happens, before the
+    /// wait.
+    async fn fetch_retrying(
         &self,
-        print_id: PrintId,
-        event: &EventRecord,
-        url: String,
-        fetched: Frame,
-    ) -> Option<ImageRef> {
-        let image = match fetched {
-            Frame::Good(image) => image,
-            Frame::Failed(detail) => {
-                self.record_port_failure(print_id, event.id, PortFailureSite::CameraLook, detail)
-                    .await;
-                return None;
+        url: &str,
+        print_id: Option<PrintId>,
+    ) -> Result<FetchedImage, VisionError> {
+        let retry = self.config().camera_retry;
+        let attempts = retry.retries.saturating_add(1);
+        let mut attempt: u32 = 1;
+        loop {
+            let error = match self.vision().fetch_image(url.to_owned()).await {
+                Ok(fetched) => return Ok(fetched),
+                Err(error) => error,
+            };
+            let VisionError::Status {
+                status, excerpt, ..
+            } = &error
+            else {
+                return Err(error);
+            };
+            if !error.is_server_error() || attempt >= attempts {
+                return Err(error);
             }
-            Frame::Degraded(_) => return None,
-        };
-        match self
-            .stores()
-            .images
-            .put_image(
-                print_id,
-                event.id,
-                Some(url),
-                image.content_type,
-                image.bytes,
-            )
-            .await
-        {
-            Ok(record) => Some(ImageRef {
-                id: record.id,
-                sha256: record.sha256,
-            }),
-            Err(error) => {
-                self.record_port_failure(
-                    print_id,
-                    event.id,
-                    PortFailureSite::CameraLook,
-                    error.to_string(),
-                )
-                .await;
-                None
+            let retried = CameraRetryPayload {
+                attempt,
+                attempts,
+                status: *status,
+                excerpt: excerpt.clone(),
+                backoff_ms: u64::try_from(retry.backoff.as_millis()).unwrap_or(u64::MAX),
+            };
+            // A record that will not render, or that the store refuses, costs
+            // the fetch nothing: the retry is made whether or not it was
+            // written down.
+            if let Ok(body) = EventBody::of(&retried) {
+                let _ = self.append_system_event_to(print_id, body).await;
             }
+            // A wait the system could not start is no reason to give up the
+            // frame: the next attempt is made at once instead.
+            let _ = crate::delay::Delay::new(retry.backoff).await;
+            attempt += 1;
         }
     }
 }
+
+/// How often, and how far apart, a fetch the camera answered with a server
+/// error is made again.
+///
+/// The defaults bound what a camera failing every attempt costs a scheduled
+/// check: with the vision adapter's own per-fetch timeout of five seconds,
+/// four attempts and three waits are at most about 21.5 s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CameraRetry {
+    /// How many more times a fetch is made after its first is answered with a
+    /// server error.
+    pub retries: u32,
+    /// How long after a server error the next attempt is made.
+    pub backoff: Duration,
+}
+
+impl Default for CameraRetry {
+    fn default() -> Self {
+        Self {
+            retries: DEFAULT_CAMERA_RETRIES,
+            backoff: DEFAULT_CAMERA_RETRY_BACKOFF,
+        }
+    }
+}
+
+/// How many more times a fetch the camera answered with a server error is
+/// made: three, so four attempts in all.
+pub const DEFAULT_CAMERA_RETRIES: u32 = 3;
+
+/// How long after a server error the next attempt at a frame is made.
+pub const DEFAULT_CAMERA_RETRY_BACKOFF: Duration = Duration::from_millis(500);
 
 /// How many frames one look or observation fetches before it records the
 /// camera degraded: the first, and two more.

@@ -493,7 +493,7 @@
     },
     "event": {
       "$ref": "#/$defs/EventRecord",
-      "description": "The look itself, as it was written into the print's history, carrying\nthe frame as its image when there is one."
+      "description": "The look itself, as it was written into the print's history — or the\nprinter's, for a look at the printer — carrying the frame as its image\nwhen there is one."
     },
     "frame": {
       "anyOf": [

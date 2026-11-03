@@ -206,7 +206,9 @@ so nothing an agent can do is a path a person cannot audit.
 out of what the server declares: one **client command** per operation
 `printobserver-server`'s `OPERATIONS` serves, and each command's options out of
 that operation's own `Operation::request` — whose body, for an action, is read at
-run time from the contracts' own `PrintAction` schema. So a vocabulary that gains
+run time from the contracts' own `PrintAction` schema — and an operation the
+server declares as another's form folds into that one's command
+(`crates/printobserver/AGENTS.md`). So a vocabulary that gains
 a variant gains a command, a variant that gains a field gains an option, and
 growing a declaration beside the parser grows nothing. Four commands sit beside
 them, and they are the only ones that are not requests to an already-running

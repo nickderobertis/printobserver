@@ -72,6 +72,7 @@ OPERATION_NAMES: tuple[str, ...] = (
     "events",
     "manifest_get",
     "look",
+    "printer_look",
     "manifest_set",
     "spools",
     "spool",
@@ -346,13 +347,20 @@ class CameraDegradedPayload(TypedDict):
 class CameraLookPayload(TypedDict):
     """`CameraLookPayload`, as the contracts declare it.
 
-    Somebody took a fresh look at the print.
+    Somebody took a fresh look at the print, or at the printer when no
+    print
+    was named.
 
-    Written down before the camera is asked for a frame, so that a frame
-    the
-    camera would not give is recorded against a look that is already in
-    the
-    history; the frame itself, when there is one, is this event's image.
+    Written down once the camera has been asked for its frame, together
+    with
+    that frame as this event's image, so that nobody reading the look
+    finds it
+    without the frame it was taken with. A frame the camera would not give
+    is
+    recorded against the look as a port failure. A look at the printer
+    belongs
+    to no print, waits on nothing that arrives for one, and so delivers
+    nothing.
     """
 
     # The events for the print that arrived while it waited, and that it
@@ -361,6 +369,36 @@ class CameraLookPayload(TypedDict):
     # How long the look waited for something to happen before it was taken,
     # in whole seconds.
     waited_s: int
+
+
+class CameraRetryPayload(TypedDict):
+    """`CameraRetryPayload`, as the contracts declare it.
+
+    The camera answered a request for a frame with a server error, and is
+    being
+    asked again.
+
+    A camera server that could not take a frame this time — go2rtc answers
+    `500` with `exit status 69` — is often one that will take the next, so
+    a
+    fetch answered `500` to `599` is made again after a short wait, a
+    bounded
+    number of times. One of these is written down for each such answer, as
+    it
+    happens, before the wait; a fetch whose every attempt was refused is
+    recorded as a port failure only once the attempts run out.
+    """
+
+    # Which attempt the camera refused, counting from one.
+    attempt: int
+    # How many attempts the fetch may make in all.
+    attempts: int
+    # How long the fetch waits before its next attempt, in milliseconds.
+    backoff_ms: int
+    # The start of what the camera answered with, as text.
+    excerpt: str
+    # The HTTP status the camera answered.
+    status: int
 
 
 class ChargeKeyPrint(TypedDict):
@@ -872,8 +910,9 @@ class ImageRecord(TypedDict):
     fetched_at: Timestamp
     # This image's identifier, minted by the store.
     id: ImageId
-    # The print it belongs to.
-    print_id: PrintId
+    # The print it belongs to, when it belongs to one: a frame taken of the
+    # printer with no print named belongs to none.
+    print_id: NotRequired[PrintId | None]
     # Where it lives, relative to the configured state directory.
     relative_path: str
     # The SHA-256 of its bytes, lowercase hexadecimal.
@@ -1123,8 +1162,9 @@ class Look(TypedDict):
     # Whether the print is paused and the pause is the detector's, which is
     # what an adjustment asked for now would be applied under.
     detector_paused: bool
-    # The look itself, as it was written into the print's history, carrying
-    # the frame as its image when there is one.
+    # The look itself, as it was written into the print's history — or the
+    # printer's, for a look at the printer — carrying the frame as its image
+    # when there is one.
     event: EventRecord
     # The frame the camera gave, absent when no camera is configured or it
     # gave none — which the history records as a port failure.
@@ -4041,6 +4081,7 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "agent_assessment": AgentAssessmentPayload,
     "camera_degraded": CameraDegradedPayload,
     "camera_look": CameraLookPayload,
+    "camera_retry": CameraRetryPayload,
     "charge_pended": ChargePendedPayload,
     "detector_health_changed": DetectorHealthChangedPayload,
     "filament_change_signalled": FilamentChangeSignalledPayload,
@@ -4109,6 +4150,10 @@ def payload_of(
 
 @overload
 def payload_of(event: EventRecord, kind: Literal["camera_look"]) -> CameraLookPayload | None: ...
+
+
+@overload
+def payload_of(event: EventRecord, kind: Literal["camera_retry"]) -> CameraRetryPayload | None: ...
 
 
 @overload
@@ -4760,6 +4805,49 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "waited_s": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraRetryPayload": {
+  "struct": {
+   "fields": {
+    "attempt": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "attempts": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "backoff_ms": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "excerpt": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "status": {
      "paired_with": "",
      "required": true,
      "shape": {
@@ -5637,9 +5725,11 @@ SHAPES: dict[str, object] = json.loads(
     },
     "print_id": {
      "paired_with": "",
-     "required": true,
+     "required": false,
      "shape": {
-      "ref": "PrintId"
+      "nullable": {
+       "ref": "PrintId"
+      }
      }
     },
     "relative_path": {
@@ -10968,6 +11058,27 @@ class GeneratedClient(GeneratedSurface):
             RefusedError: If the supervisor will not do what it was asked.
         """
         target = f"/v1/prints/{print_id}/look"
+        asked: list[tuple[str, str]] = []
+        if wait_s is not None:
+            asked.append(("wait_s", str(wait_s)))
+        sending = None
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("GET", target, asked, sending, "Look")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(Look, answered)
+
+    def printer_look(self, wait_s: int | None = None) -> Look:
+        """Call `printer_look` on the configured supervisor.
+
+        Raises:
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+        """
+        target = "/v1/look"
         asked: list[tuple[str, str]] = []
         if wait_s is not None:
             asked.append(("wait_s", str(wait_s)))

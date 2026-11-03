@@ -21,12 +21,6 @@
       "options": {
         "cwd": "npm/printobserver-sdk"
       }
-    },
-    "test-integration": {
-      "command": "bun test",
-      "options": {
-        "cwd": "npm/printobserver-sdk/integration"
-      }
     }
   }
 }

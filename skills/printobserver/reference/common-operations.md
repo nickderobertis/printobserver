@@ -635,6 +635,50 @@ printer.tools.0.target_c.out_of_range: false
 printer.tools.0.target_c.value: 210.0
 ```
 
+A look with no `--print-id` is the printer's: the way to get a frame on demand
+before a print, between prints and after one — the bed check before a start,
+say. It takes a frame now, keeps it with its look in the printer's own history,
+belonging to no print, and answers the `image_path` it was stored at; it waits
+on nothing a print's agent is owed, so it never takes an event meant for one,
+and it answers nothing under `arrived`. It is the operator's: a supervision
+turn's credential is refused it. `printobserver image` reads the frame back with
+the operator's credential.
+
+```console
+$ printobserver look --wait-s 0
+detector_paused: false
+event.id: ID
+event.image.id: ID
+event.image.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+event.kind: camera_look
+event.payload.delivered: []
+event.payload.waited_s: 0
+event.received_at: TIMESTAMP
+event.source: system
+frame.id: ID
+frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+job.completion.out_of_range: false
+job.completion.value: 0.42
+job.estimated_print_time_s: 3600
+job.file_name: FILE
+job.file_origin: local
+job.print_time_left_s: 1200
+job.print_time_s: 900
+job.size_bytes: 4211
+job.state: printing
+printer.bed.actual_c.out_of_range: false
+printer.bed.actual_c.value: 59.5
+printer.bed.target_c.out_of_range: false
+printer.bed.target_c.value: 60.0
+printer.connection: printing
+printer.observed_at: TIMESTAMP
+printer.tools.0.actual_c.out_of_range: false
+printer.tools.0.actual_c.value: 209.5
+printer.tools.0.target_c.out_of_range: false
+printer.tools.0.target_c.value: 210.0
+```
+
 ### register_spool
 
 Put a spool on the shelf into the ledger. `--initial-g` is the filament on it

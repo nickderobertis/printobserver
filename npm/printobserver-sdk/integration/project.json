@@ -1,0 +1,30 @@
+{
+  "name": "printobserver-sdk-node-integration",
+  "root": "npm/printobserver-sdk/integration",
+  "projectType": "library",
+  "metadata": {
+    "description": "The Node client's walk and journey against a real supervisor and OctoPrint. Its one expensive target, test-integration, is never selected by an affected run: just test-integration runs it through nx run-many over every project on every pull request, whatever a change reaches, so an edge here selects only this project's format, lint and type checks. Its one edge is the client it drives."
+  },
+  "tags": ["lang:typescript", "type:integration"],
+  "implicitDependencies": ["printobserver-sdk-node"],
+  "targets": {
+    "format": {
+      "command": "bunx biome format --write npm/printobserver-sdk/integration"
+    },
+    "format-check": {
+      "command": "bunx biome format npm/printobserver-sdk/integration"
+    },
+    "lint": {
+      "command": "bunx biome lint npm/printobserver-sdk/integration"
+    },
+    "typecheck": {
+      "command": "bunx tsc --noEmit -p npm/printobserver-sdk/tsconfig.json"
+    },
+    "test-integration": {
+      "command": "bun test",
+      "options": {
+        "cwd": "npm/printobserver-sdk/integration"
+      }
+    }
+  }
+}

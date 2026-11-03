@@ -41,14 +41,15 @@ use printobserver_types::serde_json::Value;
 
 /// The reads this program has beside the two vocabularies, as its own tasks
 /// name them: the prints listing, status, context, the image read and
-/// materialization, history, the event log after a cursor, a fresh look, the
-/// manifest's read and write, and the spool ledger's four reads — the spools,
-/// one spool, the printer's own history and a filament check.
+/// materialization, history, the event log after a cursor, a fresh look at a
+/// print and one at the printer, the manifest's read and write, and the spool
+/// ledger's four reads — the spools, one spool, the printer's own history and
+/// a filament check.
 ///
 /// Written out here rather than read from the server, and then held against
 /// what the server declares — so a server that grew another read would fail
 /// this rather than quietly grow this program's surface.
-const READS: [&str; 13] = [
+const READS: [&str; 14] = [
     "prints",
     "status",
     "context",
@@ -56,6 +57,7 @@ const READS: [&str; 13] = [
     "history",
     "events",
     "look",
+    "printer_look",
     "manifest_get",
     "manifest_set",
     "spools",
@@ -370,6 +372,30 @@ fn derived(name: &str) -> (BTreeSet<String>, BTreeSet<String>) {
     (all, required)
 }
 
+/// Every command a surface is required to have: one per action, spool command
+/// and recovery action of the contracts, the recovery read, one per read this
+/// program's own tasks name, the four that are not requests, and `watch`.
+fn wanted_commands() -> BTreeSet<String> {
+    let mut wanted: BTreeSet<String> = action_tags().iter().map(|tag| command_for(tag)).collect();
+    wanted.extend(command_tags().iter().map(|tag| command_for(tag)));
+    wanted.extend(recovery_tags().iter().map(|tag| command_for(tag)));
+    wanted.insert(command_for(RECOVERY_STATUS));
+    // A read the server declares as another's printer-wide form is reached
+    // through that one's command, and has none of its own.
+    wanted.extend(
+        READS
+            .iter()
+            .filter(|read| printobserver_server::printer_wide_of(read).is_none())
+            .map(|read| command_for(read)),
+    );
+    wanted.insert("server".to_owned());
+    wanted.insert("sign-in".to_owned());
+    wanted.insert("credential issue".to_owned());
+    wanted.insert("credential verifier".to_owned());
+    wanted.insert(WATCH_COMMAND.to_owned());
+    wanted
+}
+
 /// Every finding against one surface, over the closed-surface rule entire.
 ///
 /// The globals are a parameter rather than a constant read here, so that a
@@ -377,16 +403,7 @@ fn derived(name: &str) -> (BTreeSet<String>, BTreeSet<String>) {
 fn findings(surface: &[printobserver::surface::Command], globals: &[&str]) -> Vec<String> {
     let mut found = Vec::new();
 
-    let mut wanted: BTreeSet<String> = action_tags().iter().map(|tag| command_for(tag)).collect();
-    wanted.extend(command_tags().iter().map(|tag| command_for(tag)));
-    wanted.extend(recovery_tags().iter().map(|tag| command_for(tag)));
-    wanted.insert(command_for(RECOVERY_STATUS));
-    wanted.extend(READS.iter().map(|read| command_for(read)));
-    wanted.insert("server".to_owned());
-    wanted.insert("sign-in".to_owned());
-    wanted.insert("credential issue".to_owned());
-    wanted.insert("credential verifier".to_owned());
-    wanted.insert(WATCH_COMMAND.to_owned());
+    let wanted = wanted_commands();
     let present: BTreeSet<String> = surface.iter().map(|command| command.name.clone()).collect();
     found.extend(
         wanted
@@ -539,6 +556,60 @@ fn an_operation_with_no_command_is_refused() {
         "a surface that lost the command for an action of the vocabulary was accepted: \
          {found:#?}"
     );
+}
+
+/// A printer-wide form given a command of its own is refused naming it: it is
+/// reached through its print's command, which takes the print as optional.
+#[test]
+fn a_printer_wide_form_with_a_command_of_its_own_is_refused() {
+    let mut broken = surface();
+    let mut separate = broken
+        .iter()
+        .find(|command| command.name == "look")
+        .expect("the look is a command")
+        .clone();
+    separate.name = command_for("printer_look");
+    broken.push(separate);
+
+    let found = findings(&broken, &GLOBAL_OPTIONS);
+
+    assert!(
+        found
+            .iter()
+            .any(|finding| finding.contains("`printer-look`")),
+        "a printer-wide form with a command of its own was accepted: {found:#?}"
+    );
+}
+
+/// The look takes its print as optional, because a look naming none is the
+/// printer's; every other command naming a print requires it.
+#[test]
+fn only_a_command_with_a_printer_wide_form_takes_its_print_as_optional() {
+    for command in surface() {
+        let Some(operation) = command.operation else {
+            continue;
+        };
+        let Some(print) = command
+            .fields
+            .iter()
+            .find(|field| field.parameter.name == "print_id")
+        else {
+            continue;
+        };
+        if operation.path.contains("{print_id}") {
+            assert_eq!(
+                print.required(),
+                operation.printer_wide.is_none(),
+                "`{}` takes its print as {}",
+                command.name,
+                if print.required() {
+                    "required"
+                } else {
+                    "optional"
+                }
+            );
+        }
+    }
 }
 
 /// One command naming no operation is refused naming it.

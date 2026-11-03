@@ -108,7 +108,7 @@ fn the_equality_the_walk_asserts_refuses_a_client_that_carries_the_image() {
 
     // The image is the one this world opened, so what the variants below carry
     // is this print's own image rather than a file that happened to be there.
-    assert_eq!(answered.record.print_id, world.print_id);
+    assert_eq!(answered.record.print_id, Some(world.print_id));
     assert_eq!(answered.record.event_id, world.event_id);
 
     // The published client passes it, which is what makes the two refusals

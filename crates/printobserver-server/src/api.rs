@@ -194,6 +194,23 @@ pub(crate) fn scope_refused(caller: &Caller, print_id: PrintId) -> Option<Respon
     }
 }
 
+/// Refuse a turn's request for something that belongs to no print: a turn's
+/// credential reaches its own print alone, and what belongs to none is the
+/// operator's.
+fn printless_refused(caller: &Caller, what: &str) -> Option<Response> {
+    match caller {
+        Caller::Turn(_) => Some(refusal(
+            StatusCode::FORBIDDEN,
+            format!(
+                "this request authenticated as {} and asks for {what}: a supervision turn's \
+                 credential reaches its own print alone",
+                caller.named()
+            ),
+        )),
+        Caller::Operator => None,
+    }
+}
+
 /// Refuse a turn's request for a write that is not about its running print:
 /// starting a print, and replacing a manifest, are the operator's alone.
 fn operator_refused(caller: &Caller, command: &str) -> Option<Response> {
@@ -447,6 +464,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("history", Method::Get) => get(history),
         ("events", Method::Get) => get(crate::events::events),
         ("look", Method::Get) => get(look),
+        (crate::operations::PRINTER_LOOK, Method::Get) => get(printer_look),
         ("manifest_get", Method::Get) => get(manifest_get),
         ("manifest_set", Method::Put) => put(manifest_set),
         ("spools", Method::Get) => get(spools),
@@ -1006,10 +1024,40 @@ async fn look(
     }
 }
 
+/// Take a fresh look at the printer, with no print named.
+///
+/// The look and its frame belong to no print, and the wait is a plain wait:
+/// nothing any print's agent is owed can end it or be taken by it. A turn's
+/// credential reaches its own print alone, so this is the operator's; a wait
+/// longer than the supervisor allows is refused rather than shortened.
+async fn printer_look(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    Query(params): Query<LookParams>,
+) -> Response {
+    if let Some(refused) = printless_refused(&caller, "a look at the printer with no print named") {
+        return refused;
+    }
+    let wait_s = params.wait_s.unwrap_or(0);
+    if wait_s > MAX_LOOK_WAIT_S {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            format!("wait_s may be at most {MAX_LOOK_WAIT_S}; {wait_s} was asked for"),
+        );
+    }
+    let waited = Duration::from_secs(u64::from(wait_s));
+    tokio::time::sleep(waited).await;
+    match state.supervisor.take_printer_look(waited).await {
+        Ok(look) => answer(StatusCode::OK, &look),
+        Err(error) => refusal(core_status(&error), error),
+    }
+}
+
 /// Materialize one image: its record, and the absolute path its bytes are at.
 ///
-/// An image belongs to one print, so a turn's credential reaches the images of
-/// its own print alone.
+/// An image belongs to one print, or to none when it is a frame taken of the
+/// printer with no print named. A turn's credential reaches the images of its
+/// own print alone, so a frame of no print is the operator's.
 async fn image(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
@@ -1021,7 +1069,13 @@ async fn image(
                 printobserver_core::ImageLookup::Found { record, .. }
                 | printobserver_core::ImageLookup::FileMissing { record } => record.print_id,
             };
-            if let Some(refused) = scope_refused(&caller, belongs_to) {
+            let refused = match belongs_to {
+                Some(print_id) => scope_refused(&caller, print_id),
+                None => {
+                    printless_refused(&caller, "a frame of the printer that belongs to no print")
+                }
+            };
+            if let Some(refused) = refused {
                 return refused;
             }
             answer(StatusCode::OK, &ImageAnswer::from(lookup))

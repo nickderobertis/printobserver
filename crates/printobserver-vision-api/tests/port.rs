@@ -17,7 +17,7 @@ use printobserver_types::contract::Sample;
 use printobserver_types::{EventBody, EventSource, RawBytes, Timestamp};
 use printobserver_vision_api::{
     BoxFuture, Detection, FetchedImage, MalformedExternalEventPayload, NormalizedAlert,
-    ProviderPrint, VisionError, VisionPort,
+    ProviderPrint, STATUS_EXCERPT_MAX_BYTES, VisionError, VisionPort, body_excerpt,
 };
 
 /// The alert the trivial implementation answers with.
@@ -135,6 +135,16 @@ fn every_error_variant_says_what_it_is() {
         VisionError::Unreachable {
             detail: "no route".to_owned(),
         },
+        VisionError::Status {
+            detail: "http://camera/frame.jpeg answered 500 Internal Server Error".to_owned(),
+            status: 500,
+            excerpt: "exit status 69".to_owned(),
+        },
+        VisionError::Status {
+            detail: "http://camera/frame.jpeg answered 404 Not Found".to_owned(),
+            status: 404,
+            excerpt: String::new(),
+        },
         VisionError::NotConfigured {
             detail: "no provider API is configured".to_owned(),
         },
@@ -142,6 +152,52 @@ fn every_error_variant_says_what_it_is() {
     for variant in variants {
         assert!(!variant.to_string().is_empty(), "{variant:?} says nothing");
     }
+}
+
+/// A refusing answer is a server error only from `500` to `599`, and only
+/// a refusing answer is one: an unreachable host or a timeout is not.
+#[test]
+fn only_a_five_hundred_answer_is_a_server_error() {
+    let answered = |status: u16| VisionError::Status {
+        detail: format!("answered {status}"),
+        status,
+        excerpt: String::new(),
+    };
+    for status in [500, 502, 503, 599] {
+        assert!(answered(status).is_server_error(), "{status}");
+    }
+    for status in [301, 400, 404, 499, 600] {
+        assert!(!answered(status).is_server_error(), "{status}");
+    }
+    assert!(!VisionError::TimedOut.is_server_error());
+    assert!(
+        !VisionError::Unreachable {
+            detail: "connection refused".to_owned()
+        }
+        .is_server_error()
+    );
+}
+
+/// A body's excerpt is its start, as trimmed text on one line, bounded, and
+/// never cut through a character.
+#[test]
+fn a_body_excerpt_is_bounded_text_on_one_line() {
+    assert_eq!(body_excerpt(b"exit status 69\n"), "exit status 69");
+    assert_eq!(body_excerpt(b""), "");
+    assert_eq!(body_excerpt(b"two\r\nlines"), "two  lines");
+    assert_eq!(body_excerpt(&[0x66, 0xff, 0x6f]), "f\u{fffd}o");
+    let long = "é".repeat(STATUS_EXCERPT_MAX_BYTES);
+    let excerpt = body_excerpt(long.as_bytes());
+    assert!(excerpt.len() <= STATUS_EXCERPT_MAX_BYTES);
+    assert!(excerpt.chars().all(|letter| letter == 'é'), "{excerpt}");
+    assert_eq!(excerpt.chars().count(), STATUS_EXCERPT_MAX_BYTES / 2);
+    let replaced = body_excerpt(&[0xff; 4 * STATUS_EXCERPT_MAX_BYTES]);
+    assert!(
+        replaced.len() <= STATUS_EXCERPT_MAX_BYTES,
+        "{} bytes of text from bytes that are not UTF-8",
+        replaced.len()
+    );
+    assert!(replaced.chars().all(|letter| letter == '\u{fffd}'));
 }
 
 /// An address is a URL naming a host over HTTP, and nothing that only begins

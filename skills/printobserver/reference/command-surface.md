@@ -5,8 +5,10 @@ covers what a command is made of, the four global options, the exit statuses,
 and the commands — each with its arguments, its output and its failures.
 
 Nothing here is a list somebody maintains. The set of commands is one per
-operation the server serves, and each command's options are that operation's own
-declared request — for an action or a spool command, the fields the contracts'
+operation the server serves — but for the look at the printer, which the server
+declares as the look's form with no print named and so is `look` without
+`--print-id` rather than a command of its own — and each command's options are
+that operation's own declared request — for an action or a spool command, the fields the contracts'
 own vocabulary declares for that variant. The program writes that declaration out as
 `surface.json` beside this document, and the check behind this document reads it
 there — it is generated from the program rather than written by hand, and an
@@ -206,18 +208,21 @@ Reached at `GET /v1/events`.
 
 ### look
 
-A fresh look at the print, as it is now rather than when its event arrived.
+A fresh look at the print, as it is now rather than when its event arrived — or,
+with no `--print-id`, at the printer: the way to get a frame on demand before a
+print, between prints and after one, the bed check before a start among them.
 
-Reached at `GET /v1/prints/{print_id}/look`.
+Reached at `GET /v1/prints/{print_id}/look`, and with no print named at
+`GET /v1/look`.
 
 **Arguments.**
 
-- `--print-id` — the print this command is about (required).
-- `--wait-s` — how many seconds to wait first, at most 90, returning the moment an event arrives for the print's running turn (optional; a longer wait is refused rather than shortened).
+- `--print-id` — the print this command is about (optional; without it the look is the printer's, belongs to no print, and waits on nothing a print's agent is owed).
+- `--wait-s` — how many seconds to wait first, at most 90, returning the moment an event arrives for the print's running turn; a look at the printer waits them out (optional; a longer wait is refused rather than shortened).
 
-**Output.** The look as it was written into the print's history, the events that arrived while it waited, the frame the camera gave and the absolute path on the server's own host it was stored at, the printer and the job as they are now, and whether the print is held by the detector's pause. With no camera configured, or one that gave no frame, the frame and its path are absent.
+**Output.** The look as it was written into the print's history — or the printer's, carrying no print — the events that arrived while it waited, the frame the camera gave and the absolute path on the server's own host it was stored at, the printer and the job as they are now, and whether the print is held by the detector's pause. A look at the printer carries nothing under `arrived` and is never paused by the detector. With no camera configured, or one that gave no frame, the frame and its path are absent. A camera answering a server error is asked again, three more times half a second apart, each answer written down as a `camera_retry`, before the look is answered without a frame.
 
-**Failures.** `image-elsewhere` when the frame's path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `refused` for a wait over 90. `unreachable` and `refused` as for every command.
+**Failures.** `image-elsewhere` when the frame's path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `refused` for a wait over 90, and for a supervision turn's credential asking for a look at the printer, which is the operator's. `unreachable` and `refused` as for every command.
 
 ### manifest-get
 

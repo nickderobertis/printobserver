@@ -385,6 +385,64 @@ def test_look_sends_what_it_declares_and_answers_what_was_sent() -> None:
     equal(answered, answer, describing="what this call answered")
 
 
+def test_printer_look_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`printer_look` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"arrived": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", '
+        '"image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha'
+        '256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "acti'
+        'on_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-1234'
+        '56789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "r'
+        'eceived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source'
+        '": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "detector_pause'
+        'd": true, "event": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
+        ', "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind":'
+        ' "action_executed", "payload": {"action_id": "0198f0a1-2b3c-'
+        '7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7'
+        'd4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789ab'
+        'c", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "frame": {'
+        '"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc"}, "image_path": "0198f0a1'
+        '-2b3c-7d4e-8f90-123456789abc", "job": {"completion": {"out_o'
+        'f_range": true, "value": 1.5}, "error": {"source": "printer"'
+        ', "text": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "estimate'
+        'd_print_time_s": 7, "filament": [{"length_mm": 1.5, "tool": '
+        '7, "volume_cm3": 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123'
+        '456789abc", "file_position_bytes": 7, "print_time_left_s": 7'
+        ', "print_time_s": 7, "size_bytes": 7, "state": "operational"'
+        '}, "printer": {"bed": {"actual_c": {"out_of_range": true, "v'
+        'alue": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5'
+        '}, "target_c": {"out_of_range": true, "value": 1.5}}, "chamb'
+        'er": {"actual_c": {"out_of_range": true, "value": 1.5}, "off'
+        'set_c": {"out_of_range": true, "value": 1.5}, "target_c": {"'
+        'out_of_range": true, "value": 1.5}}, "connection": "operatio'
+        'nal", "fan_percent": {"out_of_range": true, "value": 1.5}, "'
+        'feedrate_factor": {"out_of_range": true, "value": 1.5}, "flo'
+        'wrate_factor": {"out_of_range": true, "value": 1.5}, "observ'
+        'ed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"'
+        'actual_c": {"out_of_range": true, "value": 1.5}, "offset_c":'
+        ' {"out_of_range": true, "value": 1.5}, "target_c": {"out_of_'
+        'range": true, "value": 1.5}}]}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.printer_look(7)
+        received = host.received()
+
+    equal(received.method, "GET")
+    equal(received.target, "/v1/look?wait_s=7")
+    equal(received.body, "")
+    equal(answered, answer, describing="what this call answered")
+
+
 def test_manifest_set_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`manifest_set` sends what it declares and answers what the server sent."""
     answer = json.loads(

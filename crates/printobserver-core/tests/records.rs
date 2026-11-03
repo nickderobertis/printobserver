@@ -137,7 +137,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("event_id", "EventId", true),
             ("fetched_at", "Timestamp", true),
             ("id", "ImageId", true),
-            ("print_id", "PrintId", true),
+            ("print_id", "PrintId", false),
             ("relative_path", "string", true),
             ("sha256", "string", true),
             ("source_url", "string", false),

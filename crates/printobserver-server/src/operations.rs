@@ -7,15 +7,26 @@
 //! [`SpoolCommand`](printobserver_core::SpoolCommand) and of
 //! [`RecoveryAction`](printobserver_core::RecoveryAction) the contracts
 //! declare, and the recovery read beside the last ([`RECOVERY_STATUS`]),
-//! plus thirteen operations beside them — the prints listing, status, context,
+//! plus fourteen operations beside them — the prints listing, status, context,
 //! image materialization, history, the event log followed in the order it was
-//! stored, a fresh look, the manifest's read and write, and the four reads of
-//! the spool ledger: the spools, one spool, the printer's own history and a
-//! filament check — and nothing else. The router is built by folding
+//! stored, a fresh look at a print and one at the printer, the manifest's read
+//! and write, and the four reads of the spool ledger: the spools, one spool,
+//! the printer's own history and a filament check — and nothing else. The router is built by folding
 //! over this array rather than by writing routes out, so the set served and the
 //! set declared are one thing; and this crate's own tier derives the required
 //! set from the contracts' own `PrintAction` rather than from a list of its
 //! own, so growing this array and the routes together cannot satisfy it.
+//!
+//! # A read of one print may have a form for the printer as a whole
+//!
+//! A fresh look is one print's, and there is one of the printer with no print
+//! named — before a print, between prints, after one. The two are two
+//! operations, because they are two routes and two answers recorded in two
+//! places; and one command, because what a caller asks for is a look either
+//! way. So the print's operation names the printer's as its
+//! [`Operation::printer_wide`] form: the command made from it takes its print
+//! as optional and asks the printer's operation when none is named, and the
+//! printer's operation has no command of its own ([`printer_wide_of`]).
 //!
 //! The spool ledger's operations name no print: a spool is the printer's, not
 //! one print's, so they sit beneath `/spools` and `/history` rather than
@@ -324,6 +335,15 @@ pub struct Operation {
     /// not be able to open. Declared here rather than discovered, because what
     /// a consumer owes such a field is a failure of its own.
     pub image_path_field: Option<&'static str>,
+    /// The operation a request to this one is made to instead when it names
+    /// no print, for a read of one print that has a form for the printer as a
+    /// whole.
+    ///
+    /// The command made from this operation takes its print as optional, and
+    /// the operation named here has no command of its own: it is reached
+    /// through this one's. It takes no value this operation does not, less
+    /// the print.
+    pub printer_wide: Option<&'static Operation>,
 }
 
 impl Operation {
@@ -520,7 +540,7 @@ impl Operation {
             ("image", _) => schema_for!(crate::wire::ImageAnswer),
             ("history", _) => schema_for!(crate::wire::HistoryAnswer),
             ("events", _) => schema_for!(crate::wire::EventsAnswer),
-            ("look", _) => schema_for!(crate::wire::LookAnswer),
+            ("look" | "printer_look", _) => schema_for!(crate::wire::LookAnswer),
             ("manifest_get" | "manifest_set", _) => schema_for!(crate::wire::ManifestAnswer),
             (name, _) => panic!("the operation `{name}` has no declared answer shape"),
         };
@@ -830,6 +850,7 @@ const fn action(name: &'static str, path: &'static str, kind: ActionKind) -> Ope
         query: &[],
         body: &[],
         image_path_field: None,
+        printer_wide: None,
     }
 }
 
@@ -853,6 +874,7 @@ const fn recovery(name: &'static str, path: &'static str, kind: RecoveryActionKi
         query: &[],
         body: &[],
         image_path_field: None,
+        printer_wide: None,
     }
 }
 
@@ -868,6 +890,7 @@ const fn read(name: &'static str, path: &'static str) -> Operation {
         query: &[],
         body: &[],
         image_path_field: None,
+        printer_wide: None,
     }
 }
 
@@ -883,7 +906,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 37] = [
+pub const OPERATIONS: [Operation; 38] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -924,12 +947,15 @@ pub const OPERATIONS: [Operation; 37] = [
     read("manifest_get", "/prints/{print_id}/manifest"),
     // A fresh look: waits up to `wait_s` seconds for something to arrive for
     // the print, returning the moment something does, then takes a frame and
-    // reads the printer as it is now. A read, so it takes no actor.
+    // reads the printer as it is now. A read, so it takes no actor. Asked
+    // with no print named, it is the printer's look below.
     Operation {
         query: &[Declared::once("wait_s", false, ValueKind::Integer)],
         image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
+        printer_wide: Some(&PRINTER_LOOK_OPERATION),
         ..read("look", "/prints/{print_id}/look")
     },
+    PRINTER_LOOK_OPERATION,
     Operation {
         name: "manifest_set",
         method: Method::Put,
@@ -946,6 +972,7 @@ pub const OPERATIONS: [Operation; 37] = [
             },
         ],
         image_path_field: None,
+        printer_wide: None,
     },
     // Every spool, the retired ones only when asked for, each beside one line
     // saying what it holds — and the charges held for a tool after a filament
@@ -1107,14 +1134,15 @@ pub const OPERATIONS: [Operation; 37] = [
 /// checked against now, and what each would meet.
 pub const RECOVERY_STATUS: &str = "recover_status";
 
-/// The thirteen operations this server serves beside the vocabularies.
+/// The fourteen operations this server serves beside the vocabularies.
 ///
-/// Twelve of them read and one writes a manifest, which asks nothing of the
+/// Thirteen of them read and one writes a manifest, which asks nothing of the
 /// machine; what they have in common is that none of them is an action or a
 /// spool command the contracts declare. A look writes its own record into the
-/// print's history, as every read of the camera is kept, and asks nothing of
-/// the machine either; a filament check records nothing at all.
-pub const BESIDE_THE_ACTIONS: [&str; 13] = [
+/// print's history — or the printer's, for a look at the printer — as every
+/// read of the camera is kept, and asks nothing of the machine either; a
+/// filament check records nothing at all.
+pub const BESIDE_THE_ACTIONS: [&str; 14] = [
     "prints",
     "status",
     "context",
@@ -1123,12 +1151,38 @@ pub const BESIDE_THE_ACTIONS: [&str; 13] = [
     "events",
     "manifest_get",
     "look",
+    PRINTER_LOOK,
     "manifest_set",
     "spools",
     "spool",
     "printer_history",
     "preflight",
 ];
+
+/// The look at the printer with no print named, which `look` is asked as when
+/// it names none.
+pub const PRINTER_LOOK: &str = "printer_look";
+
+/// A fresh look at the printer with no print named: waits `wait_s` seconds, on
+/// nothing any print's agent is owed, then takes a frame, keeps it as the
+/// printer's, and reads the printer as it is now. The operator's: a turn's
+/// credential reaches its own print alone. Declared apart from [`OPERATIONS`],
+/// which serves it, so the look's [`Operation::printer_wide`] can name it as
+/// the operation itself rather than by a name that might name none.
+const PRINTER_LOOK_OPERATION: Operation = Operation {
+    query: &[Declared::once("wait_s", false, ValueKind::Integer)],
+    image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
+    ..read(PRINTER_LOOK, "/look")
+};
+
+/// The operation whose command reaches this one, when this one is another's
+/// [`Operation::printer_wide`] form and so has no command of its own.
+#[must_use]
+pub fn printer_wide_of(name: &str) -> Option<&'static Operation> {
+    OPERATIONS
+        .iter()
+        .find(|declared| declared.printer_wide.is_some_and(|wide| wide.name == name))
+}
 
 /// The operation of one name, when this server serves one.
 #[must_use]
@@ -1342,6 +1396,48 @@ mod tests {
             .filter_map(super::Operation::recovery_kind)
             .collect();
         assert_eq!(served, super::RecoveryActionKind::ALL.to_vec());
+    }
+
+    /// A printer-wide form is an operation this server serves, takes the
+    /// values its print's operation takes less the print, names no print of
+    /// its own, and is the form of exactly one operation.
+    #[test]
+    fn a_printer_wide_form_takes_its_prints_values_less_the_print() {
+        let mut forms = 0;
+        for declared in OPERATIONS {
+            let Some(wide) = declared.printer_wide else {
+                continue;
+            };
+            forms += 1;
+            assert_eq!(
+                operation(wide.name),
+                Some(wide),
+                "the printer-wide form is not an operation this server serves"
+            );
+            assert_eq!(wide.method, declared.method, "`{}`", declared.name);
+            assert_eq!(wide.effect, declared.effect, "`{}`", declared.name);
+            assert_eq!(wide.image_path_field, declared.image_path_field);
+            assert_eq!(
+                wide.printer_wide, None,
+                "a printer-wide form has none of its own"
+            );
+            assert!(!wide.path.contains("{print_id}"), "`{}`", wide.name);
+            let taken: Vec<super::Parameter> = declared
+                .request()
+                .into_iter()
+                .filter(|parameter| parameter.name != "print_id")
+                .collect();
+            assert_eq!(wide.request(), taken, "`{}`", wide.name);
+            assert_eq!(
+                super::printer_wide_of(wide.name).map(|found| found.name),
+                Some(declared.name)
+            );
+        }
+        assert_eq!(
+            forms, 1,
+            "the look is the one read with a printer-wide form"
+        );
+        assert!(super::printer_wide_of("look").is_none());
     }
 
     /// An operation this server does not serve is answered as none.

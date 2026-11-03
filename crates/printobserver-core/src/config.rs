@@ -203,6 +203,9 @@ pub struct CoreConfig {
     /// Where a fresh frame of the print is fetched from, when a camera is
     /// configured.
     pub camera_snapshot_url: Option<WebAddress>,
+    /// How often, and how far apart, a fetch the camera answered with a
+    /// server error is made again.
+    pub camera_retry: crate::look::CameraRetry,
     /// How long after the agent's last adjustment a print the detector paused
     /// is resumed.
     pub detector_resume_grace: Duration,
@@ -234,6 +237,7 @@ impl CoreConfig {
             recent_events: DEFAULT_RECENT_EVENTS,
             expiry_poll: DEFAULT_EXPIRY_POLL,
             camera_snapshot_url: None,
+            camera_retry: crate::look::CameraRetry::default(),
             detector_resume_grace: DEFAULT_DETECTOR_RESUME_GRACE,
             observation_interval: DEFAULT_OBSERVATION_INTERVAL,
             spools: SpoolPolicy::default(),

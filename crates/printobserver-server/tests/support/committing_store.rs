@@ -14,9 +14,9 @@ use std::sync::{Arc, Mutex};
 
 use printobserver_core::store::{
     ActionStore, AuditPage, BoxFuture, Charge, ChargeRecord, EventDraft, EventStore, FilamentStore,
-    FileTally, HistoryQuery, ImageLookup, ImageStore, NewSpool, Pend, PrintStore, SessionStore,
-    SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery, StoredSignal,
-    Stores, TimelineQuery, TimelineStore,
+    FileTally, HistoryQuery, ImageDraft, ImageLookup, ImageStore, NewSpool, Pend, PrintStore,
+    SessionStore, SettleOutcome, Settlement, SpoolMutation, SpoolWrite, StoreError, StoredQuery,
+    StoredSignal, Stores, TimelineQuery, TimelineStore,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, Actor, ExecutionOutcome, FilePosition, ImageRecord,
@@ -190,6 +190,17 @@ impl EventStore for CommitThenFail {
             "append_event"
         };
         self.after(name, EventStore::append_event(&*self.inner, draft))
+    }
+
+    fn append_event_with_image(
+        &self,
+        draft: EventDraft,
+        image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        self.after(
+            "append_event_with_image",
+            EventStore::append_event_with_image(&*self.inner, draft, image),
+        )
     }
 
     fn history(&self, query: HistoryQuery) -> BoxFuture<'_, Result<Vec<EventRecord>, StoreError>> {

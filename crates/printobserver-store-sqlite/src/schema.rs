@@ -337,13 +337,42 @@ CREATE TRIGGER charges_coherent_update BEFORE UPDATE ON charges
     BEGIN SELECT RAISE(ABORT, 'charges.coherent'); END;
 ";
 
+/// An image that belongs to no print: a frame taken of the printer when no
+/// print was named, before, between or after prints.
+///
+/// `SQLite` alters no column's constraint in place, so the table is rebuilt
+/// under the shape it now has — `print_id` nullable and still a declared
+/// reference to `prints` — every row copied across as it was, and the index
+/// the second version created over it re-created. Nothing references the
+/// images table, so replacing it breaks no other table's reference.
+const V7_PRINTLESS_IMAGES: &str = "\
+CREATE TABLE images_v7 (
+    id            TEXT    NOT NULL PRIMARY KEY,
+    print_id      TEXT    REFERENCES prints(id),
+    event_id      TEXT    NOT NULL REFERENCES events(id),
+    source_url    TEXT,
+    fetched_at    TEXT    NOT NULL,
+    content_type  TEXT    NOT NULL,
+    byte_len      INTEGER NOT NULL,
+    sha256        TEXT    NOT NULL,
+    relative_path TEXT    NOT NULL
+) STRICT;
+INSERT INTO images_v7 (id, print_id, event_id, source_url, fetched_at, content_type,
+    byte_len, sha256, relative_path)
+    SELECT id, print_id, event_id, source_url, fetched_at, content_type,
+        byte_len, sha256, relative_path FROM images;
+DROP TABLE images;
+ALTER TABLE images_v7 RENAME TO images;
+CREATE INDEX images_by_event ON images(event_id);
+";
+
 /// Every migration, in the order they are applied.
 ///
 /// Forward-only: a step is never rewritten once it has run anywhere, because a
 /// database in the field was created by the text as it stood — which is why
 /// the first two steps still spell the column the first version created it
 /// as, and the third renames it.
-pub const MIGRATIONS: [Migration; 6] = [
+pub const MIGRATIONS: [Migration; 7] = [
     Migration {
         version: 1,
         sql: V1_TABLES,
@@ -367,6 +396,10 @@ pub const MIGRATIONS: [Migration; 6] = [
     Migration {
         version: 6,
         sql: V6_COHERENT_LEDGER,
+    },
+    Migration {
+        version: 7,
+        sql: V7_PRINTLESS_IMAGES,
     },
 ];
 

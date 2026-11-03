@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use printobserver_core::store::{
-    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageLookup,
-    ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, StoredQuery, StoredSignal,
-    resolve_history_limit,
+    ActionStore, AuditPage, BoxFuture, EventDraft, EventStore, HistoryQuery, ImageDraft,
+    ImageLookup, ImageStore, PrintStore, SessionStore, SettleOutcome, StoreError, StoredQuery,
+    StoredSignal, resolve_history_limit,
 };
 use printobserver_core::{
     ActionId, ActionRecord, ActionRequest, ExecutionOutcome, ImageRecord, Intervention,
@@ -117,6 +117,26 @@ impl MemoryStore {
             }),
             ..event.clone()
         }
+    }
+
+    /// Append one event to the records held, minting its identifier.
+    fn append_to(records: &mut Records, draft: EventDraft) -> Result<EventRecord, StoreError> {
+        if let Some(print_id) = draft.print_id
+            && !records.prints.iter().any(|print| print.id == print_id)
+        {
+            return Err(refused("events.print_id"));
+        }
+        let record = EventRecord {
+            id: EventId::new(),
+            print_id: draft.print_id,
+            source: draft.source,
+            received_at: draft.received_at,
+            image: None,
+            body: draft.body,
+            raw: draft.raw,
+        };
+        records.events.push(record.clone());
+        Ok(record)
     }
 
     /// The events of one print, oldest first.
@@ -462,24 +482,45 @@ impl EventStore for MemoryStore {
     fn append_event(&self, draft: EventDraft) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
         Box::pin(async move {
             let mut records = lock(&self.records);
-            if let Some(print_id) = draft.print_id
-                && !records.prints.iter().any(|print| print.id == print_id)
-            {
-                return Err(refused("events.print_id"));
-            }
-            let record = EventRecord {
-                id: EventId::new(),
-                print_id: draft.print_id,
-                source: draft.source,
-                received_at: draft.received_at,
-                image: None,
-                body: draft.body,
-                raw: draft.raw,
-            };
-            records.events.push(record.clone());
+            let record = Self::append_to(&mut records, draft)?;
             drop(records);
             self.signals.raise();
             Ok(record)
+        })
+    }
+
+    fn append_event_with_image(
+        &self,
+        draft: EventDraft,
+        image: ImageDraft,
+    ) -> BoxFuture<'_, Result<EventRecord, StoreError>> {
+        Box::pin(async move {
+            // The bytes first, as the durable store puts them: a write refused
+            // after this leaves at most a file no record names.
+            let stored = store_bytes(&self.state_dir, image.bytes.as_slice(), &self.points)?;
+            let mut records = lock(&self.records);
+            let mut event = Self::append_to(&mut records, draft)?;
+            let record = ImageRecord {
+                id: ImageId::new(),
+                print_id: event.print_id,
+                event_id: event.id,
+                source_url: image.source_url,
+                fetched_at: Timestamp::now(),
+                content_type: image.content_type,
+                byte_len: stored.byte_len,
+                sha256: stored.sha256,
+                relative_path: stored.relative_path,
+            };
+            event.image = Some(ImageRef {
+                id: record.id,
+                sha256: record.sha256.clone(),
+            });
+            records.images.push(record);
+            // Both are held before the lock is let go, so nothing that reads
+            // the event can find it without its image.
+            drop(records);
+            self.signals.raise();
+            Ok(event)
         })
     }
 
@@ -600,7 +641,7 @@ impl ImageStore for MemoryStore {
             }
             let record = ImageRecord {
                 id: ImageId::new(),
-                print_id,
+                print_id: Some(print_id),
                 event_id,
                 source_url,
                 fetched_at: Timestamp::now(),

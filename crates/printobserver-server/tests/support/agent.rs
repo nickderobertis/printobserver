@@ -79,11 +79,19 @@ impl StandInAgent {
 
     /// Make every turn take this long, so a journey can watch the handling run
     /// on after the answer has gone back.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the stand-in's state.
     pub fn taking(&self, dwell: core::time::Duration) {
         *self.dwell.lock().expect("the agent is not poisoned") = dwell;
     }
 
     /// Every pass a turn was issued, in order.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the stand-in's state.
     #[must_use]
     pub fn passes(&self) -> Vec<Pass> {
         self.passes
@@ -94,6 +102,10 @@ impl StandInAgent {
 
     /// Make every turn fail with `error` once it has run, as a harness that
     /// timed out or could not be reached fails one.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the stand-in's state.
     pub fn fail_turns_with(&self, error: SupervisorError) {
         *self.failing.lock().expect("the agent is not poisoned") = Some(error);
     }
@@ -101,17 +113,29 @@ impl StandInAgent {
     /// Move every turn into a second session after it was issued its first
     /// pass, and issue it the second session's: what the adapter does when the
     /// harness refuses to continue a session.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the stand-in's state.
     pub fn move_turns_to_a_second_session(&self) {
         *self.moving.lock().expect("the agent is not poisoned") = true;
     }
 
     /// Make every turn wait, once it has been issued its pass, until
     /// [`StandInAgent::release_turns`].
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the stand-in's state.
     pub fn hold_turns(&self) {
         *self.holding.lock().expect("the agent is not poisoned") = true;
     }
 
     /// Let every held turn answer, and stop holding the ones after it.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the stand-in's state.
     pub fn release_turns(&self) {
         *self.holding.lock().expect("the agent is not poisoned") = false;
         self.released.notify_waiters();
@@ -139,6 +163,10 @@ impl StandInAgent {
     }
 
     /// Every turn it has been asked to take, in order.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the stand-in's state.
     #[must_use]
     pub fn turns(&self) -> Vec<TurnRequest> {
         self.turns

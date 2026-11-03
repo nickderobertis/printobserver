@@ -225,6 +225,21 @@ def step_look(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("look", answered, seen.answer)
 
 
+def step_printer_look(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`printer_look`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.printer_look(0)
+
+    seen = proxy.last()
+    equal(seen.method, "GET", describing="`printer_look`")
+    equal(seen.target, "/v1/look?wait_s=0", describing="`printer_look`")
+    equal(seen.status, 200, describing="`printer_look`")
+    equal(seen.body, "", describing="what `printer_look` sent")
+    same("printer_look", answered, seen.answer)
+
+
 def step_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`cancel`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
@@ -1077,6 +1092,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_history(client, world, proxy)
         step_events(client, world, proxy)
         step_look(client, world, proxy)
+        step_printer_look(client, world, proxy)
         step_cancel(client, world, proxy)
         step_recover_status(client, world, proxy)
         step_recover_lift(client, world, proxy)
@@ -1108,7 +1124,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 37,
+            proxy.calls() >= 38,
             describing="every call to have gone through the proxy",
         )
 

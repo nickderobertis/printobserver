@@ -227,11 +227,15 @@ impl Sample for OperatorAcknowledgementPayload {
     }
 }
 
-/// Somebody took a fresh look at the print.
+/// Somebody took a fresh look at the print, or at the printer when no print
+/// was named.
 ///
-/// Written down before the camera is asked for a frame, so that a frame the
-/// camera would not give is recorded against a look that is already in the
-/// history; the frame itself, when there is one, is this event's image.
+/// Written down once the camera has been asked for its frame, together with
+/// that frame as this event's image, so that nobody reading the look finds it
+/// without the frame it was taken with. A frame the camera would not give is
+/// recorded against the look as a port failure. A look at the printer belongs
+/// to no print, waits on nothing that arrives for one, and so delivers
+/// nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
@@ -308,6 +312,54 @@ impl Sample for PeriodicObservationPayload {
             interval_s: 120,
             printer: None,
             job: None,
+        }
+    }
+}
+
+/// The camera answered a request for a frame with a server error, and is being
+/// asked again.
+///
+/// A camera server that could not take a frame this time — go2rtc answers
+/// `500` with `exit status 69` — is often one that will take the next, so a
+/// fetch answered `500` to `599` is made again after a short wait, a bounded
+/// number of times. One of these is written down for each such answer, as it
+/// happens, before the wait; a fetch whose every attempt was refused is
+/// recorded as a port failure only once the attempts run out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct CameraRetryPayload {
+    /// Which attempt the camera refused, counting from one.
+    pub attempt: u32,
+    /// How many attempts the fetch may make in all.
+    pub attempts: u32,
+    /// The HTTP status the camera answered.
+    pub status: u16,
+    /// The start of what the camera answered with, as text.
+    pub excerpt: String,
+    /// How long the fetch waits before its next attempt, in milliseconds.
+    pub backoff_ms: u64,
+}
+
+impl EventPayload for CameraRetryPayload {
+    const KIND: &'static str = "camera_retry";
+}
+
+impl Sample for CameraRetryPayload {
+    fn sample_full() -> Self {
+        Self {
+            attempt: 1,
+            attempts: 4,
+            status: 500,
+            excerpt: "exit status 69".to_owned(),
+            backoff_ms: 500,
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            excerpt: String::new(),
+            ..Self::sample_full()
         }
     }
 }
