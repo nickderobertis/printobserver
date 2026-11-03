@@ -1288,8 +1288,7 @@ forever.
 Windows runner cannot run the whole gate in 1,800 s with its tiers in turn, and
 running the end-to-end and test tiers beside each other there starves Nx's
 plugin workers. The `linux-x86_64` runner runs them side by side and still
-passed 1,800 s whenever a change reached the whole graph: 1,980 s on run
-41558713748 and 2,006 s on the release sweep 41532109264. So each of those
+exceeds 1,800 s once a change reaches the whole graph. So each of those
 platforms' work runs in the cells of `gate-shard-<platform>`,
 reporting `gate-shard (<platform>, <k>/<n>)`, each running in turn the tiers
 `just gate-shards <n>` hands it; and `gate-<platform>` reports the required
