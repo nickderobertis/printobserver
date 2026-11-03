@@ -16,7 +16,13 @@ from typing import Any
 import pytest
 from closures import closure
 from repo_checks.__main__ import main
-from repo_checks.checks_real_prints import POINTER_VERSION, lfs_filtered, lfs_tracked, pointer
+from repo_checks.checks_real_prints import (
+    POINTER_VERSION,
+    committed_pointers,
+    lfs_filtered,
+    lfs_tracked,
+    pointer,
+)
 from repo_checks.expect import equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
@@ -628,6 +634,30 @@ def test_what_is_read_is_the_index_not_the_fetched_working_tree(
     committed(copy)
     (copy.root / STALL_FRAME).write_bytes(STALL_FRAME_BYTES.read_bytes())
     equal(check("real-prints-lfs", copy), (0, ""))
+
+
+def test_the_pointers_a_clone_carries_are_read_from_the_index(tree: Callable[[], Tree]) -> None:
+    """A fetched frame answers its committed pointer; raw bytes or a plain file, none."""
+    copy = tree()
+    as_pointers(copy)
+    raw = f"{ROOT}/fan-cut-bridge/01-raw.jpg"
+    (copy.root / raw).parent.mkdir(parents=True, exist_ok=True)
+    (copy.root / raw).write_bytes(STALL_FRAME_BYTES.read_bytes())
+    tiny = f"{ROOT}/fan-cut-bridge/02-tiny.png"
+    (copy.root / tiny).write_bytes(b"small enough to be a pointer, and none\n")
+    plain = f"{ROOT}/README.md"
+    committed(copy)
+    frame = STALL_FRAME_BYTES.read_bytes()
+    (copy.root / STALL_FRAME).write_bytes(frame)
+
+    answered = committed_pointers(Repo(copy.root), [STALL_FRAME, raw, tiny, plain])
+
+    equal(answered, {STALL_FRAME: pointer_to(frame)}, describing="the pointers the index holds")
+    equal(
+        committed_pointers(Repo(copy.root / ROOT), [STALL_FRAME]),
+        {},
+        describing="a directory inside a work tree, which is no work tree of its own",
+    )
 
 
 def test_a_copy_that_is_no_repository_is_read_as_its_files(

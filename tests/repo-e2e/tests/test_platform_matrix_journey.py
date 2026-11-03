@@ -28,9 +28,9 @@ WINDOWS = (
     "          - id: windows-x86_64\n            runner: windows-2025\n"
     "          - id: windows-aarch64\n            runner: windows-11-arm\n"
 )
-# The integration job's own copy of that entry: the one whose checkout takes no
-# `with:` block and is followed directly by the Rust toolchain, which is what
-# tells it apart from the gate's.
+# The integration job's own copy of that entry: the one whose checkout takes
+# nothing but `lfs: false` and is followed directly by the Rust toolchain, which
+# is what tells it apart from the gate's.
 INTEGRATION_AARCH64 = (
     AARCH64
     + WINDOWS
@@ -42,7 +42,7 @@ INTEGRATION_AARCH64 = (
     + "    # same way.\n"
     + "    defaults:\n      run:\n        shell: bash\n"
     + "    steps:\n"
-    + "      - uses: actions/checkout@v5\n"
+    + "      - uses: actions/checkout@v5\n        with:\n          lfs: false\n"
     + "      - uses: actions-rust-lang/setup-rust-toolchain@v1\n"
 )
 # The pypi install job's own copy of that entry: the one followed by a step that

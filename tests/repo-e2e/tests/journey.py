@@ -22,6 +22,7 @@ from typing import Protocol
 
 import pytest
 from repo_checks import platforms
+from repo_checks.checks_real_prints import committed_pointers
 from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run as shell_run
@@ -153,9 +154,21 @@ def listed(root: Path) -> tuple[str, ...]:
     return tuple(tracked_files(root))
 
 
+@functools.cache
+def lfs_pointers(root: Path) -> dict[str, bytes]:
+    """The Git LFS pointer a clone of `root` carries in place of each such file.
+
+    A working tree that has run `just real-prints-fetch` holds the cases' real
+    bytes, and a copy committing those with no LFS filter would be a tree
+    nobody can commit; so the copy carries what a clone does.
+    """
+    return committed_pointers(Repo(root), list(listed(root)))
+
+
 def copy_tracked(destination: Path, *, root: Path = REPO_ROOT) -> Path:
     """Copy the committed tree, symlinks and all, carrying no build products."""
     destination.mkdir(parents=True, exist_ok=True)
+    pointers = lfs_pointers(root)
     for name in listed(root):
         source = root / name
         if not source.exists() and not source.is_symlink():
@@ -170,6 +183,8 @@ def copy_tracked(destination: Path, *, root: Path = REPO_ROOT) -> Path:
             # the kind is read off what the link reaches. Elsewhere the flag
             # is ignored.
             target.symlink_to(source.readlink(), target_is_directory=source.is_dir())
+        elif name in pointers:
+            target.write_bytes(pointers[name])
         else:
             shutil.copy2(source, target)
     return destination

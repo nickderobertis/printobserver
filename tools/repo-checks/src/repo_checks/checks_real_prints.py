@@ -268,6 +268,23 @@ def _committed(
     return committed
 
 
+def committed_pointers(repo: Repo, relatives: list[str]) -> dict[str, bytes]:
+    """The pointer the index holds for each of `relatives` git hands to Git LFS.
+
+    This is what a clone carries for such a file while `.lfsconfig` leaves it
+    undownloaded, whatever the working tree holds after `just real-prints-fetch`.
+    A path the index does not hold, or holds as anything but a pointer, is not
+    answered; nor is any path of a tree that is no git work tree of its own.
+    """
+    environment = _work_tree(repo)
+    if environment is None:
+        return {}
+    held = _committed(repo, environment, lfs_filtered(repo, relatives))
+    return {
+        name: data for name, data in held.items() if data is not None and pointer(data) is not None
+    }
+
+
 def real_prints_lfs(repo: Repo) -> list[str]:
     """Every case file git hands to Git LFS is committed as an LFS pointer.
 
