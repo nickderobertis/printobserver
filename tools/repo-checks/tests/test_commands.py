@@ -217,7 +217,8 @@ def toolchain(
 
     The PATH holds the stand-in `uv` and the directory it installs into — the
     two cargo tools the policy holds at no release already there, onebudgetspec
-    there at the release the policy holds it at, a `rustup`
+    there at the release the policy holds it at, git-lfs there at its held
+    release, a `rustup`
     answering that the Windows lint target's standard library is there too, and
     the PowerShell `provides` names at `provided_release`, so that a test about
     one tool decides nothing about another. `provides=None` is a host carrying
@@ -237,6 +238,8 @@ def toolchain(
         tool for tool in toolchain_tools(Repo(REPO_ROOT)) if tool.command == "onebudgetspec"
     )
     program(installs, "onebudgetspec", f"print({f'onebudgetspec {budgets.version}'!r})\n")
+    lfs = next(tool for tool in toolchain_tools(Repo(REPO_ROOT)) if tool.command == "git-lfs")
+    program(installs, "git-lfs", f"print({f'git-lfs/{lfs.version} (GitHub; stand-in)'!r})\n")
     if provides is not None:
         program(installs, provides, f"print({f'PowerShell {provided_release}'!r})\n")
     windows_lint = Repo(REPO_ROOT).policy["toolchain"]["windows_lint"]["target"]

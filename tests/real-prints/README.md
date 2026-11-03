@@ -89,8 +89,8 @@ it must never take.
 
 ## Where the G-code and the crops are
 
-In this tree, beside the frames, in the directory of the case that printed or
-cropped them: `fan-cut-bridge/fan-cut-test.gcode`,
+In this tree, as Git LFS objects beside the frames, in the directory of the
+case that printed or cropped them: `fan-cut-bridge/fan-cut-test.gcode`,
 `spaghetti-small-nest/spaghetti-two-stage.gcode`,
 `under-extrusion-lace/crop-03-porous-sheet-p58-61.png` and so on. They are the
 bytes that were printed and photographed, LF line endings and trailing
@@ -99,6 +99,33 @@ names each the way it names every other file: by its name, or as
 `../<case>/<file>` when a case printed a sibling's G-code, as
 `spaghetti-debris-warning` and `filament-stall-air-print` print
 `spaghetti-small-nest`'s.
+
+## They are in Git LFS, and not downloaded by default
+
+Every G-code, `.jpg`, `.jpeg` and `.png` here is a Git LFS object; every other
+file is plain. `.lfsconfig` excludes this whole directory from LFS downloads, so
+a clone, a checkout, a pull or a new worktree holds a small pointer for each.
+To read the pictures and the G-code, fetch them on purpose:
+
+```console
+just real-prints-fetch
+```
+
+It downloads them into the clone's LFS store, which all its worktrees share. A
+host whose git configuration sets `lfs.storage` shares one store across all its
+clones, and the fetch reuses objects already there instead of downloading them
+again. `just skilltest` runs the fetch before replaying any scenario. In
+continuous integration the suite's job runs the steps in
+`tests/real-prints-lfs/ci-steps.yml`, which restore the store from the Actions
+cache under `just real-prints-cache-key`. They fetch only on a cache miss and
+write the files out of the store with `just real-prints-checkout` on a hit.
+Every other job checks out with `lfs: false` and fetches nothing.
+
+`just bootstrap` installs Git LFS 3.8.1 into `~/.local/bin` when the host has no
+git-lfs, without administrator rights, and configures the clone's LFS filter.
+Adding a frame on a host without git-lfs commits its raw bytes, and
+`real-prints-lfs` refuses those. Fix it with `git add --renormalize <file>`
+once git-lfs is installed.
 
 ## The `assertions` block
 
@@ -143,7 +170,7 @@ How a run is judged:
 
 ## What holds them
 
-`just check-repo` runs six deterministic checks over this directory, from
+`just check-repo` runs seven deterministic checks over this directory, from
 `tools/repo-checks`'s `checks_real_prints`: every `case.json` satisfies
 `case.schema.json`, and every `printobserver-history.json` the server's own
 `schemas/printobserver-server/HistoryAnswer.json` (`real-prints-schema`);
@@ -153,7 +180,9 @@ of a case is named somewhere in it (`real-prints-files`). A G-code or a crop
 is held exactly as a frame is, and a path naming another commit's copy of a
 file, such as `<ref>:<path>`, names no file here and is refused; every
 `agent-*` image's sha256 is the one its event records in
-`printobserver-history.json` (`real-prints-images`); every scenario's events
+`printobserver-history.json`, read off its pointer's object id where the
+checkout holds a pointer (`real-prints-images`); every G-code and picture is
+committed as a Git LFS pointer rather than its raw bytes (`real-prints-lfs`); every scenario's events
 are in its case's history and its images are files of the case
 (`real-prints-scenarios`); every step is an operation of
 `schemas/printobserver-server/operations.json` with that operation's own

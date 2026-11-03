@@ -54,6 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           fetch-depth: 0
           # The release pull request is opened under RELEASE_PLZ_TOKEN rather
           # than the workflow's built-in token: a pull request opened by the
@@ -117,6 +118,7 @@ jobs:
       # tag, and the verifier would refuse every dispatch there is.
       - uses: actions/checkout@v5
         with:
+          lfs: false
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PLZ_TOKEN }}
       - uses: extractions/setup-just@v3
@@ -183,6 +185,8 @@ jobs:
       PUBLISHING: ${{ needs.release.result }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - if: needs.release-pr.result == 'failure' || needs.release.result == 'failure'
@@ -223,6 +227,7 @@ jobs:
       # empty on a push, which is today's checkout of the run's own commit.
       - uses: actions/checkout@v5
         with:
+          lfs: false
           ref: ${{ inputs.tag }}
       # `extractions/setup-just` has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
@@ -262,6 +267,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2

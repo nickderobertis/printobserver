@@ -151,10 +151,25 @@ def tool_version(repo: Repo, command: str) -> int:
 
 
 def install_hooks(repo: Repo) -> int:
-    """Point git at the committed hooks, where this tree is a git repository."""
+    """Point git at the committed hooks, and configure this clone's LFS filter.
+
+    Where this tree is a git repository. The LFS filter is configured in the
+    clone's own config (`git lfs install --local`) rather than the user's, so
+    nothing outside the repository changes; `--skip-repo` because the hooks are
+    the committed `.githooks`, whose `pre-push` hands a push to `git lfs`, and
+    git-lfs writing its own beside them would leave files in the tree.
+    """
     if not (repo.root / ".git").exists():
         return 0
     run(["git", "config", "core.hooksPath", ".githooks"], cwd=repo.root, check=True)
+    configured = run(["git", "lfs", "install", "--local", "--skip-repo"], cwd=repo.root)
+    if configured.returncode != 0:
+        print(
+            f"`git lfs install --local` failed: {configured.stderr.strip() or configured.stdout}"
+            f". Run `just install-tools git-lfs`, then `just bootstrap` again.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

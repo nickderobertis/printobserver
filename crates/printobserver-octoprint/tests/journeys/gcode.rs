@@ -2,9 +2,11 @@
 //!
 //! Two kinds of evidence. Small hand-written programs, each carrying one rule
 //! the reader has to get right, with the expected figure worked by hand. And
-//! every real `PrusaSlicer` file under `tests/real-prints/`, whose own trailing
+//! real `PrusaSlicer` files of two recorded prints, whose own trailing
 //! `; filament used [mm]` is a figure computed by the slicer rather than by
-//! this reader — an independent one to agree with.
+//! this reader — an independent one to agree with. They are plain copies under
+//! `tests/fixtures/real-prints/`, because the cases under `tests/real-prints/`
+//! are Git LFS pointers until the real-print suite fetches them.
 
 use std::path::{Path, PathBuf};
 
@@ -155,27 +157,20 @@ fn an_overlong_line_is_not_a_command() {
     feeds(&whole(&text), &[(0, 2.0)]);
 }
 
-/// The real files under `tests/real-prints/`.
+/// The real `PrusaSlicer` files this crate keeps of recorded prints.
 fn real_prints() -> Vec<PathBuf> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
         .join("tests")
+        .join("fixtures")
         .join("real-prints");
     let mut files = Vec::new();
-    for case in std::fs::read_dir(&root).expect("tests/real-prints") {
-        let case = case.expect("a case").path();
-        if !case.is_dir() {
-            continue;
-        }
-        for entry in std::fs::read_dir(&case).expect("a case directory") {
-            let path = entry.expect("an entry").path();
-            if path
-                .extension()
-                .is_some_and(|extension| extension == "gcode")
-            {
-                files.push(path);
-            }
+    for entry in std::fs::read_dir(&root).expect("tests/fixtures/real-prints") {
+        let path = entry.expect("an entry").path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "gcode")
+        {
+            files.push(path);
         }
     }
     files.sort();
@@ -198,8 +193,8 @@ fn slicer_figure(text: &str) -> f64 {
 fn every_real_print_agrees_with_its_slicer() {
     let files = real_prints();
     assert!(
-        files.len() >= 4,
-        "found only {files:?} under tests/real-prints"
+        files.len() >= 2,
+        "found only {files:?} under tests/fixtures/real-prints"
     );
     for path in files {
         let bytes = std::fs::read(&path).expect("the file");

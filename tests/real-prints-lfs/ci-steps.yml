@@ -1,0 +1,27 @@
+# The steps a continuous-integration job running the real-print suite carries,
+# verbatim, after its checkout (`lfs: false`, as every checkout is) and its
+# `just bootstrap`. They restore the clone's LFS store from the Actions cache
+# under a key of the cases' object ids, download the objects only when that
+# key missed — saving the store for the next run — and on a hit write the files
+# out of the restored store, downloading nothing.
+#
+# `just check-repo`'s `real-prints-lfs-ci` refuses a job that runs an LFS fetch
+# without carrying these steps exactly, and
+# `tests/real-prints-lfs/test_lfs_fixture.py` runs them over a fixture
+# repository and an empty cache, then over the cache that run saved.
+- id: real-prints-key
+  run: just real-prints-cache-key >> "$GITHUB_OUTPUT"
+- id: real-prints-cache
+  uses: actions/cache/restore@v4
+  with:
+    path: .git/lfs/objects
+    key: ${{ steps.real-prints-key.outputs.key }}
+- if: steps.real-prints-cache.outputs.cache-hit != 'true'
+  run: just real-prints-fetch
+- if: steps.real-prints-cache.outputs.cache-hit != 'true'
+  uses: actions/cache/save@v4
+  with:
+    path: .git/lfs/objects
+    key: ${{ steps.real-prints-key.outputs.key }}
+- if: steps.real-prints-cache.outputs.cache-hit == 'true'
+  run: just real-prints-checkout

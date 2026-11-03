@@ -7,3 +7,14 @@
 # `rustfmt` refuses generated code. What decides whether a file is text is git's
 # own detection, so an image stays the bytes it was committed as.
 * text=auto eol=lf
+
+# The real-print cases' G-code and frames are Git LFS objects: about 140 MB that
+# only the paid real-print suite reads. `.lfsconfig` excludes them from every
+# download, so a clone, a checkout, a pull and a new worktree carry these as
+# pointers; `just real-prints-fetch` downloads them on purpose. Every other file
+# of a case stays plain, and `just check-repo`'s `real-prints-lfs` refuses one
+# of these committed as its raw bytes, which is what a host without git-lfs adds.
+tests/real-prints/**/*.gcode filter=lfs diff=lfs merge=lfs -text
+tests/real-prints/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+tests/real-prints/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+tests/real-prints/**/*.png filter=lfs diff=lfs merge=lfs -text

@@ -383,8 +383,9 @@ DISPATCH_DEFECTS = {
     ),
     "the build not checking out the dispatched tag": (
         WORKFLOW,
-        "      - uses: actions/checkout@v5\n        with:\n          ref: ${{ inputs.tag }}\n",
-        "      - uses: actions/checkout@v5\n",
+        "      - uses: actions/checkout@v5\n        with:\n          lfs: false\n"
+        "          ref: ${{ inputs.tag }}\n",
+        "      - uses: actions/checkout@v5\n        with:\n          lfs: false\n",
         "runs `just build-artifacts` and its checkout does not take `ref:",
     ),
     "the publish not handed the dispatched version": (

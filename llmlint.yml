@@ -24,6 +24,10 @@ files:
     - "tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode"
     - "tests/real-prints/under-extrusion-lace/lace-test.clean.gcode"
     - "tests/real-prints/under-extrusion-lace/lace-test.gcode"
+    # Byte-identical copies of two of those, kept as plain files where the
+    # G-code reader's journey reads them: the cases themselves are Git LFS
+    # pointers until the real-print suite fetches them.
+    - "crates/printobserver-octoprint/tests/fixtures/real-prints/*.gcode"
 rationales: true
 # No `agents` block: the harness/model are NOT pinned here. `oneharness.toml`
 # (composed alongside this file) selects them in fallback mode — codex + gpt-6.1-sol

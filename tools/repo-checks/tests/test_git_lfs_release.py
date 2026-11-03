@@ -1,0 +1,249 @@
+"""`install-git-lfs`: one exact Git LFS release, verified before it reaches PATH.
+
+The release is served by a stand-in over real HTTP on loopback, laid out the
+way the forge lays one out — the host's archive and the release's clear-signed
+`sha256sums.asc` side by side — so what is proven is the installer's own
+download, digest check, extraction and placement. The program in the archive is
+a script answering `--version` the way git-lfs does, and the installed copy is
+run to prove it is the one the archive carried. The real release, installed by
+the real bootstrap step, is `tests/real-prints-lfs`'s.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import platform
+import sys
+import tarfile
+import zipfile
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+from repo_checks.__main__ import main
+from repo_checks.expect import absent, contains, equal, refused, truth
+from repo_checks.git_lfs_release import CHECKSUMS, Archive, archive_for, install, install_git_lfs
+from repo_checks.shell import run
+from repo_checks.verified_download import InstallerError
+from standin_release import Release
+from standin_release import serving as serve
+
+VERSION = "3.8.1"
+
+
+def _program() -> bytes:
+    """A `git-lfs` that answers `--version` the way the real one does."""
+    return f"#!{sys.executable}\nprint('git-lfs/{VERSION} (a release stand-in)')\n".encode()
+
+
+def _archive_bytes(archive: Archive) -> bytes:
+    """The archive the release would publish for one host, carrying the stand-in."""
+    buffer = io.BytesIO()
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(buffer, "w") as bundle:
+            bundle.writestr(archive.member, _program())
+    else:
+        with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
+            payload = _program()
+            info = tarfile.TarInfo(archive.member)
+            info.size = len(payload)
+            info.mode = 0o755
+            bundle.addfile(info, io.BytesIO(payload))
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def serving() -> Iterator[tuple[str, Release]]:
+    """A loopback server answering the release's files under `/v<version>/`."""
+    release = Release()
+    with serve(f"/v{VERSION}/", release) as base:
+        yield base, release
+
+
+def _publish(release: Release, archive: Archive, *, listed: str | None = None) -> None:
+    """Put the host's archive and the release's clear-signed checksums on the stand-in."""
+    payload = _archive_bytes(archive)
+    digest = listed if listed is not None else hashlib.sha256(payload).hexdigest()
+    release.files[archive.name] = payload
+    release.files[CHECKSUMS] = (
+        "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n"
+        f"{'0' * 64} *git-lfs-freebsd-amd64-v{VERSION}.tar.gz\n"
+        f"{digest} *{archive.name}\n"
+        "-----BEGIN PGP SIGNATURE-----\n\nnot a signature\n-----END PGP SIGNATURE-----\n"
+    ).encode()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the archive's program is a script")
+@pytest.mark.parametrize(
+    ("system", "machine", "name"),
+    [
+        ("linux", "x86_64", f"git-lfs-linux-amd64-v{VERSION}.tar.gz"),
+        ("linux", "aarch64", f"git-lfs-linux-arm64-v{VERSION}.tar.gz"),
+        ("darwin", "arm64", f"git-lfs-darwin-arm64-v{VERSION}.zip"),
+    ],
+)
+def test_a_verified_release_is_installed_and_answers_its_version(
+    serving: tuple[str, Release], tmp_path: Path, system: str, machine: str, name: str
+) -> None:
+    """The archive the checksums vouch for is unpacked, and its program is the one placed."""
+    base, release = serving
+    archive = archive_for(VERSION, system, machine)
+    equal(archive.name, name, describing="the archive the release names for this host")
+    _publish(release, archive)
+
+    installed = install(archive, tmp_path / "bin", releases=base)
+
+    equal(installed, tmp_path / "bin" / "git-lfs")
+    contains(run([str(installed), "--version"], check=True).stdout, f"git-lfs/{VERSION}")
+    equal(
+        release.asked,
+        [f"/v{VERSION}/{CHECKSUMS}", f"/v{VERSION}/{archive.name}"],
+        describing="what the installer downloaded",
+    )
+
+
+def test_the_windows_archive_places_the_exe(serving: tuple[str, Release], tmp_path: Path) -> None:
+    """On Windows the program is `git-lfs.exe`, out of the release's Windows zip."""
+    base, release = serving
+    archive = archive_for(VERSION, "win32", "AMD64")
+    equal(archive.name, f"git-lfs-windows-amd64-v{VERSION}.zip")
+    _publish(release, archive)
+
+    installed = install(archive, tmp_path / "bin", releases=base)
+
+    equal(installed, tmp_path / "bin" / "git-lfs.exe")
+    equal(installed.read_bytes(), _program(), describing="the program the zip carried")
+
+
+def test_an_archive_the_checksums_do_not_vouch_for_is_never_installed(
+    serving: tuple[str, Release], tmp_path: Path
+) -> None:
+    """A download whose digest disagrees with the release's own list reaches nothing."""
+    base, release = serving
+    archive = archive_for(VERSION, "linux", "x86_64")
+    _publish(release, archive, listed="f" * 64)
+
+    with pytest.raises(InstallerError) as raised:
+        install(archive, tmp_path / "bin", releases=base)
+
+    contains(str(raised.value), "nothing was installed")
+    truth(not (tmp_path / "bin").exists(), describing="nothing written where git-lfs goes")
+
+
+def test_a_release_listing_no_checksum_for_the_archive_is_refused(
+    serving: tuple[str, Release], tmp_path: Path
+) -> None:
+    """An archive the checksums file does not name is one nothing vouches for."""
+    base, release = serving
+    archive = archive_for(VERSION, "linux", "arm64")
+    _publish(release, archive)
+    release.files[CHECKSUMS] = b"0" * 64 + b" *something-else.tar.gz\n"
+
+    with pytest.raises(InstallerError) as raised:
+        install(archive, tmp_path / "bin", releases=base)
+
+    contains(str(raised.value), f"lists no checksum for {archive.name}")
+
+
+def test_an_archive_carrying_no_program_is_refused(
+    serving: tuple[str, Release], tmp_path: Path
+) -> None:
+    """A verified archive without the program where the release puts it installs nothing."""
+    base, release = serving
+    archive = archive_for(VERSION, "darwin", "arm64")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as bundle:
+        bundle.writestr(f"git-lfs-{VERSION}/README.md", b"no program here")
+    payload = buffer.getvalue()
+    release.files[archive.name] = payload
+    release.files[CHECKSUMS] = f"{hashlib.sha256(payload).hexdigest()} *{archive.name}\n".encode()
+
+    with pytest.raises(InstallerError) as raised:
+        install(archive, tmp_path / "bin", releases=base)
+
+    contains(str(raised.value), f"carries no {archive.member}")
+    truth(not (tmp_path / "bin").exists(), describing="nothing written where git-lfs goes")
+
+
+@pytest.mark.parametrize(("system", "machine"), [("linux", "riscv64"), ("freebsd14", "amd64")])
+def test_a_host_the_installer_does_not_know_is_refused_by_name(system: str, machine: str) -> None:
+    """Rather than guess at an archive, the installer names the host it cannot serve."""
+    with pytest.raises(InstallerError) as raised:
+        archive_for(VERSION, system, machine)
+
+    refused([str(raised.value)], f"this host is {system} on {machine}")
+
+
+def test_a_version_that_is_not_a_release_is_refused() -> None:
+    """The release reaches a URL, so it is read as a release or not at all."""
+    with pytest.raises(InstallerError) as raised:
+        archive_for("latest", "linux", "x86_64")
+
+    contains(str(raised.value), "`latest` is not a release")
+
+
+def test_an_address_that_is_not_the_producer_or_loopback_is_never_fetched(tmp_path: Path) -> None:
+    """Only the release's own forge address and a loopback stand-in are downloaded from."""
+    archive = archive_for(VERSION, "linux", "x86_64")
+
+    with pytest.raises(InstallerError) as raised:
+        install(archive, tmp_path / "bin", releases="https://github.com/someone/else/releases")
+
+    contains(str(raised.value), "is not an address this installer downloads from")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the archive's program is a script")
+def test_the_command_says_what_it_installed_and_that_its_directory_is_off_path(
+    serving: tuple[str, Release],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The entry point `install-tools` reaches: its status and what it tells the caller."""
+    base, release = serving
+    _publish(release, archive_for(VERSION, sys.platform, platform.machine()))
+    into = tmp_path / "bin"
+    monkeypatch.setenv("PATH", str(tmp_path / "elsewhere"))
+
+    equal(install_git_lfs(VERSION, into, releases=base), 0)
+
+    said = capsys.readouterr().err
+    contains(said, f"install-git-lfs: installed git-lfs {VERSION} at {into / 'git-lfs'}")
+    contains(said, f"{into} is not on PATH")
+
+    monkeypatch.setenv("PATH", str(into))
+    equal(install_git_lfs(VERSION, into, releases=base), 0)
+    absent(capsys.readouterr().err, "is not on PATH")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the archive's program is a script")
+def test_the_repository_command_installs_from_the_release_and_directory_it_is_given(
+    serving: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`python -m repo_checks install-git-lfs <version> --releases <base> --into <dir>`."""
+    base, release = serving
+    _publish(release, archive_for(VERSION, sys.platform, platform.machine()))
+    into = tmp_path / "bin"
+
+    equal(main(["install-git-lfs", VERSION, "--releases", base, "--into", str(into)]), 0)
+
+    contains(capsys.readouterr().err, f"installed git-lfs {VERSION} at {into / 'git-lfs'}")
+    contains(run([str(into / "git-lfs"), "--version"], check=True).stdout, f"git-lfs/{VERSION}")
+
+
+def test_the_repository_command_exits_non_zero_naming_why_it_installed_nothing(
+    serving: tuple[str, Release], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A tampered archive served at `--releases` never reaches `--into`."""
+    base, release = serving
+    archive = archive_for(VERSION, sys.platform, platform.machine())
+    _publish(release, archive, listed="e" * 64)
+    into = tmp_path / "bin"
+
+    equal(main(["install-git-lfs", VERSION, "--releases", base, "--into", str(into)]), 1)
+
+    said = capsys.readouterr().err
+    contains(said, "install-git-lfs: ")
+    contains(said, "nothing was installed")
+    truth(not (into / archive.program).exists(), describing="no git-lfs where the install goes")
