@@ -320,8 +320,8 @@ Start a print of a named file, bounded by a manifest.
 Takes `print_id` (path), `actor` (body), `file_name` (body), `manifest` (body), `override_filament_check` (body, optional), `override_material_check` (body, optional), `override_sheet_check` (body, optional), `reason` (body).
 
 The manifest's `sheet` names the build sheet the print goes down on, one of the
-ids the server's sheet table names (`smooth-pei` and `textured-pei` by
-default); a start whose manifest names none is refused `sheet_not_declared`,
+ids the server's sheet table names (its defaults are in
+[the intervention policy](intervention-policy.md)); a start whose manifest names none is refused `sheet_not_declared`,
 and no override lets it through. A start the policy accepted is held to the
 filament, material and sheet checks before the printer is asked anything, and a
 refusal turns into `insufficient_filament`, `unverified_spool`,

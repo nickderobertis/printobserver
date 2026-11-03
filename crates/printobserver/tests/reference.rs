@@ -467,7 +467,8 @@ fn the_documents_restate_the_spool_check_and_history_window_defaults_as_the_code
 /// The commented `[sheets.allowed]` table every installer's template carries
 /// is the configuration's own default table, line for line: the table is
 /// read from `DEFAULT_SHEETS`, which is what a configuration that leaves the
-/// table out is given.
+/// table out is given. The intervention policy's prose statement of those
+/// defaults is held to the same table.
 #[test]
 fn every_template_restates_the_sheet_table_defaults_as_the_config_has_them() {
     let defaults = printobserver_core::DEFAULT_SHEETS;
@@ -509,4 +510,23 @@ fn every_template_restates_the_sheet_table_defaults_as_the_config_has_them() {
             "{template}'s commented sheet table is not the configuration's default"
         );
     }
+
+    // The intervention policy is the one document that states the defaults in
+    // prose, and every other reference document points to it.
+    let pairings: Vec<String> = defaults
+        .iter()
+        .map(|(material, sheets)| {
+            let named: Vec<String> = sheets.iter().map(|sheet| format!("`{sheet}`")).collect();
+            format!("{material} on {} alone", named.join(" or "))
+        })
+        .collect();
+    let said = format!("Left out, the table allows {}", pairings.join(" and "));
+    let policy = document(INTERVENTION_POLICY)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        policy.contains(&said),
+        "{INTERVENTION_POLICY} does not say `{said}`, the configuration's default sheet table"
+    );
 }

@@ -107,9 +107,9 @@
 //! build sheets a print of that material may go down on, as the ids a start's
 //! manifest declares in `sheet`. Written, it replaces the defaults
 //! ([`DEFAULT_SHEETS`](printobserver_core::DEFAULT_SHEETS)) whole; left out,
-//! PLA may go on `smooth-pei` alone and PETG on `textured-pei` alone. A blank
-//! material or sheet, a material listing no sheet, or two materials differing
-//! only in case is refused naming `sheets.allowed`.
+//! those defaults apply. A blank material or sheet, a material listing no
+//! sheet, or two materials differing only in case is refused naming
+//! `sheets.allowed`.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};

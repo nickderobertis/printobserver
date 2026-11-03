@@ -438,12 +438,10 @@ shared_secret = ""
 # Which build sheets a print of each material may go down on, keyed by the
 # material of the spool on tool 0. Every start names its sheet in its
 # manifest's "sheet", and one naming none is refused whatever is overridden.
-# Left out, PLA may go on smooth PEI alone and PETG on textured PEI alone,
-# because PETG can bond to smooth PEI hard enough to tear it without glue;
-# written, this table replaces those whole. A start whose sheet the table does
-# not allow its material on, or whose material it has no entry for, is refused
-# under the same mode; an operator may start one anyway with
-# "--override-sheet-check true".
+# Left out, the defaults commented below apply; written, this table replaces
+# them whole. A start whose sheet the table does not allow its material on, or
+# whose material it has no entry for, is refused under the same mode; an
+# operator may start one anyway with "--override-sheet-check true".
 # [sheets.allowed]
 # PLA = ["smooth-pei"]
 # PETG = ["textured-pei"]
