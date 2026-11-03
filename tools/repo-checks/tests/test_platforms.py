@@ -34,7 +34,7 @@ AARCH64 = (
 )
 
 
-# The gate's two Linux cells; its macOS cell is carried by `ci.yml`'s `macos` job.
+# A matrix of the two Linux cells.
 MATRIX = """    strategy:
       fail-fast: false
       matrix:
@@ -45,10 +45,17 @@ MATRIX = """    strategy:
             runner: ubuntu-24.04-arm
 """
 
-# What follows the macOS cell in the gate's own matrix: its two Windows gates
-# are sharded, and carried by their shard jobs instead.
-WINDOWS = """          # The two Windows gates are sharded: `gate-shard-<platform>` runs
-          # each one's work and `gate-<platform>` reports its context.
+# The gate's own matrix: its `linux-x86_64` and two Windows gates are sharded,
+# and carried by their shard jobs instead, so `linux-aarch64` is its one cell.
+GATE_MATRIX = """    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+          # The `linux-x86_64` and the two Windows gates are sharded:
+          # `gate-shard-<platform>` runs each one's work and `gate-<platform>`
+          # reports its context.
 """
 
 
@@ -110,8 +117,8 @@ def test_a_matrix_cell_whose_id_is_not_a_platform_name_is_refused(
     broken = tree()
     broken.edit(
         ".github/workflows/ci.yml",
-        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
-        "          - id: [linux, x86_64]\n            runner: ubuntu-24.04\n",
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
+        "          - id: [linux, aarch64]\n            runner: ubuntu-24.04-arm\n",
     )
 
     findings = platforms(broken.repo)
@@ -238,12 +245,16 @@ def test_a_matrix_naming_an_undeclared_platform_is_refused(
 def test_a_matrix_omitting_a_declared_platform_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """Neither matrix can be narrowed independently of the list."""
+    """Neither matrix can be narrowed independently of the list.
+
+    The gate's one unsharded cell is swapped for another platform's rather than
+    deleted, so its matrix is narrowed rather than emptied.
+    """
     broken = tree()
     broken.edit(
         ".github/workflows/ci.yml",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
-        "",
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
     )
 
     findings = platforms(broken.repo)
@@ -280,7 +291,7 @@ def test_a_platform_dependent_job_that_dropped_its_matrix_is_refused(
     broken = tree()
     broken.edit(
         ".github/workflows/ci.yml",
-        MATRIX + WINDOWS + "    runs-on: ${{ matrix.platform.runner }}\n",
+        GATE_MATRIX + "    runs-on: ${{ matrix.platform.runner }}\n",
         "    runs-on: ubuntu-24.04\n",
     )
 

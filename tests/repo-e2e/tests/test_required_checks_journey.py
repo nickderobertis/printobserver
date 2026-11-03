@@ -43,16 +43,20 @@ def test_a_stale_bare_matrix_job_name_is_refused(
     failing(result, naming="but no committed workflow reports a status context by that name")
 
 
-def test_a_record_naming_only_one_of_the_gates_cells_is_refused(
+def test_a_record_naming_only_some_of_a_jobs_cells_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """A gate required on one platform is a merge path the other never blocked."""
+    """A tier required on one platform is a merge path the other never blocked.
+
+    The integration job is the one whose cells span several platforms: the
+    gate's `linux-x86_64` cell is sharded, leaving its job one cell.
+    """
     broken = gate_copy()
-    broken.edit(AGENTS, AARCH64, "")
+    broken.edit(AGENTS, "- `integration (linux-aarch64)`\n", "")
 
     result = broken.just("check-repo")
 
-    failing(result, naming="some but not all of job `gate`'s status contexts as required")
+    failing(result, naming="some but not all of job `integration`'s status contexts as required")
 
 
 def test_a_record_still_naming_the_runner_qualified_integration_contexts_is_refused(

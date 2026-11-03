@@ -372,6 +372,7 @@ what makes a job running once a decision rather than an omission.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
 - `skill-install` — what it proves is the committed skill's files as `gh skill` reads them, and those are the same files whichever host reads them; it needs GitHub CLI at the held release, which no gate cell is given.
 - `gate-windows-aarch64` — it is the aggregating job of the sharded `gate (windows-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-aarch64`, whose cells are on that platform's runner.
+- `gate-linux-x86_64` — it is the aggregating job of the sharded `gate (linux-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-linux-x86_64`, whose cells are on that platform's runner.
 - `gate-windows-x86_64` — it is the aggregating job of the sharded `gate (windows-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-x86_64`, whose cells are on that platform's runner.
 - `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
 - `gate-macos` — it is the aggregating job of the sharded `gate (macos-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-macos-aarch64`, whose cells are on that platform's runner.
@@ -1283,10 +1284,13 @@ matters is that the record spells each context the way the job actually reports
 it, because a context named here that nothing reports blocks every pull request
 forever.
 
-**The two Windows gates are sharded.** A 4-processor Windows runner cannot
-run the whole gate in 1,800 s with its tiers in turn, and running the
-end-to-end and test tiers beside each other there starves Nx's plugin workers.
-So each Windows platform's work runs in the cells of `gate-shard-<platform>`,
+**The two Windows gates and `linux-x86_64`'s are sharded.** A 4-processor
+Windows runner cannot run the whole gate in 1,800 s with its tiers in turn, and
+running the end-to-end and test tiers beside each other there starves Nx's
+plugin workers. The `linux-x86_64` runner runs them side by side and still
+passed 1,800 s whenever a change reached the whole graph: 1,980 s on run
+41558713748 and 2,006 s on the release sweep 41532109264. So each of those
+platforms' work runs in the cells of `gate-shard-<platform>`,
 reporting `gate-shard (<platform>, <k>/<n>)`, each running in turn the tiers
 `just gate-shards <n>` hands it; and `gate-<platform>` reports the required
 context, failing unless every shard in its `needs` succeeded. Three things
