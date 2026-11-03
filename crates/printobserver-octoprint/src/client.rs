@@ -79,8 +79,8 @@ use crate::http::{self, Method, Response, Sink, Tailed, Transport};
 use crate::push::Taken;
 use crate::settings::{TAIL_BYTES, Tail, filament_types_in};
 use crate::wire::{
-    ConnectionPayload, DownloadLink, FilePayload, JobPayload, ListingPayload, PrinterPayload,
-    TOOL_PREFIX,
+    ConnectionPayload, DownloadLink, DownloadPath, FilePayload, JobPayload, ListingPayload,
+    PrinterPayload, TOOL_PREFIX,
 };
 
 /// Reading the printer.
@@ -293,7 +293,7 @@ impl OctoPrintPrinter {
 
     /// The path one file's download is followed at on the configured
     /// instance.
-    fn download_of(&self, file_name: &FileName) -> Result<String, PrinterError> {
+    fn download_of(&self, file_name: &FileName) -> Result<DownloadPath, PrinterError> {
         let file = self.read_file(file_name)?;
         let link = file.download().cloned();
         // The record is held to what `file_facts` holds it to before its link
@@ -316,7 +316,7 @@ impl OctoPrintPrinter {
                 )));
             }
         };
-        Ok(followed.as_str().to_owned())
+        Ok(followed)
     }
 
     /// Stream one file's G-code through the reader, up to a byte.
@@ -325,8 +325,8 @@ impl OctoPrintPrinter {
         file_name: &FileName,
         position_bytes: i64,
     ) -> Result<ExtrudedTo, PrinterError> {
-        let path = self.download_of(file_name)?;
-        let path = path.as_str();
+        let followed = self.download_of(file_name)?;
+        let path = followed.as_str();
         let mut reader = Reader(ExtrudedTo::new(position_bytes));
         let outcome = http::stream(
             self.config.endpoint(),
@@ -361,12 +361,13 @@ impl OctoPrintPrinter {
         file_name: &FileName,
     ) -> Result<Vec<Option<String>>, PrinterError> {
         // llmlint: ignore-end[invalid_states_unrepresentable]
-        let path = self.download_of(file_name)?;
+        let followed = self.download_of(file_name)?;
+        let path = followed.as_str();
         let mut tail = TailReader(Tail::new(TAIL_BYTES));
         let answered = http::stream_tail(
             self.config.endpoint(),
             self.config.api_key(),
-            &path,
+            path,
             TAIL_BYTES,
             self.config.timeout(),
             &mut tail,
@@ -381,7 +382,7 @@ impl OctoPrintPrinter {
         })?;
         let starts_mid_line = match tailed {
             Tailed::Refused(response) => {
-                return ruled(Method::Get, &path, response).map(|_| Vec::new());
+                return ruled(Method::Get, path, response).map(|_| Vec::new());
             }
             _ if tail.0.overflowed() => {
                 return Err(malformed(format!(

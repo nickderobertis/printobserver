@@ -123,6 +123,12 @@ pub(crate) fn stream(
     Ok(None)
 }
 
+/// A request for only the last this many bytes of a body: the one header a
+/// request may carry beyond those every request carries, written as a suffix
+/// `Range` and nothing else.
+#[derive(Debug, Clone, Copy)]
+struct SuffixRange(usize);
+
 /// What a request for the last bytes of a body was answered with.
 #[derive(Debug)]
 pub(crate) enum Tailed {
@@ -154,14 +160,13 @@ pub(crate) fn stream_tail(
     timeout: Duration,
     sink: &mut dyn Sink,
 ) -> Result<Tailed, Transport> {
-    let range = format!("Range: bytes=-{tail_bytes}");
     let mut source = Source::open(
         endpoint,
         api_key,
         Method::Get,
         path,
         None,
-        Some(&range),
+        Some(SuffixRange(tail_bytes)),
         timeout,
     )?;
     let head = source.head()?;
@@ -321,11 +326,11 @@ impl<'a> Source<'a> {
         method: Method,
         path: &str,
         body: Option<&[u8]>,
-        header: Option<&str>,
+        range: Option<SuffixRange>,
         timeout: Duration,
     ) -> Result<Self, Transport> {
         let mut stream = connect(endpoint, timeout)?;
-        let request = compose(endpoint, api_key, method, path, body, header);
+        let request = compose(endpoint, api_key, method, path, body, range);
         stream
             .write_all(&request)
             .and_then(|()| stream.flush())
@@ -585,7 +590,7 @@ fn compose(
     method: Method,
     path: &str,
     body: Option<&[u8]>,
-    header: Option<&str>,
+    range: Option<SuffixRange>,
 ) -> Vec<u8> {
     let mut head = format!(
         "{} {path} HTTP/1.1\r\nHost: {}:{}\r\n{API_KEY_HEADER}: {}\r\n\
@@ -595,9 +600,8 @@ fn compose(
         endpoint.port(),
         api_key.expose(),
     );
-    if let Some(line) = header {
-        head.push_str(line);
-        head.push_str("\r\n");
+    if let Some(SuffixRange(bytes)) = range {
+        write!(head, "Range: bytes=-{bytes}\r\n").expect("a String never fails to be written to");
     }
     if let Some(payload) = body {
         write!(

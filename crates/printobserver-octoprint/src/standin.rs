@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 
+use printobserver_types::FileName;
 use serde_json::{Value, json};
 
 use crate::push::{SOCKET_ACCEPT, SOCKET_KEY};
@@ -156,7 +157,7 @@ struct Script {
     /// analysis says tool 0 feeds.
     files: Vec<HeldFile>,
     /// The file a select chose, which a start then prints.
-    selected: Option<String>,
+    selected: Option<FileName>,
     /// How many bytes of a held file's download it has written, over every
     /// download.
     download_bytes: usize,
@@ -166,7 +167,7 @@ struct Script {
 #[derive(Debug, Clone)]
 struct HeldFile {
     /// Its name.
-    name: String,
+    name: FileName,
     /// Its bytes.
     bytes: Vec<u8>,
     /// The filament its analysis says tool 0 feeds, in millimetres.
@@ -318,11 +319,16 @@ impl ScriptedOctoPrint {
     /// that link honouring a suffix `Range` as `OctoPrint`'s own file handler
     /// does, and selectable and startable as `OctoPrint` selects and starts
     /// one.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `name` is no file name the printer API accepts.
     pub fn holds_file(&self, name: &str, bytes: Vec<u8>, analysed_mm: f64) {
+        let name = FileName::new(name).expect("a held file is one the printer API can name");
         let mut held = self.held();
         held.files.retain(|file| file.name != name);
         held.files.push(HeldFile {
-            name: name.to_owned(),
+            name,
             bytes,
             analysed_mm,
         });
@@ -849,8 +855,12 @@ const DOWNLOAD_PATH: &str = "/downloads/files/local/";
 /// selecting it, or starting the one selected — and nothing for any other.
 fn held_files_answer(request: &Request, held: &mut Script, body: &Value) -> Option<(u16, String)> {
     let path = request.path.as_str();
-    let holds =
-        |held: &Script, name: &str| held.files.iter().find(|file| file.name == name).cloned();
+    let holds = |held: &Script, name: &str| {
+        held.files
+            .iter()
+            .find(|file| file.name.as_str() == name)
+            .cloned()
+    };
     match (request.method.as_str(), path.strip_prefix(LOCAL_FILES)) {
         ("GET", Some(name)) => {
             let file = holds(held, name)?;
@@ -860,14 +870,13 @@ fn held_files_answer(request: &Request, held: &mut Script, body: &Value) -> Opti
             ))
         }
         ("POST", Some(name)) if body["command"] == "select" => {
-            holds(held, name)?;
-            held.selected = Some(name.to_owned());
+            held.selected = Some(holds(held, name)?.name);
             Some((204, String::new()))
         }
         ("POST", None) if path == "/api/job" && body["command"] == "start" => {
-            let file = holds(held, held.selected.as_deref()?)?;
+            let file = holds(held, held.selected.as_ref()?.as_str())?;
             let size = i64::try_from(file.bytes.len()).unwrap_or(i64::MAX);
-            held.job = JobScript::printing(&file.name, size, 0, 0);
+            held.job = JobScript::printing(file.name.as_str(), size, 0, 0);
             "Printing".clone_into(&mut held.connection);
             held.job_commands.push("start".to_owned());
             Some((204, String::new()))
@@ -881,7 +890,7 @@ fn held_files_answer(request: &Request, held: &mut Script, body: &Value) -> Opti
 /// reached it by, as `OctoPrint` spells it.
 fn held_file_body(file: &HeldFile, host: Option<&str>) -> Value {
     json!({
-        "name": file.name,
+        "name": file.name.as_str(),
         "origin": "local",
         "type": "machinecode",
         "size": file.bytes.len(),
@@ -906,7 +915,7 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
     let Some(file) = lock(script)
         .files
         .iter()
-        .find(|file| file.name == asked)
+        .find(|file| file.name.as_str() == asked)
         .cloned()
     else {
         let _ = connection
