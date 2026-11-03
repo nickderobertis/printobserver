@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 import tomllib
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -29,6 +30,10 @@ TOOL_PACKAGES = os.pathsep.join(
     str(REPO_ROOT / "tools" / name / "src")
     for name in ("repo-checks", "contract-codegen", "release-artifacts")
 )
+
+#: Git for Windows carries a git-lfs of its own, which git reaches through its
+#: own directories whatever PATH says, so no Windows host is one without it.
+GIT_CARRIES_GIT_LFS = sys.platform == "win32"
 
 
 def held_release() -> str:
@@ -52,15 +57,15 @@ def test_bootstrap_installs_the_held_git_lfs_per_user_and_configures_the_clone(
     """The held release ends up in the user's own bin, and a clone's filter in its local config.
 
     Before it, the clone's filter cannot be configured and the hook step says
-    what to run; after it, the same step configures it.
+    what to run; after it, the same step configures it. On Windows, where git
+    carries a git-lfs of its own, there is no "before" to observe, so only the
+    install and what it configures are.
     """
     home = tmp_path / "home"
     home.mkdir()
     user_bin = home / ".local" / "bin"
     uv_cache = run(["uv", "cache", "dir"], check=True).stdout.strip()
-    path = os.pathsep.join(
-        [str(user_bin), path_without("git-lfs", ("just", "uv", "git"), tmp_path / "shims")]
-    )
+    path = os.pathsep.join([str(user_bin), path_without("git-lfs", tmp_path / "shims")])
     environment = {
         **os.environ,
         "HOME": str(home),
@@ -76,10 +81,11 @@ def test_bootstrap_installs_the_held_git_lfs_per_user_and_configures_the_clone(
     # step says so and what to run, rather than leaving a clone that commits raw
     # frames.
     clone = init_repository(tmp_path / "clone", env=environment)
-    refused = install_hooks(clone, environment)
-    equal(refused.returncode, 1, describing=f"install-hooks with no git-lfs:\n{refused.stderr}")
-    contains(refused.stderr, "`git lfs install --local` failed")
-    contains(refused.stderr, "Run `just install-tools git-lfs`, then `just bootstrap` again.")
+    if not GIT_CARRIES_GIT_LFS:
+        refused = install_hooks(clone, environment)
+        equal(refused.returncode, 1, describing=f"install-hooks with no git-lfs:\n{refused.stderr}")
+        contains(refused.stderr, "`git lfs install --local` failed")
+        contains(refused.stderr, "Run `just install-tools git-lfs`, then `just bootstrap` again.")
 
     installed = run(
         ["just", "install-tools", "git-lfs"], cwd=REPO_ROOT, env=environment, check=False

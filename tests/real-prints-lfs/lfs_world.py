@@ -38,28 +38,31 @@ def git_lfs_or_fail() -> str:
     return found
 
 
-def path_without(program: str, needed: tuple[str, ...], shims: Path) -> str:
-    """A PATH finding every program in `needed` and no `program`.
+def path_without(program: str, shims: Path) -> str:
+    """The caller's PATH, every directory of it kept, on which no `program` is found.
 
-    A needed program whose directory also holds `program` — `/usr/bin` carries
-    both git and git-lfs on many hosts — is reached through a link in `shims`
-    instead of through its directory.
+    A directory that also holds `program` — `/usr/bin` carries git, bash and
+    git-lfs together on many hosts — is reached through a directory of links
+    to its every other entry instead, so a step finds every tool it would have
+    found but that one.
     """
-    shims.mkdir(parents=True, exist_ok=True)
-    directories: list[str] = [str(shims)]
-    for name in needed:
-        found = shutil.which(name)
-        if found is None:
-            msg = f"{name} is not on PATH"
-            raise AssertionError(msg)
-        directory = Path(found).parent
-        if shutil.which(program, path=str(directory)) is None:
-            if str(directory) not in directories:
-                directories.append(str(directory))
+    names = {program, f"{program}.exe"}
+    directories: list[str] = []
+    for index, entry in enumerate(filter(None, os.environ.get("PATH", "").split(os.pathsep))):
+        directory = Path(entry)
+        if not any((directory / name).is_file() for name in names):
+            directories.append(entry)
             continue
-        link = shims / Path(found).name
-        if not link.exists():
-            link.symlink_to(found)
+        linked = shims / str(index)
+        linked.mkdir(parents=True, exist_ok=True)
+        for item in directory.iterdir():
+            if item.name not in names and not (linked / item.name).exists():
+                (linked / item.name).symlink_to(item)
+        directories.append(str(linked))
+    found = shutil.which(program, path=os.pathsep.join(directories))
+    if found is not None:
+        msg = f"{program} is still found at {found}"
+        raise AssertionError(msg)
     return os.pathsep.join(directories)
 
 

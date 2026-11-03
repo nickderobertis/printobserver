@@ -352,12 +352,16 @@ def test_the_cache_key_moves_with_an_object_and_not_with_a_plain_file(host: Host
     truth(key_of(host, clone) != first, describing="a new key after one object changed")
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Git for Windows carries a git-lfs of its own, which git reaches whatever PATH says",
+)
 def test_a_push_without_git_lfs_is_refused_naming_bootstrap(host: Host, tmp_path: Path) -> None:
     """The committed `pre-push` refuses a push that would publish pointers without objects."""
     clone = host.clone("pusher")
     host.git("commit", "-q", "--allow-empty", "-m", "anything", cwd=clone)
     host.git("config", "core.hooksPath", (JUSTFILE.parent / ".githooks").as_posix(), cwd=clone)
-    bare = path_without("git-lfs", ("git", "sh"), tmp_path / "shims")
+    bare = path_without("git-lfs", tmp_path / "shims")
     refused = run(
         ["git", "push", "origin", "HEAD:refs/heads/refused"],
         cwd=clone,
@@ -423,7 +427,7 @@ def test_the_cache_key_recipe_refuses_rather_than_printing_a_key_it_could_not_re
     """Without git-lfs, or with no case pointer at `HEAD`, it names why and prints no key."""
     clone = host.clone("unkeyable")
     environment = {**host.env, "JUST_JUSTFILE": str(JUSTFILE), "JUST_WORKING_DIRECTORY": str(clone)}
-    bare = path_without("git-lfs", ("just", "bash", "git", "cut", "sort"), tmp_path / "shims")
+    bare = path_without("git-lfs", tmp_path / "shims")
     without = run(["just", "real-prints-cache-key"], cwd=clone, env={**environment, "PATH": bare})
     truth(without.returncode != 0, describing=f"a refusal without git-lfs, not {without.stdout!r}")
     equal(without.stdout, "", describing="a key printed without git-lfs")
