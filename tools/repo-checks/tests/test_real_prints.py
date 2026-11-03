@@ -7,18 +7,31 @@ copy of it broken in exactly one way, and reads what it printed.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
 from closures import closure
 from repo_checks.__main__ import main
+from repo_checks.checks_real_prints import (
+    POINTER_VERSION,
+    committed_pointers,
+    lfs_filtered,
+    lfs_tracked,
+    pointer,
+)
 from repo_checks.expect import equal, truth
-from treecopy import REPO_ROOT, Tree
+from repo_checks.fixture_repository import init_repository
+from repo_checks.model import Repo
+from repo_checks.shell import run
+from treecopy import REPO_ROOT, Tree, tracked_files
 
 #: The files the checks this module drives read; see `closures`.
 CLOSURE = closure(
+    "real-prints-lfs",
     "real-prints-schema",
     "real-prints-files",
     "real-prints-images",
@@ -28,6 +41,7 @@ CLOSURE = closure(
 )
 
 CHECKS = (
+    "real-prints-lfs",
     "real-prints-schema",
     "real-prints-files",
     "real-prints-images",
@@ -123,7 +137,10 @@ def test_a_case_without_assertions_is_refused(check: Run, tree: Callable[[], Tre
     refused_with(check("real-prints-schema", copy), "fan-cut-bridge", "'assertions' is a required")
     # Every other check reading the cases names the one it could not read,
     # rather than passing it.
-    for name in CHECKS[1:-1]:
+    # The schema check is the one refusing it above; the LFS and service-config
+    # checks read no case.
+    unread = {"real-prints-schema", "real-prints-lfs", "real-prints-service-config"}
+    for name in (name for name in CHECKS if name not in unread):
         refused_with(check(name, copy), "fan-cut-bridge", "unreadable", name)
 
 
@@ -539,3 +556,191 @@ def test_a_service_config_that_does_not_parse_is_refused(
     copy = tree()
     copy.append(CONFIG, "[safety\n")
     refused_with(check("real-prints-service-config", copy), "service-config.toml", "does not parse")
+
+
+#: A frame of a real case, and the plain copy of its exact bytes a crate keeps,
+#: which every host carries whether or not it fetched the cases.
+STALL_FRAME = f"{ROOT}/filament-stall-air-print/01-last-frame-extruding-p76.jpg"
+STALL_FRAME_BYTES = REPO_ROOT / "crates/printobserver-server/tests/fixtures/recorded-frame.jpg"
+
+
+def pointer_to(data: bytes) -> bytes:
+    """The Git LFS pointer git-lfs writes for `data`."""
+    oid = hashlib.sha256(data).hexdigest()
+    return f"{POINTER_VERSION}\noid sha256:{oid}\nsize {len(data)}\n".encode()
+
+
+def as_pointers(copy: Tree) -> None:
+    """Every LFS-tracked case file of a copy as its pointer, whether or not the host fetched it."""
+    for path in (copy.root / ROOT).rglob("*"):
+        if path.suffix in {".gcode", ".jpg", ".jpeg", ".png"}:
+            data = path.read_bytes()
+            if pointer(data) is None:
+                path.write_bytes(pointer_to(data))
+
+
+def committed(copy: Tree) -> Path:
+    """Commit a copy exactly as its files are, with no LFS filter, and answer its root.
+
+    The filter is switched off for the commit, so what lands in the index is the
+    bytes on disk — which is what a host without git-lfs commits.
+    """
+    root = init_repository(copy.root)
+    unfiltered = [
+        "-c",
+        "filter.lfs.clean=",
+        "-c",
+        "filter.lfs.process=",
+        "-c",
+        "filter.lfs.required=false",
+    ]
+    run(["git", *unfiltered, "add", "-A"], cwd=root, check=True)
+    run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "cases"],
+        cwd=root,
+        check=True,
+    )
+    return root
+
+
+def test_the_cases_committed_as_pointers_pass(check: Run, tree: Callable[[], Tree]) -> None:
+    """A clone's own commit of the cases: every frame and G-code a pointer, nothing refused."""
+    copy = tree()
+    as_pointers(copy)
+    committed(copy)
+    equal(check("real-prints-lfs", copy), (0, ""))
+    equal(check("real-prints-images", copy), (0, ""), describing="pictures read by their oid")
+
+
+def test_a_frame_committed_as_raw_bytes_is_refused_by_name(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """A host without git-lfs commits a frame's raw bytes, and the check names that frame."""
+    copy = tree()
+    as_pointers(copy)
+    (copy.root / STALL_FRAME).write_bytes(STALL_FRAME_BYTES.read_bytes())
+    committed(copy)
+    code, err = check("real-prints-lfs", copy)
+    refused_with((code, err), STALL_FRAME, "raw bytes, not as a Git LFS pointer")
+    equal(len(err.splitlines()), 1, describing=f"one finding, for the one raw frame:\n{err}")
+
+
+def test_what_is_read_is_the_index_not_the_fetched_working_tree(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """A fetched checkout carries real bytes over committed pointers, and passes."""
+    copy = tree()
+    as_pointers(copy)
+    committed(copy)
+    (copy.root / STALL_FRAME).write_bytes(STALL_FRAME_BYTES.read_bytes())
+    equal(check("real-prints-lfs", copy), (0, ""))
+
+
+def test_the_pointers_a_clone_carries_are_read_from_the_index(tree: Callable[[], Tree]) -> None:
+    """A fetched frame answers its committed pointer; raw bytes or a plain file, none."""
+    copy = tree()
+    as_pointers(copy)
+    raw = f"{ROOT}/fan-cut-bridge/01-raw.jpg"
+    (copy.root / raw).parent.mkdir(parents=True, exist_ok=True)
+    (copy.root / raw).write_bytes(STALL_FRAME_BYTES.read_bytes())
+    tiny = f"{ROOT}/fan-cut-bridge/02-tiny.png"
+    (copy.root / tiny).write_bytes(b"small enough to be a pointer, and none\n")
+    plain = f"{ROOT}/README.md"
+    committed(copy)
+    frame = STALL_FRAME_BYTES.read_bytes()
+    (copy.root / STALL_FRAME).write_bytes(frame)
+
+    answered = committed_pointers(Repo(copy.root), [STALL_FRAME, raw, tiny, plain])
+
+    equal(answered, {STALL_FRAME: pointer_to(frame)}, describing="the pointers the index holds")
+    equal(
+        committed_pointers(Repo(copy.root / ROOT), [STALL_FRAME]),
+        {},
+        describing="a directory inside a work tree, which is no work tree of its own",
+    )
+
+
+def test_a_copy_that_is_no_repository_is_read_as_its_files(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """With no index to read, the files a copy carries are what is held."""
+    copy = tree()
+    as_pointers(copy)
+    equal(check("real-prints-lfs", copy), (0, ""))
+    (copy.root / STALL_FRAME).write_bytes(STALL_FRAME_BYTES.read_bytes())
+    refused_with(check("real-prints-lfs", copy), STALL_FRAME)
+
+
+def test_attributes_handing_nothing_to_lfs_are_refused(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """Dropping the patterns is not a way to commit the cases' bytes unchecked."""
+    copy = tree()
+    copy.write(".gitattributes", "* text=auto eol=lf\n")
+    refused_with(check("real-prints-lfs", copy), ".gitattributes hands no file")
+
+
+def test_a_pointer_naming_another_picture_is_refused(check: Run, tree: Callable[[], Tree]) -> None:
+    """An agent image's pointer is the picture its oid names, held to its event's sha256."""
+    copy = tree()
+    as_pointers(copy)
+    image = copy.root / SLAB / "agent-alert-2-paused-1545.jpg"
+    image.write_bytes(pointer_to(b"another picture"))
+    refused_with(
+        check("real-prints-images", copy),
+        "agent-alert-2-paused-1545.jpg",
+        hashlib.sha256(b"another picture").hexdigest(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("data", "why"),
+    [
+        (
+            b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 3",
+            "no final newline",
+        ),
+        (
+            b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"A" * 64 + b"\nsize 3\n",
+            "an upper-case oid",
+        ),
+        (
+            b"version https://git-lfs.github.com/spec/v1\nsize 3\noid sha256:" + b"a" * 64 + b"\n",
+            "lines out of order",
+        ),
+        (
+            b"version https://example.com/v1\noid sha256:" + b"a" * 64 + b"\nsize 3\n",
+            "another version",
+        ),
+        (b"\xff\xd8\xff\xe0 a jpeg", "raw bytes"),
+        (pointer_to(b"x") + b"x" * 1024, "longer than a pointer can be"),
+    ],
+)
+def test_bytes_that_are_no_pointer_are_not_read_as_one(data: bytes, why: str) -> None:
+    """Only the three lines the specification orders are a pointer."""
+    equal(pointer(data), None, describing=why)
+
+
+#: Paths no commit carries, each a near miss of the tracked patterns, or deep in them.
+NEAR_MISSES = (
+    "tests/real-prints/case/deeper/still/frame.png",
+    "tests/real-prints/frame.jpeg",
+    "tests/real-printsx/case/frame.jpg",
+    "elsewhere/tests/real-prints/case/frame.jpg",
+    "tests/real-prints/case/frame.jpg.txt",
+    "tests/real-prints/case/print.gcode.bak",
+    "frame.jpg",
+)
+
+
+def test_the_reading_without_git_agrees_with_git_over_every_path() -> None:
+    """Where git cannot be asked, `.gitattributes` is read as git reads it.
+
+    Git's own answer, `git check-attr`, over every file the committed tree
+    carries and a few near misses, is held against the patterns read without it.
+    """
+    repo = Repo(REPO_ROOT)
+    names = [*tracked_files(REPO_ROOT), *NEAR_MISSES]
+    git_says = lfs_filtered(repo, names)
+    equal([name for name in names if lfs_tracked(repo, name)], git_says)
+    truth(len(git_says) >= 77, describing=f"git to hand the cases to LFS, not only {git_says}")

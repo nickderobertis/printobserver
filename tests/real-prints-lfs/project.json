@@ -1,0 +1,25 @@
+{
+  "name": "real-prints-lfs",
+  "root": "tests/real-prints-lfs",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "implicitDependencies": ["repo-checks"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tests/real-prints-lfs" },
+    "format-check": { "command": "uv run -q ruff format --check tests/real-prints-lfs" },
+    "lint": { "command": "uv run -q ruff check tests/real-prints-lfs" },
+    "typecheck": {
+      "command": "uv run -q ty check --extra-search-path tests/real-prints-lfs tests/real-prints-lfs && uv run -q ty check --python-platform win32 --extra-search-path tests/real-prints-lfs tests/real-prints-lfs"
+    },
+    "test": {
+      "metadata": { "description": "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reason." },
+      "command": "uv run -q pytest tests/real-prints-lfs",
+      "outputs": ["{projectRoot}/telemetry"]
+    },
+    "budgets": {
+      "command": "bunx onebudgetspec check tests/real-prints-lfs/budgets.yaml",
+      "dependsOn": ["test"],
+      "cache": false
+    }
+  }
+}

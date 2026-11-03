@@ -58,6 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           # The classifier diffs the pull request against its merge base and
           # reads release-plz.toml off the base, neither of which a shallow
           # checkout carries.
@@ -111,6 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           # The affected tier, the end-to-end tier and the suppression check all
           # diff against the base branch, which a shallow checkout omits.
           fetch-depth: 0
@@ -286,6 +288,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           # The affected tier, the end-to-end tier and the suppression check all
           # diff against the base branch, which a shallow checkout omits.
           fetch-depth: 0
@@ -331,6 +334,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - run: just shard-verdict gate windows-aarch64
@@ -382,6 +387,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           # The affected tier, the end-to-end tier and the suppression check all
           # diff against the base branch, which a shallow checkout omits.
           fetch-depth: 0
@@ -427,6 +433,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - run: just shard-verdict gate windows-x86_64
@@ -480,6 +488,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: taiki-e/install-action@v2
         with:
@@ -565,6 +575,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           fetch-depth: 0
       - uses: nrwl/nx-set-shas@v4
       # A cache per shard: the first compiles the debug program the end-to-end
@@ -601,6 +612,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - run: just shard-verdict gate macos-aarch64
@@ -632,6 +645,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: taiki-e/install-action@v2
         with:
@@ -676,6 +691,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           fetch-depth: 0
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
@@ -698,6 +714,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - uses: oven-sh/setup-bun@v2
@@ -720,6 +738,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
@@ -743,6 +763,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - run: just check-pr-title

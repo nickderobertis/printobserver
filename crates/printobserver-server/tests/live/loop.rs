@@ -59,8 +59,8 @@ const DURATION_S: i64 = 600;
 fn snapshot_bytes() -> Vec<u8> {
     // A recorded frame of a real print: a camera frame is judged before it is
     // kept, and bytes that are no picture are refused as the camera degraded.
-    let frame = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/real-prints/filament-stall-air-print/01-last-frame-extruding-p76.jpg");
+    let frame =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/recorded-frame.jpg");
     std::fs::read(&frame).expect("the recorded frame reads")
 }
 

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Hand a push to Git LFS, which uploads the object of every pointer it carries.
+#
+# The real-print cases' G-code and frames are Git LFS objects. A push made
+# without git-lfs would publish pointers whose objects the remote never
+# received, and every later fetch of them would fail, so it is refused instead.
+# `just bootstrap` installs git-lfs. The three `post-*` hooks beside this one
+# are git-lfs's own, committed so that its filter, which writes any it finds
+# missing, leaves this directory as it is.
+command -v git-lfs >/dev/null 2>&1 || {
+    printf >&2 '\n%s\n\n' "This repository keeps the real-print cases in Git LFS, and git-lfs is not on PATH, so this push would publish pointers whose objects the remote never received. Run 'just bootstrap', which installs git-lfs, and push again."
+    exit 2
+}
+exec git lfs pre-push "$@"

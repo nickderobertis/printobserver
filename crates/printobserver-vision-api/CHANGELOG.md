@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/nickderobertis/printobserver/compare/v0.10.5...v0.11.1) - 2026-11-03
+
+### Added
+
+- *(look)* frames with no print, camera 5xx retries, frames on checks ([#316](https://github.com/nickderobertis/printobserver/pull/316))
+
+## [0.11.0](https://github.com/nickderobertis/printobserver/compare/v0.10.5...v0.11.0) - 2026-11-03
+
+### Added
+
+- *(look)* frames with no print, camera 5xx retries, frames on checks ([#316](https://github.com/nickderobertis/printobserver/pull/316))
+
 ## [0.9.0](https://github.com/nickderobertis/printobserver/compare/v0.8.1...v0.9.0) - 2026-10-27
 
 ### Added

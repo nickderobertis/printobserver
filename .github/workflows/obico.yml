@@ -41,6 +41,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - run: just obico-up

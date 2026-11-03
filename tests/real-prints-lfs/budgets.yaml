@@ -1,0 +1,110 @@
+# The real-print cases' Git LFS downloads. Every command runs from the
+# repository root (`uv run --directory ../..`), which is what the paths in it
+# name, under the `PYTHONPATH` the justfile exports: `just test` checks these
+# after this project's own test target has recorded the telemetry two of them
+# read.
+schema_version: 1
+budgets:
+  - id: lfs-bytes-per-ci-run-cache-hit
+    description: >-
+      LFS bytes a CI suite run downloads on a cache hit. Bytes the LFS remote
+      serves to one CI run of the real-print suite whose Actions cache holds the
+      key of the current cases. Detail: objects served and the fixture's object
+      bytes. Design: a hit restores every object the key names, so nothing is
+      fetched; 0 at any scale, which the small fixture measures exactly. Read
+      from the telemetry `test_lfs_fixture.py` records by running the committed
+      CI steps over the cache an earlier run of them saved. Workload: one CI run
+      of the suite with its cache restored under the current key, over the
+      real-print set of about 140.4 MB; about 2 to 4 suite runs a month, about
+      20 to 25 while the cases land.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/real-prints-lfs/telemetry/lfs.json
+      - ci_cache_hit_bytes
+    unit: bytes
+    direction: max
+    threshold: 0
+    timeout_seconds: 60
+  - id: lfs-bytes-per-ci-run-cache-miss
+    description: >-
+      LFS bytes a CI suite run downloads on a cache miss: the size of every
+      distinct LFS object tracked under `tests/real-prints/`, summed from the
+      pointers (`git lfs ls-files --long`, downloading nothing), in megabytes of
+      10^6 bytes. Detail: bytes per case and the object count. Arithmetic over
+      the cases' sizes; the small fixture shows a miss downloads exactly the
+      objects' bytes. Workload: as the LFS move lands, the existing 8 cases' 77
+      frames and G-code files; the 8 exported cases later bring the set to about
+      140.4 MB, which the same threshold holds with about 14% to spare. A CI run
+      misses its cache after the cases change or 7 days unused.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - tests/real-prints-lfs/lfs_set.py
+      - miss-mb
+    unit: megabytes
+    direction: max
+    threshold: 160
+    timeout_seconds: 60
+  - id: lfs-bytes-per-new-checkout
+    description: >-
+      LFS bytes a new clone or worktree downloads. Bytes the LFS remote serves
+      to a fresh clone of printobserver and to a new worktree of it before the
+      suite fetches anything. Detail: bytes for the clone and for the worktree.
+      Design: `.lfsconfig`'s `fetchexclude` covers every tracked file, so
+      checkout leaves pointers; 0 at any scale, which the small fixture measures
+      exactly. Read from the telemetry `test_lfs_fixture.py` records. Workload:
+      a new clone or worktree on any host — an operator's, CI's, or a run clone
+      or pool slot — many a day, over the real-print set of about 140.4 MB.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/real-prints-lfs/telemetry/lfs.json
+      - new_checkout_bytes
+    unit: bytes
+    direction: max
+    threshold: 0
+    timeout_seconds: 60
+  - id: lfs-bandwidth-gib-per-month
+    description: >-
+      LFS bandwidth the cases spend a month, against the account's 10 GiB of
+      monthly LFS bandwidth: the set's size, summed from the pointers, times 20
+      full fetches — 4 CI cache misses and 16 host fetches, the landing month
+      with no store shared across clones — in GiB. Detail: the set's size, the
+      fetch counts and a typical month of 4 CI misses and 2 host fetches.
+      Arithmetic: about 140.4 MB is 0.131 GiB a full fetch, and 20 of them about
+      2.6 GiB; a store shared across a host's clones cuts its host fetches to
+      about one. Workload: as the LFS move lands, the existing 8 cases; the 8
+      exported cases later bring the set to about 140.4 MB, which the same
+      threshold holds over the landing month.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - tests/real-prints-lfs/lfs_set.py
+      - monthly-gib
+    unit: gibibytes
+    direction: max
+    threshold: 3.0
+    timeout_seconds: 60

@@ -82,6 +82,7 @@ CHECKS: dict[str, Check] = {
     "smoke-payload": checks_smoke.smoke_payload,
     "smoke-selection": checks_smoke.smoke_selection,
     "real-prints-schema": checks_real_prints.real_prints_schema,
+    "real-prints-lfs": checks_real_prints.real_prints_lfs,
     "real-prints-files": checks_real_prints.real_prints_files,
     "real-prints-images": checks_real_prints.real_prints_images,
     "real-prints-scenarios": checks_real_prints.real_prints_scenarios,
@@ -116,6 +117,9 @@ CHECKS: dict[str, Check] = {
 # `workflows` is run by `just lint-workflows` rather than by `just check-repo`,
 # so that the workflow tier fails on its own findings rather than inside the
 # repository-check tier.
-WORKFLOW_CHECKS: dict[str, Check] = {"workflows": checks_ci.workflow_policy}
+WORKFLOW_CHECKS: dict[str, Check] = {
+    "workflows": checks_ci.workflow_policy,
+    "real-prints-lfs-ci": checks_real_prints.real_prints_lfs_ci,
+}
 
 ALL: dict[str, Check] = {**CHECKS, **WORKFLOW_CHECKS}

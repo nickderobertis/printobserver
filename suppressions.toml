@@ -243,6 +243,42 @@ site = "arguments: &[\"login\", \"--device-auth\"],"
 reason = "Codex's login command is a third-party CLI surface with no machine-readable source. OneHarness's registry declares each harness's program, which this crate's tests hold `program` to, but not its sign-in; this invocation is read from `codex login --help` (the device-code form, which completes on a machine with no browser) as the task fixing the table requires. A drift check in the gate would have to install and run the paid provider's own CLI, and a changed invocation surfaces as that CLI's own usage error on the operator's terminal the first time they sign in."
 
 [[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "- **Only the suite fetches them.**"
+reason = "The task that moved the real-print cases into Git LFS states, as an acceptance criterion, that `AGENTS.md` states how the suite and CI fetch them. This bullet is that statement, cut to one sentence over three rounds of this rule's findings. It names the two entry points, `just real-prints-fetch` for the suite and `tests/real-prints-lfs/ci-steps.yml` for CI, without restating their steps, and it carries the judgment the recipes cannot: never make a gate test read a case's bytes."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "- **git-lfs is part of the toolchain:**"
+reason = "The same task's criterion requires `AGENTS.md` to name the git-lfs release `just bootstrap` installs, and `tests/real-prints-lfs/test_bootstrap_git_lfs.py`'s `test_the_docs_name_the_release_the_bootstrap_installs` holds the named release to the one `repo-policy.toml` holds, so this copy cannot drift. The bullet also carries the rule the toolchain alone cannot state: never add a frame or a G-code on a host without git-lfs."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "- **Only the suite fetches them.**"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "- **git-lfs is part of the toolchain:**"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "- **Only the suite fetches them.**"
+reason = "The task that moved the real-print cases into Git LFS states, as an acceptance criterion, that the root `AGENTS.md` states how the suite and CI fetch them, so this bullet cannot move to a nested file. It is held to one sentence naming the two entry points, plus the repository-wide rule that no gate test reads a case's bytes. Every rule of the proof project itself is in `tests/real-prints-lfs/AGENTS.md`, which this section points to."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "- **Only the suite fetches them.**"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
 site = "The sign-in command exists because"
@@ -359,6 +395,12 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/repo-checks/src/repo_checks/verified_download.py"
 site = "llmlint: ignore[async_typed_clients_at_boundaries]"
 reason = "The downloads `just install-tools` makes, run by one blocking command in one CI step: a release's checksums file and then the archive it vouches for, strictly in that order, because the second is not trusted until the first has been read. There is nothing to overlap and no typed client for a release asset, which is bytes; an async client would put an event loop under a two-request installer whose whole contract is one exit status. The boundary this rule is about is the product's, and the product makes no such request."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/repo-checks/src/repo_checks/git_lfs_release.py"
+site = "llmlint: ignore[async_typed_clients_at_boundaries]"
+reason = "The two downloads `just install-tools git-lfs` makes, through the same synchronous helpers in `verified_download` that the gh, release program and PowerShell installers use: the release's `sha256sums.asc`, then the archive it vouches for, strictly in that order, because the archive is not trusted until the checksums are read. There is nothing to overlap and no typed client for a release asset, which is bytes; an async client would put an event loop under a two-request installer whose whole contract is one exit status. The boundary this rule is about is the product's, and the product makes no such request."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -1873,6 +1915,12 @@ rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_tag_journey.py"
 site = "def __init__(self, gate_copy: CopiesTheTree, tags: tuple[str, ...] = ()) -> None:"
 reason = "The same ground the entry for this rule at `def released` in this file states: this repository's end-to-end tier is one project by design, and no per-project end-to-end target exists for a narrower edge to hang from. Wiring the copy to the stand-in registry adds nothing to that journey's cost; it composes the registry tables onto the copy's own build contract so the publishes the journey drives build under it, which is the cheaper build."
+
+[[suppression]]
+rule = "external_service_suite_stays_out_of_the_affected_tier"
+file = "tests/real-prints-lfs/project.json"
+site = "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier]"
+reason = "The one external reach in this target is `test_bootstrap_git_lfs.py` downloading the git-lfs release `repo-policy.toml` holds from github.com, which is the bootstrap step itself, and the task this project was built for requires that real step be the thing tested. It is the same download, from the same forge, that `just bootstrap` makes on every gate cell that has no git-lfs, and the gate's own bootstrap journey in `tests/repo-e2e` already makes all of bootstrap's downloads inside the affected tier. It is one fetch of about 5 MB, verified against the release's own checksums. It is not a service whose behaviour the suite depends on. A loopback stand-in could serve no real git-lfs binary to report the held release, which is the claim being proven. The fixture journeys beside it reach nothing outside the host: their LFS remote is a local directory at a file URL."
 
 [[suppression]]
 rule = "external_service_suite_stays_out_of_the_affected_tier"

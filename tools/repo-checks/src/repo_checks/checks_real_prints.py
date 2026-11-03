@@ -8,6 +8,10 @@ names a file it does not carry, an event its history does not hold, or a
 command printobserver does not have is a test that asserts nothing true.
 
 Every check here reads files and nothing else: no model, network or printer.
+The frames and G-code are Git LFS objects, so what a checkout carries for each
+is a pointer until `just real-prints-fetch` downloads it: `real-prints-lfs`
+holds every such file to being committed as one, and `real-prints-images` reads
+a pointer's own object id as the sha256 of the picture it stands for.
 Each file is validated against the contract that declares it before anything
 is read out of it — a `case.json` against `case.schema.json`, a history against
 the server's own `HistoryAnswer` — and then read into the typed records below.
@@ -20,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tomllib
 from collections.abc import Iterator
@@ -27,12 +32,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NewType
 
+import yaml
 from contract_codegen.schemas import ContractError, load, read_schemas
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from jsonschema.protocols import Validator
 
 from repo_checks.model import Repo
+from repo_checks.parsing import Recipe, jobs_of, load_workflow, recipes, run_commands, steps_of
+from repo_checks.shell import discovered_no_higher_than, run
 
 ROOT = "tests/real-prints"
 SCHEMA = f"{ROOT}/case.schema.json"
@@ -58,6 +66,22 @@ FILE_TOKEN = re.compile(
 SECRET_FIELD = re.compile(r"(?:key|secret|token|credential|password)$")
 REDACTED = "<redacted>"
 
+#: Where the patterns Git LFS tracks are declared.
+ATTRIBUTES = ".gitattributes"
+#: The first line of every Git LFS pointer, and the most bytes one can hold.
+POINTER_VERSION = "version https://git-lfs.github.com/spec/v1"
+POINTER_LIMIT = 1024
+POINTER_OID = re.compile(r"oid sha256:(?P<oid>[0-9a-f]{64})")
+POINTER_SIZE = re.compile(r"size (?P<size>0|[1-9][0-9]*)")
+
+#: The one list of steps a continuous-integration job fetches the cases with.
+CI_STEPS = "tests/real-prints-lfs/ci-steps.yml"
+#: The programs a command reaches the cases' LFS objects through; a recipe
+#: reaches them when its body, or a recipe it calls, names one of these.
+LFS_PROGRAMS = ("git lfs", "git-lfs")
+#: A recipe a command line calls.
+JUST_CALL = re.compile(r"\bjust (?P<recipe>[a-z][\w-]*)")
+
 # An event's id in a case's history, and a scenario's id within its case.
 EventId = NewType("EventId", str)
 ScenarioId = NewType("ScenarioId", str)
@@ -82,6 +106,219 @@ def _valid_schema(schema: object, named: str) -> dict[str, Any]:
         msg = f"{named} is not a valid JSON Schema: {error.message}"
         raise UnreadableContractError(msg) from error
     return schema
+
+
+#: A Git LFS object id: the sha256 of the file a pointer stands for.
+Oid = NewType("Oid", str)
+
+
+@dataclass(frozen=True, slots=True)
+class Pointer:
+    """What a Git LFS pointer says of the object it stands for."""
+
+    #: The object's sha256, which is the sha256 of the file it stands for.
+    oid: Oid
+    #: The object's size in bytes.
+    size: int
+
+
+def pointer(data: bytes) -> Pointer | None:
+    """The Git LFS pointer `data` is, or none when it is any other bytes.
+
+    A pointer is the three lines the specification orders — `version`, `oid`
+    and `size` — each ending in a newline, and never more than
+    `POINTER_LIMIT` bytes.
+    """
+    if len(data) > POINTER_LIMIT or not data.endswith(b"\n"):
+        return None
+    try:
+        lines = data.decode("ascii").split("\n")[:-1]
+    except UnicodeDecodeError:
+        return None
+    if len(lines) != 3 or lines[0] != POINTER_VERSION:
+        return None
+    oid = POINTER_OID.fullmatch(lines[1])
+    size = POINTER_SIZE.fullmatch(lines[2])
+    if oid is None or size is None:
+        return None
+    return Pointer(Oid(oid["oid"]), int(size["size"]))
+
+
+def lfs_patterns(repo: Repo) -> tuple[str, ...]:
+    """The patterns `.gitattributes` hands to the Git LFS filter, in its order."""
+    path = repo.root / ATTRIBUTES
+    if not path.is_file():
+        return ()
+    patterns: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if fields and not fields[0].startswith("#") and "filter=lfs" in fields[1:]:
+            patterns.append(fields[0])
+    return tuple(patterns)
+
+
+def _pattern(pattern: str) -> re.Pattern[str]:
+    """A gitattributes pattern as a regular expression over a tree-relative path.
+
+    A pattern carrying a slash is anchored at the root, `**/` matches any
+    number of directories and `*` and `?` stay inside one; one carrying none
+    matches a file's name in any directory. This is the reading for a tree that
+    is no git work tree, where git cannot be asked; `test_real_prints.py`
+    reconciles it with git's own over every file the committed tree carries.
+    """
+    anchored = "/" in pattern.rstrip("/")
+    body = pattern.lstrip("/")
+    translated = ""
+    index = 0
+    while index < len(body):
+        if body.startswith("**/", index):
+            translated += "(?:[^/]+/)*"
+            index += 3
+            continue
+        match body[index]:
+            case "*":
+                translated += "[^/]*"
+            case "?":
+                translated += "[^/]"
+            case literal:
+                translated += re.escape(literal)
+        index += 1
+    return re.compile(translated if anchored else f"(?:.*/)?{translated}")
+
+
+def lfs_tracked(repo: Repo, relative: str) -> bool:
+    """Whether `.gitattributes` hands `relative` to the Git LFS filter, read without git."""
+    return any(_pattern(pattern).fullmatch(relative) for pattern in lfs_patterns(repo))
+
+
+def _work_tree(repo: Repo) -> dict[str, str] | None:
+    """The environment git reads `repo` under, or none when it is no git work tree of its own.
+
+    A copy of the tree with its history left behind is none, and neither is a
+    directory inside some other checkout: git's search stops at `repo`.
+    """
+    environment = discovered_no_higher_than(repo.root, os.environ)
+    top = run(["git", "rev-parse", "--show-toplevel"], cwd=repo.root, env=environment)
+    if top.returncode != 0 or Path(top.stdout.strip()).resolve() != repo.root.resolve():
+        return None
+    return environment
+
+
+def lfs_filtered(repo: Repo, relatives: list[str]) -> list[str]:
+    """The paths of `relatives` git hands to the Git LFS filter, in their order.
+
+    In a git work tree this is git's own answer (`git check-attr filter`),
+    every attributes file and override included; in a tree that is none, the
+    patterns the root `.gitattributes` declares, read by `lfs_tracked`.
+    """
+    environment = _work_tree(repo)
+    if environment is None:
+        return [relative for relative in relatives if lfs_tracked(repo, relative)]
+    answered = run(
+        ["git", "check-attr", "--stdin", "-z", "filter"],
+        cwd=repo.root,
+        env=environment,
+        check=True,
+        stdin="".join(f"{relative}\0" for relative in relatives),
+    ).stdout.split("\0")[:-1]
+    filtered = {
+        path
+        for path, _, value in zip(answered[0::3], answered[1::3], answered[2::3], strict=True)
+        if value == "lfs"
+    }
+    return [relative for relative in relatives if relative in filtered]
+
+
+def _committed(
+    repo: Repo, environment: dict[str, str], relatives: list[str]
+) -> dict[str, bytes | None]:
+    """What the index holds for each path — none for a blob too large to be a pointer.
+
+    Only a blob small enough to be a pointer is read, so a frame committed as
+    raw bytes is answered without reading it. A path the index does not hold
+    yet is not answered.
+    """
+    listing = run(
+        ["git", "ls-files", "-s", "-z", "--", *relatives],
+        cwd=repo.root,
+        env=environment,
+        check=True,
+    ).stdout
+    blobs: dict[str, str] = {}
+    for entry in filter(None, listing.split("\0")):
+        stage, _, name = entry.partition("\t")
+        blobs[name] = stage.split()[1]
+    sizes = run(
+        ["git", "cat-file", "--batch-check=%(objectname) %(objectsize)"],
+        cwd=repo.root,
+        env=environment,
+        check=True,
+        stdin="".join(f"{blob}\n" for blob in blobs.values()),
+    ).stdout.split()
+    size_of = dict(zip(sizes[0::2], map(int, sizes[1::2]), strict=True))
+    committed: dict[str, bytes | None] = {}
+    for name, blob in blobs.items():
+        if size_of[blob] > POINTER_LIMIT:
+            committed[name] = None
+            continue
+        shown = run(
+            ["git", "cat-file", "blob", blob], cwd=repo.root, env=environment, check=True
+        ).stdout
+        committed[name] = shown.encode("utf-8")
+    return committed
+
+
+def committed_pointers(repo: Repo, relatives: list[str]) -> dict[str, bytes]:
+    """The pointer the index holds for each of `relatives` git hands to Git LFS.
+
+    This is what a clone carries for such a file while `.lfsconfig` leaves it
+    undownloaded, whatever the working tree holds after `just real-prints-fetch`.
+    A path the index does not hold, or holds as anything but a pointer, is not
+    answered; nor is any path of a tree that is no git work tree of its own.
+    """
+    environment = _work_tree(repo)
+    if environment is None:
+        return {}
+    held = _committed(repo, environment, lfs_filtered(repo, relatives))
+    return {
+        name: data for name, data in held.items() if data is not None and pointer(data) is not None
+    }
+
+
+def real_prints_lfs(repo: Repo) -> list[str]:
+    """Every case file git hands to Git LFS is committed as an LFS pointer.
+
+    What is read is what git holds for the file — the index — rather than the
+    working tree, which carries the real bytes once `just real-prints-fetch`
+    has run. A host without git-lfs adds a frame as its raw bytes, and this is
+    what refuses that commit rather than a clone discovering it. A tree that is
+    no git work tree of its own is read as the files it carries.
+    """
+    root = repo.root / ROOT
+    if not root.is_dir():
+        return []
+    relatives = sorted(
+        path.relative_to(repo.root).as_posix() for path in root.rglob("*") if path.is_file()
+    )
+    tracked = lfs_filtered(repo, relatives)
+    if not tracked:
+        return [f"{ATTRIBUTES} hands no file under {ROOT} to Git LFS"]
+    environment = _work_tree(repo)
+    committed = None if environment is None else _committed(repo, environment, tracked)
+    findings: list[str] = []
+    for relative in tracked:
+        if committed is None:
+            held = (repo.root / relative).read_bytes()
+        elif relative not in committed:
+            continue
+        else:
+            held = committed[relative]
+        if held is None or pointer(held) is None:
+            findings.append(
+                f"{relative} is committed as its raw bytes, not as a Git LFS pointer: install "
+                f"git-lfs (`just bootstrap`), then `git add --renormalize {relative}`"
+            )
+    return findings
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,7 +568,9 @@ def real_prints_files(repo: Repo) -> list[str]:
 def real_prints_images(repo: Repo) -> list[str]:
     """Every `agent-*` image is the exact picture its event's history records.
 
-    Every `agent-*` file but the turn's own `agent-turn.json` is a picture.
+    Every `agent-*` file but the turn's own `agent-turn.json` is a picture. One
+    the checkout carries as a Git LFS pointer is the picture whose sha256 is the
+    pointer's object id, which is how git-lfs names an object.
     """
     findings: list[str] = []
     for case in _readable(repo, "real-prints-images", findings):
@@ -351,7 +590,9 @@ def real_prints_images(repo: Repo) -> list[str]:
                     f"{case.name}: {path.name}'s event {event_id} records no image in {HISTORY}"
                 )
                 continue
-            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            data = path.read_bytes()
+            stands_for = pointer(data)
+            actual = stands_for.oid if stands_for else hashlib.sha256(data).hexdigest()
             if actual != recorded:
                 findings.append(
                     f"{case.name}: {path.name} has sha256 {actual}, but {HISTORY} records "
@@ -564,3 +805,107 @@ def real_prints_service_config(repo: Repo) -> list[str]:
         for field, value in _secret_fields(config)
         if value != REDACTED
     ]
+
+
+def _ci_steps(repo: Repo) -> list[dict[str, Any]] | str:
+    """The committed CI steps, or why they could not be read."""
+    path = repo.root / CI_STEPS
+    try:
+        steps = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as error:
+        return f"{CI_STEPS} could not be read: {error}"
+    if not isinstance(steps, list) or not steps or not all(isinstance(s, dict) for s in steps):
+        return f"{CI_STEPS} is not a list of steps"
+    return steps
+
+
+def _reaching(justfile: dict[str, Recipe]) -> frozenset[str]:
+    """Every recipe whose run reaches git-lfs: its own body, or a recipe it calls or depends on."""
+    reaching: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for name, recipe in justfile.items():
+            if name in reaching:
+                continue
+            called = {found["recipe"] for line in recipe.body for found in JUST_CALL.finditer(line)}
+            if (
+                any(program in line for line in recipe.body for program in LFS_PROGRAMS)
+                or (called | set(recipe.dependencies)) & reaching
+            ):
+                reaching.add(name)
+                changed = True
+    return frozenset(reaching)
+
+
+def _reaches(command: str, reaching: frozenset[str]) -> bool:
+    """Whether one run line reaches git-lfs, itself or through a recipe it calls."""
+    return any(program in command for program in LFS_PROGRAMS) or any(
+        found["recipe"] in reaching for found in JUST_CALL.finditer(command)
+    )
+
+
+def _split(
+    steps: list[dict[str, Any]], block: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """The steps before and after the first verbatim run of `block`, or none if it has none."""
+    for start in range(len(steps) - len(block) + 1):
+        if steps[start : start + len(block)] == block:
+            return steps[:start], steps[start + len(block) :]
+    return None
+
+
+def real_prints_lfs_ci(repo: Repo) -> list[str]:
+    """No CI job downloads the cases but through the committed steps, and every checkout is bare.
+
+    Every `actions/checkout` declares `lfs: false`, so no checkout downloads an
+    LFS object — the action's default is the same today, and declaring it is
+    what keeps a later default or a copied step from spending the account's LFS
+    bandwidth on every job. A run line reaches the cases when it runs git-lfs,
+    or calls a recipe that does, however many recipes down: which recipes do is
+    read off the justfile, so `just skilltest`, which fetches before replaying,
+    counts as surely as `just real-prints-fetch`. A job with such a line must
+    carry `ci-steps.yml` verbatim, which restores the store from the Actions
+    cache and downloads only on a miss, and may have none before those steps;
+    after them the store is whole, and a fetch there downloads nothing.
+    """
+    canonical = _ci_steps(repo)
+    if isinstance(canonical, str):
+        return [canonical]
+    justfile = repo.root / "justfile"
+    reaching = (
+        _reaching(recipes(justfile.read_text(encoding="utf-8")))
+        if justfile.is_file()
+        else frozenset()
+    )
+    findings: list[str] = []
+    for path in repo.workflow_paths:
+        for job_name, job in jobs_of(load_workflow(path)).items():
+            where = f"{path.name}: job `{job_name}`"
+            steps = steps_of(job)
+            for step in steps:
+                uses = step.get("uses")
+                if not isinstance(uses, str) or uses.split("@", 1)[0] != "actions/checkout":
+                    continue
+                options = step.get("with")
+                if not isinstance(options, dict) or options.get("lfs") is not False:
+                    findings.append(
+                        f"{where} checks out with `{uses}` and no `lfs: false`, so the checkout "
+                        f"may download every LFS object: declare `lfs: false`"
+                    )
+            if not any(_reaches(command, reaching) for command in run_commands(job)):
+                continue
+            split = _split(steps, canonical)
+            if split is None:
+                findings.append(
+                    f"{where} reaches the real-print cases' LFS objects without carrying "
+                    f"{CI_STEPS} verbatim: fetch them through those steps"
+                )
+                continue
+            findings.extend(
+                f"{where} runs `{command}`, which reaches the cases' LFS objects, before "
+                f"{CI_STEPS}: run it after those steps, once the store is whole"
+                for command in run_commands({"steps": split[0]})
+                if _reaches(command, reaching)
+            )
+    return findings

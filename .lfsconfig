@@ -1,0 +1,5 @@
+# Nothing under `tests/real-prints/` is downloaded unless asked for: a clone, a
+# checkout, a pull and a new worktree leave those files as Git LFS pointers.
+# `just real-prints-fetch` overrides this for the one suite that reads them.
+[lfs]
+	fetchexclude = tests/real-prints/**

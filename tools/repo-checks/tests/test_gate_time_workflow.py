@@ -68,8 +68,9 @@ MOVED = {
 
 #: The work each macOS context runs that it did not at `BASELINE`, every
 #: project and target of it, so the exact comparison holds across every project:
-#: the clients' live suites' own checks, and the scheduled-check delay budget's
-#: project.
+#: the clients' live suites' own checks, the scheduled-check delay budget's
+#: project, and `real-prints-lfs`, a Python tooling project the gate's tiers
+#: reach and no lane of the integration tier does.
 ADDED = {
     "gate (macos-aarch64)": {
         ("printobserver-sdk-node-integration", "format-check"),
@@ -80,6 +81,11 @@ ADDED = {
         ("printobserver-sdk-python-integration", "typecheck"),
         ("printobserver-server-check-delay-budget", "budgets"),
         ("printobserver-server-check-delay-budget", "test"),
+        ("real-prints-lfs", "budgets"),
+        ("real-prints-lfs", "format-check"),
+        ("real-prints-lfs", "lint"),
+        ("real-prints-lfs", "test"),
+        ("real-prints-lfs", "typecheck"),
     },
     "integration (macos-aarch64)": set(),
 }

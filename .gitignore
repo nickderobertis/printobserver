@@ -35,3 +35,6 @@ dist/
 # sources at the pinned revision, the compose override, the build log and the
 # record of what is running.
 /.obico-env/
+
+# The figures the real-print LFS fixture test records for its budgets to read.
+/tests/real-prints-lfs/telemetry/
