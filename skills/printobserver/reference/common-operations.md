@@ -275,13 +275,14 @@ Replace that manifest. It carries a reason, because a manifest narrows what any
 actor may ask for: replacing one changes the bounds rather than annotating them.
 
 ```console
-$ printobserver manifest-set --print-id PRINT_ID --reason "the operator re-sliced this job at 0.6mm" --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.6,"slicer_profile":"draft","allowed":{"feedrate":{"min":0.8,"max":1.2}},"metadata":{}}'
+$ printobserver manifest-set --print-id PRINT_ID --reason "the operator re-sliced this job at 0.6mm" --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.6,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{"feedrate":{"min":0.8,"max":1.2}},"metadata":{}}'
 manifest.allowed.feedrate.max: 1.2
 manifest.allowed.feedrate.min: 0.8
 manifest.file_name: FILE
 manifest.material: PLA
 manifest.metadata: {}
 manifest.nozzle_diameter_mm: 0.6
+manifest.sheet: smooth-pei
 manifest.slicer_profile: draft
 narrowings: []
 ```
