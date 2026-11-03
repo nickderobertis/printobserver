@@ -155,21 +155,23 @@ def listed(root: Path) -> tuple[str, ...]:
 
 
 @functools.cache
-def lfs_pointers(root: Path) -> dict[str, bytes]:
-    """The Git LFS pointer a clone of `root` carries in place of each such file.
+def lfs_pointers(root: Path, names: tuple[str, ...]) -> dict[str, bytes]:
+    """The Git LFS pointer a clone of `root` carries in place of each of `names` that is one.
 
     A working tree that has run `just real-prints-fetch` holds the cases' real
     bytes, and a copy committing those with no LFS filter would be a tree
-    nobody can commit; so the copy carries what a clone does.
+    nobody can commit; so the copy carries what a clone does. `names` is the
+    copy's own `listed` answer, so a copy asks for the listing once.
     """
-    return committed_pointers(Repo(root), list(listed(root)))
+    return committed_pointers(Repo(root), list(names))
 
 
 def copy_tracked(destination: Path, *, root: Path = REPO_ROOT) -> Path:
     """Copy the committed tree, symlinks and all, carrying no build products."""
     destination.mkdir(parents=True, exist_ok=True)
-    pointers = lfs_pointers(root)
-    for name in listed(root):
+    names = listed(root)
+    pointers = lfs_pointers(root, names)
+    for name in names:
         source = root / name
         if not source.exists() and not source.is_symlink():
             # A file the index still lists and the working tree no longer
