@@ -1,7 +1,6 @@
 //! `filament_types` reads the material a file was sliced for from its tail.
 //!
-//! The file is a real `PrusaSlicer` recording from `tests/real-prints/`, held
-//! by the scripted `OctoPrint` and downloaded from it over a real socket. The
+//! The file is a real `PrusaSlicer` recording, held by the scripted `OctoPrint` and downloaded from it over a real socket. The
 //! stand-in honours a suffix `Range` as `OctoPrint`'s own file handler does and
 //! counts every byte of a download it writes, so the claim that the adapter
 //! reads the tail and not the file is read off what the far side served.
@@ -18,9 +17,11 @@ use crate::block_on::block_on;
 use crate::stub::{Reply, Stub};
 
 /// A recorded `PrusaSlicer` print, sliced for PLA, whose settings block is at
-/// its end.
+/// its end. It is this crate's plain copy under `tests/fixtures/real-prints/`,
+/// because the cases under `tests/real-prints/` are Git LFS pointers until the
+/// real-print suite fetches them.
 const RECORDED: &[u8] =
-    include_bytes!("../../../../tests/real-prints/fan-cut-bridge/fan-cut-test.gcode");
+    include_bytes!("../fixtures/real-prints/under-extrusion-lace.clean.gcode");
 
 /// A printer configured against the stand-in.
 fn printer_of(standin: &ScriptedOctoPrint) -> OctoPrintPrinter {
@@ -53,9 +54,9 @@ fn the_material_is_read_from_a_recorded_files_tail_without_downloading_it() {
         "the recording is too short to tell a tail from the whole file"
     );
     let standin = ScriptedOctoPrint::start();
-    standin.holds_file("fan-cut-test.gcode", RECORDED.to_vec(), 1_000.0);
+    standin.holds_file("lace-test.gcode", RECORDED.to_vec(), 1_000.0);
 
-    let types = block_on(printer_of(&standin).filament_types(named("fan-cut-test.gcode")));
+    let types = block_on(printer_of(&standin).filament_types(named("lace-test.gcode")));
 
     assert_eq!(types, Ok(vec![Some("PLA".to_owned())]));
     let served = standin.download_bytes();

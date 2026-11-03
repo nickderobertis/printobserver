@@ -2,8 +2,8 @@
 //! spool loaded, or when its build sheet does not suit that material — through
 //! the real `start-print` route, whoever asks.
 //!
-//! The printer is the scripted `OctoPrint`, holding real `PrusaSlicer` G-code
-//! from `tests/real-prints/` whose settings block names its `filament_type`;
+//! The printer is the scripted `OctoPrint`, holding a real `PrusaSlicer`
+//! recording whose settings block names its `filament_type`;
 //! the server reads that from the file's tail through the real adapter. Spools
 //! are registered and loaded through the real spool routes. What is asserted
 //! is what a client and the machine observe: the answer and its rejection,
@@ -21,9 +21,12 @@ use crate::binding::agent;
 use crate::watching::Watch;
 use crate::world::{SECRET, failure_alert, presenting, set};
 
-/// A recorded `PrusaSlicer` print, sliced for PLA.
-const RECORDED: &[u8] =
-    include_bytes!("../../../../tests/real-prints/fan-cut-bridge/fan-cut-test.gcode");
+/// A recorded `PrusaSlicer` print, sliced for PLA: the `OctoPrint` adapter's
+/// plain copy, because the cases under `tests/real-prints/` are Git LFS
+/// pointers until the real-print suite fetches them.
+const RECORDED: &[u8] = include_bytes!(
+    "../../../printobserver-octoprint/tests/fixtures/real-prints/under-extrusion-lace.clean.gcode"
+);
 
 /// The setting the recording names its material by.
 const SLICED_FOR_PLA: &str = "; filament_type = PLA\n";
