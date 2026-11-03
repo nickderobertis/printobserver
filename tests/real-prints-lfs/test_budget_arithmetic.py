@@ -31,7 +31,7 @@ from lfs_set import (
     Oid,
     Tracked,
 )
-from lfs_world import HERE, REPO_ROOT
+from lfs_world import HERE, REPO_ROOT, tool_packages
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
@@ -95,10 +95,7 @@ def _command(budget: str, repository: Path, result: Path) -> CompletedProcess[st
     environment = {
         **os.environ,
         "ONEBUDGETSPEC_RESULT": str(result),
-        "PYTHONPATH": os.pathsep.join(
-            str(REPO_ROOT / "tools" / name / "src")
-            for name in ("repo-checks", "contract-codegen", "release-artifacts")
-        ),
+        "PYTHONPATH": tool_packages(),
     }
     return run(argv, cwd=repository, env=environment)
 

@@ -29,6 +29,21 @@ COUNTING_REMOTE = HERE / "counting_remote.py"
 POINTER_VERSION = b"version https://git-lfs.github.com/spec/v1\n"
 
 
+def tool_packages() -> str:
+    """The packages the justfile puts on `PYTHONPATH` for `python -m repo_checks`, absolute.
+
+    Read out of the justfile's own `TOOL_PACKAGES` rather than repeated, so a
+    package it grows is one these tests' subprocesses find, and joined with
+    this host's separator, as the justfile's export joins it.
+    """
+    for line in (REPO_ROOT / "justfile").read_text(encoding="utf-8").splitlines():
+        if line.startswith("TOOL_PACKAGES :="):
+            names = line.partition(":=")[2].strip().strip('"').split(":")
+            return os.pathsep.join(str(REPO_ROOT / name) for name in names)
+    message = "the justfile lists no TOOL_PACKAGES, and the repository's tools live on it"
+    raise AssertionError(message)
+
+
 def git_lfs_or_fail() -> str:
     """The `git-lfs` on PATH, or a failure naming how to get one."""
     found = shutil.which("git-lfs")

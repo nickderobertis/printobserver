@@ -20,16 +20,10 @@ from pathlib import Path
 from subprocess import CompletedProcess
 
 import pytest
-from lfs_world import REPO_ROOT, path_without
+from lfs_world import REPO_ROOT, path_without, tool_packages
 from repo_checks.expect import contains, equal
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
-
-#: The packages the justfile puts on the path for `python -m repo_checks`.
-TOOL_PACKAGES = os.pathsep.join(
-    str(REPO_ROOT / "tools" / name / "src")
-    for name in ("repo-checks", "contract-codegen", "release-artifacts")
-)
 
 #: Git for Windows carries a git-lfs of its own, which git reaches through its
 #: own directories whatever PATH says, so no Windows host is one without it.
@@ -47,7 +41,7 @@ def install_hooks(clone: Path, environment: dict[str, str]) -> CompletedProcess[
     return run(
         ["uv", "run", "-q", "python", "-m", "repo_checks", "install-hooks", "--root", str(clone)],
         cwd=REPO_ROOT,
-        env={**environment, "PYTHONPATH": TOOL_PACKAGES},
+        env={**environment, "PYTHONPATH": tool_packages()},
     )
 
 
