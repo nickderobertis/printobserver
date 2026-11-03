@@ -186,6 +186,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          lfs: false
           # The affected tier, the end-to-end tier and the suppression check all
           # diff against the base branch, which a shallow checkout omits.
           fetch-depth: 0
@@ -232,6 +233,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v5
+        with:
+          lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
       - run: just shard-verdict gate linux-x86_64
