@@ -312,7 +312,11 @@ class Case:
     def recorded_alert(self, event_id: str) -> dict[str, Any]:
         """The body Obico posted for a recorded alert, as the history keeps it."""
         event = next(event for event in self.history if event["id"] == event_id)
-        return json.loads(base64.b64decode(event["raw"]))
+        body = json.loads(base64.b64decode(event["raw"]))
+        if not isinstance(body, dict) or not isinstance(body.get("print"), dict):
+            msg = f"{self.name}'s event {event_id} kept no alert body"
+            raise ValueError(msg)
+        return body
 
 
 def _valid_document(path: Path, schema: Path) -> dict[str, Any]:

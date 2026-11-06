@@ -32,7 +32,7 @@ from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import Any, Literal, NewType, TextIO, TypedDict, get_args
+from typing import Any, Literal, NewType, NotRequired, TextIO, TypedDict, cast, get_args
 
 import doubles
 from cases import REPO, Case, Moment, Request
@@ -217,6 +217,29 @@ def _is_timestamp(value: object) -> bool:
         return False
 
 
+class HeldPrint(TypedDict):
+    """One print the server answers, as far as the replay reads one."""
+
+    id: str
+    job_started_at: NotRequired[str | None]
+
+
+class EventImage(TypedDict):
+    """The picture an event carries, as far as the replay reads one."""
+
+    sha256: NotRequired[str]
+
+
+class HistoryEvent(TypedDict):
+    """One event of the print's history, as far as the replay reads one."""
+
+    id: str
+    kind: str
+    received_at: str
+    payload: dict[str, Any]
+    image: NotRequired[EventImage | None]
+
+
 def is_held_print(held: object) -> bool:
     """Whether one of the server's prints has the fields the replay reads from it."""
     if not isinstance(held, dict) or not isinstance(held.get("id"), str):
@@ -235,11 +258,9 @@ def is_event(event: object) -> bool:
     ):
         return False
     payload = event.get("payload")
-    image = event.get("image") or {}
-    if (
-        not isinstance(payload, dict)
-        or not isinstance(image, dict)
-        or not isinstance(image.get("sha256", ""), str)
+    image = event.get("image")
+    if not isinstance(payload, dict) or not (
+        image is None or (isinstance(image, dict) and isinstance(image.get("sha256", ""), str))
     ):
         return False
     match event["kind"]:
@@ -496,7 +517,7 @@ def _ledger_of(document: object, path: Path) -> Ledger:
     return {"sessions": sessions, "turns": turns}
 
 
-def _received(event: dict[str, Any]) -> datetime:
+def _received(event: HistoryEvent) -> datetime:
     """When the server kept one event."""
     return _utc_instant(event["received_at"])
 
@@ -793,14 +814,14 @@ class Replay:
             raise ReplayError(msg)
         return done.stdout
 
-    def _prints(self) -> list[dict[str, Any]]:
+    def _prints(self) -> list[HeldPrint]:
         """The prints the server holds, once they have what is read from them."""
         answered = json.loads(self._client("prints"))
         prints = answered.get("prints") if isinstance(answered, dict) else None
         if not isinstance(prints, list) or not all(map(is_held_print, prints)):
             msg = "the server's prints answered no list of prints"
             raise ReplayError(msg)
-        return prints
+        return cast("list[HeldPrint]", prints)
 
     def _print_id(self) -> PrintId:
         if self.print_id is None:
@@ -811,7 +832,7 @@ class Replay:
             self.print_id = PrintId(prints[0]["id"])
         return self.print_id
 
-    def _events(self) -> list[dict[str, Any]]:
+    def _events(self) -> list[HistoryEvent]:
         """The print's whole history, oldest first; none before the server holds a print."""
         if self.print_id is None and not self._prints():
             return []
@@ -821,12 +842,12 @@ class Replay:
         if not isinstance(events, list) or not all(map(is_event, events)):
             msg = "the server's history answered no list of events"
             raise ReplayError(msg)
-        return list(reversed(events))
+        return cast("list[HistoryEvent]", list(reversed(events)))
 
     def _trigger_count(self) -> int:
         return sum(1 for event in self._events() if event["kind"] in TRIGGERS)
 
-    def _turns_ended(self, events: list[dict[str, Any]]) -> int:
+    def _turns_ended(self, events: list[HistoryEvent]) -> int:
         ended = 0
         for event in events:
             if event["kind"] == ASSESSED or (
@@ -863,6 +884,7 @@ class Replay:
                 log = (self.root / "server.log").read_text(encoding="utf-8", errors="replace")
                 msg = f"the server exited at start: {log}"
                 raise ReplayError(msg)
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
             with socket.socket() as probe:
                 probe.settimeout(0.2)
                 if probe.connect_ex(("127.0.0.1", self.port)) == 0:
@@ -937,7 +959,7 @@ class Replay:
             return {"sessions": [], "turns": []}
         return _ledger_of(json.loads(path.read_text(encoding="utf-8")), path)
 
-    def _judged(self, events: list[dict[str, Any]]) -> list[DecisionPoint]:
+    def _judged(self, events: list[HistoryEvent]) -> list[DecisionPoint]:
         """Judge each entry by what the server recorded while that entry's harness runs ran.
 
         The harness's own start and exit bound a turn, because the record's order
@@ -960,8 +982,8 @@ class Replay:
     @staticmethod
     def _point(
         moment: Moment,
-        trigger: dict[str, Any],
-        events: list[dict[str, Any]],
+        trigger: HistoryEvent,
+        events: list[HistoryEvent],
         runs: list[Run],
         report: RunReport,
     ) -> DecisionPoint:

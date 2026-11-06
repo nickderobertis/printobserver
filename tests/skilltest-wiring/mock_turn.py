@@ -103,11 +103,13 @@ def _filled(word: str, prompt: str) -> str:
     print_id = re.search(r"printobserver context --print-id (\S+)", prompt)
     actor = re.search(r"--actor '([^']+)'", prompt)
     event = re.search(r'"id": "([^"]+)"', prompt)
-    return (
-        word.replace("{print}", print_id[1] if print_id else "")
-        .replace("{actor}", actor[1] if actor else "")
-        .replace("{event}", event[1] if event else "")
-    )
+    for placeholder, found in (("{print}", print_id), ("{actor}", actor), ("{event}", event)):
+        if placeholder in word:
+            if found is None:
+                msg = f"the prompt names nothing for {placeholder}"
+                raise ValueError(msg)
+            word = word.replace(placeholder, found[1])
+    return word
 
 
 class CommandResult(TypedDict):

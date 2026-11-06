@@ -2301,6 +2301,12 @@ site = "let written = file"
 reason = "A write or sync failing into a file this call just created exclusively is a full or failing disk, which no journey can arrange on a runner without root. The cleanup after it is the one `remove_file` every refused and failed publication shares, which `credential_issue_that_cannot_write_leaves_what_was_there` and the racing-issue journeys drive through the real binary."
 
 [[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/replay.py"
+site = "with socket.socket() as probe:"
+reason = "One TCP connect to a server this test just started on the loopback address, asking only whether its port answers yet, in a synchronous wait with a deadline. It exchanges no message for a typed client to model, and an event loop under one polling loop would buy nothing."
+
+[[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-server/src/server.rs"
 site = "let written = file.write_all(contents).and_then(|()| file.sync_all());"

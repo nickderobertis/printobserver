@@ -18,7 +18,9 @@
         "required": ["file", "label"],
         "properties": {
           "file": { "type": "string" },
-          "label": { "type": "string" }
+          "label": { "type": "string" },
+          "time": { "type": "string" },
+          "progress_pct": { "type": "number" }
         }
       }
     },

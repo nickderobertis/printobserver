@@ -26,7 +26,7 @@ LOCK = "Cargo.lock"
 #: A package of the program the supervisor's port runs on.
 HARNESS_PACKAGE = re.compile(r"^oneharness")
 #: The table of an install template that says what a supervision turn runs on.
-SUPERVISOR_TABLE = re.compile(r"^\[supervisor\]\n(?P<body>.*?)(?=^\[)", re.MULTILINE | re.DOTALL)
+SUPERVISOR_TABLE = re.compile(r"^\[supervisor\]\n(?P<body>.*?)(?=^\[|\Z)", re.MULTILINE | re.DOTALL)
 
 
 class UndecidableError(Exception):
@@ -75,7 +75,8 @@ def _harness_versions(lock: str | None) -> dict[str, str]:
     }
 
 
-def _supervisor_table(template: str | None) -> str | None:
+def supervisor_table(template: str | None) -> str | None:
+    """The body of a template's `[supervisor]` table, up to the next table or its end."""
     found = SUPERVISOR_TABLE.search(template or "")
     return found["body"] if found else None
 
@@ -106,9 +107,9 @@ def _decided(root: Path, base: str, head: str) -> Classification:
         if before != after:
             return Classification(owed=True, reason=f"{LOCK} moves an oneharness package")
     for template in head_policy["install_templates"]:
-        if template in changed and _supervisor_table(
+        if template in changed and supervisor_table(
             _shown(root, merge_base, template)
-        ) != _supervisor_table(_shown(root, head, template)):
+        ) != supervisor_table(_shown(root, head, template)):
             return Classification(owed=True, reason=f"{template} changes [supervisor]")
     if POLICY in changed:
         before_policy = tomllib.loads(_shown(root, merge_base, POLICY) or "").get("skilltest", {})

@@ -779,6 +779,21 @@ def test_a_history_event_the_replay_could_not_read_is_refused(event: object) -> 
     equal(is_event(event), False)
 
 
+def test_a_supervisor_table_ending_its_template_is_still_read() -> None:
+    """A change to the last table of an install template is a change to the settings."""
+    equal(classify.supervisor_table("[supervisor]\nharness = 'a'\n"), "harness = 'a'\n")
+    equal(classify.supervisor_table("[supervisor]\nharness = 'a'\n[next]\n"), "harness = 'a'\n")
+    equal(classify.supervisor_table("[other]\n"), None)
+
+
+def test_a_false_image_is_refused_rather_than_read_as_none() -> None:
+    """Only an absent or null image means an event carries none."""
+    event = {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z", "payload": {}}
+    equal(is_event({**event, "image": None}), True)
+    equal(is_event({**event, "image": {"sha256": "ab"}}), True)
+    equal(is_event({**event, "image": False}), False)
+
+
 def test_the_kept_harness_is_a_copy_that_starts_and_outlives_its_install(
     scratch: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
