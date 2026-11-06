@@ -741,6 +741,9 @@ class Replay:
         deadline = time.monotonic() + TURN_DEADLINE_S * len(self.case.moments)
         wanted = len(self.case.moments)
         while True:
+            said = self.bin / "launcher.log"
+            if said.is_file():
+                self.errors.append(f"the launcher said {said.read_text('utf-8', 'replace')}")
             if self.errors:
                 raise ReplayError("; ".join(self.errors))
             if len(self.runs) > MOST_RUNS_PER_ENTRY * wanted:

@@ -34,12 +34,6 @@ from cases import Case, MachineState, Moment, elapsed_seconds
 
 #: A heater command in the G-code, and the temperature it sets.
 HEATER = re.compile(rb"^M(?P<code>104|109|140|190)\s[^;\n]*?S(?P<value>\d+(?:\.\d+)?)", re.M)
-#: How long after the last event its looks' frames may have been captured.
-LAST_EVENT_REACH_S = 300
-#: How far into what is left before the next event a job creeps over a repeated frame,
-#: and the seconds of waiting that take it half way there.
-CREEP_SHARE = 0.25
-CREEP_HALF_S = 60.0
 #: The most of a request's body a double reads: nothing a server sends it is longer.
 MAX_BODY_BYTES = 1_048_576
 #: The longest a stopped camera holds a fetch before giving up on it.
@@ -186,16 +180,12 @@ class Timeline:
         return at - 1
 
     def _last_events_reach(self) -> int:
-        """How far the last event's looks read: minutes on, or what its recorded turn saw."""
-        frames = self.case.frames
-        if self.case.has_frame_times:
-            near = [
-                index
-                for index, frame in enumerate(frames)
-                if 0 <= elapsed_seconds(self.moment.at, frame.captured) <= LAST_EVENT_REACH_S
-            ]
-            return max(near, default=self.event_cursor)
-        names = [frame.file for frame in frames]
+        """How far the last event's looks read: what its recorded turn's looks saw.
+
+        It has no next moment to bound it, and the frames after those were taken long
+        after any look of that turn; the print's end is not a minute and a half away.
+        """
+        names = [frame.file for frame in self.case.frames]
         reached = [names.index(look) for look in self.moment.looks if look in names]
         return max(reached, default=self.event_cursor)
 
@@ -233,14 +223,15 @@ class Timeline:
         return numbered(self.picture(name), len(self.fetches))
 
     def position(self) -> int:
-        """The job's file position now: the event's, moved on by the frames shown since.
+        """The job's file position at this reading: the event's, moved on since.
 
-        A look past the newest frame of a turn answers that frame again, as a camera
-        with nothing newer does, and the job creeps on into a share of what is left
-        before the next event, always moving and never far enough that a part should
-        show it. Nothing passes the next event's moment: a frozen
-        counter is what a real stall looks like, and it must never be what a replay
-        hands a healthy print.
+        A frame shown since moves it to where the job was when that frame was
+        captured. A look past the turn's newest frame answers that frame again, as a
+        camera with nothing newer does, and the job goes on at the rate the recording
+        shows between this event and the next, for the seconds the look really waited.
+        It stops short of the next event's position, because replay time never passes
+        that moment. A frozen counter is what a real stall looks like, so a healthy
+        print never shows one.
         """
         low = self.moment.file_position_bytes
         following = self.case.moments[self.index + 1 :]
@@ -248,9 +239,16 @@ class Timeline:
         moved = low
         if self.cursor > self.event_cursor:
             moved = self.positions[self.cursor]
-        moved = max(low, min(moved, high))
-        share = CREEP_SHARE * self.crept_s / (self.crept_s + CREEP_HALF_S)
-        return moved + int((high - moved) * share)
+        return max(low, min(moved + int(self.crept_s * self._recorded_rate()), high))
+
+    def _recorded_rate(self) -> float:
+        """The bytes a second the recording shows the job moving at around this event."""
+        moments = self.case.moments
+        later = min(self.index + 1, len(moments) - 1)
+        earlier = max(later - 1, 0)
+        span = elapsed_seconds(moments[earlier].at, moments[later].at)
+        moved = moments[later].file_position_bytes - moments[earlier].file_position_bytes
+        return max(0, moved) / span if span > 0 else 0.0
 
     def _print_time(self, position: int) -> int:
         at = self.moment.at

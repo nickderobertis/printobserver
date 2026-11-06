@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import classify
+import doubles
 import pytest
 import record
 from cases import (
@@ -433,6 +434,24 @@ def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Pat
         done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], directory)
         seen = [done.seen_frame(0, look) for look in range(3)]
         truth(faulty not in seen, describing=f"{faulty} not to be among {seen}")
+
+
+def test_the_job_moves_on_over_a_repeated_frame_at_the_recorded_rate(scratch: Path) -> None:
+    """A real wait moves a real job: no frozen counter, and nothing past the next event."""
+    case = read_case("fan-cut-bridge")
+    first, second = case.moments
+    waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
+    done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
+    jobs = [json.loads(entry["out"])["job"] for entry in done.turns[0]["ran"]]
+    positions = [job["file_position_bytes"] for job in jobs]
+    truth(positions[-1] > first.file_position_bytes, describing=f"the job to move: {positions}")
+    truth(positions[-1] < second.file_position_bytes, describing="it to stop short of the next")
+    span = doubles.elapsed_seconds(first.at, second.at)
+    rate = (second.file_position_bytes - first.file_position_bytes) / span
+    truth(
+        positions[-1] - first.file_position_bytes < rate * 30,
+        describing=f"it to move at the recorded rate of {rate} bytes a second: {positions}",
+    )
 
 
 def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path) -> None:
