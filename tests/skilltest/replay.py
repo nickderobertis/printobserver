@@ -663,6 +663,7 @@ class Replay:
     def _client(self, *arguments: str) -> str:
         """One operator command, through the installed program."""
         suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         done = run(
             [str(self.bin / f"printobserver{suffix}"), *arguments, "--json"],
             env=self._client_environment(),
@@ -688,7 +689,11 @@ class Replay:
             answered = self._client("history", "--print-id", self._print_id(), "--limit", "1000")
         except ReplayError:
             return []
-        return list(reversed(json.loads(answered)["events"]))
+        events = json.loads(answered).get("events")
+        if not isinstance(events, list):
+            msg = "the server's history answered no list of events"
+            raise ReplayError(msg)
+        return list(reversed(events))
 
     def _trigger_count(self) -> int:
         return sum(1 for event in self._events() if event["kind"] in TRIGGERS)

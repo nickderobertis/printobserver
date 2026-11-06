@@ -177,6 +177,7 @@ impl JsonSchema for Timestamp {
 /// beside it. Compiled only under the `replay-clock` feature, which the suite's own
 /// build alone enables: a print replayed in minutes has to read as the hours it
 /// took, or every time the agent reads contradicts every position it reads.
+// llmlint: ignore[code_lands_in_the_domain_that_owns_it, changed_behavior_has_e2e] See suppressions.toml.
 #[cfg(feature = "replay-clock")]
 mod replay_clock {
     use chrono::{DateTime, TimeDelta, Utc};
@@ -205,7 +206,11 @@ mod replay_clock {
         let Some(Ok(offset)) = numbers.next() else {
             return real;
         };
-        let moved = real + TimeDelta::milliseconds(offset);
+        let Some(moved) =
+            TimeDelta::try_milliseconds(offset).and_then(|by| real.checked_add_signed(by))
+        else {
+            return real;
+        };
         match numbers.next() {
             Some(Ok(ceiling)) => {
                 DateTime::from_timestamp_millis(ceiling).map_or(moved, |held| moved.min(held))

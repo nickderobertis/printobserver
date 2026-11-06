@@ -30,7 +30,7 @@ import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NewType
+from typing import Any, Literal, NewType
 
 import yaml
 from contract_codegen.schemas import ContractError, load, read_schemas
@@ -82,8 +82,12 @@ LFS_PROGRAMS = ("git lfs", "git-lfs")
 #: A recipe a command line calls.
 JUST_CALL = re.compile(r"\bjust (?P<recipe>[a-z][\w-]*)")
 
+#: What starts a scenario's turn, as `case.schema.json` declares it.
+Trigger = Literal["recorded_alert", "synthetic_alert", "periodic_observation", "start_request"]
 #: The triggers that happen during a print, whose position in its G-code is known.
-POSITIONED_TRIGGERS = frozenset({"periodic_observation", "recorded_alert", "synthetic_alert"})
+POSITIONED_TRIGGERS: frozenset[Trigger] = frozenset(
+    {"periodic_observation", "recorded_alert", "synthetic_alert"}
+)
 
 # An event's id in a case's history, and a scenario's id within its case.
 EventId = NewType("EventId", str)
@@ -357,7 +361,7 @@ class Scenario:
 
     id: ScenarioId
     at: str
-    trigger: str
+    trigger: Trigger
     file_position_bytes: int | None
     event_id: EventId | None
     event_image: str

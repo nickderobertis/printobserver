@@ -68,7 +68,10 @@ def _test_record(path: Path) -> TestRecord:
         or not isinstance(document.get("passed"), bool)
         or not isinstance(document.get("decision_points"), list)
         or not all(
-            isinstance(point, dict) and isinstance(point.get("models"), list)
+            isinstance(point, dict)
+            and isinstance(point.get("compacted"), bool)
+            and isinstance(point.get("models"), list)
+            and all(isinstance(model, str) for model in point["models"])
             for point in document["decision_points"]
         )
     ):

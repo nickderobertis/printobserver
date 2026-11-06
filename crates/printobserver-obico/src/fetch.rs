@@ -91,7 +91,6 @@ async fn excerpt_of(mut response: Response) -> String {
     body_excerpt(&bytes)
 }
 
-/// Retrieve the image one URL names, under the bounds given.
 /// When an answer says its image was taken, read off its `Last-Modified`.
 fn captured_at_of(response: &reqwest::Response) -> Option<Timestamp> {
     let declared = response.headers().get(LAST_MODIFIED)?.to_str().ok()?;
@@ -104,6 +103,7 @@ fn captured_at_declared(declared: &str) -> Option<Timestamp> {
     Timestamp::from_unix_seconds(parsed.timestamp()).ok()
 }
 
+/// Retrieve the image one URL names, under the bounds given.
 pub(crate) async fn image(
     client: &Client,
     source_url: &str,

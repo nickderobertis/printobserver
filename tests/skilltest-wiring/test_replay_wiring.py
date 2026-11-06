@@ -50,7 +50,7 @@ from replay import (
 )
 from replay import Secrets as Minted
 from repo_checks.__main__ import main as repo_check
-from repo_checks.checks_real_prints import printed_gcode, stored_size
+from repo_checks.checks_real_prints import POSITIONED_TRIGGERS, printed_gcode, stored_size
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
@@ -98,7 +98,6 @@ REPLAYS = {
         "carry-on-059-other",
     ],
 }
-#: What a scripted turn runs to read the print and to look at it.
 CONTEXT = ["printobserver", "context", "--print-id", "{print}", "--json"]
 LOOK = ["printobserver", "look", "--print-id", "{print}", "--json"]
 PAUSE = [
@@ -183,6 +182,17 @@ def mock_replay(
 def scratch(tmp_path: Path) -> Path:
     """Where a mock turn keeps what it saw."""
     return tmp_path
+
+
+def test_the_suites_vocabularies_are_the_contracts() -> None:
+    """Its trigger and machine-state words are the ones the schemas declare."""
+    schema = json.loads((CASES / "case.schema.json").read_text(encoding="utf-8"))
+    declared = schema["$defs"]["Scenario"]["properties"]["trigger"]["enum"]
+    equal(sorted(trigger.value for trigger in Trigger), sorted(declared))
+    truth(set(declared) >= POSITIONED_TRIGGERS, describing="positioned triggers to be triggers")
+    states = json.loads((REPO / "schemas/printobserver-types/PrinterState.json").read_text("utf-8"))
+    named = {arm["const"] for arm in states["oneOf"] if "const" in arm}
+    truth({state.value for state in MachineState} <= named, describing=f"states among {named}")
 
 
 def test_the_cases_carry_exactly_the_replays_the_suite_was_given() -> None:
@@ -338,6 +348,49 @@ def test_a_real_case_broken_one_way_is_refused_by_name(
     contains(printed.out + printed.err, named)
 
 
+def test_a_position_in_a_case_carrying_no_gcode_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A case with no G-code has nothing a position could be inside."""
+
+    def _positioned(document: dict[str, Any]) -> None:
+        scenario = document["assertions"]["scenarios"][0]
+        scenario["file_position_bytes"] = 1
+        scenario["file_position_source"] = "progress"
+
+    root = _case_tree(tmp_path, "healthy-printing", _positioned)
+    equal(repo_check(["real-prints-replay", "--root", str(root)]), 1)
+    printed = capsys.readouterr()
+    contains(printed.out + printed.err, "carries no G-code")
+
+
+def test_a_plain_gcode_is_measured_as_a_pointer_is(tmp_path: Path) -> None:
+    """Fetched or not, the file's size is the object's."""
+    plain = tmp_path / "plain.gcode"
+    plain.write_bytes(b"G1 X1\n" * 400)
+    equal(stored_size(plain), 2400)
+    pointed = tmp_path / "pointed.gcode"
+    oid = b"a" * 64
+    pointed.write_bytes(
+        b"version https://git-lfs.github.com/spec/v1\noid sha256:" + oid + b"\nsize 99\n"
+    )
+    equal(stored_size(pointed), 99)
+
+
+def test_a_file_named_with_spaces_counts_as_named(tmp_path: Path) -> None:
+    """A file a `case.json` names is held, spaces in its name or not; another is refused."""
+    root = _case_tree(tmp_path, "under-extrusion-lace", lambda document: None)
+    case_directory = root / "tests" / "real-prints" / "under-extrusion-lace"
+    path = case_directory / "case.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["sources"]["model"] = "a part F.stl"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    (case_directory / "a part F.stl").write_text("solid\n", encoding="utf-8")
+    equal(repo_check(["real-prints-files", "--root", str(root)]), 0)
+    (case_directory / "unnamed.stl").write_text("solid\n", encoding="utf-8")
+    equal(repo_check(["real-prints-files", "--root", str(root)]), 1)
+
+
 def test_every_case_passes_the_replay_check(capsys: pytest.CaptureFixture[str]) -> None:
     """The committed tree carries none of those."""
     equal(repo_check(["real-prints-replay", "--root", str(REPO)]), 0)
@@ -466,6 +519,10 @@ def test_a_recorded_alert_reaches_the_agent_at_its_time(scratch: Path) -> None:
     for prompt in prompts[1:]:
         contains(prompt, '"kind": "obico_failure_alert"')
     contains(prompts[2], '"detector_paused_the_print": true')
+    # The alert's picture says when it was taken, and the check's its own frame's.
+    alert_taken = instant(case.moments[1].at).strftime("%Y-%m-%dT%H:%M")
+    contains(prompts[1], f'"frame_captured_at": "{alert_taken}')
+    contains(prompts[0], '"frame_captured_at"')
     equal(
         [point.event_kind for point in done.replayed.points],
         [
@@ -621,7 +678,7 @@ def test_an_unfetched_frame_is_refused_naming_the_recipe() -> None:
         refuse_a_pointer(pointer_bytes, case.name, case.frames[0].file)
 
 
-def test_a_replayed_alert_the_server_refuses_stops_the_replay() -> None:
+def test_only_the_ingress_accepting_an_alert_counts_as_delivering_it() -> None:
     """A webhook answering anything but acceptance is no delivered alert."""
     equal(delivered(202), True)
     equal(delivered(403), False)

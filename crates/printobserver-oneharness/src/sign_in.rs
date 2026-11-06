@@ -43,6 +43,7 @@ pub struct HarnessSignIn {
     /// What every turn on this harness runs with beyond its sign-in, as
     /// `NAME=value`: a program that replaces itself while a print is supervised
     /// leaves the next turn with no program to start.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     session_env: &'static [&'static str],
 }
 
@@ -61,6 +62,7 @@ pub const SIGN_INS: [HarnessSignIn; 2] = [
         arguments: &["auth", "login"],
         // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] npm's layout for this package has no machine-readable source: the package's own `bin` entry names `bin/claude.exe`, which its install step replaces with the platform's native program, and the `claude.cmd` launcher npm writes beside `node_modules` runs that file.
         npm_program: Some("node_modules/@anthropic-ai/claude-code/bin/claude.exe"),
+        // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         session_env: &["DISABLE_AUTOUPDATER=1"],
     },
     HarnessSignIn {

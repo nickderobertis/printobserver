@@ -4421,3 +4421,33 @@ rule = "instruction_layer_localized"
 file = "CLAUDE.md"
 site = "`just skilltest` replays each real print with a `replay` through the real server"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site has the reason."
+
+[[suppression]]
+rule = "code_lands_in_the_domain_that_owns_it"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "#[cfg(feature = \"replay-clock\")]"
+reason = "`Timestamp::now` is the one wall-clock reading every crate stamps through, the adapters' and the store's included, so moving time for the whole server for a replay can only be done there. The feature keeps it out of every build but the suite's."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "#[cfg(feature = \"replay-clock\")]"
+reason = "The clock's own tests are the suite's: `tests/skilltest-wiring` runs the real server built with this feature and asserts the times the agent reads are the recording's. A file it cannot read leaves the real clock, which that same assertion would catch."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "session_env: &'static [&'static str],"
+reason = "`SIGN_INS` is a const table and `EnvAssignment` owns a `String`, so it cannot be built in one, as the identity above it cannot. The field is private, the table is its only writer, and the launch test holds what it reads to `EnvAssignment`."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "session_env: &[\"DISABLE_AUTOUPDATER=1\"],"
+reason = "Claude Code's documented setting has no machine-readable source, and a gate check would have to install and run the provider's CLI, as for its sign-in command above. The live suite is what shows it: a harness that replaced itself fails a replay naming the program it could not start."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/replay.py"
+site = "done = run("
+reason = "These go through the installed `printobserver` program on purpose: the operator's real surface is what the replay reads the server's record by, and the replay's control handler that calls it is a blocking thread that waits for it by design."

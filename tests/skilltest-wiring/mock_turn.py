@@ -26,12 +26,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "repo-che
 
 from repo_checks.shell import run
 
+
+class Assessment(TypedDict):
+    """What a turn answers with, in the shape the assessment schema asks for."""
+
+    summary: str
+    confidence: str
+    should_continue: bool
+    did: str
+    why: str
+    escalating: bool
+
+
 TIMEOUT_S = 120
 SEEN_FILE = "seen.jsonl"
 COUNTER_FILE = "turns.count"
 #: The model the responder is scripted to say it is.
 MOCK_MODEL = "mock-model"
-ASSESSMENT = {
+ASSESSMENT: Assessment = {
     "summary": "scripted",
     "confidence": "high",
     "should_continue": True,
@@ -92,7 +104,7 @@ class Seen(TypedDict):
     workspace: list[str]
     arguments: list[str]
     ran: list[CommandResult]
-    assessment: dict[str, Any]
+    assessment: Assessment
 
 
 def _ran(words: list[str]) -> CommandResult:
@@ -107,7 +119,10 @@ def main(script_path: str, arguments: list[str]) -> int:
     if not isinstance(script.get("turns"), list) or not script["turns"]:
         print(f"{script_path} scripts no run", file=sys.stderr)
         return 2
-    if not isinstance(script.get("responder"), str):
+    if not all(isinstance(run_of, dict) for run_of in script["turns"]):
+        print(f"{script_path} scripts a run that is no document", file=sys.stderr)
+        return 2
+    if not isinstance(script.get("session"), str) or not isinstance(script.get("responder"), str):
         print(f"{script_path} names no responder", file=sys.stderr)
         return 2
     counter = directory / COUNTER_FILE
@@ -118,7 +133,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     ran = [
         _ran([_filled(word, prompt) for word in words]) for words in scripted.get("commands", [])
     ]
-    assessment = {**ASSESSMENT, "summary": f"scripted run {number}"}
+    assessment: Assessment = {**ASSESSMENT, "summary": f"scripted run {number}"}
     seen: Seen = {
         "turn": number,
         "prompt": prompt,
