@@ -43,6 +43,7 @@ from replay import (
     ReplayError,
     delivered,
     harness_token,
+    neutral_environment,
     program,
     refuse_a_pointer,
     service_config,
@@ -503,6 +504,16 @@ def test_a_printer_that_cannot_be_read_still_gets_its_scheduled_check(scratch: P
         [point.event_kind for point in done.replayed.points],
         ["obico_failure_alert", "periodic_observation", "periodic_observation"],
     )
+
+
+def test_every_turn_runs_with_the_harness_kept_from_replacing_itself(scratch: Path) -> None:
+    """The shipped launch sets it: the server this replay starts is not handed it."""
+    case = read_case("under-extrusion-lace")
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    for turn in done.turns:
+        equal(turn["environment"].get("DISABLE_AUTOUPDATER"), "1")
+    neutral = neutral_environment(scratch, scratch)
+    truth("DISABLE_AUTOUPDATER" not in neutral, describing="the replay to add no such thing")
 
 
 def test_nothing_the_agent_can_read_says_it_is_under_test(scratch: Path) -> None:
