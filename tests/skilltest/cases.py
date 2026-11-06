@@ -144,6 +144,8 @@ class Moment:
     accept_any_of: tuple[tuple[Step, ...], ...]
     never: tuple[Step, ...]
     summary: str
+    #: The frames the recorded turn's looks answered, the last a replay's last event reaches.
+    looks: tuple[str, ...] = ()
 
     @property
     def is_alert(self) -> bool:
@@ -295,6 +297,7 @@ def read_case(name: str) -> Case:
             ),
             never=tuple(_step(step) for step in scenarios[entry]["never"]),
             summary=scenarios[entry]["summary"],
+            looks=tuple(look["image"] for look in scenarios[entry]["looks"]),
         )
         for entry in document["assertions"].get("replay", ())
     )

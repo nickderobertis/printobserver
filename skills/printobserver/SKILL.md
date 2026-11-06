@@ -38,15 +38,15 @@ rather than leaving it undone.
    advances: once several percent of the file has passed between two frames, by the
    job's own position whatever the clock says, it must look taller or fuller. A
    part that moved or stopped growing is a failing print however clean the frame
-   looks. Check each wall's outer face apart from the top layer: upper layers more
-   speckled or pitted than the same wall's lower ones are under-extruding though it
-   stands; an even texture is not. Inside the outline
+   looks. Check each wall's outer face apart from the top layer: a solid wall reads
+   smooth, and one speckled or pitted like mesh is under-extruding though it stands.
+   Inside the outline
    supports, bridges and infill look open, in straight regular lines; curved or
    tangled strands are a defect, never a continue. Change nothing as a precaution.
 
    The printer reports neither its flow factor nor its fan, so a file that cut
    either shows only in the print: under-extruding walls want the flow factor at
-   1.0, and sagging bridges the fan at 100, whatever is standing.
+   1.0, and sagging bridges the fan at 100, first and whatever is standing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
    already old. A look can wait a minute and a half first, so a few show a defect
    growing or settling. Open each. A frame identical to the last, head and all,

@@ -435,6 +435,14 @@ def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Pat
         truth(faulty not in seen, describing=f"{faulty} not to be among {seen}")
 
 
+def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path) -> None:
+    """A look after the last event does not jump to the print's end."""
+    case = read_case("under-extrusion-lace")
+    last = case.moments[-1]
+    done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], scratch)
+    equal(done.replayed.fetches[-3:], [last.looks[-1]] * 3)
+
+
 def test_the_print_clock_never_goes_back_whatever_a_look_waited(scratch: Path) -> None:
     """A clock going back reads to the server as a later job: one print, one session."""
     case = read_case("fan-cut-bridge")
