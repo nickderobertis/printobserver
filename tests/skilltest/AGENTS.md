@@ -11,13 +11,14 @@ it runs.
   `printobserver-server-turn-launcher` reports the exit synchronously, before the
   server can release it. It is a Rust program so the gate's wiring tests run on
   Windows, and `test-responder` keeps it off what a consumer installs.
-- **Nothing a turn can read moves past the next event's moment.** A look may reach
-  that event's own frame when it is labelled healthy. It never sees a fault early:
-  it stops at the last frame before one, and answers that again, in new bytes, as a still scene's
-  frames from a real camera are, while the job goes on at the recording's own rate
-  for the seconds the look really waited, short of the next event's position. A frozen counter is what a real stall looks like, so a healthy print
-  never shows one; a repeated frame over a moving job is a stale camera, which is
-  what the skill says it is.
+- **Nothing a turn can read moves past the next event's moment.** A look stops at
+  the last frame captured before it, whatever the next frame's label, and answers
+  that again, in new bytes and stating its capture time, as a still scene's frames
+  from a real camera are, while the job goes on at the recording's own rate for the
+  seconds the look really waited, short of the next event's position. A frozen
+  counter is what a real stall looks like, so a healthy print never shows one; a
+  repeated capture time over a moving job is a camera with nothing newer, which the
+  skill says is no reason to stop.
 - **What a turn did is read from where Claude Code keeps it,** its one result
   document and the session transcript under its configuration directory. A live
   test fails a turn reporting no usage, models or commands, so a move of either

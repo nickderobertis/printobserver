@@ -36,7 +36,7 @@ rather than leaving it undone.
    however the view shifts. A part that seems to have moved is a person's to check:
    pause. A printing part keeps growing: the bed sinks as layers rise, so over tens of
    minutes, with the bed visibly lower, the part's sides must show more wall. If they
-   show none it has stopped growing. A wall is clearly
+   show none it has stopped growing, which no adjustment reaches: pause. A wall is clearly
    under-extruding only when visibly thinner, gappy or see-through where the part's
    shape would make it solid; a texture the shape could explain, ribs, lattice,
    bridging over support, is not clear. Inside the outline supports, bridges and
@@ -52,8 +52,7 @@ rather than leaving it undone.
    defect growing or settling.
    Open each. Each frame says when it was captured. One time twice means the camera
    has nothing newer, which is no reason to stop: keep the print running, watch, and
-   say so in your reason. A plate unchanged across frames captured far apart while
-   the job advanced has stopped printing. A look returns early with any new event for this print.
+   say so in your reason. A look returns early with any new event for this print.
 4. **Decide.** Weigh what you see against the history, and say which way you are
    going and how sure you are. When one frame and the history disagree, prefer the
    history and say so. Watching is for what has stopped getting worse: a defect
