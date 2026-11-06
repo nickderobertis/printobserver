@@ -70,6 +70,21 @@ class Script(TypedDict):
     turns: list[ScriptedRun]
 
 
+def _run_is_whole(run_of: object) -> bool:
+    """Whether one scripted run holds commands as lists of words, and flags as flags."""
+    if not isinstance(run_of, dict):
+        return False
+    commands = run_of.get("commands", [])
+    return (
+        isinstance(commands, list)
+        and all(isinstance(words, list) for words in commands)
+        and all(isinstance(word, str) for words in commands for word in words)
+        and isinstance(run_of.get("usage", {}), dict)
+        and isinstance(run_of.get("compact", False), bool)
+        and isinstance(run_of.get("unreadable", False), bool)
+    )
+
+
 def _prompt(arguments: list[str]) -> str:
     return next((word for word in arguments if "printobserver context" in word), "")
 
@@ -108,6 +123,7 @@ class Seen(TypedDict):
 
 
 def _ran(words: list[str]) -> CommandResult:
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     done = run(words, timeout=TIMEOUT_S)
     return {"words": words, "status": done.returncode, "out": done.stdout, "err": done.stderr}
 
@@ -119,7 +135,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     if not isinstance(script.get("turns"), list) or not script["turns"]:
         print(f"{script_path} scripts no run", file=sys.stderr)
         return 2
-    if not all(isinstance(run_of, dict) for run_of in script["turns"]):
+    if not all(_run_is_whole(run_of) for run_of in script["turns"]):
         print(f"{script_path} scripts a run that is no document", file=sys.stderr)
         return 2
     if not isinstance(script.get("session"), str) or not isinstance(script.get("responder"), str):
@@ -186,6 +202,7 @@ def main(script_path: str, arguments: list[str]) -> int:
         **answer,
     }
     responder = script["responder"]
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     return run(
         [responder, *arguments],
         env={**os.environ, "MOCK_STDOUT": json.dumps(result)},

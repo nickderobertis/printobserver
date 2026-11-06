@@ -46,6 +46,7 @@ class Classification:
 
 
 def _git(root: Path, *arguments: str) -> str:
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     done = run(["git", *arguments], cwd=root)
     if done.returncode != 0:
         msg = f"`git {arguments[0]}` failed: {done.stderr.strip()}"
@@ -128,6 +129,7 @@ def main(arguments: list[str]) -> int:
     if arguments == ["--install-harness"]:
         policy = tomllib.loads(Path(POLICY).read_text(encoding="utf-8"))
         package = f"@anthropic-ai/claude-code@{policy['skilltest']['claude_code']}"
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         return run(["npm", "install", "-g", package], capture=False).returncode
     if len(arguments) != 2:
         print("usage: classify.py BASE HEAD", file=sys.stderr)

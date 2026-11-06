@@ -27,6 +27,7 @@ HARNESS = "claude-code"
 
 def commit() -> str:
     """The commit this tree's run used."""
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     return run(["git", "rev-parse", "HEAD"], cwd=REPO, check=True).stdout.strip()
 
 
@@ -59,6 +60,19 @@ class UnreadableRunError(Exception):
     """A run's directory holding something that is no test's record, or nothing at all."""
 
 
+def _decision_point_is_whole(point: object) -> bool:
+    """Whether a decision point carries what the record is folded and read from."""
+    return (
+        isinstance(point, dict)
+        and isinstance(point.get("scenario"), str)
+        and isinstance(point.get("passed"), bool)
+        and isinstance(point.get("compacted"), bool)
+        and isinstance(point.get("commands"), list)
+        and isinstance(point.get("models"), list)
+        and all(isinstance(model, str) for model in point["models"])
+    )
+
+
 def _test_record(path: Path) -> TestRecord:
     """One test's record, once it has the fields the record is folded from."""
     document = json.loads(path.read_text(encoding="utf-8"))
@@ -66,14 +80,11 @@ def _test_record(path: Path) -> TestRecord:
         not isinstance(document, dict)
         or not isinstance(document.get("test"), str)
         or not isinstance(document.get("passed"), bool)
+        or not isinstance(document.get("turns"), int)
+        or not isinstance(document.get("sessions"), list)
         or not isinstance(document.get("decision_points"), list)
-        or not all(
-            isinstance(point, dict)
-            and isinstance(point.get("compacted"), bool)
-            and isinstance(point.get("models"), list)
-            and all(isinstance(model, str) for model in point["models"])
-            for point in document["decision_points"]
-        )
+        or not all(_decision_point_is_whole(point) for point in document["decision_points"])
+        or document["passed"] != all(point["passed"] for point in document["decision_points"])
     ):
         msg = f"{path} is no test's record"
         raise UnreadableRunError(msg)
@@ -105,6 +116,7 @@ def main(arguments: list[str]) -> int:
     status = 0
     if directory is None:
         directory = Path(tempfile.mkdtemp())
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         status = run(
             ["just", "skilltest", *arguments],
             cwd=REPO,

@@ -4451,3 +4451,39 @@ rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest/replay.py"
 site = "done = run("
 reason = "These go through the installed `printobserver` program on purpose: the operator's real surface is what the replay reads the server's record by, and the replay's control handler that calls it is a blocking thread that waits for it by design."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/classify.py"
+site = "done = run([\"git\", *arguments], cwd=root)"
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/classify.py"
+site = "return run([\"npm\", \"install\", \"-g\", package], capture=False).returncode"
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/record.py"
+site = "return run([\"git\", \"rev-parse\", \"HEAD\"], cwd=REPO, check=True).stdout.strip()"
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/record.py"
+site = "status = run("
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "done = run(words, timeout=TIMEOUT_S)"
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "return run("
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."

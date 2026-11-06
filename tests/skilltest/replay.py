@@ -368,6 +368,7 @@ def _ledger_of(document: object, path: Path) -> Ledger:
             isinstance(entry, dict) and isinstance(entry.get("session_name"), str)
             for entry in [*sessions, *turns]
         )
+        or not all(isinstance(entry.get("harness_identity"), str) for entry in sessions)
     ):
         msg = f"{path} is no ledger of sessions and turns"
         raise ReplayError(msg)
