@@ -734,6 +734,7 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
                 detail: error.to_string(),
             };
             let mut assigned = vec![sign_in.assignment(&directory).map_err(refused)?];
+            // llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
             assigned.extend(sign_in.session_assignments().map_err(refused)?);
             assigned
         }

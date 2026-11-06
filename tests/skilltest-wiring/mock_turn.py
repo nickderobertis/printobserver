@@ -182,6 +182,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
     lines: list[dict[str, Any]] = []
     if scripted.get("compact"):
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         lines.append({"type": "system", "subtype": "compact_boundary"})
     message = {
         "type": "assistant",
@@ -197,6 +198,7 @@ def main(script_path: str, arguments: list[str]) -> int:
                     }
                     for index, words in enumerate(scripted.get("commands", []))
                 ),
+                # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
                 *(
                     {
                         "type": "tool_use",

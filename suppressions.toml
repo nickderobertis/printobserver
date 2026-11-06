@@ -4405,6 +4405,24 @@ site = "match block:"
 reason = "Claude Code's tool-call blocks in its transcript has no published schema to reconcile with. `test_replay.py` is the drift gate: it fails any live turn whose usage, models or commands come back empty, which is what a moved field reads as."
 
 [[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/server.rs"
+site = "assigned.extend(sign_in.session_assignments().map_err(refused)?);"
+reason = "The end-to-end proof is `test_every_turn_runs_with_the_harness_kept_from_replacing_itself` in `tests/skilltest-wiring`: the real server launches a harness and that harness writes down the environment it was started with. Repeating it from this crate would need a second stand-in harness that reads its own environment."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "lines.append({\"type\": \"system\", \"subtype\": \"compact_boundary\"})"
+reason = "The mock writes what the replay reads of Claude Code's transcript, which has no published schema to reconcile with. `tests/skilltest/test_replay.py` is the drift gate over the real harness for commands, usage, models and opened files; a compaction appears only once a real conversation is long enough, and the adoption node's run is where that record is first read live."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "*("
+reason = "The mock writes what the replay reads of Claude Code's transcript, which has no published schema to reconcile with. `tests/skilltest/test_replay.py` is the drift gate over the real harness for commands, usage, models and opened files; a compaction appears only once a real conversation is long enough, and the adoption node's run is where that record is first read live."
+
+[[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest-wiring/mock_turn.py"
 site = "lines: list[dict[str, Any]] = []"

@@ -60,6 +60,10 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             any(point.commands for point in replayed.points),
             describing="the transcript to say what the agent ran",
         )
+        expect.truth(
+            any(point.opened for point in replayed.points),
+            describing="the transcript to say what the agent opened",
+        )
         expect.truth(replayed.passed, describing=f"every decision point:\n{replayed.failures()}")
     finally:
         replay.clean_up()

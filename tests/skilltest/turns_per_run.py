@@ -44,10 +44,13 @@ def turns_per_test(cases: Path = CASES) -> dict[str, int]:
     return {name: len(replay) for name, replay in replays(cases).items()}
 
 
-def main() -> int:
-    """Report the total, with the turns per test as its detail."""
+def main(arguments: list[str]) -> int:
+    """Report the total, with the turns per test as its detail.
+
+    Given a directory, it counts the cases there rather than this tree's.
+    """
     try:
-        counted = turns_per_test()
+        counted = turns_per_test(Path(arguments[0]) if arguments else CASES)
     except (UnreadableCaseError, ValueError) as error:
         print(f"turns per full run: {error}", file=sys.stderr)
         return 1
@@ -58,4 +61,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

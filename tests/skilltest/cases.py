@@ -18,7 +18,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, NewType, NotRequired, TypedDict
 
+from jsonschema import Draft202012Validator
 from repo_checks.checks_real_prints import printed_gcode, stored_size
+from turns_per_run import replays
 
 REPO = Path(__file__).resolve().parents[2]
 #: The operator's local time, which every case's `at` and frame time is written in:
@@ -313,10 +315,20 @@ class Case:
         return json.loads(base64.b64decode(event["raw"]))
 
 
+def _valid_document(path: Path, schema: Path) -> dict[str, Any]:
+    """A committed document, once it holds what its committed schema declares."""
+    document = json.loads(path.read_text(encoding="utf-8"))
+    validator = Draft202012Validator(json.loads(schema.read_text(encoding="utf-8")))
+    for error in validator.iter_errors(document):
+        msg = f"{path}: {error.json_path}: {error.message}"
+        raise ValueError(msg)
+    return document
+
+
 def read_case(name: str) -> Case:
     """One case of `tests/real-prints`, by its directory's name."""
     directory = CASES / name
-    document = json.loads((directory / "case.json").read_text(encoding="utf-8"))
+    document = _valid_document(directory / "case.json", CASES / "case.schema.json")
     scenarios = {scenario["id"]: scenario for scenario in document["assertions"]["scenarios"]}
     frames = sorted(
         (
@@ -356,7 +368,9 @@ def read_case(name: str) -> Case:
         raise ValueError(msg)
     history_path = directory / "printobserver-history.json"
     history = (
-        json.loads(history_path.read_text(encoding="utf-8"))["events"]
+        _valid_document(history_path, REPO / "schemas/printobserver-server/HistoryAnswer.json")[
+            "events"
+        ]
         if history_path.is_file()
         else []
     )
@@ -373,8 +387,4 @@ def read_case(name: str) -> Case:
 
 def replayed_case_names() -> list[str]:
     """Every case on disk with a `replay`, so a case gaining one is one test with no edit here."""
-    return sorted(
-        path.parent.name
-        for path in CASES.glob("*/case.json")
-        if json.loads(path.read_text(encoding="utf-8"))["assertions"].get("replay")
-    )
+    return sorted(replays(CASES))

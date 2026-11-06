@@ -724,6 +724,7 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         "no event",
         {"kind": "k", "received_at": "2026-01-01T00:00:00Z"},
         {"id": "e", "kind": "k", "received_at": "yesterday", "payload": {}},
+        {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00.123456garbage", "payload": {}},
         {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z"},
         {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z", "payload": []},
         {"id": "e", "kind": "port_failure", "received_at": "2026-01-01T00:00:00Z", "payload": {}},
@@ -808,11 +809,20 @@ def test_the_budgets_command_reports_the_turns_the_cases_count(scratch: Path) ->
 )
 def test_a_case_whose_replay_is_no_list_of_ids_is_refused(document: object, scratch: Path) -> None:
     """A string's length is no count of turns, so the budget stops rather than report it."""
-    case = scratch / "a-case"
-    case.mkdir()
+    cases = scratch / "cases"
+    case = cases / "a-case"
+    case.mkdir(parents=True)
     (case / "case.json").write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(UnreadableCaseError):
-        turns_per_test(scratch)
+        turns_per_test(cases)
+    result = scratch / "result.json"
+    done = run(
+        [sys.executable, str(REPO / "tests" / "skilltest" / "turns_per_run.py"), str(cases)],
+        env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
+    )
+    equal(done.returncode, 1)
+    contains(done.stderr, "a-case")
+    truth(not result.exists(), describing="no figure reported for an unreadable case")
 
 
 def test_a_print_with_an_unreadable_job_start_is_refused() -> None:

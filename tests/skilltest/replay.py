@@ -32,7 +32,7 @@ from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import Any, Literal, TextIO, TypedDict, get_args
+from typing import Any, Literal, NewType, TextIO, TypedDict, get_args
 
 import doubles
 from cases import REPO, Case, Moment, Request
@@ -93,14 +93,24 @@ def _installer_template() -> str:
     return found["body"]
 
 
+OctoPrintKey = NewType("OctoPrintKey", str)
+IngressToken = NewType("IngressToken", str)
+OperatorCredential = NewType("OperatorCredential", str)
+ObicoToken = NewType("ObicoToken", str)
+#: The print the server minted for this replay.
+PrintId = NewType("PrintId", str)
+
+
 @dataclass(frozen=True)
 class Secrets:
     """What the doubles and the server authenticate each other with, minted per replay."""
 
-    octoprint_key: str = field(default_factory=lambda: secrets.token_hex(16))
-    ingress: str = field(default_factory=lambda: secrets.token_hex(16))
-    operator: str = field(default_factory=lambda: secrets.token_hex(32))
-    obico_token: str = field(default_factory=lambda: secrets.token_hex(16))
+    octoprint_key: OctoPrintKey = field(default_factory=lambda: OctoPrintKey(secrets.token_hex(16)))
+    ingress: IngressToken = field(default_factory=lambda: IngressToken(secrets.token_hex(16)))
+    operator: OperatorCredential = field(
+        default_factory=lambda: OperatorCredential(secrets.token_hex(32))
+    )
+    obico_token: ObicoToken = field(default_factory=lambda: ObicoToken(secrets.token_hex(16)))
 
 
 def service_config(
@@ -190,12 +200,19 @@ def refuse_a_pointer(data: bytes, case: str, name: str) -> bytes:
     return data
 
 
+def _utc_instant(held: str) -> datetime:
+    """A time the server wrote, its nanoseconds cut to what `datetime` holds."""
+    return datetime.fromisoformat(
+        re.sub(r"(\.\d{6})\d*Z$", r"\1+00:00", held).replace("Z", "+00:00")
+    )
+
+
 def _is_timestamp(value: object) -> bool:
     """Whether the server's answer is a time the replay can read."""
     if not isinstance(value, str):
         return False
     try:
-        datetime.fromisoformat(value[:26].rstrip("Z") + "+00:00")
+        _utc_instant(value)
     except ValueError:
         return False
     return True
@@ -221,13 +238,17 @@ def is_event(event: object) -> bool:
     payload = event.get("payload")
     if not isinstance(payload, dict) or not isinstance(event.get("image") or {}, dict):
         return False
-    if event["kind"] == FAILED:
-        return isinstance(payload.get("site"), str) and isinstance(payload.get("detail", ""), str)
-    if event["kind"] in REQUESTED:
-        return _is_requested_action(payload.get("action"))
-    if event["kind"] == ASSESSED:
-        return _is_assessment(payload.get("assessment"))
-    return True
+    match event["kind"]:
+        case "port_failure":
+            return isinstance(payload.get("site"), str) and isinstance(
+                payload.get("detail", ""), str
+            )
+        case "action_requested" | "recovery_requested":
+            return _is_requested_action(payload.get("action"))
+        case "agent_assessment":
+            return _is_assessment(payload.get("assessment"))
+        case _:
+            return True
 
 
 def _is_requested_action(action: object) -> bool:
@@ -468,9 +489,8 @@ def _ledger_of(document: object, path: Path) -> Ledger:
 
 
 def _received(event: dict[str, Any]) -> datetime:
-    """When the server kept one event, its nanoseconds cut to what `datetime` holds."""
-    held = re.sub(r"(\.\d{6})\d*Z$", r"\1+00:00", event["received_at"]).replace("Z", "+00:00")
-    return datetime.fromisoformat(held)
+    """When the server kept one event."""
+    return _utc_instant(event["received_at"])
 
 
 def _json_lines(text: str) -> list[dict[str, Any]]:
@@ -602,7 +622,7 @@ class Replay:
         ]
         self.port = _free_port()
         self.server: subprocess.Popen[str] | None = None
-        self.print_id: str | None = None
+        self.print_id: PrintId | None = None
 
     def _install(self) -> Path:
         """Put the programs, the skill and the configuration where the installer puts them."""
@@ -727,11 +747,7 @@ class Replay:
         """When the print the server holds says its job started, or when this replay's did."""
         prints = self._prints()
         started = prints[0].get("job_started_at") if prints else None
-        return (
-            datetime.fromisoformat(started[:26].rstrip("Z") + "+00:00").timestamp()
-            if started
-            else self.case.job_started().timestamp()
-        )
+        return _utc_instant(started).timestamp() if started else self.case.job_started().timestamp()
 
     def _deliver_alert(self, moment: Moment) -> None:
         """Post an alert while the last turn still holds the print, and wait until it is kept.
@@ -778,13 +794,13 @@ class Replay:
             raise ReplayError(msg)
         return prints
 
-    def _print_id(self) -> str:
+    def _print_id(self) -> PrintId:
         if self.print_id is None:
             prints = self._prints()
             if not prints:
                 msg = "the server holds no print"
                 raise ReplayError(msg)
-            self.print_id = prints[0]["id"]
+            self.print_id = PrintId(prints[0]["id"])
         return self.print_id
 
     def _events(self) -> list[dict[str, Any]]:
