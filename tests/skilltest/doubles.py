@@ -30,7 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, NamedTuple
 from urllib.parse import unquote, urlsplit
 
-from cases import Case, MachineState, Moment, elapsed_seconds
+from cases import Case, Frame, MachineState, Moment, elapsed_seconds
 
 #: A heater command in the G-code, and the temperature it sets.
 HEATER = re.compile(rb"^M(?P<code>104|109|140|190)\s[^;\n]*?S(?P<value>\d+(?:\.\d+)?)", re.M)
@@ -137,7 +137,8 @@ class Timeline:
     def stand_at(self, index: int) -> None:
         """Stand at one event: its frame is the next a fetch answers."""
         self.index = index
-        self.crept_s = 0.0
+        self.waited_s = 0.0
+        self.event_began = time.monotonic()
         moment = self.case.moments[index]
         at = self.case.frame_at_or_before(moment.at, moment.event_image)
         if moment.is_alert:
@@ -190,7 +191,7 @@ class Timeline:
         return max(reached, default=self.event_cursor)
 
     def next_fetch(self) -> str | None:
-        """The frame this fetch answers: the event's own, then the next before the next event."""
+        """The frame this fetch answers: the event's own, then the next up to `_window_end`."""
         with self.lock:
             if self.finished:
                 return None
@@ -198,13 +199,11 @@ class Timeline:
             if self.owed_event_frame:
                 self.cursor = max(self.cursor, self.at_event_frame)
                 self.owed_event_frame = False
-                self.fetched_at = time.monotonic()
-            elif self.cursor < self._window_end():
-                self.cursor += 1
-                self.fetched_at = time.monotonic()
+                self.event_began = time.monotonic()
             else:
-                self.crept_s += time.monotonic() - self.fetched_at
-                self.fetched_at = time.monotonic()
+                if self.cursor < self._window_end():
+                    self.cursor += 1
+                self.waited_s = time.monotonic() - self.event_began
             name = frames[max(self.cursor, 0)].file
             self.fetches.append(name)
             return name
@@ -222,24 +221,33 @@ class Timeline:
             return None
         return numbered(self.picture(name), len(self.fetches))
 
+    def _frame_before_the_next_event(self) -> Frame | None:
+        """The newest frame shown since the event, unless it is the next event's own.
+
+        That one is shown a little early, so it says nothing of where the job is yet.
+        """
+        following = self.case.moments[self.index + 1 :]
+        if self.cursor <= self.event_cursor:
+            return None
+        frame = self.case.frames[self.cursor]
+        return None if following and frame.file == following[0].event_image else frame
+
     def position(self) -> int:
         """The job's file position at this reading: the event's, moved on since.
 
-        A frame shown since moves it to where the job was when that frame was
-        captured. A look past the turn's newest frame answers that frame again, as a
-        camera with nothing newer does, and the job goes on at the rate the recording
-        shows between this event and the next, for the seconds the look really waited.
-        It stops short of the next event's position, because replay time never passes
-        that moment. A frozen counter is what a real stall looks like, so a healthy
-        print never shows one.
+        A real job moves as real seconds pass, so it stands where the recording's rate
+        around this event puts it after the seconds this turn's looks have really
+        waited, or where the job was at a frame shown since, whichever is further. It
+        stops short of the next event's position, because replay time never passes
+        that moment.
         """
         low = self.moment.file_position_bytes
         following = self.case.moments[self.index + 1 :]
         high = following[0].file_position_bytes - 1 if following else self.case.gcode_size - 1
-        moved = low
-        if self.cursor > self.event_cursor:
-            moved = self.positions[self.cursor]
-        return max(low, min(moved + int(self.crept_s * self._recorded_rate()), high))
+        moved = low + int(self.waited_s * self._recorded_rate())
+        if self._frame_before_the_next_event() is not None:
+            moved = max(moved, self.positions[self.cursor])
+        return max(low, min(moved, high))
 
     def _recorded_rate(self) -> float:
         """The bytes a second the recording shows the job moving at around this event."""
@@ -251,10 +259,11 @@ class Timeline:
         return max(0, moved) / span if span > 0 else 0.0
 
     def _print_time(self, position: int) -> int:
-        at = self.moment.at
-        if self.cursor > self.event_cursor and self.case.has_frame_times:
-            at = self.case.frames[self.cursor].captured
-        now = print_time_s(self.case, at, position) + int(self.crept_s)
+        frame = self._frame_before_the_next_event()
+        at = frame.captured if frame is not None and self.case.has_frame_times else self.moment.at
+        now = print_time_s(self.case, at, position)
+        if frame is None or not self.case.has_frame_times:
+            now += int(self.waited_s)
         self.longest_print_time_s = max(self.longest_print_time_s, now)
         return self.longest_print_time_s
 
