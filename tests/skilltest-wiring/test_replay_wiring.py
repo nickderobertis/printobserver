@@ -23,6 +23,7 @@ from urllib.parse import quote
 
 import classify
 import doubles
+import mock_turn
 import pytest
 import record
 from cases import (
@@ -42,6 +43,7 @@ from cases import (
 from mock_turn import ScriptedRun, Seen
 from replay import (
     Assessment,
+    Confidence,
     Replay,
     Replayed,
     ReplayError,
@@ -202,6 +204,10 @@ def test_the_suites_vocabularies_are_the_contracts() -> None:
         (REPO / "schemas/printobserver-supervisor-api/AgentAssessment.json").read_text("utf-8")
     )
     equal(sorted(Assessment.__annotations__), sorted(assessment["properties"]))
+    equal(sorted(mock_turn.Assessment.__annotations__), sorted(assessment["properties"]))
+    confidence = sorted(arm["const"] for arm in assessment["$defs"]["Confidence"]["oneOf"])
+    equal(sorted(get_args(Confidence)), confidence)
+    equal(sorted(get_args(mock_turn.Confidence)), confidence)
     truth(set(declared) >= POSITIONED_TRIGGERS, describing="positioned triggers to be triggers")
     states = json.loads((REPO / "schemas/printobserver-types/PrinterState.json").read_text("utf-8"))
     named = {arm["const"] for arm in states["oneOf"] if "const" in arm}
@@ -791,9 +797,7 @@ def test_the_budgets_command_reports_the_turns_the_cases_count(scratch: Path) ->
     "document",
     [["no case"], {"assertions": {"replay": "a-string"}}, {"assertions": {"replay": [1]}}],
 )
-def test_a_case_whose_replay_is_no_list_of_ids_is_counted_as_nothing(
-    document: object, scratch: Path
-) -> None:
+def test_a_case_whose_replay_is_no_list_of_ids_is_refused(document: object, scratch: Path) -> None:
     """A string's length is no count of turns, so the budget stops rather than report it."""
     case = scratch / "a-case"
     case.mkdir()
@@ -808,6 +812,32 @@ def test_a_print_with_an_unreadable_job_start_is_refused() -> None:
     equal(is_held_print({"id": "p", "job_started_at": None}), True)
     equal(is_held_print({"id": "p", "job_started_at": "soon"}), False)
     equal(is_held_print({"job_started_at": None}), False)
+
+
+def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
+    """A call the transcript writes twice ran once, and a file tool's read is reported."""
+    case = read_case("fan-cut-bridge")
+    done = mock_replay(
+        case,
+        [{"commands": [CONTEXT], "reads": ["/somewhere/SKILL.md"], "streamed_twice": True}],
+        scratch,
+    )
+    point = done.replayed.points[0]
+    equal(len(point.commands), 1)
+    contains(point.commands[0], "printobserver context")
+    equal(point.opened, ["SKILL.md"])
+
+
+def test_a_turn_the_engine_gave_up_on_fails_its_own_decision_point(scratch: Path) -> None:
+    """Its failure is that entry's verdict, and the next event still gets its turn."""
+    case = read_case("fan-cut-bridge")
+    unreadable: ScriptedRun = {"commands": [CONTEXT], "unreadable": True}
+    done = mock_replay(case, [unreadable, unreadable, unreadable, {"commands": [CONTEXT]}], scratch)
+    first, second = done.replayed.points
+    truth(first.why_not is not None, describing="the failed turn to fail its decision point")
+    contains(str(first.why_not), "the turn failed")
+    truth(second.moment.id == case.moments[1].id, describing="the next event to get its turn")
+    equal(done.replayed.passed, False)
 
 
 def test_only_the_ingress_accepting_an_alert_counts_as_delivering_it() -> None:
@@ -879,6 +909,8 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         "decision_points": points,
     }
     (finished / "fan-cut-bridge.json").write_text(json.dumps(test_record), encoding="utf-8")
+    # What a live run writes beside it, which is no test's record.
+    (finished / "fan-cut-bridge.transcript.jsonl").write_text("{}\n", encoding="utf-8")
     equal(record.main([str(finished)]), 0)
     equal(json.loads(written.read_text("utf-8"))["detail"]["commit"], "a-commit")
     failed = tmp_path / "failed"

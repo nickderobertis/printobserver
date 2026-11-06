@@ -32,7 +32,7 @@ from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import Any, TextIO, TypedDict
+from typing import Any, Literal, TextIO, TypedDict, get_args
 
 import doubles
 from cases import REPO, Case, Moment, Request
@@ -219,7 +219,7 @@ def is_event(event: object) -> bool:
     ):
         return False
     payload = event.get("payload", {})
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict) or not isinstance(event.get("image") or {}, dict):
         return False
     if event["kind"] in REQUESTED:
         return _is_requested_action(payload.get("action"))
@@ -232,15 +232,26 @@ def _is_requested_action(action: object) -> bool:
     """Whether a request says what was asked and who asked, which is how it is judged."""
     if not isinstance(action, dict) or not isinstance(action.get("action"), str):
         return False
-    # An actor is an object naming who acted, or the bare name of a unit variant.
-    actor = action.get("actor")
-    return isinstance(actor, (dict, str)) and bool(actor)
+    return _is_actor(action.get("actor"))
+
+
+def _is_actor(actor: object) -> bool:
+    """Whether it is one of the three actors the server's `Actor` declares."""
+    if isinstance(actor, dict):
+        return actor.keys() == {"agent"} and isinstance(actor["agent"], dict)
+    return actor in {"operator", "system"}
 
 
 def _is_assessment(assessment: object) -> bool:
     """Whether a turn's assessment has every field the record carries; a turn may have none."""
-    return assessment is None or (
-        isinstance(assessment, dict) and Assessment.__annotations__.keys() <= assessment.keys()
+    if assessment is None:
+        return True
+    return (
+        isinstance(assessment, dict)
+        and Assessment.__annotations__.keys() <= assessment.keys()
+        and assessment["confidence"] in get_args(Confidence)
+        and all(isinstance(assessment[name], str) for name in ("summary", "did", "why"))
+        and all(isinstance(assessment[name], bool) for name in ("should_continue", "escalating"))
     )
 
 
@@ -279,11 +290,14 @@ def delivered(status: int) -> bool:
     return status == HTTPStatus.ACCEPTED
 
 
+Confidence = Literal["low", "medium", "high"]
+
+
 class Assessment(TypedDict):
     """What the agent answered a turn with, as the server recorded it."""
 
     summary: str
-    confidence: str
+    confidence: Confidence
     should_continue: bool
     did: str
     why: str
@@ -498,6 +512,7 @@ class RunReport:
         # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         for line in lines:
             match line:
+                # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
                 case {"type": "system", "subtype": "compact_boundary"}:
                     self.compacted = True
                 case {"type": "result", "usage": dict(usage), **rest}:
@@ -514,6 +529,7 @@ class RunReport:
 
     def _used(self, block: object) -> None:
         """One tool call of the transcript, which writes a call once per streamed message."""
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         match block:
             case {"type": "tool_use", "id": str(called), "name": str(name), "input": dict(given)}:
                 if called in self.seen_tool_uses:
@@ -753,7 +769,8 @@ class Replay:
 
     def _prints(self) -> list[dict[str, Any]]:
         """The prints the server holds, once they have what is read from them."""
-        prints = json.loads(self._client("prints")).get("prints")
+        answered = json.loads(self._client("prints"))
+        prints = answered.get("prints") if isinstance(answered, dict) else None
         if not isinstance(prints, list) or not all(map(is_held_print, prints)):
             msg = "the server's prints answered no list of prints"
             raise ReplayError(msg)
@@ -774,7 +791,8 @@ class Replay:
             answered = self._client("history", "--print-id", self._print_id(), "--limit", "1000")
         except ReplayError:
             return []
-        events = json.loads(answered).get("events")
+        document = json.loads(answered)
+        events = document.get("events") if isinstance(document, dict) else None
         if not isinstance(events, list) or not all(map(is_event, events)):
             msg = "the server's history answered no list of events"
             raise ReplayError(msg)

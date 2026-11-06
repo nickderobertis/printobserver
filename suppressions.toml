@@ -4395,6 +4395,24 @@ reason = "Claude Code's sign-in file has no published schema to reconcile with. 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest/replay.py"
+site = "case {\"type\": \"system\", \"subtype\": \"compact_boundary\"}:"
+reason = "Claude Code's transcript and result document has no published schema to reconcile with. `test_replay.py` is the drift gate: it fails any live turn whose usage, models or commands come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "match block:"
+reason = "Claude Code's tool-call blocks in its transcript has no published schema to reconcile with. `test_replay.py` is the drift gate: it fails any live turn whose usage, models or commands come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "lines: list[dict[str, Any]] = []"
+reason = "The mock writes what the replay reads of Claude Code's transcript and result, which have no published schema to reconcile with. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models or commands come back empty, so a format the mock alone still spoke is caught at the next live run."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
 site = "for line in lines:"
 reason = "Claude Code's result document and transcript have no published schema to reconcile with. `test_replay.py` is the drift gate: it fails any live turn whose usage, models or commands come back empty, which is what a moved field reads as."
 

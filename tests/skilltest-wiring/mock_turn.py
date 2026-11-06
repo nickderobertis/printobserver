@@ -19,19 +19,21 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 # Started with the environment a turn is given, which names nothing of this tree.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "repo-checks" / "src"))
 
 from repo_checks.shell import run
 
+Confidence = Literal["low", "medium", "high"]
+
 
 class Assessment(TypedDict):
     """What a turn answers with, in the shape the assessment schema asks for."""
 
     summary: str
-    confidence: str
+    confidence: Confidence
     should_continue: bool
     did: str
     why: str
@@ -58,6 +60,10 @@ class ScriptedRun(TypedDict):
 
     commands: NotRequired[list[list[str]]]
     usage: NotRequired[dict[str, int]]
+    #: Files the turn opens with its file tool.
+    reads: NotRequired[list[str]]
+    #: Whether the transcript writes each call twice, as one streamed over two messages.
+    streamed_twice: NotRequired[bool]
     compact: NotRequired[bool]
     unreadable: NotRequired[bool]
 
@@ -170,15 +176,16 @@ def main(script_path: str, arguments: list[str]) -> int:
     usage = scripted.get("usage", {"input_tokens": 10, "output_tokens": 5})
     transcript = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "workspace"
     transcript.mkdir(parents=True, exist_ok=True)
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
     lines: list[dict[str, Any]] = []
     if scripted.get("compact"):
         lines.append({"type": "system", "subtype": "compact_boundary"})
-    lines.append(
-        {
-            "type": "assistant",
-            "message": {
-                "model": MOCK_MODEL,
-                "content": [
+    message = {
+        "type": "assistant",
+        "message": {
+            "model": MOCK_MODEL,
+            "content": [
+                *(
                     {
                         "type": "tool_use",
                         "id": f"call-{number}-{index}",
@@ -186,10 +193,20 @@ def main(script_path: str, arguments: list[str]) -> int:
                         "input": {"command": " ".join(words)},
                     }
                     for index, words in enumerate(scripted.get("commands", []))
-                ],
-            },
-        }
-    )
+                ),
+                *(
+                    {
+                        "type": "tool_use",
+                        "id": f"read-{number}-{index}",
+                        "name": "Read",
+                        "input": {"file_path": path},
+                    }
+                    for index, path in enumerate(scripted.get("reads", []))
+                ),
+            ],
+        },
+    }
+    lines.extend([message] * (2 if scripted.get("streamed_twice") else 1))
     with (transcript / f"{session}.jsonl").open("a", encoding="utf-8") as kept:
         kept.writelines(json.dumps(line) + "\n" for line in lines)
     answer: dict[str, Any] = (

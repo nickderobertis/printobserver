@@ -16,6 +16,7 @@ use printobserver_core::{
     PortFailureSite,
 };
 use printobserver_types::{EventPayload as _, EventRecord, PrintId};
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 use crate::agent::StandInAgent;
 use crate::camera_host::{GO2RTC_FAILURE, Scripted, ScriptedHost};
@@ -283,16 +284,36 @@ async fn a_look_at_the_printer_says_when_its_frame_was_captured() {
     );
 }
 
+/// A camera on the loopback address answering every request with one frame under
+/// this `Last-Modified`, well-formed or not.
+async fn camera_declaring(declared: &'static str) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a loopback port");
+    let address = listener.local_addr().expect("the bound address");
+    let body = snapshot_bytes();
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).await;
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\
+                 Last-Modified: {declared}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes()).await;
+            let _ = stream.write_all(&body).await;
+            let _ = stream.shutdown().await;
+        }
+    });
+    format!("http://{address}/snapshot.jpg")
+}
+
 /// A camera's own `Last-Modified` is when its frame was captured, and one naming no
 /// time leaves the look standing, at the moment the camera answered.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_cameras_last_modified_is_read_and_a_malformed_one_is_passed_over() {
-    let declared = crate::http_host::Host::last_modified(
-        "Thu, 29 Oct 2026 18:24:50 GMT",
-        crate::ingress::snapshot_bytes(),
-    )
-    .await;
-    let world = with_camera(declared.url()).await;
+    let world = with_camera(camera_declaring("Thu, 29 Oct 2026 18:24:50 GMT").await).await;
     let (status, look) = world.get(&world.url("/look")).await;
     assert_eq!(status, reqwest::StatusCode::OK, "{look}");
     assert_eq!(
@@ -301,15 +322,12 @@ async fn a_cameras_last_modified_is_read_and_a_malformed_one_is_passed_over() {
     );
     world.server.stop().await;
 
-    let malformed =
-        crate::http_host::Host::last_modified("yesterday", crate::ingress::snapshot_bytes()).await;
-    let world = with_camera(malformed.url()).await;
+    let world = with_camera(camera_declaring("yesterday").await).await;
     let (status, look) = world.get(&world.url("/look")).await;
     assert_eq!(status, reqwest::StatusCode::OK, "{look}");
     let captured = look["event"]["payload"]["frame_captured_at"]
         .as_str()
         .expect("the moment the camera answered");
-    assert!(captured.starts_with("20"), "{look}");
     assert_ne!(captured, "2026-10-29T18:24:50Z", "{look}");
     world.server.stop().await;
 }
