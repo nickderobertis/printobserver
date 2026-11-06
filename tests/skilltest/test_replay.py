@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 from cases import read_case, replayed_case_names
-from replay import Replay
+from replay import Replay, harness_token
 from repo_checks import expect
 
 RUN_DIR = os.environ.get("SKILLTEST_RUN_DIR", "").strip()
@@ -30,6 +30,8 @@ def test_the_agent_supervises_the_print(name: str) -> None:
     program = shutil.which("claude")
     if program is None:
         pytest.fail("the shipped harness is not installed: no `claude` is on PATH")
+    if harness_token() is None:
+        pytest.fail("no credential for the harness: set CLAUDE_CODE_OAUTH_TOKEN, or sign in")
     case = read_case(name)
     replay = Replay(case, [program], gcode=case.gcode.read_bytes())
     try:
@@ -48,6 +50,13 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             ["claude-code"],
             describing=f"{name}'s one conversation",
         )
+        # A record with nothing in it is the harness's output or transcript having
+        # moved from where the replay reads them, which it must not pass over.
+        for point in replayed.points:
+            expect.truth(
+                point.usage and point.models and point.commands,
+                describing=f"{point.moment.id}'s turn to report its usage, models and commands",
+            )
         expect.truth(replayed.passed, describing=f"every decision point:\n{replayed.failures()}")
     finally:
         replay.clean_up()

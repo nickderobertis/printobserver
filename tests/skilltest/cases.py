@@ -14,8 +14,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, NewType
 
 from repo_checks.checks_real_prints import printed_gcode, stored_size
 
@@ -30,6 +31,37 @@ NAMED_FOR_ITS_MINUTE = re.compile(r"^after-(?P<hour>\d{2})(?P<minute>\d{2})")
 def elapsed_seconds(start: str, end: str) -> int:
     """The whole seconds between two `at` times."""
     return int((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds())
+
+
+ScenarioId = NewType("ScenarioId", str)
+EventId = NewType("EventId", str)
+
+
+class Trigger(StrEnum):
+    """What starts a scenario's turn, as `case.schema.json` names it."""
+
+    RECORDED_ALERT = "recorded_alert"
+    SYNTHETIC_ALERT = "synthetic_alert"
+    PERIODIC_OBSERVATION = "periodic_observation"
+    START_REQUEST = "start_request"
+
+
+class MachineState(StrEnum):
+    """What the machine reads as at a scenario, in the printer contract's spelling."""
+
+    PRINTING = "printing"
+    PAUSED = "paused"
+    OPERATIONAL = "operational"
+    OFFLINE = "offline"
+
+    @property
+    def answers(self) -> bool:
+        """Whether a read of the machine answers at all.
+
+        The server's scheduled check does not fire on a state a print ends in, so
+        a scenario in one is replayed as a machine whose port has gone.
+        """
+        return self in {MachineState.PRINTING, MachineState.PAUSED}
 
 
 @dataclass(frozen=True)
@@ -100,12 +132,12 @@ class Frame:
 class Moment:
     """One entry of a case's `replay`: an event, what it hands over and how it is judged."""
 
-    id: str
+    id: ScenarioId
     at: str
-    trigger: str
+    trigger: Trigger
     event_image: str
-    event_id: str | None
-    printer_state: str
+    event_id: EventId | None
+    printer_state: MachineState
     file_position_bytes: int
     accept_any_of: tuple[tuple[Step, ...], ...]
     never: tuple[Step, ...]
@@ -114,7 +146,7 @@ class Moment:
     @property
     def is_alert(self) -> bool:
         """Whether the Obico double delivers this event, rather than the server's own schedule."""
-        return self.trigger != "periodic_observation"
+        return self.trigger is not Trigger.PERIODIC_OBSERVATION
 
     def verdict(self, requests: list[Request]) -> str | None:
         """Why these requests fail this decision point, or nothing when they pass it."""
@@ -130,6 +162,10 @@ class Moment:
             )
             broken.append(f"it met no accepted outcome of {accepted}")
         return "; ".join(broken) or None
+
+
+def _event_id(scenario: dict[str, Any]) -> EventId | None:
+    return EventId(scenario["event_id"]) if "event_id" in scenario else None
 
 
 def _step(document: dict[str, Any]) -> Step:
@@ -235,12 +271,12 @@ def read_case(name: str) -> Case:
     )
     moments = tuple(
         Moment(
-            id=entry,
+            id=ScenarioId(entry),
             at=scenarios[entry]["at"],
-            trigger=scenarios[entry]["trigger"],
+            trigger=Trigger(scenarios[entry]["trigger"]),
             event_image=scenarios[entry]["event_image"],
-            event_id=scenarios[entry].get("event_id"),
-            printer_state=scenarios[entry]["printer_state"],
+            event_id=_event_id(scenarios[entry]),
+            printer_state=MachineState(scenarios[entry]["printer_state"]),
             file_position_bytes=scenarios[entry]["file_position_bytes"],
             accept_any_of=tuple(
                 tuple(_step(step) for step in outcome)

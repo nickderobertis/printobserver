@@ -1597,12 +1597,7 @@ passing, and the `skilltest` job runs it on the same list. A flaky test is fixed
 at its cause, never retried, excluded or tolerated. A change adding a module the
 agent's context is built from adds it to that list.
 
-Doubled are only what no test host has: OctoPrint, the camera and Obico. A
-pass-through in front of the harness, `printobserver-server-turn-launcher`, keeps
-each run's output and reports its exit, because the next event must stand before
-the server can release the print; it is a Rust program so that the gate's wiring
-tests run on Windows too, and `test-responder` keeps it off what a consumer
-installs. `just skilltest-record` writes `tests/skilltest/results/latest.json`.
+`tests/skilltest/AGENTS.md` holds that suite's own rules.
 
 ## The real-print cases in Git LFS
 

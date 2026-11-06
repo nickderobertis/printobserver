@@ -11,6 +11,7 @@ stamped with the name of the frame it stands for.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 from collections.abc import Callable, Iterator
@@ -22,7 +23,7 @@ import classify
 import pytest
 import record
 from cases import CASES, REPO, Case, read_case, replayed_case_names
-from replay import Replay, Replayed, program, service_config
+from replay import Replay, Replayed, harness_token, program, service_config
 from replay import Secrets as Minted
 from repo_checks.__main__ import main as repo_check
 from repo_checks.checks_real_prints import printed_gcode, stored_size
@@ -363,6 +364,13 @@ def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
     done = mock_replay(case, [{"commands": [LOOK, LOOK]}], scratch)
     first, second = case.moments
     equal([done.seen_frame(0, 0), done.seen_frame(0, 1)], [first.event_image, first.event_image])
+    jobs = [json.loads(entry["out"])["job"] for entry in done.turns[0]["ran"]]
+    equal(jobs[0]["file_position_bytes"], jobs[1]["file_position_bytes"])
+    equal(jobs[0]["print_time_s"], jobs[1]["print_time_s"])
+    truth(
+        jobs[0]["file_position_bytes"] < second.file_position_bytes,
+        describing="nothing a turn reads to pass the next event's moment",
+    )
     # The event's frame, the two looks, and then the next event's own frame.
     equal(done.replayed.fetches[:4], [first.event_image] * 3 + [second.event_image])
 
@@ -436,6 +444,76 @@ def test_the_runner_makes_exactly_one_turn_per_replay_entry(scratch: Path) -> No
     case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
     equal(len(done.turns), turns_per_test()[case.name])
+
+
+def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: Path) -> None:
+    """The engine's second run of one turn neither ends it nor moves the replay on."""
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    done = mock_replay(
+        case,
+        [
+            {"commands": [CONTEXT], "unreadable": True},
+            {"commands": [LOOK]},
+            {"commands": [CONTEXT]},
+        ],
+        scratch,
+    )
+    equal(len(done.replayed.ledger["turns"]), 2)
+    first, second = case.moments
+    equal(done.images[json.loads(done.turns[0]["ran"][0]["out"])["image_path"]], first.event_image)
+    equal(
+        done.seen_frame(1, 0),
+        case.frames[case.frame_at_or_before(first.at, first.event_image) + 1].file,
+    )
+    equal(done.images[json.loads(done.turns[2]["ran"][0]["out"])["image_path"]], second.event_image)
+
+
+def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Given a directory it folds that; given none it runs the suite, and exits as that did."""
+    written = tmp_path / "latest.json"
+    monkeypatch.setattr(record, "RESULT", written)
+    monkeypatch.setattr(record, "REPO", tmp_path)
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    finished = tmp_path / "finished"
+    finished.mkdir()
+    test_record = {
+        "test": "fan-cut-bridge",
+        "passed": True,
+        "turns": 0,
+        "sessions": [],
+        "decision_points": [],
+    }
+    (finished / "fan-cut-bridge.json").write_text(json.dumps(test_record), encoding="utf-8")
+    equal(record.main([str(finished)]), 0)
+    equal(json.loads(written.read_text("utf-8"))["detail"]["commit"], "a-commit")
+    # A `just` of this test's own, standing where the real recipe would run the suite.
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    suffix = ".exe" if sys.platform == "win32" else ""
+    shutil.copy2(program("printobserver-server-responder"), fake / f"just{suffix}")
+    monkeypatch.setenv("PATH", f"{fake}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("MOCK_EXIT", "7")
+    equal(record.main([]), 7)
+    equal(json.loads(written.read_text("utf-8"))["figures"], {"turns": 0})
+
+
+def test_the_harness_credential_is_the_variable_then_the_hosts_sign_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The variable wins; a sign-in is read for its access token; anything else is none."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "from-the-variable")
+    equal(harness_token(), "from-the-variable")
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
+    equal(harness_token(), None)
+    sign_in = tmp_path / ".credentials.json"
+    sign_in.write_text('{"claudeAiOauth": {"accessToken": "from-the-file"}}', encoding="utf-8")
+    equal(harness_token(), "from-the-file")
+    for unreadable in ("not json", "[]", '{"claudeAiOauth": 3}', '{"claudeAiOauth": {}}'):
+        sign_in.write_text(unreadable, encoding="utf-8")
+        equal(harness_token(), None, describing=unreadable)
 
 
 def test_the_record_carries_every_turns_usage_with_the_compaction_marked(

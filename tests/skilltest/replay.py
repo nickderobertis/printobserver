@@ -28,10 +28,10 @@ import time
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, TypedDict
 
 import doubles
 from cases import REPO, Case, Moment, Request
@@ -172,7 +172,9 @@ def harness_token() -> str | None:
         document = json.loads((directory / ".credentials.json").read_text(encoding="utf-8"))
     except OSError, ValueError:
         return None
-    held = document.get("claudeAiOauth", {}).get("accessToken")
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+    sign_in = document.get("claudeAiOauth") if isinstance(document, dict) else None
+    held = sign_in.get("accessToken") if isinstance(sign_in, dict) else None
     return held if isinstance(held, str) else None
 
 
@@ -189,6 +191,65 @@ def real_picture(case: Case) -> Callable[[str], bytes]:
     return read
 
 
+class Assessment(TypedDict):
+    """What the agent answered a turn with, as the server recorded it."""
+
+    summary: str
+    confidence: str
+    should_continue: bool
+    did: str
+    why: str
+    escalating: bool
+
+
+class DecisionRecord(TypedDict):
+    """One decision point as `results/latest.json` carries it."""
+
+    scenario: str
+    at: str
+    trigger: str
+    passed: bool
+    why_not: str | None
+    requests: list[str]
+    commands: list[str]
+    opened: list[str]
+    assessment: Assessment | None
+    looks: int
+    usage: dict[str, Any] | None
+    models: list[str]
+    compacted: bool
+
+
+class TestRecord(TypedDict):
+    """One test as `results/latest.json` carries it."""
+
+    test: str
+    passed: bool
+    turns: int
+    sessions: list[str]
+    decision_points: list[DecisionRecord]
+
+
+class LedgerSession(TypedDict):
+    """One conversation of a print, as the supervisor port's ledger holds it."""
+
+    session_name: str
+    harness_identity: str
+
+
+class LedgerTurn(TypedDict):
+    """One turn of a print, as the supervisor port's ledger holds it."""
+
+    session_name: str
+
+
+class Ledger(TypedDict):
+    """What the supervisor port wrote down of a print."""
+
+    sessions: list[LedgerSession]
+    turns: list[LedgerTurn]
+
+
 @dataclass
 class Run:
     """One harness run: the replay entry it served, and where what it said is kept."""
@@ -200,6 +261,9 @@ class Run:
     transcript_sizes: dict[Path, int]
     #: What its session transcripts gained while it ran.
     transcript: list[dict[str, Any]] = field(default_factory=list)
+    #: When it started and ended, on the clock the server's record is kept by.
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    ended_at: datetime | None = None
 
 
 @dataclass
@@ -210,7 +274,7 @@ class DecisionPoint:
     requests: list[Request]
     commands: list[str]
     opened: list[str]
-    assessment: dict[str, Any] | None
+    assessment: Assessment | None
     usage: dict[str, Any] | None
     models: list[str]
     compacted: bool
@@ -226,7 +290,7 @@ class DecisionPoint:
             return f"the turn failed: {self.failure}"
         return self.moment.verdict(self.requests)
 
-    def as_record(self) -> dict[str, Any]:
+    def as_record(self) -> DecisionRecord:
         """The decision point as `results/latest.json` carries it."""
         return {
             "scenario": self.moment.id,
@@ -251,7 +315,7 @@ class Replayed:
 
     case: Case
     points: list[DecisionPoint]
-    ledger: dict[str, Any]
+    ledger: Ledger
     fetches: list[str]
     state: Path
     transcript: list[dict[str, Any]] = field(default_factory=list)
@@ -270,17 +334,21 @@ class Replayed:
             if point.why_not
         )
 
-    def as_record(self) -> dict[str, Any]:
+    def as_record(self) -> TestRecord:
         """The replay as `results/latest.json` carries it."""
         return {
             "test": self.case.name,
             "passed": self.passed,
             "turns": len(self.points),
-            "sessions": [
-                session.get("session_name") for session in self.ledger.get("sessions", [])
-            ],
+            "sessions": [session["session_name"] for session in self.ledger["sessions"]],
             "decision_points": [point.as_record() for point in self.points],
         }
+
+
+def _received(event: dict[str, Any]) -> datetime:
+    """When the server kept one event, its nanoseconds cut to what `datetime` holds."""
+    held = re.sub(r"(\.\d{6})\d*Z$", r"\1+00:00", event["received_at"]).replace("Z", "+00:00")
+    return datetime.fromisoformat(held)
 
 
 def _json_lines(text: str) -> list[dict[str, Any]]:
@@ -320,35 +388,39 @@ class RunReport:
     compacted: bool = False
 
     def take(self, lines: list[dict[str, Any]]) -> None:
-        """Read one run's output into this turn's report."""
+        """Read one run's output and transcript into this turn's report."""
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         for line in lines:
-            if line.get("type") == "system" and line.get("subtype") == "compact_boundary":
-                self.compacted = True
-            if line.get("type") == "result" and isinstance(line.get("usage"), dict):
-                self._add_usage(line["usage"])
-            for model in line.get("modelUsage") or {}:
-                self._saw(model)
-            message = line.get("message")
-            if not isinstance(message, dict):
-                continue
-            if isinstance(message.get("model"), str):
-                self._saw(message["model"])
-            content = message.get("content")
-            for block in content if isinstance(content, list) else []:
-                if isinstance(block, dict) and block.get("type") == "tool_use":
-                    self._used(block)
+            match line:
+                case {"type": "system", "subtype": "compact_boundary"}:
+                    self.compacted = True
+                case {"type": "result", "usage": dict(usage), **rest}:
+                    self._add_usage(usage)
+                    for model in rest.get("modelUsage") or {}:
+                        self._saw(str(model))
+                case {"message": {"model": str(model), "content": list(content)}}:
+                    self._saw(model)
+                    for block in content:
+                        self._used(block)
+                case _:
+                    pass
 
-    def _used(self, block: dict[str, Any]) -> None:
+    def _used(self, block: object) -> None:
         """One tool call of the transcript, which writes a call once per streamed message."""
-        called = str(block.get("id", id(block)))
-        if called in self.seen_tool_uses:
-            return
-        self.seen_tool_uses.add(called)
-        given = block.get("input", {})
-        if block.get("name") == "Bash":
-            self.commands.append(str(given.get("command", "")))
-        elif block.get("name") == "Read":
-            self.opened.append(Path(str(given.get("file_path", ""))).name)
+        match block:
+            case {"type": "tool_use", "id": str(called), "name": str(name), "input": dict(given)}:
+                if called in self.seen_tool_uses:
+                    return
+                self.seen_tool_uses.add(called)
+                match name, given:
+                    case "Bash", {"command": str(command)}:
+                        self.commands.append(command)
+                    case "Read", {"file_path": str(path)}:
+                        self.opened.append(Path(path).name)
+                    case _:
+                        pass
+            case _:
+                pass
 
     def _add_usage(self, usage: dict[str, Any]) -> None:
         """A turn the engine re-prompted is one turn of several runs, so its usage adds up."""
@@ -417,7 +489,8 @@ class Replay:
             json.dumps(
                 {
                     "control": doubles.address(self.servers[3]).removeprefix("http://"),
-                    "target": self.target,
+                    "program": self.target[0],
+                    "arguments": self.target[1:],
                 }
             ),
             encoding="utf-8",
@@ -445,6 +518,7 @@ class Replay:
         return str(record)
 
     def _transcripts(self) -> list[Path]:
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         return sorted(self.state.glob("harness/claude-code/projects/*/*.jsonl"))
 
     def _transcript_sizes(self) -> dict[Path, int]:
@@ -453,6 +527,7 @@ class Replay:
     def _harness_exited(self) -> None:
         """Stand at the next event before the server can let its scheduled check fire."""
         run = self.runs[-1]
+        run.ended_at = datetime.now(UTC)
         for path in self._transcripts():
             with path.open("rb") as transcript:
                 transcript.seek(run.transcript_sizes.get(path, 0))
@@ -504,6 +579,7 @@ class Replay:
         body = self.case.recorded_alert(moment.event_id)
         body["img_url"] = f"{doubles.address(self.servers[2])}/media/{moment.event_image}"
         body["print"]["started_at"] = self._job_started_epoch()
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         connection = HTTPConnection("127.0.0.1", self.port, timeout=ALERT_DEADLINE_S)
         connection.request(
             "POST",
@@ -600,6 +676,15 @@ class Replay:
         for stream in (server.stdout, server.stderr):
             threading.Thread(target=kept, args=(stream,), daemon=True).start()
 
+    def _log_tail(self) -> str:
+        """What the server recorded of the failed turn."""
+        failures = [
+            event["payload"].get("detail", "")
+            for event in self._events()
+            if event["kind"] == FAILED
+        ]
+        return "; ".join(failures[-1:])
+
     def _wait_for_server(self) -> None:
         deadline = time.monotonic() + START_DEADLINE_S
         while time.monotonic() < deadline:
@@ -621,8 +706,13 @@ class Replay:
         while True:
             if self.errors:
                 raise ReplayError("; ".join(self.errors))
-            if self.timeline.finished and self._turns_ended(self._events()) >= wanted:
+            ended = self._turns_ended(self._events())
+            if self.timeline.finished and ended >= wanted:
                 return
+            harness_exits = sum(1 for harness_run in self.runs if harness_run.ended_at)
+            if ended > harness_exits:
+                msg = f"a turn ended with no harness run to show for it: {self._log_tail()}"
+                raise ReplayError(msg)
             if time.monotonic() > deadline:
                 msg = (
                     f"{self._turns_ended(self._events())} of {wanted} turns ended in "
@@ -659,46 +749,44 @@ class Replay:
         finally:
             self.stop()
 
-    def _ledger(self) -> dict[str, Any]:
+    def _ledger(self) -> Ledger:
         path = self.state / "supervisor-sessions" / f"{self._print_id()}.json"
-        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        if not path.is_file():
+            return {"sessions": [], "turns": []}
+        return json.loads(path.read_text(encoding="utf-8"))
 
     def _judged(self, events: list[dict[str, Any]]) -> list[DecisionPoint]:
-        """Split the print's record where each turn ended, and judge each.
+        """Judge each entry by what the server recorded while that entry's harness runs ran.
 
-        An alert posted as a turn ended is kept before that turn's own assessment,
-        so the record is split on the ends rather than on the events delivered.
+        The harness's own start and exit bound a turn, because the record's order
+        does not: an alert posted as a turn ends is kept before its assessment, and
+        a failed turn's failure is kept beside the event it answers.
         """
         triggers = [event for event in events if event["kind"] in TRIGGERS]
-        ends = [
-            index
-            for index, event in enumerate(events)
-            if event["kind"] == ASSESSED
-            or (event["kind"] == FAILED and event["payload"].get("site") == FAILED_SITE)
-        ]
         points = []
         for number, moment in enumerate(self.case.moments):
-            if number >= len(triggers) or number >= len(ends):
-                msg = f"the server recorded no event or no end of turn for {moment.id}"
+            runs = [harness_run for harness_run in self.runs if harness_run.moment_index == number]
+            if number >= len(triggers) or not runs:
+                msg = f"the server recorded no event, or the harness no run, for {moment.id}"
                 raise ReplayError(msg)
-            begin = ends[number - 1] + 1 if number else 0
-            window = events[begin : ends[number] + 1]
             report = RunReport()
-            for harness_run in self.runs:
-                if harness_run.moment_index == number:
-                    report.take(_lines_of(harness_run))
-            points.append(self._point(moment, triggers[number], window, report))
+            for harness_run in runs:
+                report.take(_lines_of(harness_run))
+            points.append(self._point(moment, triggers[number], events, runs, report))
         return points
 
     @staticmethod
     def _point(
         moment: Moment,
         trigger: dict[str, Any],
-        window: list[dict[str, Any]],
+        events: list[dict[str, Any]],
+        runs: list[Run],
         report: RunReport,
     ) -> DecisionPoint:
+        begun, ended = runs[0].started_at, runs[-1].ended_at or datetime.now(UTC)
+        during = [event for event in events if begun <= _received(event) <= ended]
         requests = []
-        for event in window:
+        for event in during:
             if event["kind"] not in REQUESTED:
                 continue
             action = event["payload"].get("action", {})
@@ -707,8 +795,10 @@ class Replay:
             requests.append(Request(str(action.get("action", "")).replace("_", "-"), dict(action)))
         failures = [
             event["payload"].get("detail", "")
-            for event in window
-            if event["kind"] == FAILED and event["payload"].get("site") == FAILED_SITE
+            for event in events
+            if event["kind"] == FAILED
+            and event["payload"].get("site") == FAILED_SITE
+            and event["payload"].get("event_id") == trigger["id"]
         ]
         image = trigger.get("image") or {}
         return DecisionPoint(
@@ -719,8 +809,8 @@ class Replay:
             assessment=next(
                 (
                     event["payload"].get("assessment")
-                    for event in window
-                    if event["kind"] == ASSESSED
+                    for event in events
+                    if event["kind"] == ASSESSED and _received(event) >= ended
                 ),
                 None,
             ),
@@ -730,7 +820,7 @@ class Replay:
             failure=failures[0] if failures else None,
             event_kind=trigger["kind"],
             image_sha256=image.get("sha256"),
-            looks=sum(1 for event in window if event["kind"] == "camera_look"),
+            looks=sum(1 for event in during if event["kind"] == "camera_look"),
         )
 
     def stop(self) -> None:

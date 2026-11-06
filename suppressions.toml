@@ -4373,3 +4373,39 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/supervisor.rs"
 site = "pub(crate) async fn read_filament_types("
 reason = "The supervisor hands the printer port's answer on unchanged to the preflight, which builds the `MaterialName` it compares. The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/replay.py"
+site = "connection = HTTPConnection(\"127.0.0.1\", self.port, timeout=ALERT_DEADLINE_S)"
+reason = "This is one test posting one alert to a loopback server whose answer it discards, as Obico's plugin posts one: the body is the recorded alert itself rather than a domain value a typed client would model, and the replay's control handler calling it is a blocking thread that waits for it by design, so an async client would add a runtime for nothing."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "sign_in = document.get(\"claudeAiOauth\") if isinstance(document, dict) else None"
+reason = "Claude Code's sign-in file has no published schema to reconcile with. It is read only on a signed-in host with no `CLAUDE_CODE_OAUTH_TOKEN`, and a move of it answers no credential, which the live test fails naming."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "for line in lines:"
+reason = "Claude Code's result document and transcript have no published schema to reconcile with. `test_replay.py` is the drift gate: it fails any live turn whose usage, models or commands come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "return sorted(self.state.glob(\"harness/claude-code/projects/*/*.jsonl\"))"
+reason = "Where Claude Code keeps its transcripts has no published contract. `test_replay.py` is the drift gate: it fails any live turn whose commands come back empty, which is what a moved directory reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "if not self.moment.printer_state.answers:"
+reason = "These are a stand-in's copies of OctoPrint's answers, read by the real adapter: `printobserver-octoprint` parses them as it parses a real instance's, and its integration tier holds that parser to a real OctoPrint on every change. A shape the real one does not have fails there, and a shape the adapter cannot read fails the wiring tests here."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "if name != timeline.case.gcode.name:"
+reason = "The same stand-in answer, for the file facts the real adapter reads, held the same way: to a real OctoPrint by that adapter's integration tier."

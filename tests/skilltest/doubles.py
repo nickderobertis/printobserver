@@ -22,29 +22,35 @@ import bisect
 import json
 import re
 import threading
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import unquote, urlsplit
 
-from cases import Case, Moment, elapsed_seconds
+from cases import Case, MachineState, Moment, elapsed_seconds
 
 #: A heater command in the G-code, and the temperature it sets.
 HEATER = re.compile(rb"^M(?P<code>104|109|140|190)\s[^;\n]*?S(?P<value>\d+(?:\.\d+)?)", re.M)
-#: The printer states a read of the machine answers normally.
-ANSWERING = {"printing": "Printing", "paused": "Paused"}
+#: The most of a request's body a double reads: nothing a server sends it is longer.
+MAX_BODY_BYTES = 1_048_576
 #: The longest a stopped camera holds a fetch before giving up on it.
 HELD_FETCH_S = 600
 
 
+class HeaterTarget(NamedTuple):
+    """One temperature a G-code asks for, and the byte it takes effect at."""
+
+    position: int
+    target_c: float
+
+
 @dataclass
 class Heaters:
-    """The temperatures a G-code asks for, by the byte they take effect at."""
+    """The temperatures a G-code asks for, in file order."""
 
-    tool: list[tuple[int, float]] = field(default_factory=list)
-    bed: list[tuple[int, float]] = field(default_factory=list)
+    tool: list[HeaterTarget] = field(default_factory=list)
+    bed: list[HeaterTarget] = field(default_factory=list)
 
     @classmethod
     def of(cls, gcode: bytes | None) -> Heaters:
@@ -52,14 +58,14 @@ class Heaters:
         heaters = cls()
         for found in HEATER.finditer(gcode or b""):
             target = heaters.tool if found["code"] in {b"104", b"109"} else heaters.bed
-            target.append((found.start(), float(found["value"])))
+            target.append(HeaterTarget(found.start(), float(found["value"])))
         return heaters
 
     @staticmethod
-    def at(commands: list[tuple[int, float]], position: int) -> float:
+    def at(commands: list[HeaterTarget], position: int) -> float:
         """The target standing at one file position."""
-        before = bisect.bisect_right(commands, (position, float("inf")))
-        return commands[before - 1][1] if before else 0.0
+        before = bisect.bisect_right(commands, HeaterTarget(position, float("inf")))
+        return commands[before - 1].target_c if before else 0.0
 
 
 def numbered(jpeg: bytes, number: int) -> bytes:
@@ -105,10 +111,8 @@ class Timeline:
     finished: bool = False
     paused: bool = False
     fetches: list[str] = field(default_factory=list)
-    #: Where the job was at each frame, and the real seconds looks have waited past the newest.
+    #: Where the job was at each frame.
     positions: list[int] = field(default_factory=list)
-    crept_s: float = 0.0
-    fetched_at: float = 0.0
     stopped: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     heaters: Heaters = field(default_factory=Heaters)
@@ -127,7 +131,6 @@ class Timeline:
     def stand_at(self, index: int) -> None:
         """Stand at one event: its frame is the next a fetch answers."""
         self.index = index
-        self.crept_s = 0.0
         moment = self.case.moments[index]
         at = self.case.frame_at_or_before(moment.at, moment.event_image)
         if moment.is_alert:
@@ -138,8 +141,8 @@ class Timeline:
             self.owed_event_frame = at > self.cursor
             self.at_event_frame = at
         self.event_cursor = max(self.cursor, at)
-        self.paused = moment.printer_state == "paused" or (
-            self.paused and moment.printer_state == "printing"
+        self.paused = moment.printer_state is MachineState.PAUSED or (
+            self.paused and moment.printer_state is MachineState.PRINTING
         )
 
     def harness_started(self) -> None:
@@ -173,13 +176,8 @@ class Timeline:
             if self.owed_event_frame:
                 self.cursor = self.at_event_frame
                 self.owed_event_frame = False
-                self.fetched_at = time.monotonic()
             elif self.cursor < self._window_end():
                 self.cursor += 1
-                self.fetched_at = time.monotonic()
-            else:
-                self.crept_s += time.monotonic() - self.fetched_at
-                self.fetched_at = time.monotonic()
             name = frames[max(self.cursor, 0)].file
             self.fetches.append(name)
             return name
@@ -198,36 +196,29 @@ class Timeline:
         return numbered(self.picture(name), len(self.fetches))
 
     def position(self) -> int:
-        """The job's file position now: the event's, moved on by the frames shown since.
+        """The job's file position at the replay's current time: the event's, or the frame's since.
 
-        A look past the newest frame of the turn answers that frame again, and the
-        job creeps on by the seconds it really waited, at the print's own rate.
+        Replay time never passes the next event's moment, so nothing a turn can read
+        does: a look answering the last frame before it again reads that frame's job.
         """
-        moment = self.moment
-        low = moment.file_position_bytes
+        low = self.moment.file_position_bytes
         following = self.case.moments[self.index + 1 :]
         high = following[0].file_position_bytes - 1 if following else self.case.gcode_size - 1
-        moved = low
-        if self.cursor > self.event_cursor:
-            moved = self.positions[self.cursor]
-        return max(low, min(moved + int(self.crept_s * self._bytes_per_s()), high))
-
-    def _bytes_per_s(self) -> float:
-        first, last = self.case.moments[0], self.case.moments[-1]
-        span = elapsed_seconds(first.at, last.at)
-        return max(0, last.file_position_bytes - first.file_position_bytes) / span if span else 0.0
+        if self.cursor <= self.event_cursor:
+            return low
+        return max(low, min(self.positions[self.cursor], high))
 
     def _print_time(self, position: int) -> int:
         at = self.moment.at
         if self.cursor > self.event_cursor and self.case.has_frame_times:
             at = self.case.frames[self.cursor].captured
-        return print_time_s(self.case, at, position) + int(self.crept_s)
+        return print_time_s(self.case, at, position)
 
     def job_body(self) -> tuple[int, dict[str, Any]]:
-        """What `GET /api/job` answers."""
+        """What `GET /api/job` answers, which the real adapter reads as it reads OctoPrint's."""
         with self.lock:
-            state = self.moment.printer_state
-            if state not in ANSWERING:
+            # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+            if not self.moment.printer_state.answers:
                 return 503, {"error": "the printer's serial port is gone"}
             position = self.position()
             size = self.case.gcode_size
@@ -248,9 +239,10 @@ class Timeline:
             }
 
     def printer_body(self) -> tuple[int, dict[str, Any]]:
-        """What `GET /api/printer` answers."""
+        """What `GET /api/printer` answers, which the real adapter reads as it reads OctoPrint's."""
         with self.lock:
-            if self.moment.printer_state not in ANSWERING:
+            # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+            if not self.moment.printer_state.answers:
                 return 503, {"error": "the printer's serial port is gone"}
             position = self.position()
             tool = Heaters.at(self.heaters.tool, position)
@@ -304,8 +296,9 @@ class _Quiet(BaseHTTPRequestHandler):
 
     def body(self) -> dict[str, Any]:
         """The request's JSON body, or an empty one."""
-        length = int(self.headers.get("Content-Length") or 0)
-        data = self.rfile.read(length) if length else b""
+        declared = self.headers.get("Content-Length") or "0"
+        length = int(declared) if declared.isascii() and declared.isdigit() else 0
+        data = self.rfile.read(min(length, MAX_BODY_BYTES))
         try:
             parsed = json.loads(data) if data else {}
         except ValueError:
@@ -366,6 +359,7 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
                     self.answer_json(404, {"error": "Not found"})
 
         def _file_facts(self, name: str) -> None:
+            # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
             if name != timeline.case.gcode.name:
                 self.answer_json(404, {"error": "Not found"})
                 return
@@ -390,8 +384,21 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
             if path == "/api/login":
                 self.answer_json(200, {"name": "operator", "session": "replay"})
                 return
-            if path == "/api/job" and body.get("command") == "pause":
-                timeline.set_paused(paused=body.get("action") != "resume")
+            match path, body:
+                case "/api/job", {"command": "pause", "action": "pause"}:
+                    timeline.set_paused(paused=True)
+                case "/api/job", {"command": "pause", "action": "resume"}:
+                    timeline.set_paused(paused=False)
+                case "/api/job", _:
+                    self.answer_json(400, {"error": "Unknown job command"})
+                    return
+                case ("/api/printer/command" | "/api/printer/printhead", _):
+                    pass
+                case ("/api/printer/tool" | "/api/printer/bed", _):
+                    pass
+                case _:
+                    self.answer_json(404, {"error": "Not found"})
+                    return
             self.answer(204)
 
     return _serving(Handler)
@@ -439,11 +446,14 @@ def control(started: Callable[[], str], exited: Callable[[], None]) -> Threading
     class Handler(_Quiet):
         def do_POST(self) -> None:
             self.body()
-            if self.path == "/started":
-                self.answer(200, started().encode(), "text/plain")
-                return
-            exited()
-            self.answer(200)
+            match self.path:
+                case "/started":
+                    self.answer(200, started().encode(), "text/plain")
+                case "/exited":
+                    exited()
+                    self.answer(200)
+                case _:
+                    self.answer(404)
 
     return _serving(Handler)
 

@@ -48,7 +48,7 @@ fn control(record: &Path) -> (String, mpsc::Receiver<String>) {
 }
 
 /// The launcher, copied where it reads its launch file from, and that file.
-fn installed(directory: &Path, control: &str, target: &[PathBuf]) -> PathBuf {
+fn installed(directory: &Path, control: &str, program: &Path) -> PathBuf {
     let launcher = directory.join(format!("claude{}", std::env::consts::EXE_SUFFIX));
     std::fs::copy(
         env!("CARGO_BIN_EXE_printobserver-server-turn-launcher"),
@@ -57,7 +57,7 @@ fn installed(directory: &Path, control: &str, target: &[PathBuf]) -> PathBuf {
     .expect("the launcher copies");
     std::fs::write(
         directory.join("launch.json"),
-        json!({ "control": control, "target": target }).to_string(),
+        json!({ "control": control, "program": program }).to_string(),
     )
     .expect("the launch file writes");
     launcher
@@ -84,7 +84,7 @@ fn the_harness_runs_exactly_as_it_was_asked_and_its_output_is_kept() {
     let scratch = TempDir::new().expect("a directory");
     let record = scratch.path().join("record");
     let (address, heard) = control(&record);
-    let launcher = installed(scratch.path(), &address, &[responder()]);
+    let launcher = installed(scratch.path(), &address, &responder());
     let argv = scratch.path().join("argv");
     let answer = "{\"result\":\"an answer\"}";
     let output = launched(
@@ -131,16 +131,38 @@ fn a_target_that_cannot_start_is_a_failure_naming_it() {
     let record = scratch.path().join("record");
     let (address, _heard) = control(&record);
     let missing = scratch.path().join("no-such-program");
-    let launcher = installed(scratch.path(), &address, std::slice::from_ref(&missing));
+    let launcher = installed(scratch.path(), &address, &missing);
     let output = launched(&launcher, &[]);
     assert_eq!(output.status.code(), Some(1));
     let said = String::from_utf8_lossy(&output.stderr);
     assert!(said.contains("could not be started"), "{said}");
 
-    let launcher = installed(scratch.path(), &address, &[]);
+    std::fs::write(
+        scratch.path().join("launch.json"),
+        json!({ "control": address, "program": "x", "target": 3 }).to_string(),
+    )
+    .expect("the launch file writes");
     let output = launched(&launcher, &[]);
     assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("names no program"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("is no launch file"));
+}
+
+/// A control endpoint answering anything but success is refused by name.
+#[test]
+fn a_refused_report_is_a_failure() {
+    let scratch = TempDir::new().expect("a directory");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let address = listener.local_addr().expect("its address").to_string();
+    std::thread::spawn(move || {
+        let (mut connection, _) = listener.accept().expect("a connection");
+        let mut request = [0_u8; 1024];
+        let _ = connection.read(&mut request);
+        let _ = connection.write_all(b"HTTP/1.1 500 No\r\nContent-Length: 0\r\n\r\n");
+    });
+    let launcher = installed(scratch.path(), &address, &responder());
+    let output = launched(&launcher, &[]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("refused /started"));
 }
 
 /// A control address nothing answers at stops the run before it starts anything.
@@ -152,7 +174,7 @@ fn a_control_address_nothing_answers_at_starts_nothing() {
         .local_addr()
         .expect("its address")
         .to_string();
-    let launcher = installed(scratch.path(), &closed, &[responder()]);
+    let launcher = installed(scratch.path(), &closed, &responder());
     let output = launched(&launcher, &[]);
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("did not answer"));

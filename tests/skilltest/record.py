@@ -14,8 +14,9 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
+from replay import TestRecord
 from repo_checks.shell import run
 from turns_per_run import CASES, turns_per_test
 
@@ -29,7 +30,32 @@ def commit() -> str:
     return run(["git", "rev-parse", "HEAD"], cwd=REPO, check=True).stdout.strip()
 
 
-def folded(directory: Path, commit_id: str, cases: Path = CASES) -> dict[str, Any]:
+class Figures(TypedDict):
+    """The figures a budget reads off the record."""
+
+    turns: int
+
+
+class Detail(TypedDict):
+    """What the record says beside its figures."""
+
+    commit: str
+    harness: str
+    models: list[str]
+    turns_the_cases_count: int
+    compactions: int
+    passed: bool
+    tests: list[TestRecord]
+
+
+class RunRecord(TypedDict):
+    """The record of one run."""
+
+    figures: Figures
+    detail: Detail
+
+
+def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
     """The record of one run, from each test's record in its directory."""
     tests = [
         json.loads(path.read_text(encoding="utf-8")) for path in sorted(directory.glob("*.json"))

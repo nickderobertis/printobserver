@@ -511,6 +511,10 @@ skilltest *ARGS:
 skilltest-record *ARGS:
     uv run -q python tests/skilltest/record.py "$@"
 
+# Refuse a run of the suite in CI with no credential, before it costs anything.
+skilltest-credential:
+    @: "${CLAUDE_CODE_OAUTH_TOKEN:?the repository secret CLAUDE_CODE_OAUTH_TOKEN is not set: configure it, as gh-secrets.json names it}"
+
 # Install the Claude Code release the `skilltest` job runs on, `repo-policy.toml`'s
 # `[skilltest] claude_code`.
 skilltest-install-harness:

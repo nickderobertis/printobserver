@@ -6,10 +6,10 @@ a real turn is given, writes down everything it could observe, and hands the
 provider's answer to oneharness's own published responder. So everything from the
 run request down is real, and only the paid model is not.
 
-Given the script file and then whatever the harness was asked. Each turn in the
-script is `{"commands": [[word, ...], ...], "usage": {...}, "compact": bool}`. In
-a command's words, `{print}`, `{actor}` and `{event}` stand for what the prompt
-named.
+Given the script file and then whatever the harness was asked. Each run in the
+script is `{"commands": [[word, ...], ...], "usage": {...}, "compact": bool}`, and
+`"unreadable": true` answers something the engine must re-prompt. In a command's
+words, `{print}`, `{actor}` and `{event}` stand for what the prompt named.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 # Started with the environment a turn is given, which names nothing of this tree.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "repo-checks" / "src"))
@@ -39,6 +39,23 @@ ASSESSMENT = {
     "why": "scripted",
     "escalating": False,
 }
+
+
+class ScriptedRun(TypedDict):
+    """One harness run of a script."""
+
+    commands: NotRequired[list[list[str]]]
+    usage: NotRequired[dict[str, int]]
+    compact: NotRequired[bool]
+    unreadable: NotRequired[bool]
+
+
+class Script(TypedDict):
+    """What a test scripts a mock replay with; the last run stands for every later one."""
+
+    session: str
+    responder: str
+    turns: list[ScriptedRun]
 
 
 def _prompt(arguments: list[str]) -> str:
@@ -64,7 +81,7 @@ def _ran(words: list[str]) -> dict[str, Any]:
 def main(script_path: str, arguments: list[str]) -> int:
     """Take one turn of the script, and answer through the published responder."""
     directory = Path(script_path).parent
-    script = json.loads(Path(script_path).read_text(encoding="utf-8"))
+    script: Script = json.loads(Path(script_path).read_text(encoding="utf-8"))
     counter = directory / COUNTER_FILE
     number = int(counter.read_text(encoding="utf-8")) if counter.is_file() else 0
     counter.write_text(str(number + 1), encoding="utf-8")
@@ -97,22 +114,31 @@ def main(script_path: str, arguments: list[str]) -> int:
             "message": {
                 "model": MOCK_MODEL,
                 "content": [
-                    {"type": "tool_use", "name": "Bash", "input": {"command": " ".join(words)}}
-                    for words in scripted.get("commands", [])
+                    {
+                        "type": "tool_use",
+                        "id": f"call-{number}-{index}",
+                        "name": "Bash",
+                        "input": {"command": " ".join(words)},
+                    }
+                    for index, words in enumerate(scripted.get("commands", []))
                 ],
             },
         }
     )
     with (transcript / f"{session}.jsonl").open("a", encoding="utf-8") as kept:
         kept.writelines(json.dumps(line) + "\n" for line in lines)
+    answer: dict[str, Any] = (
+        {"result": "no answer in the shape asked for"}
+        if scripted.get("unreadable")
+        else {"result": json.dumps(ASSESSMENT), "structured_output": ASSESSMENT}
+    )
     result = {
         "type": "result",
         "subtype": "success",
         "session_id": session,
-        "result": json.dumps(ASSESSMENT),
-        "structured_output": ASSESSMENT,
         "usage": usage,
         "modelUsage": {MOCK_MODEL: usage},
+        **answer,
     }
     responder = script["responder"]
     return run(

@@ -6,8 +6,8 @@
 //! output through byte for byte. Nothing the agent sees changes. Beside that it
 //! does the two things the replay can learn nowhere else:
 //!
-//! - it keeps a copy of the output, the only place a turn's usage, models and
-//!   compaction boundaries exist, in the file the replay's control answer names;
+//! - it keeps a copy of the output, the one place a run's usage exists, in the
+//!   file the replay's control answer names;
 //! - it tells the replay when the harness has exited and waits for the answer,
 //!   so the replay's stand-ins stand at the next event before the server can
 //!   release the print and let its scheduled check fire.
@@ -16,35 +16,72 @@
 //! gate on every platform, and a Windows harness has to be an executable.
 
 use std::io::{Read as _, Write as _};
-use std::net::TcpStream;
-use std::path::PathBuf;
+use std::net::{SocketAddr, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+
+use printobserver_types::serde::Deserialize;
 
 /// The file beside this program saying what to start and whom to tell.
 const LAUNCH_FILE: &str = "launch.json";
 
-/// One request to the replay's control address, and the body of its answer.
-fn tell(control: &str, path: &str) -> std::io::Result<String> {
-    let mut stream = TcpStream::connect(control)?;
-    stream.write_all(
-        format!(
-            "POST {path} HTTP/1.1\r\nHost: {control}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+/// The status line of an answer the replay took a report under.
+const ANSWERED: &str = "HTTP/1.1 200";
+
+/// The two things the replay is told about a harness run.
+#[derive(Clone, Copy)]
+enum Report {
+    /// The harness is about to start; the answer is where to keep its output.
+    Started,
+    /// The harness has exited; the answer is that the replay has moved on.
+    Exited,
+}
+
+impl Report {
+    /// The control path this report is posted to.
+    const fn path(self) -> &'static str {
+        match self {
+            Self::Started => "/started",
+            Self::Exited => "/exited",
+        }
+    }
+}
+
+/// One report to the replay's control address, and the body of its answer.
+fn tell(control: SocketAddr, report: Report) -> Result<String, String> {
+    let failed = |error: std::io::Error| format!("{control} did not answer: {error}");
+    let mut stream = TcpStream::connect(control).map_err(failed)?;
+    let path = report.path();
+    stream
+        .write_all(
+            format!(
+                "POST {path} HTTP/1.1\r\nHost: {control}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .as_bytes(),
         )
-        .as_bytes(),
-    )?;
+        .map_err(failed)?;
     let mut answer = String::new();
-    stream.read_to_string(&mut answer)?;
-    Ok(answer
+    stream.read_to_string(&mut answer).map_err(failed)?;
+    let (head, body) = answer
         .split_once("\r\n\r\n")
-        .map_or_else(String::new, |(_, body)| body.to_owned()))
+        .ok_or_else(|| format!("{control} answered {path} with no whole response"))?;
+    if !head.starts_with(ANSWERED) {
+        return Err(format!("{control} refused {path}: {head}"));
+    }
+    Ok(body.to_owned())
 }
 
 /// What this launch was told to do, read from the file beside the program.
+#[derive(Deserialize)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 struct Launch {
     /// Where the replay's control endpoint answers.
-    control: String,
-    /// The program to start, and the arguments that precede this launch's own.
-    target: Vec<String>,
+    control: SocketAddr,
+    /// The program to start.
+    program: PathBuf,
+    /// The arguments that precede this launch's own.
+    #[serde(default)]
+    arguments: Vec<String>,
 }
 
 /// The launch file, or why it could not be read.
@@ -54,35 +91,15 @@ fn launch() -> Result<Launch, String> {
         .with_file_name(LAUNCH_FILE);
     let text = std::fs::read_to_string(&beside)
         .map_err(|error| format!("{} is unreadable: {error}", beside.display()))?;
-    let document: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|error| format!("{} is not JSON: {error}", beside.display()))?;
-    let control = document["control"]
-        .as_str()
-        .ok_or_else(|| format!("{} names no control address", beside.display()))?
-        .to_owned();
-    let target: Vec<String> = document["target"]
-        .as_array()
-        .map(|words| {
-            words
-                .iter()
-                .filter_map(|word| word.as_str().map(str::to_owned))
-                .collect()
-        })
-        .unwrap_or_default();
-    if target.is_empty() {
-        return Err(format!("{} names no program to start", beside.display()));
-    }
-    Ok(Launch { control, target })
+    serde_json::from_str(&text)
+        .map_err(|error| format!("{} is no launch file: {error}", beside.display()))
 }
 
 /// Start the target, copy its output through and keep it, and answer its status.
-fn run(launch: &Launch, record: &PathBuf) -> Result<ExitCode, String> {
-    let (program, before) = launch
-        .target
-        .split_first()
-        .ok_or_else(|| "no program to start".to_owned())?;
-    let mut child = Command::new(program)
-        .args(before)
+fn run(launch: &Launch, record: &Path) -> Result<ExitCode, String> {
+    let program = launch.program.display();
+    let mut child = Command::new(&launch.program)
+        .args(&launch.arguments)
         .args(std::env::args_os().skip(1))
         .stdin(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -123,11 +140,9 @@ fn run(launch: &Launch, record: &PathBuf) -> Result<ExitCode, String> {
 /// One launch from start to end.
 fn launched() -> Result<ExitCode, String> {
     let launch = launch()?;
-    let record = tell(&launch.control, "/started")
-        .map_err(|error| format!("{} did not answer: {error}", launch.control))?;
-    let status = run(&launch, &PathBuf::from(record.trim()))?;
-    tell(&launch.control, "/exited")
-        .map_err(|error| format!("{} did not answer: {error}", launch.control))?;
+    let record = tell(launch.control, Report::Started)?;
+    let status = run(&launch, Path::new(record.trim()))?;
+    tell(launch.control, Report::Exited)?;
     Ok(status)
 }
 
