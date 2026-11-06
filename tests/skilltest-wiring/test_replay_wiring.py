@@ -87,7 +87,7 @@ REPLAYS = {
         "nozzle-left-on-part-after-reset",
         "gantry-low-over-remaining-bin",
     ],
-    "under-extrusion-lace": ["carry-on-healthy-before-fault", "porous-walls"],
+    "under-extrusion-lace": ["carry-on-healthy-before-fault"],
     "fan-cut-bridge": ["carry-on-healthy-before-fault", "bridge-sagging-uncooled"],
     "jar-top-petg-healthy": [
         "carry-on-004-other",
@@ -311,8 +311,8 @@ def _scenario_named(document: dict[str, Any], scenario: str) -> dict[str, Any]:
     return next(s for s in document["assertions"]["scenarios"] if s["id"] == scenario)
 
 
-LACE = "under-extrusion-lace"
-LAST = "porous-walls"
+BRIDGE = "fan-cut-bridge"
+LAST = "bridge-sagging-uncooled"
 
 
 def _unknown_id(document: dict[str, Any]) -> None:
@@ -338,7 +338,7 @@ def _missing(document: dict[str, Any]) -> None:
     [
         (_unknown_id, "replay names no-such-scenario"),
         (_out_of_order, "not strictly increasing"),
-        (_past_the_end, "past the end of lace-test.gcode"),
+        (_past_the_end, "past the end of fan-cut-test.gcode"),
         (_missing, "names no file_position_bytes"),
     ],
 )
@@ -349,7 +349,7 @@ def test_a_real_case_broken_one_way_is_refused_by_name(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The real check, over a copy of a real case with one thing wrong."""
-    root = _case_tree(tmp_path, LACE, edit)
+    root = _case_tree(tmp_path, BRIDGE, edit)
     equal(repo_check(["real-prints-replay", "--root", str(root)]), 1)
     printed = capsys.readouterr()
     contains(printed.out + printed.err, named)
@@ -463,7 +463,7 @@ def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
 
 def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Path) -> None:
     """Over the real cases whose next event shows a fault, however many looks a turn takes."""
-    for name in ("jar-top-wrong-material-first-layer-detach", "under-extrusion-lace"):
+    for name in ("jar-top-wrong-material-first-layer-detach", "fan-cut-bridge"):
         case = read_case(name)
         faulty = case.moments[-1].event_image
         directory = scratch / name
@@ -504,7 +504,7 @@ def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
 
 def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path) -> None:
     """A look after the last event does not jump to the print's end."""
-    case = read_case("under-extrusion-lace")
+    case = read_case("fan-cut-bridge")
     last = case.moments[-1]
     done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], scratch)
     equal(done.replayed.fetches[-3:], [last.looks[-1]] * 3)

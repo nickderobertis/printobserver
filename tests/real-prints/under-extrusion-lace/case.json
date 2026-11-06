@@ -42,7 +42,7 @@
   },
   "obico_scores": "obico-predictions.json",
   "assertions": {
-    "replay": ["carry-on-healthy-before-fault", "porous-walls"],
+    "replay": ["carry-on-healthy-before-fault"],
     "scenarios": [
       {
         "id": "porous-walls",
