@@ -2301,6 +2301,12 @@ site = "let written = file"
 reason = "A write or sync failing into a file this call just created exclusively is a full or failing disk, which no journey can arrange on a runner without root. The cleanup after it is the one `remove_file` every refused and failed publication shares, which `credential_issue_that_cannot_write_leaves_what_was_there` and the racing-issue journeys drive through the real binary."
 
 [[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "held = sign_in.get(\"accessToken\") if isinstance(sign_in, dict) else None"
+reason = "Claude Code's sign-in file has no published schema to reconcile with. It is read only on a signed-in host with no `CLAUDE_CODE_OAUTH_TOKEN`, and a move of it answers no credential, which the live test fails naming."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest/replay.py"
 site = "with socket.socket() as probe:"
@@ -2311,6 +2317,30 @@ rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-server/src/bin/turn_launcher.rs"
 site = "let mut from_child = child"
 reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = '''.map_err(|error| format!("{program}'s output could not be read: {error}"))?;'''
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = '''.map_err(|error| format!("the output could not be passed on: {error}"))?;'''
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = '''.map_err(|error| format!("{} could not be written: {error}", record.display()))?;'''
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = '''.map_err(|error| format!("{program} could not be waited for: {error}"))?;'''
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"

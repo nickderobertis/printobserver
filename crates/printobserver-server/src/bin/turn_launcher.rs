@@ -129,6 +129,7 @@ fn run(launch: &Launch, record: &Path) -> Result<ExitCode, String> {
     loop {
         let count = from_child
             .read(&mut piece)
+            // llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
             .map_err(|error| format!("{program}'s output could not be read: {error}"))?;
         let Some(read) = piece.get(..count).filter(|read| !read.is_empty()) else {
             break;
@@ -136,12 +137,15 @@ fn run(launch: &Launch, record: &Path) -> Result<ExitCode, String> {
         to_caller
             .write_all(read)
             .and_then(|()| to_caller.flush())
+            // llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
             .map_err(|error| format!("the output could not be passed on: {error}"))?;
         kept.write_all(read)
+            // llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
             .map_err(|error| format!("{} could not be written: {error}", record.display()))?;
     }
     let status = child
         .wait()
+        // llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
         .map_err(|error| format!("{program} could not be waited for: {error}"))?;
     Ok(status
         .code()

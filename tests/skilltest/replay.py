@@ -190,6 +190,7 @@ def harness_token() -> str | None:
         return None
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
     sign_in = document.get("claudeAiOauth") if isinstance(document, dict) else None
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
     held = sign_in.get("accessToken") if isinstance(sign_in, dict) else None
     return held if isinstance(held, str) else None
 
