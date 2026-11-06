@@ -35,9 +35,8 @@ rather than leaving it undone.
    Judge each frame against this print's own earlier frames. What has been printed
    stays where it was laid: measure it against the sheet's holes, edges and marks,
    however the view shifts. A part that seems to have moved is a person's to check:
-   pause. A printing part keeps growing: the bed sinks as layers rise, by the job's
-   position whatever the clock says, so once the bed sits visibly lower the part's
-   sides must show more wall. If they show none it has stopped growing, however clean
+   pause. A printing part keeps growing: the bed sinks as layers rise, so once the bed sits
+   visibly lower the part's sides must show more wall. If they show none it has stopped growing, however clean
    the frame looks. A wall's whole outer face reads smooth: speckled or pitted like
    mesh, worse above than below, it is under-extruding though it stands, unless that
    starts where the part's shape changes. Inside the outline supports, bridges and
@@ -47,13 +46,13 @@ rather than leaving it undone.
    The printer reports neither its flow factor nor its fan, so a file that cut
    either shows only in the print: clearly under-extruding walls want the flow factor
    at 1.0, and sagging bridges the fan at 100. Change a setting only on a clear
-   defect: unsure, watch and look again.
+   defect; unsure, watch and look again.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
    already old. A look can wait a minute and a half first, so a few show a defect
    growing or settling. Open each. Each frame says when it was captured: one
-   time twice means no newer, and a plate unchanged across frames captured
-   far apart while the job advanced has stopped printing. A look returns early with any new event for this
-   print.
+   time twice means the camera has nothing newer, no reason to stop, and a plate
+   unchanged across frames captured far apart while the job advanced has stopped
+   printing. A look returns early with any new event for this print.
 4. **Decide.** Weigh what you see against the history, and say which way you are
    going and how sure you are. When one frame and the history disagree, prefer the
    history and say so. Watching is for what has stopped getting worse: a defect
