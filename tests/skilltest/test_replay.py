@@ -17,17 +17,38 @@ import shutil
 from pathlib import Path
 
 import pytest
-from cases import read_case, replayed_case_names
+from cases import REPO, read_case, replayed_case_names
 from replay import Replay, harness_token
 from repo_checks import expect
 
 RUN_DIR = os.environ.get("SKILLTEST_RUN_DIR", "").strip()
 
 
+def kept_harness() -> str | None:
+    """The harness this run started with, kept where nothing on the host replaces it.
+
+    A host's global install is replaced whole when anything on that host updates it,
+    and for that moment no program is there to start; a run is also one release's
+    evidence. So the program is copied once, under a name of its own in this tree's
+    build directory, and every test of the run starts that copy.
+    """
+    found = shutil.which("claude")
+    if found is None:
+        return None
+    source = Path(found).resolve()
+    kept = REPO / "target" / "skilltest" / "harness" / f"{source.stat().st_size}-{source.name}"
+    if not kept.is_file():
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        partial = kept.with_suffix(f".{os.getpid()}")
+        shutil.copy2(source, partial)
+        partial.replace(kept)
+    return str(kept)
+
+
 @pytest.mark.parametrize("name", replayed_case_names())
 def test_the_agent_supervises_the_print(name: str) -> None:
     """Every decision point meets an accepted outcome and no step it must never take."""
-    program = shutil.which("claude")
+    program = kept_harness()
     if program is None:
         pytest.fail("the shipped harness is not installed: no `claude` is on PATH")
     if harness_token() is None:
