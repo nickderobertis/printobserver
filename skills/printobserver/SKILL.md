@@ -22,8 +22,8 @@ one command at a time, beginning with the program's name and written out in full
 no variable, no chain, no usage listing. When it refuses one, write it that way
 rather than leaving it undone.
 
-1. **Read the context.** The printer, the job, the bounds in force, the
-   adjustments standing, recent events, the latest picture.
+1. **Read the context.** The printer, the job, the bounds, what is standing,
+   recent events, the latest picture.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    and neither is a picture too dark, too blurred or aimed at nothing: say so.
    Loose strands where a wall should be, walls you can
@@ -46,7 +46,7 @@ rather than leaving it undone.
 
    The printer reports neither its flow factor nor its fan, so a file that cut
    either shows only in the print: under-extruding walls want the flow factor at
-   1.0, and sagging bridges the fan at 100, first and whatever is standing.
+   1.0, and sagging bridges the fan at 100, now rather than a watch: neither can harm.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
    already old. A look can wait a minute and a half first, so a few show a defect
    growing or settling. Open each. A frame identical to the last, head and all,
@@ -64,8 +64,8 @@ rather than leaving it undone.
    nothing. After acting, look again to see whether it helped.
 6. **Record what you saw.** Acknowledge this turn's failure or observation, with
    a reason saying what you saw and what you made of it: disposition continue when
-   nothing is wrong, a false alarm included; watch when something may be going
-   wrong; stop when the print should stop.
+   nothing is there, a false alarm included; watch when something is, however small;
+   stop when the print should stop.
 
 ## When the detector has already paused the print
 
