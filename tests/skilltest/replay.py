@@ -55,8 +55,9 @@ START_DEADLINE_S = 60
 ALERT_DEADLINE_S = 30
 #: How long one operator command may take.
 CLIENT_DEADLINE_S = 120
-#: The engine re-prompts a turn at most twice; anything past that is a replay gone wrong.
-MOST_RUNS_PER_ENTRY = 3
+#: The engine re-prompts a turn at most twice, so a whole replay spending more than
+#: this many harness runs per entry has gone wrong.
+RUN_ALLOWANCE_PER_ENTRY = 3
 #: How often the server's record is read while a turn runs.
 POLL_S = 0.5
 #: The kinds an agent's request is recorded under.
@@ -187,6 +188,42 @@ def refuse_a_pointer(data: bytes, case: str, name: str) -> bytes:
         msg = f"{case}/{name} is an LFS pointer: run `just real-prints-fetch`"
         raise ReplayError(msg)
     return data
+
+
+def _is_timestamp(value: object) -> bool:
+    """Whether the server's answer is a time the replay can read."""
+    if not isinstance(value, str):
+        return False
+    try:
+        datetime.fromisoformat(value[:26].rstrip("Z") + "+00:00")
+    except ValueError:
+        return False
+    return True
+
+
+def is_held_print(held: object) -> bool:
+    """Whether one of the server's prints has the fields the replay reads from it."""
+    if not isinstance(held, dict) or not isinstance(held.get("id"), str):
+        return False
+    started = held.get("job_started_at")
+    return started is None or _is_timestamp(started)
+
+
+def is_event(event: object) -> bool:
+    """Whether one history event has the fields and shapes the replay reads from it."""
+    if (
+        not isinstance(event, dict)
+        or not isinstance(event.get("id"), str)
+        or not isinstance(event.get("kind"), str)
+        or not _is_timestamp(event.get("received_at"))
+    ):
+        return False
+    payload = event.get("payload", {})
+    if not isinstance(payload, dict):
+        return False
+    action = payload.get("action", {})
+    # An actor is an object naming who acted, or the bare name of a unit variant.
+    return isinstance(action, dict) and isinstance(action.get("actor") or {}, (dict, str))
 
 
 def real_picture(case: Case) -> Callable[[str], bytes]:
@@ -678,9 +715,7 @@ class Replay:
     def _prints(self) -> list[dict[str, Any]]:
         """The prints the server holds, once they have what is read from them."""
         prints = json.loads(self._client("prints")).get("prints")
-        if not isinstance(prints, list) or not all(
-            isinstance(held, dict) and isinstance(held.get("id"), str) for held in prints
-        ):
+        if not isinstance(prints, list) or not all(map(is_held_print, prints)):
             msg = "the server's prints answered no list of prints"
             raise ReplayError(msg)
         return prints
@@ -701,12 +736,7 @@ class Replay:
         except ReplayError:
             return []
         events = json.loads(answered).get("events")
-        if not isinstance(events, list) or not all(
-            isinstance(event, dict)
-            and isinstance(event.get("kind"), str)
-            and isinstance(event.get("received_at"), str)
-            for event in events
-        ):
+        if not isinstance(events, list) or not all(map(is_event, events)):
             msg = "the server's history answered no list of events"
             raise ReplayError(msg)
         return list(reversed(events))
@@ -768,7 +798,7 @@ class Replay:
                 self.errors.append(f"the launcher said {said.read_text('utf-8', 'replace')}")
             if self.errors:
                 raise ReplayError("; ".join(self.errors))
-            if len(self.runs) > MOST_RUNS_PER_ENTRY * wanted:
+            if len(self.runs) > RUN_ALLOWANCE_PER_ENTRY * wanted:
                 msg = f"{len(self.runs)} harness runs for {wanted} events: stopping the spend"
                 raise ReplayError(msg)
             ended = self._turns_ended(self._events())

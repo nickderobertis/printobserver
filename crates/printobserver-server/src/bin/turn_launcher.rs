@@ -140,7 +140,6 @@ fn run(launch: &Launch, record: &Path) -> Result<ExitCode, String> {
         .map_or(ExitCode::FAILURE, ExitCode::from))
 }
 
-/// One launch from start to end.
 fn launched() -> Result<ExitCode, String> {
     let launch = launch()?;
     let record = tell(launch.control, Report::Started)?;

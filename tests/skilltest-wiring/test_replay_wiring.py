@@ -16,10 +16,13 @@ import shutil
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from http.client import HTTPConnection
 from pathlib import Path
 from typing import Any, get_args
+from urllib.parse import quote
 
 import classify
+import doubles
 import pytest
 import record
 from cases import (
@@ -44,6 +47,8 @@ from replay import (
     ReplayError,
     delivered,
     harness_token,
+    is_event,
+    is_held_print,
     neutral_environment,
     program,
     refuse_a_pointer,
@@ -683,6 +688,54 @@ def test_an_unfetched_frame_is_refused_naming_the_recipe() -> None:
     )
     with pytest.raises(ReplayError, match="real-prints-fetch"):
         refuse_a_pointer(pointer_bytes, case.name, case.frames[0].file)
+
+
+def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) -> None:
+    """A decoded separator names no alert image, so it reads nothing outside the case."""
+    case = read_case("petg-clip-detach-and-stringing-web")
+    timeline = doubles.Timeline(case=case, picture=stamped, clock=scratch / "clock")
+    server = doubles.obico(timeline)
+    connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+    try:
+        connection.request("GET", f"/media/{quote(case.moments[0].event_image)}")
+        equal(frame_name(connection.getresponse().read()), case.moments[0].event_image)
+        connection.request("GET", "/media/..%2Fcase.json")
+        answered = connection.getresponse()
+        answered.read()
+        equal(answered.status, 404)
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        "no event",
+        {"kind": "k", "received_at": "2026-01-01T00:00:00Z"},
+        {"id": "e", "kind": "k", "received_at": "yesterday"},
+        {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z", "payload": []},
+        {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z", "payload": {"action": 1}},
+        {
+            "id": "e",
+            "kind": "k",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {"action": {"actor": 7}},
+        },
+    ],
+)
+def test_a_history_event_the_replay_could_not_read_is_refused(event: object) -> None:
+    """Each shape the judging reads is held at the boundary rather than where it is used."""
+    equal(is_event(event), False)
+
+
+def test_a_print_with_an_unreadable_job_start_is_refused() -> None:
+    """A job start is read as a time, so anything else stops there."""
+    equal(is_held_print({"id": "p", "job_started_at": "2026-01-01T00:00:00.123456Z"}), True)
+    equal(is_held_print({"id": "p", "job_started_at": None}), True)
+    equal(is_held_print({"id": "p", "job_started_at": "soon"}), False)
+    equal(is_held_print({"job_started_at": None}), False)
 
 
 def test_only_the_ingress_accepting_an_alert_counts_as_delivering_it() -> None:

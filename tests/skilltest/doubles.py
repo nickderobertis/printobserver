@@ -466,6 +466,9 @@ def obico(timeline: Timeline) -> ThreadingHTTPServer:
             path = urlsplit(self.path).path
             if path.startswith("/media/"):
                 name = unquote(path.rsplit("/", 1)[1])
+                if name not in {moment.event_image for moment in timeline.case.moments}:
+                    self.answer_json(404, {"error": "no such image"})
+                    return
                 self.answer(200, timeline.picture(name), "image/jpeg", timeline.now())
                 return
             self.answer_json(200, {"status": "ok"})
