@@ -1,6 +1,7 @@
 //! One agent per print: an event arriving during a turn reaches that turn, what
 //! it never took gets one more turn, and an ended print starts none.
 
+use printobserver_core::Clock as _;
 use std::time::Duration;
 
 use printobserver_printer_api::PrinterState;
@@ -97,10 +98,14 @@ fn a_turn_is_told_its_situation() {
 #[test]
 fn an_alerts_frame_is_said_to_be_captured_when_it_was_fetched() {
     let world = World::new();
+    let fetched_at = world.clock.now();
     let _ = world
         .handle(crate::world::failure_alert_with_image(7))
         .expect("handled");
-    assert!(world.agent.turns()[0].situation.frame_captured_at.is_some());
+    assert_eq!(
+        world.agent.turns()[0].situation.frame_captured_at,
+        Some(fetched_at)
+    );
     let _ = world.handle(failure_alert(8)).expect("handled");
     assert!(world.agent.turns()[1].situation.frame_captured_at.is_none());
 }

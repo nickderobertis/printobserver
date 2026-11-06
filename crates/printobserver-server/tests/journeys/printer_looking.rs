@@ -331,11 +331,17 @@ async fn a_cameras_last_modified_is_read_and_a_malformed_one_is_passed_over() {
     world.server.stop().await;
 
     let world = with_camera(camera_declaring("yesterday").await).await;
+    let before = printobserver_types::Timestamp::now();
     let (status, look) = world.get(&world.url("/look")).await;
     assert_eq!(status, reqwest::StatusCode::OK, "{look}");
-    let captured = look["event"]["payload"]["frame_captured_at"]
+    let captured: printobserver_types::Timestamp = look["event"]["payload"]["frame_captured_at"]
         .as_str()
-        .expect("the moment the camera answered");
-    assert_ne!(captured, "2026-10-29T18:24:50Z", "{look}");
+        .expect("the moment the camera answered")
+        .parse()
+        .expect("a time");
+    assert!(
+        before <= captured && captured <= printobserver_types::Timestamp::now(),
+        "{look}"
+    );
     world.server.stop().await;
 }

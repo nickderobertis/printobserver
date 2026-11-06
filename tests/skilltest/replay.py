@@ -565,6 +565,7 @@ class RunReport:
                     self.compacted = True
                 case {"type": "result", "usage": dict(usage), **rest}:
                     self._add_usage(usage)
+                    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
                     models = rest.get("modelUsage")
                     for model in models if isinstance(models, dict) else ():
                         self._saw(str(model))

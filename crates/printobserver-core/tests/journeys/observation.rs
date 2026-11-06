@@ -9,6 +9,7 @@
 //! [`Supervisor::observe_active_prints`]: printobserver_core::Supervisor::observe_active_prints
 //! [`Supervisor::run_supervision`]: printobserver_core::Supervisor::run_supervision
 
+use printobserver_core::Clock as _;
 use std::time::Duration;
 
 use printobserver_core::store::StoreError;
@@ -106,8 +107,9 @@ fn a_running_job_nobody_opened_is_adopted_and_observed() {
     let turn = &turns[0];
     assert_eq!(turn.print_id, adopted.id);
     let observed = payload(&turn.event);
-    assert!(
-        observed.frame_captured_at.is_some(),
+    assert_eq!(
+        observed.frame_captured_at,
+        Some(world.clock.now()),
         "a camera that says nothing of when is taken to have just taken it"
     );
     assert_eq!(

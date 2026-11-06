@@ -539,13 +539,27 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
                 case "/api/job", _:
                     self.answer_json(400, {"error": "Unknown job command"})
                     return
-                case "/api/printer/command", {"commands": list()} | {"command": str()}:
+                case "/api/printer/command", {"commands": [str(), *_]}:
                     pass
-                case "/api/printer/printhead", {"command": "feedrate" | "jog" | "home"}:
+                case "/api/printer/command", {"command": str(), "parameters": dict()}:
                     pass
-                case "/api/printer/tool", {"command": "flowrate" | "target"}:
+                case "/api/printer/printhead", {"command": "feedrate", "factor": int() | float()}:
                     pass
-                case "/api/printer/bed", {"command": "target"}:
+                case "/api/printer/printhead", {"command": "jog", "z": int() | float()}:
+                    pass
+                case "/api/printer/printhead", {
+                    "command": "jog",
+                    "x": int() | float(),
+                    "y": int() | float(),
+                }:
+                    pass
+                case "/api/printer/printhead", {"command": "home", "axes": list()}:
+                    pass
+                case "/api/printer/tool", {"command": "flowrate", "factor": int() | float()}:
+                    pass
+                case "/api/printer/tool", {"command": "target", "targets": dict()}:
+                    pass
+                case "/api/printer/bed", {"command": "target", "target": int() | float()}:
                     pass
                 case (
                     "/api/printer/command"

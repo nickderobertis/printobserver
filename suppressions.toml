@@ -2343,6 +2343,18 @@ site = '''.map_err(|error| format!("{program} could not be waited for: {error}")
 reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
 
 [[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "models = rest.get(\"modelUsage\")"
+reason = "Which model a turn answered with is read from both this field and the transcript's messages, and neither has a published schema. `tests/skilltest/test_replay.py` fails a live turn reporting no model at all; this field moving alone loses only a duplicate, and the record's `models` still names every message's model."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "\"modelUsage\": {MOCK_MODEL: usage},"
+reason = "Which model a turn answered with is read from both this field and the transcript's messages, and neither has a published schema. `tests/skilltest/test_replay.py` fails a live turn reporting no model at all; this field moving alone loses only a duplicate, and the record's `models` still names every message's model."
+
+[[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-server/src/server.rs"
 site = "let written = file.write_all(contents).and_then(|()| file.sync_all());"

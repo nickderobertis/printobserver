@@ -226,6 +226,7 @@ def main(script_path: str, arguments: list[str]) -> int:
         "subtype": "success",
         "session_id": session,
         "usage": usage,
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         "modelUsage": {MOCK_MODEL: usage},
         **answer,
     }
