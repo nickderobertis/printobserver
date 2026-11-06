@@ -136,6 +136,7 @@ fn the_malformed_kind_is_written_under_its_own_name_and_reads_back_under_it() {
 fn fetched_image_carries_exactly_the_stated_fields() {
     let expected = vec![
         field("bytes", "RawBytes", true),
+        field("captured_at", "Timestamp", false),
         field("content_type", "string", true),
     ];
     assert_eq!(wire_fields(&schema_of::<FetchedImage>()), expected);

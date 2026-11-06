@@ -42,16 +42,17 @@ rather than leaving it undone.
    mesh, worse above than below, it is under-extruding though it stands, unless that
    starts where the part's shape changes. Inside the outline supports, bridges and
    infill look open, in straight regular lines; curved or tangled strands are a
-   defect, never a continue. Change nothing as a precaution.
+   defect, never a continue.
 
    The printer reports neither its flow factor nor its fan, so a file that cut
-   either shows only in the print: under-extruding walls want the flow factor at
-   1.0, and sagging bridges the fan at 100, now rather than a watch: neither can harm.
+   either shows only in the print: clearly under-extruding walls want the flow factor
+   at 1.0, and sagging bridges the fan at 100. Change a setting only on a clear
+   defect: unsure, watch and look again.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
    already old. A look can wait a minute and a half first, so a few show a defect
-   growing or settling. Open each. A frame identical to the last, head and all,
-   says only that the camera has nothing newer: judge growth from frames that
-   differ, and never pause on it. A look returns early with any new event for this
+   growing or settling. Open each. Each frame says when it was captured: one
+   time twice means no newer, and a plate unchanged across frames captured
+   far apart while the job advanced has stopped printing. A look returns early with any new event for this
    print.
 4. **Decide.** Weigh what you see against the history, and say which way you are
    going and how sure you are. When one frame and the history disagree, prefer the

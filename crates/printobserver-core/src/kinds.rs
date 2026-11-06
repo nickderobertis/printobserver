@@ -247,6 +247,11 @@ pub struct CameraLookPayload {
     /// handed to whoever looked, oldest first.
     #[serde(default)]
     pub delivered: Vec<EventId>,
+    /// When the frame this look answered was captured, which its source says or
+    /// the moment it answered; absent when there is no frame. Two looks naming one
+    /// instant saw one frame: no newer one had been taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_captured_at: Option<Timestamp>,
 }
 
 impl EventPayload for CameraLookPayload {
@@ -258,6 +263,7 @@ impl Sample for CameraLookPayload {
         Self {
             waited_s: 60,
             delivered: vec![EventId::sample_full()],
+            frame_captured_at: Some(Timestamp::sample_full()),
         }
     }
 
@@ -265,6 +271,7 @@ impl Sample for CameraLookPayload {
         Self {
             waited_s: 0,
             delivered: Vec::new(),
+            frame_captured_at: None,
         }
     }
 }
@@ -292,6 +299,10 @@ pub struct PeriodicObservationPayload {
     /// it could not be read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub job: Option<JobSnapshot>,
+    /// When the observation's frame was captured, which its source says or the
+    /// moment it answered; absent when there is no frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_captured_at: Option<Timestamp>,
 }
 
 impl EventPayload for PeriodicObservationPayload {
@@ -304,6 +315,7 @@ impl Sample for PeriodicObservationPayload {
             interval_s: 120,
             printer: Some(PrinterSnapshot::sample_full()),
             job: Some(JobSnapshot::sample_full()),
+            frame_captured_at: Some(Timestamp::sample_full()),
         }
     }
 
@@ -312,6 +324,7 @@ impl Sample for PeriodicObservationPayload {
             interval_s: 120,
             printer: None,
             job: None,
+            frame_captured_at: None,
         }
     }
 }

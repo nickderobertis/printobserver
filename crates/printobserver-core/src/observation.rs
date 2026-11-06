@@ -153,12 +153,13 @@ impl Supervisor {
         printer: Result<PrinterSnapshot, PrinterError>,
         job: Result<JobSnapshot, PrinterError>,
     ) -> Result<Arrival, CoreError> {
+        let fetched = self.fetch_configured_frame(Some(print.id)).await;
         let payload = PeriodicObservationPayload {
             interval_s: self.config().observation_interval.as_secs(),
             printer: printer.as_ref().ok().cloned(),
             job: job.as_ref().ok().cloned(),
+            frame_captured_at: self.frame_captured_at(fetched.as_ref()),
         };
-        let fetched = self.fetch_configured_frame(Some(print.id)).await;
         // The observation keeps the telemetry it read whatever the camera
         // gave; a camera giving only bad frames is the turn's event instead.
         let (fetched, degraded) = match fetched {
@@ -193,11 +194,13 @@ impl Supervisor {
             return Ok(Arrival {
                 event: degraded,
                 detection: None,
+                frame_captured_at: None,
             });
         }
         Ok(Arrival {
             event,
             detection: None,
+            frame_captured_at: None,
         })
     }
 }

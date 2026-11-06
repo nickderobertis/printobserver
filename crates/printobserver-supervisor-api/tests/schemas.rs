@@ -142,6 +142,7 @@ fn turn_situation_carries_exactly_the_stated_fields() {
         field("arrived_while_busy", "array:EventRecord", false),
         field("detector_paused_the_print", "boolean", false),
         field("detector_warned", "boolean", false),
+        field("frame_captured_at", "Timestamp", false),
         field("noticed", "string", false),
         field("printer_state", "PrinterState", false),
     ];

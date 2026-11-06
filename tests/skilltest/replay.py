@@ -28,7 +28,7 @@ import time
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPConnection
 from pathlib import Path
@@ -76,7 +76,7 @@ class ReplayError(Exception):
 def program(name: str) -> Path:
     """A built program of this workspace."""
     suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
-    return REPO / "target" / "debug" / f"{name}{suffix}"
+    return REPO / "target" / "skilltest" / f"{name}{suffix}"
 
 
 def _installer_template() -> str:
@@ -272,9 +272,9 @@ class Run:
     #: How far each session transcript had grown when it started.
     transcript_sizes: dict[Path, int]
     #: What its session transcripts gained while it ran.
+    #: When it started, on the clock the server's record is kept by, and when it ended.
+    started_at: datetime
     transcript: list[dict[str, Any]] = field(default_factory=list)
-    #: When it started and ended, on the clock the server's record is kept by.
-    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     ended_at: datetime | None = None
 
 
@@ -494,8 +494,7 @@ class Replay:
         self.timeline = doubles.Timeline(
             case=case,
             picture=picture or real_picture(case),
-            started_epoch=time.time()
-            - doubles.print_time_s(case, case.moments[0].at, case.moments[0].file_position_bytes),
+            clock=self.bin / "clock",
             gcode=gcode,
         )
         self.runs: list[Run] = []
@@ -547,7 +546,9 @@ class Replay:
         else:
             self.timeline.moved_at_exit = False
         record = self.records / f"{len(self.runs):04}.json"
-        self.runs.append(Run(record, self.timeline.index, self._transcript_sizes()))
+        self.runs.append(
+            Run(record, self.timeline.index, self._transcript_sizes(), self.timeline.now())
+        )
         return str(record)
 
     def _transcripts(self) -> list[Path]:
@@ -560,7 +561,7 @@ class Replay:
     def _harness_exited(self) -> None:
         """Stand at the next event before the server can let its scheduled check fire."""
         run = self.runs[-1]
-        run.ended_at = datetime.now(UTC)
+        run.ended_at = self.timeline.now()
         for path in self._transcripts():
             with path.open("rb") as transcript:
                 transcript.seek(run.transcript_sizes.get(path, 0))
@@ -634,7 +635,7 @@ class Replay:
         return (
             datetime.fromisoformat(started[:26].rstrip("Z") + "+00:00").timestamp()
             if started
-            else self.timeline.started_epoch
+            else self.case.job_started().timestamp()
         )
 
     def _deliver_alert(self, moment: Moment) -> None:
@@ -831,7 +832,7 @@ class Replay:
         runs: list[Run],
         report: RunReport,
     ) -> DecisionPoint:
-        begun, ended = runs[0].started_at, runs[-1].ended_at or datetime.now(UTC)
+        begun, ended = runs[0].started_at, runs[-1].ended_at or runs[-1].started_at
         during = [event for event in events if begun <= _received(event) <= ended]
         requests = []
         for event in during:

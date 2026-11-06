@@ -12,7 +12,7 @@ import base64
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
@@ -21,6 +21,9 @@ from typing import Any, NewType
 from repo_checks.checks_real_prints import printed_gcode, stored_size
 
 REPO = Path(__file__).resolve().parents[2]
+#: The operator's local time, which every case's `at` and frame time is written in:
+#: Mountain Daylight Time, as each case's `times` says.
+LOCAL_BEHIND_UTC = timedelta(hours=6)
 CASES = REPO / "tests" / "real-prints"
 #: The frames that are no camera's: enlarged crops, and Obico's own renderings.
 NOT_FROM_THE_CAMERA = re.compile(r"^crop-|obico")
@@ -31,6 +34,11 @@ NAMED_FOR_ITS_MINUTE = re.compile(r"^after-(?P<hour>\d{2})(?P<minute>\d{2})")
 def elapsed_seconds(start: str, end: str) -> int:
     """The whole seconds between two `at` times."""
     return int((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds())
+
+
+def instant(local: str) -> datetime:
+    """The instant a case's local time names."""
+    return datetime.fromisoformat(local).replace(tzinfo=UTC) + LOCAL_BEHIND_UTC
 
 
 ScenarioId = NewType("ScenarioId", str)
@@ -126,8 +134,6 @@ class Frame:
     file: str
     captured: str
     progress_pct: float | None
-    #: Whether its label says the print looks healthy, so a look may see it early.
-    healthy: bool
 
 
 @dataclass(frozen=True)
@@ -166,14 +172,6 @@ class Moment:
             )
             broken.append(f"it met no accepted outcome of {accepted}")
         return "; ".join(broken) or None
-
-
-def _labelled_healthy(frame: dict[str, Any]) -> bool:
-    """Whether a frame's own label calls it healthy, in either of the cases' two spellings."""
-    health = frame.get("health")
-    if isinstance(health, str):
-        return health in {"healthy", "not printing"}
-    return str(frame.get("label", "")).startswith("healthy")
 
 
 def _event_id(scenario: dict[str, Any]) -> EventId | None:
@@ -227,35 +225,71 @@ class Case:
         earlier = [index for index, frame in enumerate(self.frames) if frame.captured <= at]
         return earlier[-1] if earlier else -1
 
-    def frame_positions(self) -> list[int]:
-        """Where the job was when each frame was captured.
+    def frame_times(self) -> list[datetime]:
+        """When each frame was captured.
 
-        A frame's own progress where it has one; otherwise a straight line through
-        the events and frames either side of it, in capture time.
+        Its recorded time; where a case kept only each frame's progress, the instant
+        the recording's rate between its events puts that progress at.
         """
-        known: list[tuple[str, int]] = sorted(
-            [(moment.at, moment.file_position_bytes) for moment in self.moments]
+        if self.has_frame_times:
+            return [instant(frame.captured) for frame in self.frames]
+        return [
+            self._instant_of(int((frame.progress_pct or 0) / 100 * self.gcode_size))
+            for frame in self.frames
+        ]
+
+    def _instant_of(self, position: int) -> datetime:
+        first, last = self.moments[0], self.moments[-1]
+        span = elapsed_seconds(first.at, last.at)
+        moved = last.file_position_bytes - first.file_position_bytes
+        seconds = (position - first.file_position_bytes) * span / moved if moved > 0 else 0
+        return instant(first.at) + timedelta(seconds=seconds)
+
+    def job_started(self) -> datetime:
+        """When the job started: its recorded running time where a recorded event gives one.
+
+        Otherwise the recorded start an alert names, its first frame, or where the
+        recording's rate puts the file's first byte.
+        """
+        for event in self.history:
+            job = event.get("payload", {}).get("job") or {}
+            if isinstance(job.get("print_time_s"), int):
+                received = datetime.fromisoformat(event["received_at"][:19]).replace(tzinfo=UTC)
+                return received - timedelta(seconds=job["print_time_s"])
+        for event in self.history:
+            started = event.get("payload", {}).get("started_at")
+            if isinstance(started, str):
+                return datetime.fromisoformat(started[:19]).replace(tzinfo=UTC)
+        return self.frame_times()[0] if self.has_frame_times else self._instant_of(0)
+
+    def position_at(self, when: datetime) -> int:
+        """Where the job was at an instant: a line through what the recording says.
+
+        Through each event's position and each frame's progress, in time order, so a
+        position never goes back and the job moves at the rate the recording shows.
+        """
+        points = sorted(
+            [(instant(moment.at), moment.file_position_bytes) for moment in self.moments]
             + [
-                (frame.captured, int(frame.progress_pct / 100 * self.gcode_size))
-                for frame in self.frames
+                (at, int(frame.progress_pct / 100 * self.gcode_size))
+                for at, frame in zip(self.frame_times(), self.frames, strict=True)
                 if frame.progress_pct is not None
             ]
         )
-        positions = []
-        for frame in self.frames:
-            if frame.progress_pct is not None:
-                positions.append(int(frame.progress_pct / 100 * self.gcode_size))
-                continue
-            before = [point for point in known if point[0] <= frame.captured]
-            after = [point for point in known if point[0] > frame.captured]
-            if not before or not after:
-                positions.append((before or after)[-1 if before else 0][1])
-                continue
-            start, end = before[-1], after[0]
-            span = elapsed_seconds(start[0], end[0])
-            share = elapsed_seconds(start[0], frame.captured) / span if span else 0
-            positions.append(int(start[1] + (end[1] - start[1]) * share))
-        return positions
+        highest = 0
+        earlier, later = points[0], points[-1]
+        for point in points:
+            highest = max(highest, point[1])
+            if point[0] <= when:
+                earlier = (point[0], highest)
+            else:
+                later = (point[0], highest)
+                break
+        span = (later[0] - earlier[0]).total_seconds()
+        if span <= 0 or when <= earlier[0]:
+            return earlier[1]
+        share = min(1.0, (when - earlier[0]).total_seconds() / span)
+        return earlier[1] + int((later[1] - earlier[1]) * share)
 
     def recorded_alert(self, event_id: str) -> dict[str, Any]:
         """The body Obico posted for a recorded alert, as the history keeps it."""
@@ -274,7 +308,6 @@ def read_case(name: str) -> Case:
                 file=frame["file"],
                 captured=_captured(document, frame),
                 progress_pct=frame.get("progress_pct"),
-                healthy=_labelled_healthy(frame),
             )
             for frame in document["frames"]
             if not NOT_FROM_THE_CAMERA.search(frame["file"])

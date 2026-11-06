@@ -65,6 +65,7 @@ impl VisionPort for TrivialVision {
         let _ = source_url;
         Box::pin(async {
             Ok(FetchedImage {
+                captured_at: None,
                 bytes: RawBytes::default(),
                 content_type: String::new(),
             })
@@ -88,6 +89,7 @@ fn every_method_answers_its_declared_success_type() {
     assert_eq!(
         block_on(port.fetch_image(String::new())),
         Ok(FetchedImage {
+                captured_at: None,
             bytes: RawBytes::default(),
             content_type: String::new()
         })

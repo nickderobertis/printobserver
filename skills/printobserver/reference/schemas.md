@@ -7582,6 +7582,12 @@ Declared by `printobserver-core`.
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "EventId",
       "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -7595,6 +7601,17 @@ Declared by `printobserver-core`.
         "$ref": "#/$defs/EventId"
       },
       "type": "array"
+    },
+    "frame_captured_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the frame this look answered was captured, which its source says or\nthe moment it answered; absent when there is no frame. Two looks naming one\ninstant saw one frame: no newer one had been taken."
     },
     "waited_s": {
       "description": "How long the look waited for something to happen before it was taken,\nin whole seconds.",
@@ -10344,6 +10361,12 @@ Declared by `printobserver-vision-api`.
       "description": "Bytes exactly as received, base64-encoded.",
       "title": "RawBytes",
       "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -10353,6 +10376,17 @@ Declared by `printobserver-vision-api`.
     "bytes": {
       "$ref": "#/$defs/RawBytes",
       "description": "The image's bytes, exactly as served."
+    },
+    "captured_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When its source says it was taken, when its source says: a frame a camera\nheld over from earlier is not a frame of now."
     },
     "content_type": {
       "description": "The content type it was served as.",
@@ -15770,6 +15804,17 @@ Declared by `printobserver-core`.
   "additionalProperties": false,
   "description": "The supervisor looked in on an active print on its own schedule, with no\ndetector having said anything about it.\n\nWhat a failure detector never alerts on \u2014 a progress that stopped moving, a\nheater whose target fell to nothing mid-print, a fan cut at a bridge, a wall\ngoing thin \u2014 is still on the machine and in the camera's frame, so every\nactive print is given one of these each interval and a turn on it. It\ncarries what the printer reported as it was taken; the frame the camera gave\nat the same moment, untagged by any detector, is this event's image.",
   "properties": {
+    "frame_captured_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the observation's frame was captured, which its source says or the\nmoment it answered; absent when there is no frame."
+    },
     "interval_s": {
       "description": "How often these are taken, in whole seconds.",
       "format": "uint64",
@@ -40902,6 +40947,17 @@ Declared by `printobserver-supervisor-api`.
             "null"
           ]
         },
+        "frame_captured_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the frame an alert brought was captured, which its source says or the\nmoment it answered; absent when the event says so itself or has no frame."
+        },
         "noticed": {
           "default": null,
           "description": "What the printer watch noticed that prompted this turn \u2014 how the print\nended, what the printer did on its own after it, that the camera gave\nno usable frame, that the failure detector stopped answering \u2014 in\nwords beginning with the event's kind; null when the turn was prompted\nby anything else.",
@@ -41182,6 +41238,17 @@ Declared by `printobserver-supervisor-api`.
         "boolean",
         "null"
       ]
+    },
+    "frame_captured_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the frame an alert brought was captured, which its source says or the\nmoment it answered; absent when the event says so itself or has no frame."
     },
     "noticed": {
       "default": null,

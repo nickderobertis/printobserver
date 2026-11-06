@@ -22,15 +22,17 @@ import bisect
 import json
 import re
 import threading
-import time
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import unquote, urlsplit
 
-from cases import Case, Frame, MachineState, Moment, elapsed_seconds
+from cases import Case, MachineState, Moment, instant
 
 #: A heater command in the G-code, and the temperature it sets.
 HEATER = re.compile(rb"^M(?P<code>104|109|140|190)\s[^;\n]*?S(?P<value>\d+(?:\.\d+)?)", re.M)
@@ -76,48 +78,39 @@ def numbered(jpeg: bytes, number: int) -> bytes:
     return jpeg[:2] + b"\xff\xfe" + (len(comment) + 2).to_bytes(2, "big") + comment + jpeg[2:]
 
 
-def print_time_s(case: Case, at: str, position: int) -> int:
-    """How long the job had been running at a time and position, on the print's own clock.
-
-    From the case's first camera frame where its frames carry their times, and
-    otherwise from the rate between the first and last event. It never goes back,
-    which is how the server tells this job from a later one of the same file.
-    """
-    if case.has_frame_times:
-        return max(0, elapsed_seconds(case.frames[0].captured, at))
-    first, last = case.moments[0], case.moments[-1]
-    span = elapsed_seconds(first.at, last.at)
-    moved = last.file_position_bytes - first.file_position_bytes
-    return position * span // moved if moved > 0 else 0
-
-
 @dataclass
 class Timeline:
-    """The replay's current time: which event it stands at, and which frame was last answered."""
+    """The replay's current time: which event it stands at, and which frame was last answered.
+
+    It is the server's clock too, through the file `clock` names: a print replayed in
+    minutes has to read as the hours it took, or every instant the agent reads
+    contradicts the position beside it. The clock runs at real speed from each event's
+    recorded time and a look's next frame moves it on to when that frame was captured,
+    so every counter a turn reads comes from one instant. It stops just short of the
+    next event, and nothing a turn can read passes that moment.
+    """
 
     case: Case
     #: The bytes of one frame, by its file name.
     picture: Callable[[str], bytes]
-    #: The epoch second the print started, which an alert names.
-    started_epoch: float
+    #: The file the server's clock is moved by.
+    clock: Path
     gcode: bytes | None = None
     index: int = 0
-    #: The frame last answered; every later fetch answers the next.
+    #: The frame last answered; a later fetch answers the next one before the next event.
     cursor: int = -1
     #: A fetch owed the event's own frame, rather than the next one.
     owed_event_frame: bool = True
     at_event_frame: int = -1
-    #: The frame the event stands at; a frame past it means time has moved on.
-    event_cursor: int = -1
     moved_at_exit: bool = False
     finished: bool = False
     paused: bool = False
+    #: Whether a look has been taken at this event, which is when time is first read.
+    looked: bool = False
     fetches: list[str] = field(default_factory=list)
-    #: Where the job was at each frame.
-    positions: list[int] = field(default_factory=list)
-    #: When the event began, and the real seconds this turn's looks have waited.
-    event_began: float = 0.0
-    waited_s: float = 0.0
+    frame_times: list[datetime] = field(default_factory=list)
+    offset: timedelta = timedelta()
+    ceiling: datetime | None = None
     #: The print's clock never goes back: the server reads that as a later job.
     longest_print_time_s: int = 0
     stopped: threading.Event = field(default_factory=threading.Event)
@@ -125,9 +118,9 @@ class Timeline:
     heaters: Heaters = field(default_factory=Heaters)
 
     def __post_init__(self) -> None:
-        """Read the heater commands once, and stand at the first event."""
+        """Read the heater commands and capture times once, and stand at the first event."""
         self.heaters = Heaters.of(self.gcode)
-        self.positions = self.case.frame_positions()
+        self.frame_times = self.case.frame_times()
         self.stand_at(0)
 
     @property
@@ -135,12 +128,27 @@ class Timeline:
         """The event the replay stands at."""
         return self.case.moments[self.index]
 
+    def now(self) -> datetime:
+        """The replay's current time, which is what the server's clock answers."""
+        moved = datetime.now(UTC) + self.offset
+        return min(moved, self.ceiling) if self.ceiling else moved
+
+    def _set_clock(self, when: datetime) -> None:
+        """Move the clock to an instant, and tell the server, which reads the file each time."""
+        self.offset = when - datetime.now(UTC)
+        ceiling = f" {int(self.ceiling.timestamp() * 1000)}" if self.ceiling else ""
+        written = self.clock.with_suffix(".new")
+        written.write_text(f"{int(self.offset.total_seconds() * 1000)}{ceiling}\n", "ascii")
+        written.replace(self.clock)
+
     def stand_at(self, index: int) -> None:
-        """Stand at one event: its frame is the next a fetch answers."""
+        """Stand at one event: its recorded time, and its frame next for a fetch to answer."""
         self.index = index
-        self.waited_s = 0.0
-        self.event_began = time.monotonic()
+        self.looked = False
         moment = self.case.moments[index]
+        following = self.case.moments[index + 1 :]
+        self.ceiling = instant(following[0].at) - timedelta(seconds=1) if following else None
+        self._set_clock(instant(moment.at))
         at = self.case.frame_at_or_before(moment.at, moment.event_image)
         if moment.is_alert:
             # The alert carries its own picture, so a look answers what came after.
@@ -149,7 +157,6 @@ class Timeline:
         else:
             self.owed_event_frame = True
             self.at_event_frame = at
-        self.event_cursor = max(self.cursor, at)
         self.paused = moment.printer_state is MachineState.PAUSED or (
             self.paused and moment.printer_state is MachineState.PRINTING
         )
@@ -163,109 +170,73 @@ class Timeline:
             self.moved_at_exit = False
 
     def _window_end(self) -> int:
-        """The last frame a look of this turn may answer: nothing newer exists yet.
+        """The newest frame a look of this turn may answer: nothing newer exists yet.
 
-        In replay time a frame captured after the next event's moment has not been
-        captured, so a turn's looks stop there. A look may reach the next event's own
-        frame, which time equals and does not pass, unless that frame shows a fault:
-        a carry-on point must never be shown what the next decision point is about.
+        A frame captured at or after the next event's moment has not been captured,
+        and after the last event a look reads as far as the recorded turn's looks did.
         """
         following = self.case.moments[self.index + 1 :]
-        if not following:
-            # The last event has no next moment to bound it, and a look a minute later
-            # must not read the end of the print: the recorded turn's looks are its reach.
-            return self._last_events_reach()
-        upcoming = following[0]
-        at = self.case.frame_at_or_before(upcoming.at, upcoming.event_image)
-        if upcoming.is_alert or self.case.frames[at].healthy:
-            return at
-        return at - 1
-
-    def _last_events_reach(self) -> int:
-        """How far the last event's looks read: what its recorded turn's looks saw.
-
-        It has no next moment to bound it, and the frames after those were taken long
-        after any look of that turn; the print's end is not a minute and a half away.
-        """
+        if following:
+            before = instant(following[0].at)
+            earlier = [
+                index
+                for index, when in enumerate(self.frame_times)
+                if when < before and self.case.frames[index].file != following[0].event_image
+            ]
+            return earlier[-1] if earlier else -1
         names = [frame.file for frame in self.case.frames]
         reached = [names.index(look) for look in self.moment.looks if look in names]
-        return max(reached, default=self.event_cursor)
+        return max([*reached, self.cursor])
 
-    def next_fetch(self) -> str | None:
-        """The frame this fetch answers: the event's own, then the next up to `_window_end`."""
+    def next_fetch(self) -> tuple[str, datetime] | None:
+        """The frame this fetch answers and when it was captured: the event's, then the next."""
         with self.lock:
             if self.finished:
                 return None
-            frames = self.case.frames
             if self.owed_event_frame:
                 self.cursor = max(self.cursor, self.at_event_frame)
                 self.owed_event_frame = False
-                self.event_began = time.monotonic()
             else:
+                self.looked = True
                 if self.cursor < self._window_end():
                     self.cursor += 1
-                self.waited_s = time.monotonic() - self.event_began
-            name = frames[max(self.cursor, 0)].file
+                    when = self.frame_times[self.cursor]
+                    if when > self.now():
+                        self._set_clock(when)
+            shown = max(self.cursor, 0)
+            name = self.case.frames[shown].file
             self.fetches.append(name)
-            return name
+            return name, self.frame_times[shown]
 
-    def camera_answer(self) -> bytes | None:
-        """The bytes this fetch answers, which no two fetches share.
+    def camera_answer(self) -> tuple[bytes, datetime] | None:
+        """The bytes this fetch answers, and when they were captured.
 
-        A real camera's two frames of one still scene never match byte for byte,
-        and an agent that compares what the server records of them would read a
-        frozen camera. So each answer carries its fetch's number in a comment
-        segment, which changes no pixel.
+        A real camera's two frames of one still scene never match byte for byte, so
+        each answer carries its fetch's number in a comment segment, which changes no
+        pixel. When it was captured is what says two fetches saw one frame.
         """
-        name = self.next_fetch()
-        if name is None:
+        answered = self.next_fetch()
+        if answered is None:
             return None
-        return numbered(self.picture(name), len(self.fetches))
-
-    def _frame_before_the_next_event(self) -> Frame | None:
-        """The newest frame shown since the event, unless it is the next event's own.
-
-        That one is shown a little early, so it says nothing of where the job is yet.
-        """
-        following = self.case.moments[self.index + 1 :]
-        if self.cursor <= self.event_cursor:
-            return None
-        frame = self.case.frames[self.cursor]
-        return None if following and frame.file == following[0].event_image else frame
+        name, when = answered
+        return numbered(self.picture(name), len(self.fetches)), when
 
     def position(self) -> int:
-        """The job's file position at this reading: the event's, moved on since.
+        """The job's file position at the replay's current time, as the recording has it.
 
-        A real job moves as real seconds pass, so it stands where the recording's rate
-        around this event puts it after the seconds this turn's looks have really
-        waited, or where the job was at a frame shown since, whichever is further. It
-        stops short of the next event's position, because replay time never passes
-        that moment.
+        The event's own until a look has been taken, and short of the next event's.
         """
         low = self.moment.file_position_bytes
+        if not self.looked:
+            return low
         following = self.case.moments[self.index + 1 :]
         high = following[0].file_position_bytes - 1 if following else self.case.gcode_size - 1
-        moved = low + int(self.waited_s * self._recorded_rate())
-        if self._frame_before_the_next_event() is not None:
-            moved = max(moved, self.positions[self.cursor])
-        return max(low, min(moved, high))
+        return max(low, min(self.case.position_at(self.now()), high))
 
-    def _recorded_rate(self) -> float:
-        """The bytes a second the recording shows the job moving at around this event."""
-        moments = self.case.moments
-        later = min(self.index + 1, len(moments) - 1)
-        earlier = max(later - 1, 0)
-        span = elapsed_seconds(moments[earlier].at, moments[later].at)
-        moved = moments[later].file_position_bytes - moments[earlier].file_position_bytes
-        return max(0, moved) / span if span > 0 else 0.0
-
-    def _print_time(self, position: int) -> int:
-        frame = self._frame_before_the_next_event()
-        at = frame.captured if frame is not None and self.case.has_frame_times else self.moment.at
-        now = print_time_s(self.case, at, position)
-        if frame is None or not self.case.has_frame_times:
-            now += int(self.waited_s)
-        self.longest_print_time_s = max(self.longest_print_time_s, now)
+    def _print_time(self) -> int:
+        """How long the job has been running: now, less when the recording says it started."""
+        running = int((self.now() - self.case.job_started()).total_seconds())
+        self.longest_print_time_s = max(self.longest_print_time_s, running)
         return self.longest_print_time_s
 
     def job_body(self) -> tuple[int, dict[str, Any]]:
@@ -285,7 +256,7 @@ class Timeline:
                 "progress": {
                     "completion": position / size * 100,
                     "filepos": position,
-                    "printTime": self._print_time(position),
+                    "printTime": self._print_time(),
                     "printTimeLeft": None,
                 },
                 "state": "Paused" if self.paused else "Printing",
@@ -335,11 +306,17 @@ class _Quiet(BaseHTTPRequestHandler):
         del format, args
 
     def answer(
-        self, status: int, body: bytes = b"", content_type: str = "application/json"
+        self,
+        status: int,
+        body: bytes = b"",
+        content_type: str = "application/json",
+        taken: datetime | None = None,
     ) -> None:
-        """Send one whole response."""
+        """Send one whole response, saying when a picture in it was taken."""
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if taken is not None:
+            self.send_header("Last-Modified", format_datetime(taken, usegmt=True))
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -463,15 +440,15 @@ def camera(timeline: Timeline) -> ThreadingHTTPServer:
 
     class Handler(_Quiet):
         def do_GET(self) -> None:
-            picture = timeline.camera_answer()
-            if picture is None:
+            answered = timeline.camera_answer()
+            if answered is None:
                 # The last event's turn is over and the server is being stopped;
                 # a check that fired meanwhile starts no turn, because this never
                 # answers it.
                 timeline.stopped.wait(HELD_FETCH_S)
                 self.answer(503)
                 return
-            self.answer(200, picture, "image/jpeg")
+            self.answer(200, answered[0], "image/jpeg", answered[1])
 
     return _serving(Handler)
 
@@ -483,7 +460,8 @@ def obico(timeline: Timeline) -> ThreadingHTTPServer:
         def do_GET(self) -> None:
             path = urlsplit(self.path).path
             if path.startswith("/media/"):
-                self.answer(200, timeline.picture(unquote(path.rsplit("/", 1)[1])), "image/jpeg")
+                name = unquote(path.rsplit("/", 1)[1])
+                self.answer(200, timeline.picture(name), "image/jpeg", timeline.now())
                 return
             self.answer_json(200, {"status": "ok"})
 

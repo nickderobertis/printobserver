@@ -9,9 +9,9 @@
 //! not have (`404`). A host that is not reachable at all is the last answer,
 //! and it is the one no served response can produce.
 
-use printobserver_types::RawBytes;
+use printobserver_types::{RawBytes, Timestamp};
 use printobserver_vision_api::{FetchedImage, STATUS_EXCERPT_MAX_BYTES, VisionError, body_excerpt};
-use reqwest::header::CONTENT_TYPE;
+use reqwest::header::{CONTENT_TYPE, LAST_MODIFIED};
 use reqwest::{Client, Response};
 
 /// The content-type prefix this adapter accepts, and it accepts no other.
@@ -92,6 +92,18 @@ async fn excerpt_of(mut response: Response) -> String {
 }
 
 /// Retrieve the image one URL names, under the bounds given.
+/// When an answer says its image was taken, read off its `Last-Modified`.
+fn captured_at_of(response: &reqwest::Response) -> Option<Timestamp> {
+    let declared = response.headers().get(LAST_MODIFIED)?.to_str().ok()?;
+    captured_at_declared(declared)
+}
+
+/// The instant a `Last-Modified` value names, when it names one.
+fn captured_at_declared(declared: &str) -> Option<Timestamp> {
+    let parsed = chrono::DateTime::parse_from_rfc2822(declared).ok()?;
+    Timestamp::from_unix_seconds(parsed.timestamp()).ok()
+}
+
 pub(crate) async fn image(
     client: &Client,
     source_url: &str,
@@ -123,15 +135,26 @@ pub(crate) async fn image(
     if !essence.starts_with(IMAGE_PREFIX) {
         return Err(VisionError::UnacceptableContentType { content_type });
     }
+    let captured_at = captured_at_of(&response);
     Ok(FetchedImage {
         bytes: body_within(response, max_bytes).await?,
         content_type,
+        captured_at,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::within;
+
+    /// A `Last-Modified` names when a frame was taken, and anything else names nothing.
+    #[test]
+    fn a_frames_capture_time_is_read_off_its_last_modified() {
+        let held = super::captured_at_declared("Thu, 29 Oct 2026 18:24:50 GMT")
+            .expect("a date in the header's own form");
+        assert_eq!(held.to_string(), "2026-10-29T18:24:50Z");
+        assert!(super::captured_at_declared("yesterday").is_none());
+    }
 
     /// A count that does not fit the limit's own type is over the limit.
     #[test]

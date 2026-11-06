@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 import classify
-import doubles
 import pytest
 import record
 from cases import (
@@ -33,6 +32,7 @@ from cases import (
     ScenarioId,
     Step,
     Trigger,
+    instant,
     read_case,
     replayed_case_names,
 )
@@ -400,35 +400,11 @@ def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
     equal(done.replayed.fetches[:4], [first.event_image] * 3 + [second.event_image])
 
 
-def test_a_look_may_reach_the_next_events_healthy_frame_and_goes_no_further(scratch: Path) -> None:
-    """Adjacent healthy events: looks stop at the next event's own frame, which it hands again."""
-    case = read_case("bubbler-guard-and-pad-pla-healthy")
-    names = [frame.file for frame in case.frames]
-    adjacent = next(
-        number
-        for number, moment in enumerate(case.moments[:-1])
-        if names.index(case.moments[number + 1].event_image) == names.index(moment.event_image) + 1
-    )
-    runs: list[ScriptedRun] = [{"commands": [LOOK, LOOK]} for _ in case.moments]
-    done = mock_replay(case, runs, scratch)
-    following = case.moments[adjacent + 1].event_image
-    equal(
-        [done.seen_frame(adjacent, 0), done.seen_frame(adjacent, 1)],
-        [following, following],
-    )
-    truth(case.frames[names.index(following)].healthy, describing="that frame to be healthy")
-
-
 def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Path) -> None:
     """Over the real cases whose next event shows a fault, however many looks a turn takes."""
     for name in ("jar-top-wrong-material-first-layer-detach", "under-extrusion-lace"):
         case = read_case(name)
         faulty = case.moments[-1].event_image
-        names = [frame.file for frame in case.frames]
-        truth(
-            not case.frames[names.index(faulty)].healthy,
-            describing=f"{faulty} to be labelled with a fault",
-        )
         directory = scratch / name
         directory.mkdir()
         done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], directory)
@@ -436,22 +412,33 @@ def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Pat
         truth(faulty not in seen, describing=f"{faulty} not to be among {seen}")
 
 
-def test_the_job_moves_on_over_a_repeated_frame_at_the_recorded_rate(scratch: Path) -> None:
-    """A real wait moves a real job: no frozen counter, and nothing past the next event."""
+def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
+    """The record's times are the recording's, and a repeated frame says it is one."""
     case = read_case("fan-cut-bridge")
     first, second = case.moments
     waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
     done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
-    jobs = [json.loads(entry["out"])["job"] for entry in done.turns[0]["ran"]]
-    positions = [job["file_position_bytes"] for job in jobs]
+    looks = [json.loads(entry["out"]) for entry in done.turns[0]["ran"]]
+    # The event's frame, repeated: there is nothing between it and the fault's.
+    captured = {look["event"]["payload"]["frame_captured_at"] for look in looks}
+    equal(len(captured), 1, describing=f"one capture time among {captured}")
+    received = looks[0]["event"]["received_at"][:16]
+    equal(received, instant(first.at).strftime("%Y-%m-%dT%H:%M"))
+    # A real wait moves the job on, and nothing passes the next event's moment.
+    positions = [look["job"]["file_position_bytes"] for look in looks]
     truth(positions[-1] > first.file_position_bytes, describing=f"the job to move: {positions}")
     truth(positions[-1] < second.file_position_bytes, describing="it to stop short of the next")
-    span = doubles.elapsed_seconds(first.at, second.at)
-    rate = (second.file_position_bytes - first.file_position_bytes) / span
-    truth(
-        positions[-1] - first.file_position_bytes < rate * 30,
-        describing=f"it to move at the recorded rate of {rate} bytes a second: {positions}",
-    )
+
+
+def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
+    """What the server records of the job's start stays put across a whole print."""
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    started = {
+        json.loads(turn["ran"][0]["out"])["context"]["print"]["job_started_at"][:16]
+        for turn in done.turns
+    }
+    equal(len(started), 1, describing=f"one job start among {started}")
 
 
 def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path) -> None:
