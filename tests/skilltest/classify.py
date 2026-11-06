@@ -55,10 +55,8 @@ def _git(root: Path, *arguments: str) -> str:
 
 
 def _shown(root: Path, ref: str, path: str) -> str | None:
-    try:
-        return _git(root, "show", f"{ref}:{path}")
-    except UndecidableError:
-        return None
+    listed = _git(root, "ls-tree", "--name-only", ref, "--", path)
+    return _git(root, "show", f"{ref}:{path}") if listed.strip() else None
 
 
 def _matches(path: str, pattern: str) -> bool:

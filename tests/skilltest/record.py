@@ -96,6 +96,10 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
     tests = [_test_record(path) for path in sorted(directory.glob("*.json"))]
     points = [point for test in tests for point in test["decision_points"]]
     counted = turns_per_test(cases)
+    for test in tests:
+        if test["test"] not in counted:
+            msg = f"{test['test']} is no case with a replay"
+            raise UnreadableRunError(msg)
     return {
         "figures": {"turns": len(points)},
         "detail": {

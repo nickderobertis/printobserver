@@ -77,9 +77,10 @@ def _run_is_whole(run_of: object) -> bool:
     commands = run_of.get("commands", [])
     return (
         isinstance(commands, list)
-        and all(isinstance(words, list) for words in commands)
+        and all(isinstance(words, list) and words for words in commands)
         and all(isinstance(word, str) for words in commands for word in words)
         and isinstance(run_of.get("usage", {}), dict)
+        and all(isinstance(count, int) for count in run_of.get("usage", {}).values())
         and isinstance(run_of.get("compact", False), bool)
         and isinstance(run_of.get("unreadable", False), bool)
     )
@@ -132,6 +133,9 @@ def main(script_path: str, arguments: list[str]) -> int:
     """Take one turn of the script, and answer through the published responder."""
     directory = Path(script_path).parent
     script: Script = json.loads(Path(script_path).read_text(encoding="utf-8"))
+    if not isinstance(script, dict):
+        print(f"{script_path} is no script", file=sys.stderr)
+        return 2
     if not isinstance(script.get("turns"), list) or not script["turns"]:
         print(f"{script_path} scripts no run", file=sys.stderr)
         return 2

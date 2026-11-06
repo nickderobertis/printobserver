@@ -48,7 +48,7 @@ rather than leaving it undone.
    at 1.0, and sagging bridges the fan at 100. Change a setting only on a clear
    defect; unsure, watch.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
-   already old. A look can wait 90 s first, so a few show a defect growing or settling.
+   already old. A look can wait a minute and a half first, so a few show a defect growing or settling.
    Open each. Each frame says when it was captured. One time twice means the camera
    has nothing newer, which is no reason to stop: keep the print running, watch, and
    say so in your reason. A plate unchanged across frames captured far apart while

@@ -444,7 +444,8 @@ class Case:
 
     def mentions(self, name: str) -> bool:
         """Whether the case.json names a file anywhere, a name holding a space included."""
-        return name in json.dumps(self.document, ensure_ascii=False)
+        whole_name = rf"(?<![\w.-]){re.escape(name)}(?![\w.-])"
+        return re.search(whole_name, json.dumps(self.document, ensure_ascii=False)) is not None
 
 
 def _file_fields(value: object) -> Iterator[str]:
