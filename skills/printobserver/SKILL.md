@@ -34,9 +34,9 @@ rather than leaving it undone.
    Judge each frame against this print's own earlier frames. What has been printed
    stays where it was laid: measure it against the sheet's holes, edges and marks,
    however the view shifts. A part that seems to have moved is a person's to check:
-   pause. A printing part keeps growing: the bed sinks as layers rise, so once the
-   bed sits visibly lower the part's sides must show more wall. If they show none it
-   has stopped growing, however clean the frame looks. A wall is clearly
+   pause. A printing part keeps growing: the bed sinks as layers rise, so over tens of
+   minutes, with the bed visibly lower, the part's sides must show more wall. If they
+   show none it has stopped growing. A wall is clearly
    under-extruding only when visibly thinner, gappy or see-through where the part's
    shape would make it solid; a texture the shape could explain, ribs, lattice,
    bridging over support, is not clear. Inside the outline supports, bridges and

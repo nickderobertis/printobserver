@@ -110,8 +110,7 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     for (index, (payload, image)) in triggers.into_iter().enumerate() {
         let print_id = PrintId::new();
         let mut request = turn(print_id, event(print_id, payload), image.clone());
-        // The first turn began with everything known, and arrived after an
-        // event its print's previous turn never took; the others knew nothing.
+        // The first turn knew everything, and came after an event never taken.
         if index == 0 {
             request.situation = TurnSituation {
                 printer_state: Some(PrinterState::Paused),
