@@ -724,6 +724,7 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         "no event",
         {"kind": "k", "received_at": "2026-01-01T00:00:00Z"},
         {"id": "e", "kind": "k", "received_at": "yesterday", "payload": {}},
+        {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00", "payload": {}},
         {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00.123456garbage", "payload": {}},
         {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z"},
         {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z", "payload": []},
@@ -801,6 +802,34 @@ def test_the_budgets_command_reports_the_turns_the_cases_count(scratch: Path) ->
     equal(reported["value"], sum(counted.values()))
     equal(json.loads(reported["detail"]), {"turns_per_test": counted})
     contains(done.stderr, f"turns per full run: {sum(counted.values())}")
+
+
+def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
+    """An absent or an empty directory is no suite of zero turns."""
+    script = str(REPO / "tests" / "skilltest" / "turns_per_run.py")
+    result = scratch / "result.json"
+    for cases in (scratch / "absent", scratch):
+        done = run(
+            [sys.executable, script, str(cases)],
+            env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
+        )
+        equal(done.returncode, 1)
+        contains(done.stderr, "holds no case")
+        truth(not result.exists(), describing="no figure reported for no suite")
+
+
+def test_a_history_command_that_fails_stops_the_replay(scratch: Path) -> None:
+    """An unanswered read is the replay gone wrong, never a print with no events."""
+    case = read_case("fan-cut-bridge")
+    replay = Replay(case, [sys.executable, str(MOCK_TURN), str(scratch / "script.json")])
+    try:
+        replay._install()
+        replay.print_id = replay_module.PrintId("a-print")
+        with pytest.raises(ReplayError, match="`printobserver history` answered"):
+            replay._events()
+    finally:
+        replay.stop()
+        replay.clean_up()
 
 
 @pytest.mark.parametrize(
@@ -959,6 +988,14 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         ("repeated", {**test_record, "decision_points": [points[0], points[0]]}),
         ("reordered", {**test_record, "decision_points": points[::-1]}),
         ("sessions", {**test_record, "sessions": [3]}),
+        (
+            "why",
+            {**test_record, "decision_points": [{**points[0], "why_not": 3}, points[1]]},
+        ),
+        (
+            "assessment",
+            {**test_record, "decision_points": [{**points[0], "assessment": {}}, points[1]]},
+        ),
         (
             "field",
             {**test_record, "decision_points": [{**points[0], "looks": "many"}, points[1]]},

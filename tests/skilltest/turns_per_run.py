@@ -23,8 +23,12 @@ class UnreadableCaseError(Exception):
 
 def replays(cases: Path = CASES) -> dict[str, list[str]]:
     """Each case's `replay` list, by the case's name, for the cases with one."""
+    documents = sorted(cases.glob("*/case.json"))
+    if not documents:
+        msg = f"{cases} holds no case"
+        raise UnreadableCaseError(msg)
     found = {}
-    for path in sorted(cases.glob("*/case.json")):
+    for path in documents:
         document = json.loads(path.read_text(encoding="utf-8"))
         assertions = document.get("assertions") if isinstance(document, dict) else None
         if not isinstance(assertions, dict):

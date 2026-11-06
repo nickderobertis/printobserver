@@ -212,10 +212,9 @@ def _is_timestamp(value: object) -> bool:
     if not isinstance(value, str):
         return False
     try:
-        _utc_instant(value)
+        return _utc_instant(value).tzinfo is not None
     except ValueError:
         return False
-    return True
 
 
 def is_held_print(held: object) -> bool:
@@ -246,7 +245,7 @@ def is_event(event: object) -> bool:
         case "action_requested" | "recovery_requested":
             return _is_requested_action(payload.get("action"))
         case "agent_assessment":
-            return _is_assessment(payload.get("assessment"))
+            return is_assessment(payload.get("assessment"))
         case _:
             return True
 
@@ -265,7 +264,7 @@ def _is_actor(actor: object) -> bool:
     return isinstance(actor, str) and actor in {"operator", "system"}
 
 
-def _is_assessment(assessment: object) -> bool:
+def is_assessment(assessment: object) -> bool:
     """Whether a turn's assessment has every field the record carries; a turn may have none."""
     if assessment is None:
         return True
@@ -804,11 +803,10 @@ class Replay:
         return self.print_id
 
     def _events(self) -> list[dict[str, Any]]:
-        """The print's whole history, oldest first."""
-        try:
-            answered = self._client("history", "--print-id", self._print_id(), "--limit", "1000")
-        except ReplayError:
+        """The print's whole history, oldest first; none before the server holds a print."""
+        if self.print_id is None and not self._prints():
             return []
+        answered = self._client("history", "--print-id", self._print_id(), "--limit", "1000")
         document = json.loads(answered)
         events = document.get("events") if isinstance(document, dict) else None
         if not isinstance(events, list) or not all(map(is_event, events)):

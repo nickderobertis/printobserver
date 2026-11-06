@@ -237,4 +237,6 @@ def main(script_path: str, arguments: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        sys.exit("usage: mock_turn.py <script> [what the harness was asked]")
     raise SystemExit(main(sys.argv[1], sys.argv[2:]))

@@ -16,7 +16,7 @@ import tempfile
 from pathlib import Path
 from typing import TypedDict
 
-from replay import DecisionRecord, TestRecord
+from replay import DecisionRecord, TestRecord, is_assessment
 from repo_checks.shell import run
 from turns_per_run import CASES, UnreadableCaseError, replays
 
@@ -72,7 +72,8 @@ def _decision_point_is_readable(point: object) -> bool:
         and all(isinstance(request, str) for request in point["requests"])
         and isinstance(point["opened"], list)
         and all(isinstance(name, str) for name in point["opened"])
-        and (point["assessment"] is None or isinstance(point["assessment"], dict))
+        and (point["why_not"] is None or isinstance(point["why_not"], str))
+        and is_assessment(point["assessment"])
         and isinstance(point["looks"], int)
         and (point["usage"] is None or isinstance(point["usage"], dict))
         and isinstance(point["passed"], bool)
