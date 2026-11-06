@@ -22,7 +22,19 @@ from typing import Any
 import classify
 import pytest
 import record
-from cases import CASES, REPO, Case, read_case, replayed_case_names
+from cases import (
+    CASES,
+    REPO,
+    Case,
+    MachineState,
+    Moment,
+    Request,
+    ScenarioId,
+    Step,
+    Trigger,
+    read_case,
+    replayed_case_names,
+)
 from replay import Replay, Replayed, harness_token, program, service_config
 from replay import Secrets as Minted
 from repo_checks.__main__ import main as repo_check
@@ -446,6 +458,66 @@ def test_the_runner_makes_exactly_one_turn_per_replay_entry(scratch: Path) -> No
     equal(len(done.turns), turns_per_test()[case.name])
 
 
+def _moment_accepting(*outcome: Step, never: tuple[Step, ...] = ()) -> Moment:
+    return Moment(
+        id=ScenarioId("a-moment"),
+        at="2026-01-01T00:00:00",
+        trigger=Trigger.PERIODIC_OBSERVATION,
+        event_image="frame.jpg",
+        event_id=None,
+        printer_state=MachineState.PRINTING,
+        file_position_bytes=0,
+        accept_any_of=(outcome,),
+        never=never,
+        summary="a moment",
+    )
+
+
+def test_an_outcome_is_met_only_by_its_values_in_its_order() -> None:
+    """A wrong value, a wrong order and an argument-pinned never step each fail a decision."""
+    pause = Step("pause")
+    stop = Step("acknowledge-failure", {"disposition": "stop"})
+    moment = _moment_accepting(pause, stop)
+    pausing = Request("pause", {})
+    stopping = Request("acknowledge-failure", {"disposition": "stop"})
+    watching = Request("acknowledge-failure", {"disposition": "watch"})
+    equal(moment.verdict([pausing, stopping]), None)
+    truth(moment.verdict([stopping, pausing]) is not None, describing="the wrong order to fail")
+    truth(moment.verdict([pausing, watching]) is not None, describing="the wrong value to fail")
+    factor = _moment_accepting(Step("set-flowrate-factor", {"factor": 1.0}))
+    equal(factor.verdict([Request("set-flowrate-factor", {"factor": 1})]), None)
+    truth(
+        factor.verdict([Request("set-flowrate-factor", {"factor": 0.9})]) is not None,
+        describing="another number to fail",
+    )
+    forbidden = _moment_accepting(never=(stop,))
+    equal(forbidden.verdict([watching]), None)
+    contains(forbidden.verdict([stopping]) or "", "must never")
+
+
+def test_a_plain_pytest_collects_no_live_test_and_an_opted_in_one_does() -> None:
+    """Nothing fires by accident, and the opt-in reaches every case."""
+    command = ["uv", "run", "-q", "pytest", "--collect-only", "-q", "tests/skilltest"]
+    environment = {k: v for k, v in os.environ.items() if k != "SKILLTEST_E2E"}
+    plain = run(command, cwd=REPO, env=environment)
+    truth("test_replay" not in plain.stdout, describing=f"no live test in {plain.stdout}")
+    opted = run(command, cwd=REPO, env={**environment, "SKILLTEST_E2E": "1"}, check=True)
+    contains(opted.stdout, f"test_replay.py: {len(replayed_case_names())}")
+
+
+def test_a_turns_assessment_is_attributed_to_its_own_decision_point(scratch: Path) -> None:
+    """Each decision point carries what the agent answered that turn, whatever its order."""
+    case = read_case("petg-clip-detach-and-stringing-web")
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    for point in done.replayed.points:
+        truth(point.assessment, describing=f"{point.moment.id} to carry its assessment")
+    summaries = [turn["assessment"]["summary"] for turn in done.turns]
+    equal(
+        [point.assessment["summary"] for point in done.replayed.points if point.assessment],
+        summaries,
+    )
+
+
 def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: Path) -> None:
     """The engine's second run of one turn neither ends it nor moves the replay on."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
@@ -488,6 +560,19 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
     (finished / "fan-cut-bridge.json").write_text(json.dumps(test_record), encoding="utf-8")
     equal(record.main([str(finished)]), 0)
     equal(json.loads(written.read_text("utf-8"))["detail"]["commit"], "a-commit")
+    failed = tmp_path / "failed"
+    failed.mkdir()
+    (failed / "fan-cut-bridge.json").write_text(
+        json.dumps({**test_record, "passed": False}), encoding="utf-8"
+    )
+    equal(record.main([str(failed)]), 1)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    equal(record.main([str(empty)]), 1)
+    unreadable = tmp_path / "unreadable"
+    unreadable.mkdir()
+    (unreadable / "a.json").write_text("[]", encoding="utf-8")
+    equal(record.main([str(unreadable)]), 1)
     # A `just` of this test's own, standing where the real recipe would run the suite.
     fake = tmp_path / "bin"
     fake.mkdir()

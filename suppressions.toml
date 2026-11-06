@@ -4409,3 +4409,15 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest/doubles.py"
 site = "if name != timeline.case.gcode.name:"
 reason = "The same stand-in answer, for the file facts the real adapter reads, held the same way: to a real OctoPrint by that adapter's integration tier."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "`just skilltest` replays each real print with a `replay` through the real server"
+reason = "The task that made the suite required states, as an acceptance criterion, that the root `AGENTS.md` says when the suite runs and states the flaky-test rule, because a change anywhere on its list has to know it owes the suite before opening anything under `tests/skilltest`. The suite's mechanics are in `tests/skilltest/AGENTS.md`."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "`just skilltest` replays each real print with a `replay` through the real server"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site has the reason."

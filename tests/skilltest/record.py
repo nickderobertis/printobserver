@@ -55,11 +55,22 @@ class RunRecord(TypedDict):
     detail: Detail
 
 
+class UnreadableRunError(Exception):
+    """A run's directory holding something that is no test's record, or nothing at all."""
+
+
+def _test_record(path: Path) -> TestRecord:
+    """One test's record, once it has the fields the record is folded from."""
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not {"test", "passed", "decision_points"} <= set(document):
+        msg = f"{path} is no test's record"
+        raise UnreadableRunError(msg)
+    return document
+
+
 def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
     """The record of one run, from each test's record in its directory."""
-    tests = [
-        json.loads(path.read_text(encoding="utf-8")) for path in sorted(directory.glob("*.json"))
-    ]
+    tests = [_test_record(path) for path in sorted(directory.glob("*.json"))]
     points = [point for test in tests for point in test["decision_points"]]
     counted = turns_per_test(cases)
     return {
@@ -77,7 +88,7 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
 
 
 def main(arguments: list[str]) -> int:
-    """Run the suite, or read a finished run, and write the record."""
+    """Run the suite, or read a finished run, write the record, and exit as the run went."""
     directory = Path(arguments[0]) if arguments and Path(arguments[0]).is_dir() else None
     status = 0
     if directory is None:
@@ -88,10 +99,20 @@ def main(arguments: list[str]) -> int:
             env={**os.environ, "SKILLTEST_RUN_DIR": str(directory)},
             capture=False,
         ).returncode
+    try:
+        written = folded(directory, commit())
+    except (UnreadableRunError, ValueError) as error:
+        print(f"record: {error}", file=sys.stderr)
+        return status or 1
     RESULT.parent.mkdir(parents=True, exist_ok=True)
-    RESULT.write_text(json.dumps(folded(directory, commit()), indent=2) + "\n", encoding="utf-8")
+    RESULT.write_text(json.dumps(written, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {RESULT.relative_to(REPO)}", file=sys.stderr)
-    return status
+    if status:
+        return status
+    if not written["detail"]["tests"] or not written["detail"]["passed"]:
+        print("record: the run has no tests, or a test that failed", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

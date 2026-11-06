@@ -345,6 +345,18 @@ class Replayed:
         }
 
 
+def _ledger_of(document: object, path: Path) -> Ledger:
+    """A ledger read from the port's file, once it holds what is read from one."""
+    if (
+        not isinstance(document, dict)
+        or not isinstance(document.get("sessions"), list)
+        or not isinstance(document.get("turns"), list)
+    ):
+        msg = f"{path} is no ledger of sessions and turns"
+        raise ReplayError(msg)
+    return {"sessions": document["sessions"], "turns": document["turns"]}
+
+
 def _received(event: dict[str, Any]) -> datetime:
     """When the server kept one event, its nanoseconds cut to what `datetime` holds."""
     held = re.sub(r"(\.\d{6})\d*Z$", r"\1+00:00", event["received_at"]).replace("Z", "+00:00")
@@ -753,7 +765,7 @@ class Replay:
         path = self.state / "supervisor-sessions" / f"{self._print_id()}.json"
         if not path.is_file():
             return {"sessions": [], "turns": []}
-        return json.loads(path.read_text(encoding="utf-8"))
+        return _ledger_of(json.loads(path.read_text(encoding="utf-8")), path)
 
     def _judged(self, events: list[dict[str, Any]]) -> list[DecisionPoint]:
         """Judge each entry by what the server recorded while that entry's harness runs ran.

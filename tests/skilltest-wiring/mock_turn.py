@@ -82,6 +82,9 @@ def main(script_path: str, arguments: list[str]) -> int:
     """Take one turn of the script, and answer through the published responder."""
     directory = Path(script_path).parent
     script: Script = json.loads(Path(script_path).read_text(encoding="utf-8"))
+    if not script["turns"] or not script["responder"]:
+        print(f"{script_path} scripts no run or no responder", file=sys.stderr)
+        return 2
     counter = directory / COUNTER_FILE
     number = int(counter.read_text(encoding="utf-8")) if counter.is_file() else 0
     counter.write_text(str(number + 1), encoding="utf-8")
@@ -90,6 +93,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     ran = [
         _ran([_filled(word, prompt) for word in words]) for words in scripted.get("commands", [])
     ]
+    assessment = {**ASSESSMENT, "summary": f"scripted run {number}"}
     seen = {
         "turn": number,
         "prompt": prompt,
@@ -98,6 +102,7 @@ def main(script_path: str, arguments: list[str]) -> int:
         "workspace": sorted(path.name for path in Path.cwd().iterdir()),
         "arguments": arguments,
         "ran": ran,
+        "assessment": assessment,
     }
     with (directory / SEEN_FILE).open("a", encoding="utf-8") as log:
         log.write(json.dumps(seen) + "\n")
@@ -130,7 +135,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     answer: dict[str, Any] = (
         {"result": "no answer in the shape asked for"}
         if scripted.get("unreadable")
-        else {"result": json.dumps(ASSESSMENT), "structured_output": ASSESSMENT}
+        else {"result": json.dumps(assessment), "structured_output": assessment}
     )
     result = {
         "type": "result",

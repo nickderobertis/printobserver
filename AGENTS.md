@@ -1587,9 +1587,9 @@ earlier — saw nothing.
 
 ## The real-print suite
 
-`just skilltest` replays each real print with a `replay` under
-`tests/real-prints/` through the real server, supervisor port, skill and harness,
-as one continued conversation, and every decision point must pass. A change to
+<!-- llmlint: ignore[instruction_layer_localized] See suppressions.toml. -->
+`just skilltest` replays each real print with a `replay` through the real server
+and harness, and every decision point must pass. A change to
 anything `repo-policy.toml`'s `[skilltest] owed_paths` names, or an install
 template's `[supervisor]` table, an `oneharness` package's release or the Claude
 Code release in that table, runs the whole suite before it lands with every test

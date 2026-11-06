@@ -85,7 +85,7 @@ def classify(root: Path, base: str, head: str) -> Classification:
     """Whether the diff from the merge base of `base` and `head` to `head` owes the suite."""
     try:
         return _decided(root, base, head)
-    except (UndecidableError, tomllib.TOMLDecodeError, KeyError) as error:
+    except (UndecidableError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
         return Classification(owed=True, reason=f"the diff could not be read: {error}")
 
 
@@ -93,6 +93,10 @@ def _decided(root: Path, base: str, head: str) -> Classification:
     merge_base = _git(root, "merge-base", base, head).strip()
     changed = _git(root, "diff", "--name-only", merge_base, head).splitlines()
     head_policy = tomllib.loads(_shown(root, head, POLICY) or "")["skilltest"]
+    for listed in ("owed_paths", "install_templates"):
+        if not isinstance(head_policy[listed], list):
+            msg = f"{POLICY}'s [skilltest] {listed} is no list"
+            raise UndecidableError(msg)
     for path in changed:
         for pattern in head_policy["owed_paths"]:
             if _matches(path, pattern):
