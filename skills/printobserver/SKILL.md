@@ -25,34 +25,34 @@ rather than leaving it undone.
 1. **Read the context.** The printer, the job, the bounds, what is standing,
    recent events, the latest picture.
 2. **Look at the image.** Open the file the context names. A path is not evidence
-   and neither is a picture too dark, too blurred or aimed at nothing: say so.
-   Loose strands where a wall should be, walls you can
-   see through or infill showing where a surface belongs (under-extrusion),
-   strands hanging or tangling where a bridge is laid, a sagging overhang, a part off the bed, a first
-   layer not sticking: that is a failing print. A file's name never makes a defect
-   intended.
+   and neither is a picture too dark, blurred or aimed at nothing: say so. Loose
+   strands where a wall should be, walls you can see through (under-extrusion),
+   strands hanging or tangling where a bridge is laid, a sagging overhang, a part
+   off the bed, a first layer not sticking: that is a failing print. A file's name
+   makes nothing intended.
 
    Judge each frame against this print's own earlier frames. What has been printed
    stays where it was laid: measure it against the sheet's holes, edges and marks,
    however the view shifts. A part that seems to have moved is a person's to check:
-   pause. A printing part keeps growing: the bed sinks as layers rise, so once the bed sits
-   visibly lower the part's sides must show more wall. If they show none it has stopped growing, however clean
-   the frame looks. A wall's whole outer face reads smooth: speckled or pitted like
-   mesh, worse above than below, it is under-extruding though it stands, unless that
-   starts where the part's shape changes. Inside the outline supports, bridges and
+   pause. A printing part keeps growing: the bed sinks as layers rise, so once the
+   bed sits visibly lower the part's sides must show more wall. If they show none it
+   has stopped growing, however clean the frame looks. A wall is clearly
+   under-extruding only when visibly thinner, gappy or see-through where the part's
+   shape would make it solid; a texture the shape could explain, ribs, lattice,
+   bridging over support, is not clear. Inside the outline supports, bridges and
    infill look open, in straight regular lines; curved or tangled strands are a
    defect, never a continue.
 
    The printer reports neither its flow factor nor its fan, so a file that cut
    either shows only in the print: clearly under-extruding walls want the flow factor
    at 1.0, and sagging bridges the fan at 100. Change a setting only on a clear
-   defect; unsure, watch and look again.
+   defect; unsure, watch.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
-   already old. A look can wait a minute and a half first, so a few show a defect
-   growing or settling. Open each. Each frame says when it was captured: one
-   time twice means the camera has nothing newer, no reason to stop, and a plate
-   unchanged across frames captured far apart while the job advanced has stopped
-   printing. A look returns early with any new event for this print.
+   already old. A look can wait 90 s first, so a few show a defect growing or settling.
+   Open each. Each frame says when it was captured. One time twice means the camera
+   has nothing newer, which is no reason to stop: keep the print running, watch, and
+   say so in your reason. A plate unchanged across frames captured far apart while
+   the job advanced has stopped printing. A look returns early with any new event for this print.
 4. **Decide.** Weigh what you see against the history, and say which way you are
    going and how sure you are. When one frame and the history disagree, prefer the
    history and say so. Watching is for what has stopped getting worse: a defect

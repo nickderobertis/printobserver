@@ -147,7 +147,7 @@ class Timeline:
         self.looked = False
         moment = self.case.moments[index]
         following = self.case.moments[index + 1 :]
-        self.ceiling = instant(following[0].at) if following else None
+        self.ceiling = instant(following[0].at) - timedelta(seconds=1) if following else None
         self._set_clock(instant(moment.at))
         at = self.case.frame_at_or_before(moment.at, moment.event_image)
         if moment.is_alert:
@@ -172,17 +172,16 @@ class Timeline:
     def _window_end(self) -> int:
         """The newest frame a look of this turn may answer: nothing newer exists yet.
 
-        A frame captured after the next event's moment has not been captured. A look
-        may reach that event's own frame, unless it shows a fault: a carry-on point
-        must never be shown what the next decision point is about. After the last
-        event a look reads as far as the recorded turn's looks did.
+        A frame captured at or after the next event's moment has not been captured,
+        whatever its label: a look that has run out answers the latest earlier frame
+        again, with its capture time. After the last event a look reads as far as the
+        recorded turn's looks did.
         """
         following = self.case.moments[self.index + 1 :]
         if following:
-            upcoming = following[0]
-            at = self.case.frame_at_or_before(upcoming.at, upcoming.event_image)
-            own_frame = self.case.frames[at].file == upcoming.event_image
-            return at if not own_frame or self.case.frames[at].healthy else at - 1
+            before = instant(following[0].at)
+            earlier = [index for index, when in enumerate(self.frame_times) if when < before]
+            return max([*earlier, self.cursor])
         names = [frame.file for frame in self.case.frames]
         reached = [names.index(look) for look in self.moment.looks if look in names]
         return max([*reached, self.cursor])

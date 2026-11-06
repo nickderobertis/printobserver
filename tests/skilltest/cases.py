@@ -134,8 +134,6 @@ class Frame:
     file: str
     captured: str
     progress_pct: float | None
-    #: Whether its label calls the print healthy, so a look may reach it a little early.
-    healthy: bool = False
 
 
 @dataclass(frozen=True)
@@ -174,14 +172,6 @@ class Moment:
             )
             broken.append(f"it met no accepted outcome of {accepted}")
         return "; ".join(broken) or None
-
-
-def _labelled_healthy(frame: dict[str, Any]) -> bool:
-    """Whether a frame's own label calls it healthy, in either of the cases' two spellings."""
-    health = frame.get("health")
-    if isinstance(health, str):
-        return health in {"healthy", "not printing"}
-    return str(frame.get("label", "")).startswith("healthy")
 
 
 def _event_id(scenario: dict[str, Any]) -> EventId | None:
@@ -318,7 +308,6 @@ def read_case(name: str) -> Case:
                 file=frame["file"],
                 captured=_captured(document, frame),
                 progress_pct=frame.get("progress_pct"),
-                healthy=_labelled_healthy(frame),
             )
             for frame in document["frames"]
             if not NOT_FROM_THE_CAMERA.search(frame["file"])
