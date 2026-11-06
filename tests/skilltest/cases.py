@@ -286,6 +286,12 @@ class Case:
                 later = (point[0], highest)
                 break
         span = (later[0] - earlier[0]).total_seconds()
+        if when >= points[-1][0]:
+            # Past what the recording says, at the rate it shows, to the end of the file.
+            overall = (points[-1][0] - points[0][0]).total_seconds()
+            rate = (highest - points[0][1]) / overall if overall > 0 else 0
+            past = (when - points[-1][0]).total_seconds()
+            return min(highest + int(rate * past), self.gcode_size - 1)
         if span <= 0 or when <= earlier[0]:
             return earlier[1]
         share = min(1.0, (when - earlier[0]).total_seconds() / span)

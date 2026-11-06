@@ -179,8 +179,15 @@ class Timeline:
         """
         following = self.case.moments[self.index + 1 :]
         if following:
-            before = instant(following[0].at)
-            earlier = [index for index, when in enumerate(self.frame_times) if when < before]
+            upcoming = following[0]
+            before = instant(upcoming.at)
+            names = [frame.file for frame in self.case.frames]
+            own = names.index(upcoming.event_image) if upcoming.event_image in names else None
+            earlier = [
+                index
+                for index, when in enumerate(self.frame_times)
+                if when < before and (own is None or index < own)
+            ]
             return max([*earlier, self.cursor])
         names = [frame.file for frame in self.case.frames]
         reached = [names.index(look) for look in self.moment.looks if look in names]
