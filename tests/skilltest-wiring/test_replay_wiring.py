@@ -49,6 +49,7 @@ from replay import (
     harness_token,
     is_event,
     is_held_print,
+    kept_harness,
     neutral_environment,
     program,
     refuse_a_pointer,
@@ -61,7 +62,7 @@ from repo_checks.checks_real_prints import Trigger as RepoCheckTrigger
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
-from turns_per_run import turns_per_test
+from turns_per_run import UnreadableCaseError, turns_per_test
 
 HERE = Path(__file__).resolve().parent
 MOCK_TURN = HERE / "mock_turn.py"
@@ -695,6 +696,7 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
     case = read_case("petg-clip-detach-and-stringing-web")
     timeline = doubles.Timeline(case=case, picture=stamped, clock=scratch / "clock")
     server = doubles.obico(timeline)
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
     try:
         connection.request("GET", f"/media/{quote(case.moments[0].event_image)}")
@@ -716,18 +718,88 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         {"kind": "k", "received_at": "2026-01-01T00:00:00Z"},
         {"id": "e", "kind": "k", "received_at": "yesterday"},
         {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z", "payload": []},
-        {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z", "payload": {"action": 1}},
         {
             "id": "e",
-            "kind": "k",
+            "kind": "action_requested",
             "received_at": "2026-01-01T00:00:00Z",
-            "payload": {"action": {"actor": 7}},
+            "payload": {"action": 1},
+        },
+        {
+            "id": "e",
+            "kind": "action_requested",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {"action": {"action": "pause"}},
+        },
+        {
+            "id": "e",
+            "kind": "recovery_requested",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {"action": {"action": "acknowledge_failure", "actor": {}}},
+        },
+        {
+            "id": "e",
+            "kind": "agent_assessment",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {"assessment": {"summary": "fine"}},
         },
     ],
 )
 def test_a_history_event_the_replay_could_not_read_is_refused(event: object) -> None:
     """Each shape the judging reads is held at the boundary rather than where it is used."""
     equal(is_event(event), False)
+
+
+def test_the_kept_harness_is_a_copy_that_starts_and_outlives_its_install(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Found on PATH, copied once, runnable, and still there when the install goes."""
+    install = scratch / "install"
+    install.mkdir()
+    built = program("printobserver")
+    source = install / f"claude{built.suffix}"
+    shutil.copy2(built, source)
+    root = scratch / "tree"
+    monkeypatch.setenv("PATH", str(scratch / "nothing-here"))
+    equal(kept_harness(root), None)
+    monkeypatch.setenv("PATH", str(install))
+    kept = kept_harness(root)
+    truth(kept is not None, describing="a kept copy of the harness on PATH")
+    equal(Path(str(kept)).parent, root / "target" / "skilltest" / "harness")
+    source.unlink()
+    equal(run([str(kept), "--version"]).returncode, 0)
+    shutil.copy2(built, source)
+    equal(kept_harness(root), kept)
+    equal(len(list(Path(str(kept)).parent.iterdir())), 1)
+
+
+def test_the_budgets_command_reports_the_turns_the_cases_count(scratch: Path) -> None:
+    """Its entry point writes the total and each test's turns where the budget reads them."""
+    result = scratch / "result.json"
+    done = run(
+        [sys.executable, str(REPO / "tests" / "skilltest" / "turns_per_run.py")],
+        env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
+    )
+    equal(done.returncode, 0, describing=done.stderr)
+    counted = turns_per_test()
+    reported = json.loads(result.read_text(encoding="utf-8"))
+    equal(reported["value"], sum(counted.values()))
+    equal(json.loads(reported["detail"]), {"turns_per_test": counted})
+    contains(done.stderr, f"turns per full run: {sum(counted.values())}")
+
+
+@pytest.mark.parametrize(
+    "document",
+    [["no case"], {"assertions": {"replay": "a-string"}}, {"assertions": {"replay": [1]}}],
+)
+def test_a_case_whose_replay_is_no_list_of_ids_is_counted_as_nothing(
+    document: object, scratch: Path
+) -> None:
+    """A string's length is no count of turns, so the budget stops rather than report it."""
+    case = scratch / "a-case"
+    case.mkdir()
+    (case / "case.json").write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(UnreadableCaseError):
+        turns_per_test(scratch)
 
 
 def test_a_print_with_an_unreadable_job_start_is_refused() -> None:
@@ -797,21 +869,23 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         "models": [],
         "compacted": False,
     }
+    carry_on, bridge = REPLAYS["fan-cut-bridge"]
+    points = [{**point, "scenario": carry_on}, {**point, "scenario": bridge}]
     test_record = {
         "test": "fan-cut-bridge",
         "passed": True,
         "turns": 2,
         "sessions": [],
-        "decision_points": [point, point],
+        "decision_points": points,
     }
     (finished / "fan-cut-bridge.json").write_text(json.dumps(test_record), encoding="utf-8")
     equal(record.main([str(finished)]), 0)
     equal(json.loads(written.read_text("utf-8"))["detail"]["commit"], "a-commit")
     failed = tmp_path / "failed"
     failed.mkdir()
-    failing = {**point, "passed": False}
+    failing = {**points[1], "passed": False}
     (failed / "fan-cut-bridge.json").write_text(
-        json.dumps({**test_record, "passed": False, "decision_points": [point, failing]}),
+        json.dumps({**test_record, "passed": False, "decision_points": [points[0], failing]}),
         encoding="utf-8",
     )
     equal(record.main([str(failed)]), 1)
@@ -822,6 +896,8 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         ("list", []),
         ("truthy", {**test_record, "passed": "false"}),
         ("short", {**test_record, "turns": 0, "decision_points": []}),
+        ("repeated", {**test_record, "decision_points": [points[0], points[0]]}),
+        ("reordered", {**test_record, "decision_points": points[::-1]}),
     ):
         unreadable = tmp_path / name
         unreadable.mkdir()

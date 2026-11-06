@@ -18,7 +18,7 @@ from typing import TypedDict
 
 from replay import DecisionRecord, TestRecord
 from repo_checks.shell import run
-from turns_per_run import CASES, turns_per_test
+from turns_per_run import CASES, UnreadableCaseError, replays
 
 REPO = Path(__file__).resolve().parents[2]
 RESULT = REPO / "tests" / "skilltest" / "results" / "latest.json"
@@ -98,10 +98,10 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
     """The record of one run, from each test's record in its directory."""
     tests = [_test_record(path) for path in sorted(directory.glob("*.json"))]
     points = [point for test in tests for point in test["decision_points"]]
-    counted = turns_per_test(cases)
+    replayed = replays(cases)
     for test in tests:
-        if counted.get(test["test"]) != len(test["decision_points"]):
-            msg = f"{test['test']} is no case with a replay of that many decision points"
+        if replayed.get(test["test"]) != [point["scenario"] for point in test["decision_points"]]:
+            msg = f"{test['test']} is no case with a replay of those decision points"
             raise UnreadableRunError(msg)
     return {
         "figures": {"turns": len(points)},
@@ -109,7 +109,7 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
             "commit": commit_id,
             "harness": HARNESS,
             "models": sorted({model for point in points for model in point["models"]}),
-            "turns_the_cases_count": sum(counted[test["test"]] for test in tests),
+            "turns_the_cases_count": sum(len(replayed[test["test"]]) for test in tests),
             "compactions": sum(1 for point in points if point["compacted"]),
             "passed": all(test["passed"] for test in tests),
             "tests": tests,
@@ -132,7 +132,7 @@ def main(arguments: list[str]) -> int:
         ).returncode
     try:
         written = folded(directory, commit())
-    except (UnreadableRunError, ValueError) as error:
+    except (UnreadableRunError, UnreadableCaseError, ValueError) as error:
         print(f"record: {error}", file=sys.stderr)
         return status or 1
     RESULT.parent.mkdir(parents=True, exist_ok=True)

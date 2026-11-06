@@ -221,9 +221,48 @@ def is_event(event: object) -> bool:
     payload = event.get("payload", {})
     if not isinstance(payload, dict):
         return False
-    action = payload.get("action", {})
+    if event["kind"] in REQUESTED:
+        return _is_requested_action(payload.get("action"))
+    if event["kind"] == ASSESSED:
+        return _is_assessment(payload.get("assessment"))
+    return True
+
+
+def _is_requested_action(action: object) -> bool:
+    """Whether a request says what was asked and who asked, which is how it is judged."""
+    if not isinstance(action, dict) or not isinstance(action.get("action"), str):
+        return False
     # An actor is an object naming who acted, or the bare name of a unit variant.
-    return isinstance(action, dict) and isinstance(action.get("actor") or {}, (dict, str))
+    actor = action.get("actor")
+    return isinstance(actor, (dict, str)) and bool(actor)
+
+
+def _is_assessment(assessment: object) -> bool:
+    """Whether a turn's assessment has every field the record carries; a turn may have none."""
+    return assessment is None or (
+        isinstance(assessment, dict) and Assessment.__annotations__.keys() <= assessment.keys()
+    )
+
+
+def kept_harness(root: Path = REPO) -> str | None:
+    """The harness this run started with, kept where nothing on the host replaces it.
+
+    A host's global install is replaced whole when anything on that host updates it,
+    and for that moment no program is there to start; a run is also one release's
+    evidence. So the program is copied once, under a name of its own in this tree's
+    build directory, and every test of the run starts that copy.
+    """
+    found = shutil.which("claude")
+    if found is None:
+        return None
+    source = Path(found).resolve()
+    kept = root / "target" / "skilltest" / "harness" / f"{source.stat().st_size}-{source.name}"
+    if not kept.is_file():
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        partial = kept.with_suffix(f".{os.getpid()}")
+        shutil.copy2(source, partial)
+        partial.replace(kept)
+    return str(kept)
 
 
 def real_picture(case: Case) -> Callable[[str], bytes]:

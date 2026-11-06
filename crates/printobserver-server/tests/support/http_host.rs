@@ -43,6 +43,22 @@ impl Host {
         content_type: &'static str,
         body: Vec<u8>,
     ) -> Self {
+        Self::started(dwell, status, content_type, None, body).await
+    }
+
+    /// Start a host serving a frame under this `Last-Modified`, well-formed or not.
+    pub async fn last_modified(declared: &'static str, body: Vec<u8>) -> Self {
+        Self::started(Duration::ZERO, "200 OK", "image/jpeg", Some(declared), body).await
+    }
+
+    /// Start a host answering every request in one way.
+    async fn started(
+        dwell: Duration,
+        status: &'static str,
+        content_type: &'static str,
+        last_modified: Option<&'static str>,
+        body: Vec<u8>,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a loopback port");
@@ -51,7 +67,7 @@ impl Host {
             while let Ok((stream, _)) = listener.accept().await {
                 let body = body.clone();
                 tokio::spawn(async move {
-                    respond(stream, dwell, status, content_type, body).await;
+                    respond(stream, dwell, status, content_type, last_modified, body).await;
                 });
             }
         });
@@ -82,6 +98,7 @@ async fn respond(
     dwell: Duration,
     status: &'static str,
     content_type: &'static str,
+    last_modified: Option<&'static str>,
     body: Vec<u8>,
 ) {
     let mut request = Vec::new();
@@ -96,6 +113,9 @@ async fn respond(
     let mut head = format!("HTTP/1.1 {status}\r\n");
     let _ = write!(head, "Content-Type: {content_type}\r\n");
     let _ = write!(head, "Content-Length: {}\r\n", body.len());
+    if let Some(declared) = last_modified {
+        let _ = write!(head, "Last-Modified: {declared}\r\n");
+    }
     head.push_str("Connection: close\r\n\r\n");
     if stream.write_all(head.as_bytes()).await.is_err() {
         return;

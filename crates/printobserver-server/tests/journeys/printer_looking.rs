@@ -282,3 +282,34 @@ async fn a_look_at_the_printer_says_when_its_frame_was_captured() {
         "{look}"
     );
 }
+
+/// A camera's own `Last-Modified` is when its frame was captured, and one naming no
+/// time leaves the look standing, at the moment the camera answered.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cameras_last_modified_is_read_and_a_malformed_one_is_passed_over() {
+    let declared = crate::http_host::Host::last_modified(
+        "Thu, 29 Oct 2026 18:24:50 GMT",
+        crate::ingress::snapshot_bytes(),
+    )
+    .await;
+    let world = with_camera(declared.url()).await;
+    let (status, look) = world.get(&world.url("/look")).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert_eq!(
+        look["event"]["payload"]["frame_captured_at"], "2026-10-29T18:24:50Z",
+        "{look}"
+    );
+    world.server.stop().await;
+
+    let malformed =
+        crate::http_host::Host::last_modified("yesterday", crate::ingress::snapshot_bytes()).await;
+    let world = with_camera(malformed.url()).await;
+    let (status, look) = world.get(&world.url("/look")).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    let captured = look["event"]["payload"]["frame_captured_at"]
+        .as_str()
+        .expect("the moment the camera answered");
+    assert!(captured.starts_with("20"), "{look}");
+    assert_ne!(captured, "2026-10-29T18:24:50Z", "{look}");
+    world.server.stop().await;
+}
