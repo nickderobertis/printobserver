@@ -89,6 +89,9 @@ def _run_is_whole(run_of: object) -> bool:
         and all(isinstance(count, int) for count in run_of.get("usage", {}).values())
         and isinstance(run_of.get("compact", False), bool)
         and isinstance(run_of.get("unreadable", False), bool)
+        and isinstance(run_of.get("streamed_twice", False), bool)
+        and isinstance(run_of.get("reads", []), list)
+        and all(isinstance(path, str) for path in run_of.get("reads", []))
     )
 
 

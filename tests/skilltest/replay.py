@@ -218,9 +218,11 @@ def is_event(event: object) -> bool:
         or not _is_timestamp(event.get("received_at"))
     ):
         return False
-    payload = event.get("payload", {})
+    payload = event.get("payload")
     if not isinstance(payload, dict) or not isinstance(event.get("image") or {}, dict):
         return False
+    if event["kind"] == FAILED:
+        return isinstance(payload.get("site"), str) and isinstance(payload.get("detail", ""), str)
     if event["kind"] in REQUESTED:
         return _is_requested_action(payload.get("action"))
     if event["kind"] == ASSESSED:
@@ -239,7 +241,7 @@ def _is_actor(actor: object) -> bool:
     """Whether it is one of the three actors the server's `Actor` declares."""
     if isinstance(actor, dict):
         return actor.keys() == {"agent"} and isinstance(actor["agent"], dict)
-    return actor in {"operator", "system"}
+    return isinstance(actor, str) and actor in {"operator", "system"}
 
 
 def _is_assessment(assessment: object) -> bool:

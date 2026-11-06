@@ -26,6 +26,7 @@ import doubles
 import mock_turn
 import pytest
 import record
+import replay as replay_module
 from cases import (
     CASES,
     REPO,
@@ -722,8 +723,16 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
     [
         "no event",
         {"kind": "k", "received_at": "2026-01-01T00:00:00Z"},
-        {"id": "e", "kind": "k", "received_at": "yesterday"},
+        {"id": "e", "kind": "k", "received_at": "yesterday", "payload": {}},
+        {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z"},
         {"id": "e", "kind": "k", "received_at": "2026-01-01T00:00:00Z", "payload": []},
+        {"id": "e", "kind": "port_failure", "received_at": "2026-01-01T00:00:00Z", "payload": {}},
+        {
+            "id": "e",
+            "kind": "action_requested",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {"action": {"action": "pause", "actor": ["agent"]}},
+        },
         {
             "id": "e",
             "kind": "action_requested",
@@ -812,6 +821,15 @@ def test_a_print_with_an_unreadable_job_start_is_refused() -> None:
     equal(is_held_print({"id": "p", "job_started_at": None}), True)
     equal(is_held_print({"id": "p", "job_started_at": "soon"}), False)
     equal(is_held_print({"job_started_at": None}), False)
+
+
+def test_a_replay_spending_past_its_allowance_stops(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past the runs it allows, it stops rather than go on spending the operator's quota."""
+    monkeypatch.setattr(replay_module, "RUN_ALLOWANCE_PER_ENTRY", 0)
+    with pytest.raises(ReplayError, match="stopping the spend"):
+        mock_replay(read_case("fan-cut-bridge"), [{"commands": [CONTEXT]}], scratch)
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
@@ -930,6 +948,11 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         ("short", {**test_record, "turns": 0, "decision_points": []}),
         ("repeated", {**test_record, "decision_points": [points[0], points[0]]}),
         ("reordered", {**test_record, "decision_points": points[::-1]}),
+        ("sessions", {**test_record, "sessions": [3]}),
+        (
+            "field",
+            {**test_record, "decision_points": [{**points[0], "looks": "many"}, points[1]]},
+        ),
     ):
         unreadable = tmp_path / name
         unreadable.mkdir()

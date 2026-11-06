@@ -78,6 +78,20 @@ def numbered(jpeg: bytes, number: int) -> bytes:
     return jpeg[:2] + b"\xff\xfe" + (len(comment) + 2).to_bytes(2, "big") + comment + jpeg[2:]
 
 
+class FrameDue(NamedTuple):
+    """The frame a fetch answers."""
+
+    name: str
+    captured: datetime
+
+
+class CameraFrame(NamedTuple):
+    """The bytes a camera answers a fetch with."""
+
+    picture: bytes
+    captured: datetime
+
+
 @dataclass
 class Timeline:
     """The replay's current time: which event it stands at, and which frame was last answered.
@@ -193,7 +207,7 @@ class Timeline:
         reached = [names.index(look) for look in self.moment.looks if look in names]
         return max([*reached, self.cursor])
 
-    def next_fetch(self) -> tuple[str, datetime] | None:
+    def next_fetch(self) -> FrameDue | None:
         """The frame this fetch answers and when it was captured: the event's, then the next."""
         with self.lock:
             if self.finished:
@@ -211,9 +225,9 @@ class Timeline:
             shown = max(self.cursor, 0)
             name = self.case.frames[shown].file
             self.fetches.append(name)
-            return name, self.frame_times[shown]
+            return FrameDue(name, self.frame_times[shown])
 
-    def camera_answer(self) -> tuple[bytes, datetime] | None:
+    def camera_answer(self) -> CameraFrame | None:
         """The bytes this fetch answers, and when they were captured.
 
         A real camera's two frames of one still scene never match byte for byte, so
@@ -223,8 +237,9 @@ class Timeline:
         answered = self.next_fetch()
         if answered is None:
             return None
-        name, when = answered
-        return numbered(self.picture(name), len(self.fetches)), when
+        return CameraFrame(
+            numbered(self.picture(answered.name), len(self.fetches)), answered.captured
+        )
 
     def position(self) -> int:
         """The job's file position at the replay's current time, as the recording has it.

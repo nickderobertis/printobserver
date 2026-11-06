@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, NewType
+from typing import Any, NewType, NotRequired, TypedDict
 
 from repo_checks.checks_real_prints import printed_gcode, stored_size
 
@@ -195,6 +195,16 @@ def _captured(document: dict[str, Any], frame: dict[str, Any]) -> str:
     return f"{frame.get('progress_pct', 100.0):08.3f}"
 
 
+class RecordedEvent(TypedDict):
+    """One event of a case's recorded history, as far as the replay reads one."""
+
+    id: str
+    received_at: str
+    payload: dict[str, Any]
+    #: The body as it arrived, base64, on an event a webhook delivered.
+    raw: NotRequired[str]
+
+
 @dataclass(frozen=True)
 class Case:
     """One case with a `replay`, read for the test that feeds it."""
@@ -205,7 +215,7 @@ class Case:
     moments: tuple[Moment, ...]
     gcode: Path
     gcode_size: int
-    history: tuple[dict[str, Any], ...]
+    history: tuple[RecordedEvent, ...]
 
     @property
     def test_id(self) -> str:
