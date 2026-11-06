@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, get_args, get_type_hints
 from urllib.parse import quote
 
 import classify
@@ -48,6 +48,7 @@ from replay import (
     Replay,
     Replayed,
     ReplayError,
+    RunReport,
     delivered,
     harness_token,
     is_event,
@@ -209,6 +210,15 @@ def test_the_suites_vocabularies_are_the_contracts() -> None:
     confidence = sorted(arm["const"] for arm in assessment["$defs"]["Confidence"]["oneOf"])
     equal(sorted(get_args(Confidence)), confidence)
     equal(sorted(get_args(mock_turn.Confidence)), confidence)
+    primitive = {"string": str, "boolean": bool}
+    declared_types = {
+        name: primitive[field["type"]]
+        for name, field in assessment["properties"].items()
+        if "type" in field
+    }
+    for model in (Assessment, mock_turn.Assessment):
+        hints = get_type_hints(model)
+        equal({name: hints[name] for name in declared_types}, declared_types, describing=str(model))
     truth(set(declared) >= POSITIONED_TRIGGERS, describing="positioned triggers to be triggers")
     states = json.loads((REPO / "schemas/printobserver-types/PrinterState.json").read_text("utf-8"))
     named = {arm["const"] for arm in states["oneOf"] if "const" in arm}
@@ -897,6 +907,50 @@ def test_a_replay_spending_past_its_allowance_stops(
     monkeypatch.setattr(replay_module, "RUN_ALLOWANCE_PER_ENTRY", 0)
     with pytest.raises(ReplayError, match="stopping the spend"):
         mock_replay(read_case("fan-cut-bridge"), [{"commands": [CONTEXT]}], scratch)
+
+
+def test_the_doubles_refuse_what_no_adapter_sends(scratch: Path) -> None:
+    """A malformed body, an unknown printer command and another Obico route are refused."""
+    timeline = doubles.Timeline(
+        case=read_case("fan-cut-bridge"), picture=stamped, clock=scratch / "clock"
+    )
+    octoprint = doubles.octoprint(timeline, "key")
+    obico = doubles.obico(timeline)
+    try:
+        for server, path, body, status in (
+            (octoprint, "/api/job", "not json", 400),
+            (octoprint, "/api/job", "[]", 400),
+            (octoprint, "/api/printer/tool", '{"command": "x"}', 400),
+            (octoprint, "/api/printer/bed", '{"command": "target", "target": 60}', 204),
+            (obico, "/api/other", "{}", 404),
+            (obico, "/api/v1/printers/3/acknowledge_alert/", "{}", 200),
+        ):
+            # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+            connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+            connection.request("POST", path, body, {"X-Api-Key": "key"})
+            answered = connection.getresponse()
+            answered.read()
+            connection.close()
+            equal(answered.status, status, describing=f"{path} {body}")
+    finally:
+        for server in (octoprint, obico):
+            server.shutdown()
+            server.server_close()
+
+
+def test_usage_a_later_run_adds_is_summed_or_kept() -> None:
+    """Counts add up across a turn's runs; anything else keeps its first value."""
+    report = RunReport()
+    report.take(
+        [
+            {"type": "result", "usage": {"input_tokens": 1, "service_tier": "standard"}},
+            {
+                "type": "result",
+                "usage": {"input_tokens": 2, "service_tier": "batch", "output_tokens": 5},
+            },
+        ]
+    )
+    equal(report.usage, {"input_tokens": 3, "service_tier": "standard", "output_tokens": 5})
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:

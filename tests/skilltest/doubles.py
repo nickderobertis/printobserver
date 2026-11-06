@@ -78,6 +78,10 @@ def numbered(jpeg: bytes, number: int) -> bytes:
     return jpeg[:2] + b"\xff\xfe" + (len(comment) + 2).to_bytes(2, "big") + comment + jpeg[2:]
 
 
+#: The one request the Obico adapter makes of Obico's API.
+ACKNOWLEDGEMENT = re.compile(r"/api/v1/printers/\d+/acknowledge_alert/")
+
+
 class FrameDue(NamedTuple):
     """The frame a fetch answers."""
 
@@ -345,16 +349,21 @@ class _Quiet(BaseHTTPRequestHandler):
         """Send one JSON response."""
         self.answer(status, json.dumps(document).encode())
 
-    def body(self) -> dict[str, Any]:
-        """The request's JSON body, or an empty one."""
+    def body(self) -> dict[str, Any] | None:
+        """The request's JSON object, empty for no body; `None` once it is refused as malformed."""
         declared = self.headers.get("Content-Length") or "0"
-        length = int(declared) if declared.isascii() and declared.isdigit() else 0
-        data = self.rfile.read(min(length, MAX_BODY_BYTES))
+        if not (declared.isascii() and declared.isdigit()):
+            self.answer_json(400, {"error": "Malformed Content-Length"})
+            return None
+        data = self.rfile.read(min(int(declared), MAX_BODY_BYTES))
         try:
             parsed = json.loads(data) if data else {}
         except ValueError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
+            parsed = None
+        if not isinstance(parsed, dict):
+            self.answer_json(400, {"error": "Malformed JSON body"})
+            return None
+        return parsed
 
 
 class _Double(ThreadingHTTPServer):
@@ -431,6 +440,8 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
                 self.answer_json(403, {"error": "Forbidden"})
                 return
             body = self.body()
+            if body is None:
+                return
             path = urlsplit(self.path).path
             if path == "/api/login":
                 self.answer_json(200, {"name": "operator", "session": "replay"})
@@ -443,10 +454,23 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
                 case "/api/job", _:
                     self.answer_json(400, {"error": "Unknown job command"})
                     return
-                case ("/api/printer/command" | "/api/printer/printhead", _):
+                case "/api/printer/command", {"commands": list()} | {"command": str()}:
                     pass
-                case ("/api/printer/tool" | "/api/printer/bed", _):
+                case "/api/printer/printhead", {"command": "feedrate" | "jog" | "home"}:
                     pass
+                case "/api/printer/tool", {"command": "flowrate" | "target"}:
+                    pass
+                case "/api/printer/bed", {"command": "target"}:
+                    pass
+                case (
+                    "/api/printer/command"
+                    | "/api/printer/printhead"
+                    | "/api/printer/tool"
+                    | "/api/printer/bed",
+                    _,
+                ):
+                    self.answer_json(400, {"error": "Unknown printer command"})
+                    return
                 case _:
                     self.answer_json(404, {"error": "Not found"})
                     return
@@ -489,7 +513,11 @@ def obico(timeline: Timeline) -> ThreadingHTTPServer:
             self.answer_json(200, {"status": "ok"})
 
         def do_POST(self) -> None:
-            self.body()
+            if self.body() is None:
+                return
+            if not ACKNOWLEDGEMENT.fullmatch(urlsplit(self.path).path):
+                self.answer_json(404, {"error": "Not found"})
+                return
             self.answer_json(200, {"status": "ok"})
 
     return _serving(Handler)
