@@ -94,8 +94,9 @@ def _decided(root: Path, base: str, head: str) -> Classification:
     changed = _git(root, "diff", "--name-only", merge_base, head).splitlines()
     head_policy = tomllib.loads(_shown(root, head, POLICY) or "")["skilltest"]
     for listed in ("owed_paths", "install_templates"):
-        if not isinstance(head_policy[listed], list):
-            msg = f"{POLICY}'s [skilltest] {listed} is no list"
+        held = head_policy[listed]
+        if not isinstance(held, list) or not all(isinstance(entry, str) for entry in held):
+            msg = f"{POLICY}'s [skilltest] {listed} is no list of paths"
             raise UndecidableError(msg)
     for path in changed:
         for pattern in head_policy["owed_paths"]:
@@ -123,11 +124,11 @@ def _decided(root: Path, base: str, head: str) -> Classification:
 
 
 def main(arguments: list[str]) -> int:
-    """Print the classification of one diff, or the release the job installs."""
-    if arguments == ["--claude-code"]:
+    """Print the classification of one diff, or install the release the job runs on."""
+    if arguments == ["--install-harness"]:
         policy = tomllib.loads(Path(POLICY).read_text(encoding="utf-8"))
-        print(policy["skilltest"]["claude_code"])
-        return 0
+        package = f"@anthropic-ai/claude-code@{policy['skilltest']['claude_code']}"
+        return run(["npm", "install", "-g", package], capture=False).returncode
     if len(arguments) != 2:
         print("usage: classify.py BASE HEAD", file=sys.stderr)
         return 2

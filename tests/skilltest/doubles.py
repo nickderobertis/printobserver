@@ -22,6 +22,7 @@ import bisect
 import json
 import re
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -111,8 +112,10 @@ class Timeline:
     finished: bool = False
     paused: bool = False
     fetches: list[str] = field(default_factory=list)
-    #: Where the job was at each frame.
+    #: Where the job was at each frame, and the real seconds looks have waited past the newest.
     positions: list[int] = field(default_factory=list)
+    crept_s: float = 0.0
+    fetched_at: float = 0.0
     stopped: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     heaters: Heaters = field(default_factory=Heaters)
@@ -131,6 +134,7 @@ class Timeline:
     def stand_at(self, index: int) -> None:
         """Stand at one event: its frame is the next a fetch answers."""
         self.index = index
+        self.crept_s = 0.0
         moment = self.case.moments[index]
         at = self.case.frame_at_or_before(moment.at, moment.event_image)
         if moment.is_alert:
@@ -176,8 +180,13 @@ class Timeline:
             if self.owed_event_frame:
                 self.cursor = self.at_event_frame
                 self.owed_event_frame = False
+                self.fetched_at = time.monotonic()
             elif self.cursor < self._window_end():
                 self.cursor += 1
+                self.fetched_at = time.monotonic()
+            else:
+                self.crept_s += time.monotonic() - self.fetched_at
+                self.fetched_at = time.monotonic()
             name = frames[max(self.cursor, 0)].file
             self.fetches.append(name)
             return name
@@ -196,23 +205,32 @@ class Timeline:
         return numbered(self.picture(name), len(self.fetches))
 
     def position(self) -> int:
-        """The job's file position at the replay's current time: the event's, or the frame's since.
+        """The job's file position now: the event's, moved on by the frames shown since.
 
-        Replay time never passes the next event's moment, so nothing a turn can read
-        does: a look answering the last frame before it again reads that frame's job.
+        A look past the newest frame of a turn answers that frame again, as a camera
+        with nothing newer does, and the job creeps on at the print's own rate by the
+        seconds it really waited. Nothing passes the next event's moment: a frozen
+        counter is what a real stall looks like, and it must never be what a replay
+        hands a healthy print.
         """
         low = self.moment.file_position_bytes
         following = self.case.moments[self.index + 1 :]
         high = following[0].file_position_bytes - 1 if following else self.case.gcode_size - 1
-        if self.cursor <= self.event_cursor:
-            return low
-        return max(low, min(self.positions[self.cursor], high))
+        moved = low
+        if self.cursor > self.event_cursor:
+            moved = self.positions[self.cursor]
+        return max(low, min(moved + int(self.crept_s * self._bytes_per_s()), high))
+
+    def _bytes_per_s(self) -> float:
+        first, last = self.case.moments[0], self.case.moments[-1]
+        span = elapsed_seconds(first.at, last.at)
+        return max(0, last.file_position_bytes - first.file_position_bytes) / span if span else 0.0
 
     def _print_time(self, position: int) -> int:
         at = self.moment.at
         if self.cursor > self.event_cursor and self.case.has_frame_times:
             at = self.case.frames[self.cursor].captured
-        return print_time_s(self.case, at, position)
+        return print_time_s(self.case, at, position) + int(self.crept_s)
 
     def job_body(self) -> tuple[int, dict[str, Any]]:
         """What `GET /api/job` answers, which the real adapter reads as it reads OctoPrint's."""

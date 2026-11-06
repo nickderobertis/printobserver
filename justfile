@@ -518,7 +518,7 @@ skilltest-credential:
 # Install the Claude Code release the `skilltest` job runs on, `repo-policy.toml`'s
 # `[skilltest] claude_code`.
 skilltest-install-harness:
-    npm install -g "@anthropic-ai/claude-code@$(uv run -q python tests/skilltest/classify.py --claude-code)"
+    uv run -q python tests/skilltest/classify.py --install-harness
 
 # Whether a diff owes the real-print suite, as the lines a workflow step appends
 # to `GITHUB_OUTPUT`. BASE and HEAD are the two commits it is diffed between.

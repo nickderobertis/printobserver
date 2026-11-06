@@ -12,9 +12,11 @@ it runs.
   server can release it. It is a Rust program so the gate's wiring tests run on
   Windows, and `test-responder` keeps it off what a consumer installs.
 - **Nothing a turn can read moves past the next event's moment.** A look stops at
-  the last frame before it and answers that again with the job of that same moment,
-  in new bytes, as a still scene's frames from a real camera are. A repeated frame
-  never comes with advancing progress.
+  the last frame before it and answers that again, in new bytes, as a still scene's
+  frames from a real camera are, while the job creeps on below the next event's
+  position. A frozen counter is what a real stall looks like, so a healthy print
+  never shows one; a repeated frame over a moving job is a stale camera, which is
+  what the skill says it is.
 - **What a turn did is read from where Claude Code keeps it,** its one result
   document and the session transcript under its configuration directory. A live
   test fails a turn reporting no usage, models or commands, so a move of either

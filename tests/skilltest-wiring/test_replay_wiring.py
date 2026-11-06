@@ -35,7 +35,17 @@ from cases import (
     read_case,
     replayed_case_names,
 )
-from replay import Replay, Replayed, harness_token, program, service_config
+from mock_turn import ScriptedRun, Seen
+from replay import (
+    Replay,
+    Replayed,
+    ReplayError,
+    delivered,
+    harness_token,
+    program,
+    refuse_a_pointer,
+    service_config,
+)
 from replay import Secrets as Minted
 from repo_checks.__main__ import main as repo_check
 from repo_checks.checks_real_prints import printed_gcode, stored_size
@@ -127,7 +137,7 @@ class Scripted:
     """A finished mock replay: what the server recorded and what the mock saw."""
 
     replayed: Replayed
-    turns: list[dict[str, Any]]
+    turns: list[Seen]
     images: dict[str, str]
 
     def seen_frame(self, turn: int, look: int) -> str:
@@ -136,7 +146,9 @@ class Scripted:
         return self.images[json.loads(ran[look]["out"])["image_path"]]
 
 
-def mock_replay(case: Case, turns: list[dict[str, Any]], scratch: Path) -> Scripted:
+def mock_replay(
+    case: Case, turns: list[ScriptedRun], scratch: Path, gcode: bytes | None = None
+) -> Scripted:
     """Run one case's whole replay, its turns scripted, and read back what happened."""
     script = scratch / "script.json"
     script.write_text(
@@ -149,7 +161,9 @@ def mock_replay(case: Case, turns: list[dict[str, Any]], scratch: Path) -> Scrip
         ),
         encoding="utf-8",
     )
-    replay = Replay(case, [sys.executable, str(MOCK_TURN), str(script)], picture=stamped)
+    replay = Replay(
+        case, [sys.executable, str(MOCK_TURN), str(script)], picture=stamped, gcode=gcode
+    )
     try:
         replayed = replay.run()
         images = {
@@ -360,7 +374,7 @@ def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch
 def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch: Path) -> None:
     """Over a window with frames to spare, every look is a newer frame than the last."""
     case = read_case("petg-clip-detach-and-stringing-web")
-    turn = {"commands": [LOOK, LOOK, LOOK]}
+    turn: ScriptedRun = {"commands": [LOOK, LOOK, LOOK]}
     done = mock_replay(case, [turn], scratch)
     names = [frame.file for frame in case.frames]
     start = names.index(case.moments[0].event_image)
@@ -377,10 +391,8 @@ def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
     first, second = case.moments
     equal([done.seen_frame(0, 0), done.seen_frame(0, 1)], [first.event_image, first.event_image])
     jobs = [json.loads(entry["out"])["job"] for entry in done.turns[0]["ran"]]
-    equal(jobs[0]["file_position_bytes"], jobs[1]["file_position_bytes"])
-    equal(jobs[0]["print_time_s"], jobs[1]["print_time_s"])
     truth(
-        jobs[0]["file_position_bytes"] < second.file_position_bytes,
+        jobs[-1]["file_position_bytes"] < second.file_position_bytes,
         describing="nothing a turn reads to pass the next event's moment",
     )
     # The event's frame, the two looks, and then the next event's own frame.
@@ -518,18 +530,53 @@ def test_a_turns_assessment_is_attributed_to_its_own_decision_point(scratch: Pat
     )
 
 
+def test_the_printer_reports_the_temperatures_the_gcode_asks_for_at_its_position(
+    scratch: Path,
+) -> None:
+    """The stand-in serves the G-code's own heater targets, through the real adapter."""
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    before = case.moments[1].file_position_bytes - 100
+    gcode = b"M140 S60\nM104 S220\n" + b";\n" * (before // 2) + b"M104 S240\n"
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
+    tools = [json.loads(turn["ran"][0]["out"])["context"]["printer"] for turn in done.turns]
+    equal([printer["tools"][0]["target_c"]["value"] for printer in tools], [220.0, 240.0])
+    equal(tools[0]["bed"]["target_c"]["value"], 60.0)
+
+
+def test_an_unfetched_frame_is_refused_naming_the_recipe() -> None:
+    """A checkout's pointer is no picture, and the replay says what to run."""
+    case = read_case("under-extrusion-lace")
+    pointer_bytes = (
+        b"version https://git-lfs.github.com/spec/v1\noid sha256:" + b"a" * 64 + b"\nsize 3\n"
+    )
+    with pytest.raises(ReplayError, match="real-prints-fetch"):
+        refuse_a_pointer(pointer_bytes, case.name, case.frames[0].file)
+
+
+def test_a_replayed_alert_the_server_refuses_stops_the_replay() -> None:
+    """A webhook answering anything but acceptance is no delivered alert."""
+    equal(delivered(202), True)
+    equal(delivered(403), False)
+
+
 def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: Path) -> None:
     """The engine's second run of one turn neither ends it nor moves the replay on."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
     done = mock_replay(
         case,
         [
-            {"commands": [CONTEXT], "unreadable": True},
-            {"commands": [LOOK]},
+            {
+                "commands": [CONTEXT],
+                "unreadable": True,
+                "usage": {"input_tokens": 1, "output_tokens": 2},
+            },
+            {"commands": [LOOK], "usage": {"input_tokens": 10, "output_tokens": 20}},
             {"commands": [CONTEXT]},
         ],
         scratch,
     )
+    usage = done.replayed.points[0].usage
+    equal(usage, {"input_tokens": 11, "output_tokens": 22})
     equal(len(done.replayed.ledger["turns"]), 2)
     first, second = case.moments
     equal(done.images[json.loads(done.turns[0]["ran"][0]["out"])["image_path"]], first.event_image)
@@ -569,10 +616,11 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
     empty = tmp_path / "empty"
     empty.mkdir()
     equal(record.main([str(empty)]), 1)
-    unreadable = tmp_path / "unreadable"
-    unreadable.mkdir()
-    (unreadable / "a.json").write_text("[]", encoding="utf-8")
-    equal(record.main([str(unreadable)]), 1)
+    for name, unusable in (("list", []), ("truthy", {**test_record, "passed": "false"})):
+        unreadable = tmp_path / name
+        unreadable.mkdir()
+        (unreadable / "a.json").write_text(json.dumps(unusable), encoding="utf-8")
+        equal(record.main([str(unreadable)]), 1, describing=name)
     # A `just` of this test's own, standing where the real recipe would run the suite.
     fake = tmp_path / "bin"
     fake.mkdir()

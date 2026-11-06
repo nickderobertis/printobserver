@@ -29,6 +29,7 @@ import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from http import HTTPStatus
 from http.client import HTTPConnection
 from pathlib import Path
 from typing import Any, TextIO, TypedDict
@@ -178,17 +179,26 @@ def harness_token() -> str | None:
     return held if isinstance(held, str) else None
 
 
+def refuse_a_pointer(data: bytes, case: str, name: str) -> bytes:
+    """A frame's bytes, unless they are the LFS pointer an unfetched checkout holds."""
+    if pointer(data[:2048]) is not None:
+        msg = f"{case}/{name} is an LFS pointer: run `just real-prints-fetch`"
+        raise ReplayError(msg)
+    return data
+
+
 def real_picture(case: Case) -> Callable[[str], bytes]:
-    """A frame's bytes from the case's own directory, refusing an unfetched LFS pointer."""
+    """A frame's bytes from the case's own directory."""
 
     def read(name: str) -> bytes:
-        data = (case.directory / name).read_bytes()
-        if pointer(data[:2048]) is not None:
-            msg = f"{case.name}/{name} is an LFS pointer: run `just real-prints-fetch`"
-            raise ReplayError(msg)
-        return data
+        return refuse_a_pointer((case.directory / name).read_bytes(), case.name, name)
 
     return read
+
+
+def delivered(status: int) -> bool:
+    """Whether the ingress took an alert: it answers before it has handled one."""
+    return status == HTTPStatus.ACCEPTED
 
 
 class Assessment(TypedDict):
@@ -347,14 +357,19 @@ class Replayed:
 
 def _ledger_of(document: object, path: Path) -> Ledger:
     """A ledger read from the port's file, once it holds what is read from one."""
+    sessions = document.get("sessions") if isinstance(document, dict) else None
+    turns = document.get("turns") if isinstance(document, dict) else None
     if (
-        not isinstance(document, dict)
-        or not isinstance(document.get("sessions"), list)
-        or not isinstance(document.get("turns"), list)
+        not isinstance(sessions, list)
+        or not isinstance(turns, list)
+        or not all(
+            isinstance(entry, dict) and isinstance(entry.get("session_name"), str)
+            for entry in [*sessions, *turns]
+        )
     ):
         msg = f"{path} is no ledger of sessions and turns"
         raise ReplayError(msg)
-    return {"sessions": document["sessions"], "turns": document["turns"]}
+    return {"sessions": sessions, "turns": turns}
 
 
 def _received(event: dict[str, Any]) -> datetime:
@@ -408,7 +423,8 @@ class RunReport:
                     self.compacted = True
                 case {"type": "result", "usage": dict(usage), **rest}:
                     self._add_usage(usage)
-                    for model in rest.get("modelUsage") or {}:
+                    models = rest.get("modelUsage")
+                    for model in models if isinstance(models, dict) else ():
                         self._saw(str(model))
                 case {"message": {"model": str(model), "content": list(content)}}:
                     self._saw(model)
@@ -599,8 +615,12 @@ class Replay:
             body=json.dumps(body),
             headers={"Content-Type": "application/json"},
         )
-        connection.getresponse().read()
+        answered = connection.getresponse()
+        answered.read()
         connection.close()
+        if not delivered(answered.status):
+            msg = f"the ingress answered {moment.id}'s alert with {answered.status}"
+            raise ReplayError(msg)
 
     def _job_started_epoch(self) -> float:
         """When the print the server holds says its job started, or when this replay's did."""

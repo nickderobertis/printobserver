@@ -25,8 +25,8 @@ use printobserver_types::serde::Deserialize;
 /// The file beside this program saying what to start and whom to tell.
 const LAUNCH_FILE: &str = "launch.json";
 
-/// The status line of an answer the replay took a report under.
-const ANSWERED: &str = "HTTP/1.1 200";
+/// The status an answer the replay took a report under carries.
+const ANSWERED: &str = "200";
 
 /// The two things the replay is told about a harness run.
 #[derive(Clone, Copy)]
@@ -65,7 +65,7 @@ fn tell(control: SocketAddr, report: Report) -> Result<String, String> {
     let (head, body) = answer
         .split_once("\r\n\r\n")
         .ok_or_else(|| format!("{control} answered {path} with no whole response"))?;
-    if !head.starts_with(ANSWERED) {
+    if head.split_whitespace().nth(1) != Some(ANSWERED) {
         return Err(format!("{control} refused {path}: {head}"));
     }
     Ok(body.to_owned())
@@ -98,6 +98,8 @@ fn launch() -> Result<Launch, String> {
 /// Start the target, copy its output through and keep it, and answer its status.
 fn run(launch: &Launch, record: &Path) -> Result<ExitCode, String> {
     let program = launch.program.display();
+    let mut kept = std::fs::File::create(record)
+        .map_err(|error| format!("{} could not be created: {error}", record.display()))?;
     let mut child = Command::new(&launch.program)
         .args(&launch.arguments)
         .args(std::env::args_os().skip(1))
@@ -106,8 +108,6 @@ fn run(launch: &Launch, record: &Path) -> Result<ExitCode, String> {
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|error| format!("{program} could not be started: {error}"))?;
-    let mut kept = std::fs::File::create(record)
-        .map_err(|error| format!("{} could not be created: {error}", record.display()))?;
     let mut from_child = child
         .stdout
         .take()

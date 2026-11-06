@@ -146,7 +146,7 @@ class Moment:
     @property
     def is_alert(self) -> bool:
         """Whether the Obico double delivers this event, rather than the server's own schedule."""
-        return self.trigger is not Trigger.PERIODIC_OBSERVATION
+        return self.trigger in {Trigger.RECORDED_ALERT, Trigger.SYNTHETIC_ALERT}
 
     def verdict(self, requests: list[Request]) -> str | None:
         """Why these requests fail this decision point, or nothing when they pass it."""

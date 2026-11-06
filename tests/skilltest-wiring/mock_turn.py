@@ -73,7 +73,29 @@ def _filled(word: str, prompt: str) -> str:
     )
 
 
-def _ran(words: list[str]) -> dict[str, Any]:
+class CommandResult(TypedDict):
+    """One command a scripted turn ran, and what it answered."""
+
+    words: list[str]
+    status: int
+    out: str
+    err: str
+
+
+class Seen(TypedDict):
+    """What one harness run could observe, as this writes it down for a test."""
+
+    turn: int
+    prompt: str
+    environment: dict[str, str]
+    cwd: str
+    workspace: list[str]
+    arguments: list[str]
+    ran: list[CommandResult]
+    assessment: dict[str, Any]
+
+
+def _ran(words: list[str]) -> CommandResult:
     done = run(words, timeout=TIMEOUT_S)
     return {"words": words, "status": done.returncode, "out": done.stdout, "err": done.stderr}
 
@@ -82,8 +104,11 @@ def main(script_path: str, arguments: list[str]) -> int:
     """Take one turn of the script, and answer through the published responder."""
     directory = Path(script_path).parent
     script: Script = json.loads(Path(script_path).read_text(encoding="utf-8"))
-    if not script["turns"] or not script["responder"]:
-        print(f"{script_path} scripts no run or no responder", file=sys.stderr)
+    if not isinstance(script.get("turns"), list) or not script["turns"]:
+        print(f"{script_path} scripts no run", file=sys.stderr)
+        return 2
+    if not isinstance(script.get("responder"), str):
+        print(f"{script_path} names no responder", file=sys.stderr)
         return 2
     counter = directory / COUNTER_FILE
     number = int(counter.read_text(encoding="utf-8")) if counter.is_file() else 0
@@ -94,7 +119,7 @@ def main(script_path: str, arguments: list[str]) -> int:
         _ran([_filled(word, prompt) for word in words]) for words in scripted.get("commands", [])
     ]
     assessment = {**ASSESSMENT, "summary": f"scripted run {number}"}
-    seen = {
+    seen: Seen = {
         "turn": number,
         "prompt": prompt,
         "environment": dict(os.environ),

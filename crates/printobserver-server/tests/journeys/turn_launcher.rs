@@ -106,6 +106,57 @@ fn the_harness_runs_exactly_as_it_was_asked_and_its_output_is_kept() {
     assert_eq!(heard.recv().expect("a report"), "/exited");
 }
 
+/// The harness's input and error streams are the caller's, and its output arrives
+/// whatever its bytes.
+#[test]
+fn the_harness_has_the_callers_streams_and_its_bytes_arrive_unchanged() {
+    let scratch = TempDir::new().expect("a directory");
+    let record = scratch.path().join("record");
+    let (address, _heard) = control(&record);
+    let launcher = installed(scratch.path(), &address, &responder());
+    let mut child = Command::new(&launcher)
+        .env("MOCK_ECHO_STDIN", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the launcher starts");
+    let fed = "caf\u{e9} \u{2603}\n\tno trailing line";
+    child
+        .stdin
+        .take()
+        .expect("its input")
+        .write_all(fed.as_bytes())
+        .expect("it reads");
+    let output = child.wait_with_output().expect("it ends");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), fed);
+    assert_eq!(std::fs::read_to_string(&record).expect("kept"), fed);
+
+    let said = launched(
+        &launcher,
+        &[("MOCK_STDERR", "said to the caller"), ("MOCK_STDOUT", "{}")],
+    );
+    assert!(String::from_utf8_lossy(&said.stderr).contains("said to the caller"));
+}
+
+/// A record that cannot be kept starts nothing, and says so.
+#[test]
+fn an_unwritable_record_starts_nothing() {
+    let scratch = TempDir::new().expect("a directory");
+    let record = scratch.path().join("no-such-directory").join("record");
+    let (address, heard) = control(&record);
+    let launcher = installed(scratch.path(), &address, &responder());
+    let marker = scratch.path().join("started");
+    let output = launched(
+        &launcher,
+        &[("MOCK_ARGV_FILE", marker.to_str().expect("a text path"))],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("could not be created"));
+    assert!(!marker.exists(), "the harness must not have started");
+    assert_eq!(heard.recv().expect("a report"), "/started");
+}
+
 /// With no launch file nothing is started, and the failure says why.
 #[test]
 fn a_launcher_with_no_launch_file_says_so() {

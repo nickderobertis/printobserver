@@ -28,21 +28,21 @@ rather than leaving it undone.
    and neither is a picture too dark, too blurred or aimed at nothing: say so.
    Loose strands where a wall should be, walls you can
    see through or infill showing where a surface belongs (under-extrusion),
-   strands hanging or tangling where a bridge is laid, a sagging overhang (too
-   little cooling), a part off the bed, a first
+   strands hanging or tangling where a bridge is laid, a sagging overhang, a part off the bed, a first
    layer not sticking: that is a failing print. A file's name never makes a defect
    intended.
 
    Judge each frame against this print's own earlier frames, which this
-   conversation holds. What has been printed stays where it was laid against the
-   sheet's edges and marks, and a printing part keeps growing as the job advances:
-   once several percent of the file has passed between two frames, a part must
-   look taller or fuller. A part that has moved or stopped growing is a failing
-   print however clean the frame looks. A wall's outer face is one smooth surface:
-   speckled, pitted like mesh, or rougher than its own earlier layers, it is
-   under-extruding though it still stands. Inside the outline supports, bridges and
-   infill look open, in straight regular lines; curved or tangled strands are a
-   defect. Act on what a second frame also shows.
+   conversation holds. What has been printed stays where it was laid: measure it
+   against the sheet's holes, edges and marks, and a changed offset means it moved.
+   A printing part keeps growing as the job advances: once several percent of the
+   file has passed between two frames, it must look taller or fuller. A part that
+   moved or stopped growing is a failing print however clean the frame looks. A
+   wall's outer face is smooth: more speckled or pitted than its own earlier layers,
+   it is under-extruding though it still stands; a texture that has not changed is
+   not. Inside the outline supports, bridges and infill look open, in straight
+   regular lines; curved or tangled strands are a defect, never a continue. Change
+   nothing as a precaution.
 
    The printer reports neither its flow factor nor its fan, so a file that cut
    either shows only in the print: under-extruding walls want the flow factor at
@@ -72,8 +72,8 @@ rather than leaving it undone.
 The situation says whether the detector paused the print first, and a look whether
 that still holds. A paused print is safe, so take the time to look.
 
-- **If an adjustment of yours addresses what you see**, ask for it while paused;
-  two or three together is fine. The supervisor resumes the print itself twenty
+- **If an adjustment of yours addresses what you see**, ask for it while paused.
+  The supervisor resumes the print itself twenty
   seconds after your last such change, or when your turn ends. You do not resume
   it.
 - **If none reaches the cause**, or you are not sure, change nothing and
@@ -104,8 +104,7 @@ thing is outside what you may ask for.
 
 To escalate, pause the print and give as your reason what the person has to check.
 A print already paused is escalated by acknowledging the failure with the
-disposition stop. A paused print and your reason are what reaches the operator;
-nothing else pages anybody. Do not keep adjusting a print you decided needs a person.
+disposition stop. A paused print and your reason are what reaches the operator. Do not keep adjusting a print you decided needs a person.
 
 ## Elsewhere
 

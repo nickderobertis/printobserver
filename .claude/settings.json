@@ -29,7 +29,6 @@
       "Bash(pwsh -NoProfile -File scripts/runner-temp.ps1 -Action 'cleanup' -DriveRoot 'D:\\')",
       "Bash(rustup:*)",
       "Bash(uv:*)",
-      "Bash(npm install -g @anthropic-ai/claude-code:*)",
       "Bash(bun:*)",
       "Bash(bunx:*)",
       "Bash(node .github/macos-policy.mjs:*)",

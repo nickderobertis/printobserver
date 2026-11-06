@@ -62,7 +62,16 @@ class UnreadableRunError(Exception):
 def _test_record(path: Path) -> TestRecord:
     """One test's record, once it has the fields the record is folded from."""
     document = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict) or not {"test", "passed", "decision_points"} <= set(document):
+    if (
+        not isinstance(document, dict)
+        or not isinstance(document.get("test"), str)
+        or not isinstance(document.get("passed"), bool)
+        or not isinstance(document.get("decision_points"), list)
+        or not all(
+            isinstance(point, dict) and isinstance(point.get("models"), list)
+            for point in document["decision_points"]
+        )
+    ):
         msg = f"{path} is no test's record"
         raise UnreadableRunError(msg)
     return document
