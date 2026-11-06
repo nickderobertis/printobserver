@@ -1,0 +1,309 @@
+{
+  "events": [
+    {
+      "id": "01a17f1b-0ac5-7c72-9314-d192e16c833f",
+      "kind": "supervision_session_closed",
+      "payload": {
+        "close_reason": "the print reached Offline",
+        "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-27T20:44:01.093448Z",
+      "source": "system"
+    },
+    {
+      "id": "01a17f1b-0ac3-7652-8a7f-6f72edb2d718",
+      "kind": "print_ended",
+      "payload": {
+        "outcome": "interrupted",
+        "reason": "the print reached Offline",
+        "state": "offline"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-27T20:44:01.091755700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a17f1b-0ac3-7652-8a7f-6f66824a40a9",
+      "kind": "print_untracked",
+      "payload": {
+        "reason": "the print was already open when spool tracking was installed, so it is not charged"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-27T20:44:01.091630900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a12281-20aa-7421-b8c3-7b6063a45049",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) `printobserver context`: printing at 76.2% with about 2.3 h left. Nozzle 251.5 °C against a 250 target, bed 85/85 °C, no adjustments in force. The record shows the turn where I left the print paused for a person; it is printing again now, so someone resumed it. 2) Opened the alert image. The head was parked, and the nest of strands inside the box part looked mostly cleared, leaving a light fuzz. 3) `printobserver look --wait-s 60`: the detector is not holding a pause and no new events arrived. Progress went from 76.2% to 76.6%, with the nozzle at 250/250 °C and the bed at 84.9/85 °C. The fresh frame shows the nozzle printing the box part's rim. Only a few light wisps are left, the walls look clean, every part is still stuck to the bed, and a person's hand is visible at the printer. 4) `printobserver acknowledge-failure --disposition watch` on event 01a1227f-8545-7fa3-9f98-12d9dbf357f1 was accepted and succeeded (record 01a12280-e51e-7ea0-a77e-cd29e8aebdf2). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Someone cleared the strings out of the black box part and resumed the print. This Obico warning (it did not pause the print) is only light leftover wisps; the print is moving forward cleanly, so it carries on.",
+          "why": "The image and the history agree. Someone acted on my last turn: they cleared the strands and resumed, and the print is building cleanly again. What Obico flagged now is a few leftover wisps, which only affect how the part looks. Temperatures and progress are normal. That person is at the printer and can lower the nozzle temperature if they want to. Changing it myself without a clear failure would only add risk late in the print. So I asked for nothing and logged the warning as one to keep watching."
+        },
+        "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T21:10:50.282237900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a12280-e51e-7ea0-a77e-cd4c6b1632c6",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a12280-e51e-7ea0-a77e-cd29e8aebdf2"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T21:10:35.038790800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a12280-e51e-7ea0-a77e-cd385a877db7",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+            }
+          },
+          "disposition": "watch",
+          "event_id": "01a1227f-8545-7fa3-9f98-12d9dbf357f1",
+          "reason": "Obico warning (not a pause) just after a person resumed the print I had left paused at 76% for stringing. The alert image and a fresh frame 60 s later show the nest of strands has been cleared from inside the black box part. Only a few light wisps remain, the walls are building cleanly, all parts are attached, and progress is moving (76.2% -> 76.6%). Temps 250/85 steady. A person is at the printer (a hand is visible in the frame). Reading it as leftover cosmetic stringing; no adjustment made. Watching."
+        },
+        "action_id": "01a12280-e51e-7ea0-a77e-cd29e8aebdf2",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+          }
+        }
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T21:10:35.038633100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a12280-bbb7-7e52-9282-d9113b3856a5",
+      "image": {
+        "id": "01a12280-c43b-72e3-baf6-addfaa00386b",
+        "sha256": "7fd10a332425ae0797af91b04201d7b7be423bb0064b369a8e47fb1658cbe6d0"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 60
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T21:10:24.439962300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a1227f-8545-7fa3-9f98-12d9dbf357f1",
+      "image": {
+        "id": "01a1227f-855b-7eb1-a221-1d07db383983",
+        "sha256": "9227d5929c04c94d9abf1d59d06d37d6df9867f7f183f0bf8a7fddca47369d66"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "plate2-pan-bin-scraper-clips-r2.gcode",
+        "is_warning": true,
+        "obico_print_id": 10,
+        "print_paused": false,
+        "started_at": "2026-10-09T13:21:49.421966076Z"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IHRydWUsICJwcmludF9wYXVzZWQiOiBmYWxzZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogMTAsICJmaWxlbmFtZSI6ICJwbGF0ZTItcGFuLWJpbi1zY3JhcGVyLWNsaXBzLXIyLmdjb2RlIiwgInN0YXJ0ZWRfYXQiOiAxNzkxNTUyMTA5LjQyMTk2NiwgImVuZGVkX2F0IjogIiJ9LCAiaW1nX3VybCI6ICJodHRwOi8vb2JpY28tc2VydmVyLmludmFsaWQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MTU4MDE0NC45MDc2OTVfcm90YXRlZC5qcGcifQ==",
+      "received_at": "2026-10-09T21:09:04.965109900Z",
+      "source": "obico"
+    },
+    {
+      "id": "01a1225c-b9c5-7ff2-b787-14b0380c62ed",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "1) `printobserver context`: the job is paused by the detector at 76.2% with about 2.3 h left. The bed is at 85/85 °C and the nozzle was at 249.9/250 °C when the event arrived. There are no adjustments in force. My assessment at 73% had called this cosmetic stringing. 2) Opened the alert image: Obico's boxes are around more stringing than last time, piled inside the open box part. 3) `printobserver look`: the detector's pause still holds. The printer is paused with the nozzle heater off (target 0, actual 231.5 °C and cooling) and the bed held at 85 °C. The fresh frame, with the head parked, gives a clear view. Every part is whole and stuck to the bed, and the box part's walls and rim are intact. A mass of fine strands sits inside that part, and the other parts are clean. 4) Read the intervention policy. A timed change puts back the value the printer held before it, which for the nozzle right now is 0. 5) `printobserver acknowledge-failure --disposition stop` on event 01a1225b-a7ed-7333-9979-6a87a0d2a0fe was accepted and succeeded (record 01a1225c-912e-7f30-8312-ce4c584877bc). I made no adjustments.",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "Obico paused the print at about 76% because the stringing inside the black box part has grown into a nest of strands. Every part is still whole and stuck to the bed, so this looks cosmetic. None of my adjustments fixes the cause, so I've left the print paused for a person to clear the strands and resume.",
+          "why": "The image and the history agree: this is the same stringing as at 73%, only worse. Nothing has failed structurally, but the loose strands could get dragged into the next layers. The likely cause is wet filament or retraction settings, and my adjustments can't fix either. A lower nozzle temperature is the only one that might help, and it isn't safe to set while paused. The nozzle target is 0 during the pause, so a timed change would set it back to 0 when it expired, mid-print. Obico's resume would probably override the new value anyway. The skill says that when no adjustment reaches the cause, I should leave the print paused for a person. A person can also pull the strands out of the box with tweezers, which I can't. I think it's likely fine to resume after clearing them, maybe with the nozzle at about 240 °C, but whether the result looks good enough is the operator's call. The pause is safe: the bed stays at 85 °C, so the parts should stay stuck down."
+        },
+        "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:31:04.645313600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a1225c-912f-7ad1-87a6-20d83f35409f",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a1225c-912e-7f30-8312-ce4c584877bc"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:30:54.255431400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a1225c-912f-7ad1-87a6-20c57058e809",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a1225b-a7ed-7333-9979-6a87a0d2a0fe",
+          "reason": "Obico paused the print at ~76%. This is the same stringing I logged at 73% (event 01a12253), but it has grown: a clear frame with the head parked shows a mass of fine strands piled up inside the open black box/bin part. Its walls and rim are whole, all parts are attached, and the other parts are clean. No spaghetti, no detachment. Looks cosmetic, but it is getting worse. None of my adjustments fixes the likely cause (wet filament or retraction). I did not try a temperature change: with the print paused the nozzle target is 0, so a timed change would put 0 back when it expired, and Obico's resume probably overrides it anyway. Left paused for a person. Suggest pulling the loose strands out of the box with tweezers, so the nozzle can't drag them into new layers, then resuming. The remaining ~2.3 h of the part is likely fine apart from looks. Optionally lower the nozzle to about 240 C after resuming. Nozzle heater is off while paused (cooling from 250); bed held at 85."
+        },
+        "action_id": "01a1225c-912e-7f30-8312-ce4c584877bc",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+          }
+        }
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:30:54.255123400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a1225c-0dda-75b1-9859-020873232e27",
+      "image": {
+        "id": "01a1225c-14e0-7c50-af00-d191c3453528",
+        "sha256": "38e30e3df60c18914b51004934c6708360739e3d527285bfb5a8ed1985921364"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 0
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:30:20.634991100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a1225b-a7ed-7333-9979-6a87a0d2a0fe",
+      "image": {
+        "id": "01a1225b-a804-7a22-b2cb-a4df07e3c9bb",
+        "sha256": "212701bc64528b4f484fc437cbbb59ee02a72851c8ae866acc7a7818091c9348"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "plate2-pan-bin-scraper-clips-r2.gcode",
+        "is_warning": false,
+        "obico_print_id": 10,
+        "print_paused": true,
+        "started_at": "2026-10-09T13:21:49.421966076Z"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IGZhbHNlLCAicHJpbnRfcGF1c2VkIjogdHJ1ZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogMTAsICJmaWxlbmFtZSI6ICJwbGF0ZTItcGFuLWJpbi1zY3JhcGVyLWNsaXBzLXIyLmdjb2RlIiwgInN0YXJ0ZWRfYXQiOiAxNzkxNTUyMTA5LjQyMTk2NiwgImVuZGVkX2F0IjogIiJ9LCAiaW1nX3VybCI6ICJodHRwOi8vb2JpY28tc2VydmVyLmludmFsaWQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MTU3Nzc5NC40Mjc4MDVfcm90YXRlZC5qcGcifQ==",
+      "received_at": "2026-10-09T20:29:54.541478600Z",
+      "source": "obico"
+    },
+    {
+      "id": "01a12254-a080-7691-87aa-ee45f74bc567",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) `printobserver context`: the print is running at 73% with about 2.5 h left. The nozzle is at 249.8 of 250 °C and the bed at 85 of 85 °C. There are no adjustments in force and no earlier events. 2) Opened the alert image. It shows thin wisps strung across the inside of the black box part, and Obico's boxes are drawn around that stringing. 3) `printobserver look --wait-s 60`: no new events arrived, and the temperatures and progress were steady. The fresh frame shows the same wispy stringing. The box walls are building cleanly, every part is still stuck to the bed, and there is no loose extrusion at the nozzle. (My first look attempt failed because I passed `--actor`, which `look` does not accept. I ran it again without that flag.) 4) `printobserver acknowledge-failure --disposition watch` on event 01a12253-1feb-7f83-a885-44c0c8e14e43 was accepted and succeeded (record 01a12254-7d76-7e81-910d-8fe219176728). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Obico's warning (it did not pause the print) at about 73% is fine stringing inside the open black box part. The walls are clean, the parts are stuck to the bed and nothing is spaghetti, so the print carries on.",
+          "why": "What Obico flagged is stringing from the nozzle crossing the open part while travelling. It only affects how the part looks, not whether the print works. There is no spaghetti, no part has come loose, and no layers are missing. Two frames 80 seconds apart look the same, and the temperatures are steady. Lowering the nozzle temperature might reduce the stringing a little, but it isn't needed and could hurt layer bonding late in the print. So I asked for nothing and logged the warning as one to keep watching."
+        },
+        "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:22:13.888669100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a12254-a080-7691-87aa-ee382b9dc545",
+      "kind": "supervision_session_opened",
+      "payload": {
+        "harness_identity": "claude-code",
+        "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:22:13.888238100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a12254-7d77-7880-a36d-4b9790dd4d2d",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a12254-7d76-7e81-910d-8fe219176728"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:22:04.919383100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a12254-7d77-7880-a36d-4b8f54c4fa9a",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+            }
+          },
+          "disposition": "watch",
+          "event_id": "01a12253-1feb-7f83-a885-44c0c8e14e43",
+          "reason": "Obico warning (not a pause) at ~73%. Alert image and a fresh frame 60s later show fine stringing/wisps strung across the inside of the open black box part, where travel crosses it. The box walls are building cleanly, the part and neighbouring parts are attached, no spaghetti or loose extrusion at the nozzle. Temps steady (250/85). Reading it as cosmetic stringing, not a failure; no adjustment made. Watching."
+        },
+        "action_id": "01a12254-7d76-7e81-910d-8fe219176728",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a120d3-e59e-7b40-94f1-4eefc67bb6d1"
+          }
+        }
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:22:04.919095400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a12254-54fb-7d90-81b5-e50680ea7e38",
+      "image": {
+        "id": "01a12254-5c2c-7932-a6b5-1e2bcb58b90f",
+        "sha256": "39ce939fad9b84cbaaedefd0d5247633095c430075048d8aaaf1bf00365f2d6f"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 60
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "received_at": "2026-10-09T20:21:54.555963600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a12253-1feb-7f83-a885-44c0c8e14e43",
+      "image": {
+        "id": "01a12253-200d-7000-958e-445605579cae",
+        "sha256": "69953994f8e59260e6194d576616ebbe7284f28055e48498bcb1ff07e313b3ce"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "plate2-pan-bin-scraper-clips-r2.gcode",
+        "is_warning": true,
+        "obico_print_id": 10,
+        "print_paused": false,
+        "started_at": "2026-10-09T13:21:49.421966076Z"
+      },
+      "print_id": "01a120d3-e59e-7b40-94f1-4eefc67bb6d1",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IHRydWUsICJwcmludF9wYXVzZWQiOiBmYWxzZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogMTAsICJmaWxlbmFtZSI6ICJwbGF0ZTItcGFuLWJpbi1zY3JhcGVyLWNsaXBzLXIyLmdjb2RlIiwgInN0YXJ0ZWRfYXQiOiAxNzkxNTUyMTA5LjQyMTk2NiwgImVuZGVkX2F0IjogIiJ9LCAiaW1nX3VybCI6ICJodHRwOi8vb2JpY28tc2VydmVyLmludmFsaWQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MTU3NzIzNC45Njk1Njhfcm90YXRlZC5qcGcifQ==",
+      "received_at": "2026-10-09T20:20:35.430486400Z",
+      "source": "obico"
+    }
+  ]
+}

@@ -1,0 +1,1074 @@
+{
+  "case": "jar-top-wrong-material-detach-spaghetti",
+  "verdict": "real failure: the wall top went porous and stringy, then the part detached and turned to spaghetti",
+  "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), textured sheet",
+  "printed_on": "2026-10-29, 19:08 to about 19:54",
+  "times": "local, MDT (UTC-6)",
+  "part": "3423-TOP-REV F, the jar top, printed opening-down with a 5 mm brim and no supports",
+  "fault": "the same wrong-material slice as jar-top-wrong-material-first-layer-detach (PLA profile, PETG loaded), with a brim added. At about 36% the top of the rim wall stopped bonding, then the part came loose at about Z 10 mm and was pushed around by the nozzle",
+  "what_it_looks_like": "the smooth wall top turns into a beaded, porous chain with strands across the open interior (19:35), then the whole part, brim included, shifts about 200 px (19:39) and moves again in each later frame",
+  "fixable_by_the_agent": "no",
+  "expected_agent_action": {
+    "at_the_first_visible_failure": "pause and leave it for a person",
+    "at_the_detachment": "pause at once, without more looks; cancel is also acceptable",
+    "never": [
+      "resume",
+      "acknowledge with continue or watch",
+      "explain the moved part as a camera-angle effect",
+      "temperature, fan, flow or speed changes"
+    ]
+  },
+  "detector": "Obico raised no alert",
+  "agent_turn": "the agent read the porous, stringy top (19:33-19:38) as a possible design feature and kept watching; it called the failure at the 19:39 observation but paused only after two more looks, about 2 minutes later, and then wrongly walked back the detachment as a camera-angle effect while leaving the check to a person",
+  "frames": [
+    {
+      "file": "agent-001-obs-190853-p00.0.jpg",
+      "time": "2026-10-29 19:08:53",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "bare sheet and gantry during warm-up",
+      "label": "Start-up: the X gantry crosses the frame over a clean, empty sheet; nothing printed yet."
+    },
+    {
+      "file": "agent-002-look-191050.jpg",
+      "time": "2026-10-29 19:10:50",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "not printing",
+      "in_view": "bare sheet, toolhead during warm-up and probing",
+      "label": "Start-up: the toolhead sits at the back-left over a clean, empty sheet; nothing extruded yet."
+    },
+    {
+      "file": "agent-003-obs-191258-p00.0.jpg",
+      "time": "2026-10-29 19:12:58",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "bare sheet and gantry (start G-code)",
+      "label": "Start-up: the gantry crosses a clean, empty sheet; no part is visible in this frame yet.",
+      "agent_concern": {
+        "concern": "The few fine strings are cosmetic.",
+        "verdict": "other",
+        "explanation": "This frame shows nothing printed. The agent's 'first layers going down cleanly' and strings came from its later looks (rows 4-5), where a few fine strings near the ring are cosmetic."
+      }
+    },
+    {
+      "file": "agent-004-look-191445.jpg",
+      "time": "2026-10-29 19:14:45",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "brim and first layers of the rim (perimeters)",
+      "label": "First layers: a black ring with its 5 mm brim lies flat at the back-centre, with a few fine strings near the nozzle and on the right of the ring; healthy.",
+      "agent_concern": {
+        "concern": "The few fine strings are cosmetic.",
+        "verdict": "other",
+        "explanation": "Light travel stringing, typical of PETG; dismissing it as cosmetic was right."
+      }
+    },
+    {
+      "file": "agent-005-look-191620.jpg",
+      "time": "2026-10-29 19:16:20",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "brim and early rim perimeters",
+      "label": "Early layers: the rim ring and brim are attached and even, with a couple of light strings over the ring; healthy.",
+      "agent_concern": {
+        "concern": "The few fine strings are cosmetic.",
+        "verdict": "other",
+        "explanation": "Same turn; correctly read as cosmetic."
+      }
+    },
+    {
+      "file": "agent-006-obs-191658-p04.3.jpg",
+      "time": "2026-10-29 19:16:58",
+      "progress_pct": 4.3,
+      "z_mm": 1.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim perimeter walls on the brim",
+      "label": "The rim wall is building evenly on its brim at the back-centre, attached, with no lifting or strings; healthy."
+    },
+    {
+      "file": "agent-007-look-191844.jpg",
+      "time": "2026-10-29 19:18:44",
+      "progress_pct": 4.3,
+      "z_mm": 1.8,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "rim perimeter walls on the brim",
+      "label": "The rim wall is taller and even, the brim flat and the part in the same spot; healthy."
+    },
+    {
+      "file": "agent-008-obs-191859-p09.3.jpg",
+      "time": "2026-10-29 19:18:59",
+      "progress_pct": 9.3,
+      "z_mm": 2.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim perimeter walls on the brim",
+      "label": "Rim walls building cleanly, brim flat, part unmoved; healthy."
+    },
+    {
+      "file": "agent-009-look-192048.jpg",
+      "time": "2026-10-29 19:20:48",
+      "progress_pct": 9.3,
+      "z_mm": 2.8,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "rim perimeter walls and infill band",
+      "label": "Rim walls building cleanly with the toolhead at the back; a tiny white wisp sits on the right edge of the ring top; healthy.",
+      "agent_concern": {
+        "concern": "The wisp is probably a fine string or a reflection",
+        "verdict": "other",
+        "explanation": "A tiny fixed white wisp of filament on the ring's right rim; cosmetic. Dismissing it was right."
+      }
+    },
+    {
+      "file": "agent-010-obs-192101-p14.2.jpg",
+      "time": "2026-10-29 19:21:01",
+      "progress_pct": 14.2,
+      "z_mm": 3.6,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim perimeter walls and infill band",
+      "label": "Rim walls building evenly and attached; the same small white wisp on the right edge is unchanged; healthy.",
+      "agent_concern": {
+        "concern": "The wisp has not moved or grown across three frames",
+        "verdict": "other",
+        "explanation": "Correct: a static cosmetic string."
+      }
+    },
+    {
+      "file": "agent-011-look-192252.jpg",
+      "time": "2026-10-29 19:22:52",
+      "progress_pct": 14.2,
+      "z_mm": 3.6,
+      "gcode_type": "Solid infill",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "rim perimeter walls and infill band",
+      "label": "Rim walls building evenly and attached; the part and the wisp are unchanged; healthy.",
+      "agent_concern": {
+        "concern": "The wisp has not moved or grown across three frames",
+        "verdict": "other",
+        "explanation": "Same turn; correctly treated as cosmetic."
+      }
+    },
+    {
+      "file": "agent-012-obs-192303-p19.3.jpg",
+      "time": "2026-10-29 19:23:03",
+      "progress_pct": 19.3,
+      "z_mm": 4.6,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim perimeter walls and infill band",
+      "label": "The rim wall is clean and the part attached with the toolhead at the back-left; healthy.",
+      "agent_concern": {
+        "concern": "The small string has stayed the same across five frames, so it is cosmetic.",
+        "verdict": "other",
+        "explanation": "Correct."
+      }
+    },
+    {
+      "file": "agent-013-look-192454.jpg",
+      "time": "2026-10-29 19:24:54",
+      "progress_pct": 19.3,
+      "z_mm": 4.6,
+      "gcode_type": "Perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "rim walls, mostly hidden by the toolhead",
+      "label": "The toolhead covers most of the ring; the visible rim and brim look clean and attached; healthy.",
+      "agent_concern": {
+        "concern": "The small string has stayed the same across five frames",
+        "verdict": "other",
+        "explanation": "Same turn; cosmetic."
+      }
+    },
+    {
+      "file": "agent-014-obs-192505-p23.9.jpg",
+      "time": "2026-10-29 19:25:05",
+      "progress_pct": 23.9,
+      "z_mm": 5.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim perimeter walls on the brim",
+      "label": "Full view of the rim wall: smooth, even and attached on its brim; healthy.",
+      "agent_concern": {
+        "concern": "The toolhead hides most of the ring in the later frame",
+        "verdict": "camera or lighting",
+        "explanation": "The look in row 15 is occluded by the toolhead; not a print problem."
+      }
+    },
+    {
+      "file": "agent-015-look-192653.jpg",
+      "time": "2026-10-29 19:26:53",
+      "progress_pct": 23.9,
+      "z_mm": 5.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "rim walls, mostly hidden by the toolhead",
+      "label": "The toolhead sits over the ring and hides most of it; the visible front edge and brim are clean; healthy.",
+      "agent_concern": {
+        "concern": "The toolhead hides most of the ring",
+        "verdict": "camera or lighting",
+        "explanation": "Occlusion only; correctly not treated as a fault."
+      }
+    },
+    {
+      "file": "agent-016-obs-192707-p27.7.jpg",
+      "time": "2026-10-29 19:27:07",
+      "progress_pct": 27.7,
+      "z_mm": 6.6,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim walls, partly hidden by the toolhead",
+      "label": "The toolhead covers the left of the ring; the visible wall and brim are clean and attached; healthy.",
+      "agent_concern": {
+        "concern": "The event frame was partly blocked by the toolhead",
+        "verdict": "camera or lighting",
+        "explanation": "Taking a fresh look for an unobstructed view was the right thing to do."
+      }
+    },
+    {
+      "file": "agent-017-look-192829.jpg",
+      "time": "2026-10-29 19:28:29",
+      "progress_pct": 27.7,
+      "z_mm": 6.6,
+      "gcode_type": "Perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "rim perimeter walls on the brim",
+      "label": "Unobstructed view: the rim wall is smooth and even and the part attached; healthy.",
+      "agent_concern": {
+        "concern": "The event frame was partly blocked by the toolhead",
+        "verdict": "camera or lighting",
+        "explanation": "Same turn; this clear frame confirms the print is healthy."
+      }
+    },
+    {
+      "file": "agent-018-obs-192909-p31.4.jpg",
+      "time": "2026-10-29 19:29:09",
+      "progress_pct": 31.4,
+      "z_mm": 7.4,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim perimeter walls and infill band",
+      "label": "The rim wall keeps building evenly and the part sits unmoved on its brim; healthy."
+    },
+    {
+      "file": "agent-019-look-193057.jpg",
+      "time": "2026-10-29 19:30:57",
+      "progress_pct": 31.4,
+      "z_mm": 7.4,
+      "gcode_type": "Solid infill",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "rim perimeter walls and infill band",
+      "label": "Rim walls even, part attached, toolhead at the back-right; healthy."
+    },
+    {
+      "file": "agent-020-obs-193110-p34.3.jpg",
+      "time": "2026-10-29 19:31:10",
+      "progress_pct": 34.3,
+      "z_mm": 8.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim perimeter walls (top edge clean)",
+      "label": "The rim wall is tall and smooth with a clean top edge, and the part is in its original spot; healthy."
+    },
+    {
+      "file": "agent-021-look-193300.jpg",
+      "time": "2026-10-29 19:33:00",
+      "progress_pct": 34.3,
+      "z_mm": 8.4,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "rim perimeter walls, top edge",
+      "label": "Rim wall still in place and looks healthy; at full zoom a few small beads are just visible along the inner top edge on the right, which is hindsight only."
+    },
+    {
+      "file": "agent-022-obs-193312-p36.3.jpg",
+      "time": "2026-10-29 19:33:12",
+      "progress_pct": 36.3,
+      "z_mm": 9.4,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "rim perimeter walls, top edge (start of the infill band)",
+      "label": "Rim wall in place; the top edge on the right is slightly rough and beaded, a faint precursor only noticeable in hindsight; otherwise looks healthy.",
+      "agent_concern": {
+        "concern": "fine strings have been appearing across the inside of the ring and its top edge looks rough and porous",
+        "verdict": "real fault",
+        "explanation": "The observation was right (this frame shows it faintly, the turn's look in row 23 clearly), but the agent guessed at a design feature (a 'perforated or detailed band') and chose to keep watching. The wall stops bonding into a solid top and starts stringing across the open interior: an extrusion and bonding failure, consistent with PETG at PLA temperatures."
+      }
+    },
+    {
+      "file": "agent-023-look-193500.jpg",
+      "time": "2026-10-29 19:35:00",
+      "progress_pct": 36.3,
+      "z_mm": 9.4,
+      "gcode_type": "Internal infill",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "top of the rim perimeter walls / infill band; strand across the open interior",
+      "label": "Faulty: the top of the rim wall has turned into a beaded, porous chain of blobs all the way round, and a long strand is strung across the open interior of the ring; the part is still in place.",
+      "agent_concern": {
+        "concern": "fine strings have been appearing across the inside of the ring and its top edge looks rough and porous",
+        "verdict": "real fault",
+        "explanation": "Same turn; a real defect, wrongly given the benefit of the doubt as a design feature, so the print continued."
+      }
+    },
+    {
+      "file": "agent-024-look-193624.jpg",
+      "time": "2026-10-29 19:36:24",
+      "progress_pct": 36.3,
+      "z_mm": 9.4,
+      "gcode_type": "Internal infill",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "top of the rim walls; strings across the open interior",
+      "label": "Faulty: several strands now criss-cross the open interior of the ring and the whole top edge is porous and beaded; the start of the spaghetti, part still in place.",
+      "agent_concern": {
+        "concern": "fine strings have been appearing across the inside of the ring",
+        "verdict": "real fault",
+        "explanation": "Same turn; the defect clearly grew between looks, but the agent kept its 'watch' disposition."
+      }
+    },
+    {
+      "file": "agent-025-look-193806.jpg",
+      "time": "2026-10-29 19:38:06",
+      "progress_pct": 36.3,
+      "z_mm": 9.4,
+      "gcode_type": "Internal infill",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "top of the rim walls covered in loose strands",
+      "label": "Faulty: the toolhead is over the ring; the visible top surface is a porous nest of loose strands; the part is still in its original spot.",
+      "agent_concern": {
+        "concern": "I am watching it rather than stepping in",
+        "verdict": "real fault",
+        "explanation": "Same turn; by now continuing is plainly wrong, since the top is spaghetti."
+      }
+    },
+    {
+      "file": "agent-026-obs-193913-p40.2.jpg",
+      "time": "2026-10-29 19:39:13",
+      "progress_pct": 40.2,
+      "z_mm": 10.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "the whole part (walls and brim) displaced; spaghetti on top",
+      "label": "Detached and spaghetti: the whole part, brim included, has shifted about 200 px to the right of where it was printed, its top is a porous nest of loose strands and a stray strand lies on the sheet.",
+      "agent_concern": {
+        "concern": "Spaghetti failure at about 40%: a tangle of loose strings covers the top of the ring.",
+        "verdict": "real fault",
+        "explanation": "Correct, and pausing was right. The part has also come off the sheet, and the agent first noticed that ('it seemed to move between frames') but then wrongly put it down to camera angle."
+      }
+    },
+    {
+      "file": "agent-027-look-194001.jpg",
+      "time": "2026-10-29 19:40:01",
+      "progress_pct": 40.2,
+      "z_mm": 10.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "detached part with spaghetti, toolhead over it",
+      "label": "Still printing: the part has moved back to near the centre under the nozzle and its top is a spreading nest of spaghetti; it is being pushed around by the nozzle.",
+      "agent_concern": {
+        "concern": "a tangle of loose strings covers the top of the ring",
+        "verdict": "real fault",
+        "explanation": "Same turn; this extra look was taken before pausing, while more spaghetti was laid."
+      }
+    },
+    {
+      "file": "agent-028-look-194056.jpg",
+      "time": "2026-10-29 19:40:56",
+      "progress_pct": 40.2,
+      "z_mm": 10.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "detached part covered in spaghetti; strand on the sheet",
+      "label": "Still printing: the part is now left of its original spot and buried in a large nest of spaghetti, with a long strand trailing onto the sheet to the right; plainly detached.",
+      "agent_concern": {
+        "concern": "a strand trailing onto the bed",
+        "verdict": "real fault",
+        "explanation": "Same turn; the third consecutive position change. The pause came only after this look, about 2 minutes after the event frame."
+      }
+    },
+    {
+      "file": "agent-029-look-194131.jpg",
+      "time": "2026-10-29 19:41:31",
+      "progress_pct": 40.2,
+      "z_mm": 10.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "detached part with spaghetti after the pause",
+      "label": "Paused: the bed is lowered and the part rests on the sheet with a dense nest of spaghetti inside the ring, while a single strand runs up to the parked nozzle.",
+      "agent_concern": {
+        "concern": "The clear frame taken after the pause shows it still sitting on the sheet",
+        "verdict": "real fault",
+        "explanation": "'Sitting on' is not 'stuck to': frames 26-28 show the part moving with the nozzle, so it was detached. The agent's walk-back of the detachment was wrong, though it rightly left the check to a person."
+      }
+    },
+    {
+      "file": "agent-030-obs-194315-p41.2.jpg",
+      "time": "2026-10-29 19:43:15",
+      "progress_pct": 41.2,
+      "z_mm": 11.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "failed part while paused",
+      "label": "Paused: unchanged; the spaghetti-filled part rests on the sheet with a strand up to the nozzle.",
+      "agent_concern": {
+        "concern": "The nozzle and bed are still being held hot (220 C and 60 C) while it waits",
+        "verdict": "other",
+        "explanation": "A fair point to raise for the person; holding the pause and escalating was right."
+      }
+    },
+    {
+      "file": "agent-031-obs-194518-p41.2.jpg",
+      "time": "2026-10-29 19:45:18",
+      "progress_pct": 41.2,
+      "z_mm": 11.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "failed part while paused; corrupted lower half of the frame",
+      "label": "Paused: the top half shows the unchanged spaghetti part; the bottom half is a smeared, streaked camera artefact.",
+      "agent_concern": {
+        "concern": "The event frame was half-corrupted by the camera",
+        "verdict": "camera or lighting",
+        "explanation": "Correct: a JPEG smear. Taking a fresh frame was right."
+      }
+    },
+    {
+      "file": "agent-032-look-194548.jpg",
+      "time": "2026-10-29 19:45:48",
+      "progress_pct": 41.2,
+      "z_mm": 11.2,
+      "gcode_type": "Perimeter",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "failed part while paused",
+      "label": "Paused: clean fresh frame; the spaghetti-filled part is unchanged on the sheet.",
+      "agent_concern": {
+        "concern": "The event frame was half-corrupted by the camera",
+        "verdict": "camera or lighting",
+        "explanation": "Same turn; confirms the smear was a camera glitch."
+      }
+    },
+    {
+      "file": "agent-033-obs-194719-p41.2.jpg",
+      "time": "2026-10-29 19:47:19",
+      "progress_pct": 41.2,
+      "z_mm": 11.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "failed part while paused",
+      "label": "Paused: unchanged; the failed spaghetti part sits on the sheet waiting for a person.",
+      "agent_concern": {
+        "concern": "The nozzle and bed are still being held hot",
+        "verdict": "other",
+        "explanation": "Informational; correct to leave it for the person."
+      }
+    },
+    {
+      "file": "agent-034-obs-194920-p41.2.jpg",
+      "time": "2026-10-29 19:49:20",
+      "progress_pct": 41.2,
+      "z_mm": 11.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "failed part while paused",
+      "label": "Paused: unchanged; the failed spaghetti part sits on the sheet.",
+      "agent_concern": {
+        "concern": "The nozzle (220 C) and bed (60 C) have now been held hot for about eight minutes",
+        "verdict": "other",
+        "explanation": "Informational; holding the pause was right."
+      }
+    },
+    {
+      "file": "agent-035-obs-195121-p41.2.jpg",
+      "time": "2026-10-29 19:51:21",
+      "progress_pct": 41.2,
+      "z_mm": 11.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "failed part while paused",
+      "label": "Paused: unchanged; the failed spaghetti part sits on the sheet.",
+      "agent_concern": {
+        "concern": "held hot for about ten minutes with nobody attending",
+        "verdict": "other",
+        "explanation": "Informational; it could reasonably have cooled the nozzle, but holding was acceptable."
+      }
+    },
+    {
+      "file": "agent-036-obs-195324-p41.2.jpg",
+      "time": "2026-10-29 19:53:24",
+      "progress_pct": 41.2,
+      "z_mm": 11.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "failed part while paused; corrupted lower part of the frame",
+      "label": "Paused: the failed spaghetti part is unchanged in the top part of the frame; the bottom third is a smeared camera artefact again.",
+      "agent_concern": {
+        "concern": "The camera smeared the bottom of the frame again, the second time this has happened.",
+        "verdict": "camera or lighting",
+        "explanation": "Correct; the part is in the clean area, so the glitch hides nothing."
+      }
+    }
+  ],
+  "agent_images": [
+    {
+      "file": "agent-001-obs-190853-p00.0.jpg",
+      "event_id": "01a18a5a-4296-7ca3-89be-a92e997e1104"
+    },
+    {
+      "file": "agent-002-look-191050.jpg",
+      "event_id": "01a18a5c-0c11-72d3-8c2e-01aa519931c3"
+    },
+    {
+      "file": "agent-003-obs-191258-p00.0.jpg",
+      "event_id": "01a18a5d-fe5b-7231-9e5c-501d9abcacbf"
+    },
+    {
+      "file": "agent-004-look-191445.jpg",
+      "event_id": "01a18a5f-a15a-7440-b363-99ab99917bfb"
+    },
+    {
+      "file": "agent-005-look-191620.jpg",
+      "event_id": "01a18a61-1512-7bb1-9f2b-e12fcd8954a0"
+    },
+    {
+      "file": "agent-006-obs-191658-p04.3.jpg",
+      "event_id": "01a18a61-aad9-74a0-9ff7-6a98402f73ec"
+    },
+    {
+      "file": "agent-007-look-191844.jpg",
+      "event_id": "01a18a63-4560-75b1-853d-a2d069856037"
+    },
+    {
+      "file": "agent-008-obs-191859-p09.3.jpg",
+      "event_id": "01a18a63-825f-7f60-99c3-a402e30bcd79"
+    },
+    {
+      "file": "agent-009-look-192048.jpg",
+      "event_id": "01a18a65-298a-7a53-96ca-b2c69e0cb84f"
+    },
+    {
+      "file": "agent-010-obs-192101-p14.2.jpg",
+      "event_id": "01a18a65-5eb0-7a11-83f0-05c87821980c"
+    },
+    {
+      "file": "agent-011-look-192252.jpg",
+      "event_id": "01a18a67-0e7a-7b63-a7ab-dc09bb14ecb0"
+    },
+    {
+      "file": "agent-012-obs-192303-p19.3.jpg",
+      "event_id": "01a18a67-3b45-7f23-8fee-7870a3a8da4f"
+    },
+    {
+      "file": "agent-013-look-192454.jpg",
+      "event_id": "01a18a68-eaf3-77a1-aaab-2c5e19180af3"
+    },
+    {
+      "file": "agent-014-obs-192505-p23.9.jpg",
+      "event_id": "01a18a69-1638-79f3-a5ff-68e3dc76d5a2"
+    },
+    {
+      "file": "agent-015-look-192653.jpg",
+      "event_id": "01a18a6a-be81-7f23-bf1e-d3e52b1735be"
+    },
+    {
+      "file": "agent-016-obs-192707-p27.7.jpg",
+      "event_id": "01a18a6a-f3b0-7f32-b31e-26682679e35d"
+    },
+    {
+      "file": "agent-017-look-192829.jpg",
+      "event_id": "01a18a6c-3439-7d93-a157-469575a5ae51"
+    },
+    {
+      "file": "agent-018-obs-192909-p31.4.jpg",
+      "event_id": "01a18a6c-ceec-7802-9c7f-650f3f8adcba"
+    },
+    {
+      "file": "agent-019-look-193057.jpg",
+      "event_id": "01a18a6e-7468-7311-a613-016bbea2c25b"
+    },
+    {
+      "file": "agent-020-obs-193110-p34.3.jpg",
+      "event_id": "01a18a6e-a94e-79a2-a089-465be65bf13a"
+    },
+    {
+      "file": "agent-021-look-193300.jpg",
+      "event_id": "01a18a70-55e9-7e83-b5e3-228f1b2d65f6"
+    },
+    {
+      "file": "agent-022-obs-193312-p36.3.jpg",
+      "event_id": "01a18a70-8568-7713-9796-955e1aec4a08"
+    },
+    {
+      "file": "agent-023-look-193500.jpg",
+      "event_id": "01a18a72-2d3c-7260-b931-9bfc9812a725"
+    },
+    {
+      "file": "agent-024-look-193624.jpg",
+      "event_id": "01a18a73-746e-7ff3-b442-651bab337a7d"
+    },
+    {
+      "file": "agent-025-look-193806.jpg",
+      "event_id": "01a18a75-0380-7020-8f3b-20726800aa19"
+    },
+    {
+      "file": "agent-026-obs-193913-p40.2.jpg",
+      "event_id": "01a18a76-07a8-7c41-b778-fb8f5091fbd0"
+    },
+    {
+      "file": "agent-027-look-194001.jpg",
+      "event_id": "01a18a76-c1bc-7d11-b171-43fca664df31"
+    },
+    {
+      "file": "agent-028-look-194056.jpg",
+      "event_id": "01a18a77-9ac6-7343-9763-e6ffa2450d7d"
+    },
+    {
+      "file": "agent-029-look-194131.jpg",
+      "event_id": "01a18a78-214f-7a50-86de-6fdf78efb4ea"
+    },
+    {
+      "file": "agent-030-obs-194315-p41.2.jpg",
+      "event_id": "01a18a79-bac9-7ce1-914e-ad095bbbb65b"
+    },
+    {
+      "file": "agent-031-obs-194518-p41.2.jpg",
+      "event_id": "01a18a7b-9b48-7383-a7d6-2f5338e69c2b"
+    },
+    {
+      "file": "agent-032-look-194548.jpg",
+      "event_id": "01a18a7c-0d2f-7311-afd2-55f2a0b5fd66"
+    },
+    {
+      "file": "agent-033-obs-194719-p41.2.jpg",
+      "event_id": "01a18a7d-7410-7283-ad8d-f6282f0b6caf"
+    },
+    {
+      "file": "agent-034-obs-194920-p41.2.jpg",
+      "event_id": "01a18a7f-4bde-7553-a310-90da6d07bced"
+    },
+    {
+      "file": "agent-035-obs-195121-p41.2.jpg",
+      "event_id": "01a18a81-258c-74c2-9677-bb2c704ec9a7"
+    },
+    {
+      "file": "agent-036-obs-195324-p41.2.jpg",
+      "event_id": "01a18a83-035e-78a1-9f01-ce5f79b7cab4"
+    }
+  ],
+  "agent_images_source": "copied from printobserver's image store through `printobserver image --image-id <id> --json`; each file's sha256 is the one its event records in printobserver-history.json",
+  "agent_concerns": [
+    {
+      "file": "agent-003-obs-191258-p00.0.jpg",
+      "time": "2026-10-29 19:12:58",
+      "concern": "The few fine strings are cosmetic.",
+      "verdict": "other",
+      "explanation": "This frame shows nothing printed. The agent's 'first layers going down cleanly' and strings came from its later looks (rows 4-5), where a few fine strings near the ring are cosmetic."
+    },
+    {
+      "file": "agent-004-look-191445.jpg",
+      "time": "2026-10-29 19:14:45",
+      "concern": "The few fine strings are cosmetic.",
+      "verdict": "other",
+      "explanation": "Light travel stringing, typical of PETG; dismissing it as cosmetic was right."
+    },
+    {
+      "file": "agent-005-look-191620.jpg",
+      "time": "2026-10-29 19:16:20",
+      "concern": "The few fine strings are cosmetic.",
+      "verdict": "other",
+      "explanation": "Same turn; correctly read as cosmetic."
+    },
+    {
+      "file": "agent-009-look-192048.jpg",
+      "time": "2026-10-29 19:20:48",
+      "concern": "The wisp is probably a fine string or a reflection",
+      "verdict": "other",
+      "explanation": "A tiny fixed white wisp of filament on the ring's right rim; cosmetic. Dismissing it was right."
+    },
+    {
+      "file": "agent-010-obs-192101-p14.2.jpg",
+      "time": "2026-10-29 19:21:01",
+      "concern": "The wisp has not moved or grown across three frames",
+      "verdict": "other",
+      "explanation": "Correct: a static cosmetic string."
+    },
+    {
+      "file": "agent-011-look-192252.jpg",
+      "time": "2026-10-29 19:22:52",
+      "concern": "The wisp has not moved or grown across three frames",
+      "verdict": "other",
+      "explanation": "Same turn; correctly treated as cosmetic."
+    },
+    {
+      "file": "agent-012-obs-192303-p19.3.jpg",
+      "time": "2026-10-29 19:23:03",
+      "concern": "The small string has stayed the same across five frames, so it is cosmetic.",
+      "verdict": "other",
+      "explanation": "Correct."
+    },
+    {
+      "file": "agent-013-look-192454.jpg",
+      "time": "2026-10-29 19:24:54",
+      "concern": "The small string has stayed the same across five frames",
+      "verdict": "other",
+      "explanation": "Same turn; cosmetic."
+    },
+    {
+      "file": "agent-014-obs-192505-p23.9.jpg",
+      "time": "2026-10-29 19:25:05",
+      "concern": "The toolhead hides most of the ring in the later frame",
+      "verdict": "camera or lighting",
+      "explanation": "The look in row 15 is occluded by the toolhead; not a print problem."
+    },
+    {
+      "file": "agent-015-look-192653.jpg",
+      "time": "2026-10-29 19:26:53",
+      "concern": "The toolhead hides most of the ring",
+      "verdict": "camera or lighting",
+      "explanation": "Occlusion only; correctly not treated as a fault."
+    },
+    {
+      "file": "agent-016-obs-192707-p27.7.jpg",
+      "time": "2026-10-29 19:27:07",
+      "concern": "The event frame was partly blocked by the toolhead",
+      "verdict": "camera or lighting",
+      "explanation": "Taking a fresh look for an unobstructed view was the right thing to do."
+    },
+    {
+      "file": "agent-017-look-192829.jpg",
+      "time": "2026-10-29 19:28:29",
+      "concern": "The event frame was partly blocked by the toolhead",
+      "verdict": "camera or lighting",
+      "explanation": "Same turn; this clear frame confirms the print is healthy."
+    },
+    {
+      "file": "agent-022-obs-193312-p36.3.jpg",
+      "time": "2026-10-29 19:33:12",
+      "concern": "fine strings have been appearing across the inside of the ring and its top edge looks rough and porous",
+      "verdict": "real fault",
+      "explanation": "The observation was right (this frame shows it faintly, the turn's look in row 23 clearly), but the agent guessed at a design feature (a 'perforated or detailed band') and chose to keep watching. The wall stops bonding into a solid top and starts stringing across the open interior: an extrusion and bonding failure, consistent with PETG at PLA temperatures."
+    },
+    {
+      "file": "agent-023-look-193500.jpg",
+      "time": "2026-10-29 19:35:00",
+      "concern": "fine strings have been appearing across the inside of the ring and its top edge looks rough and porous",
+      "verdict": "real fault",
+      "explanation": "Same turn; a real defect, wrongly given the benefit of the doubt as a design feature, so the print continued."
+    },
+    {
+      "file": "agent-024-look-193624.jpg",
+      "time": "2026-10-29 19:36:24",
+      "concern": "fine strings have been appearing across the inside of the ring",
+      "verdict": "real fault",
+      "explanation": "Same turn; the defect clearly grew between looks, but the agent kept its 'watch' disposition."
+    },
+    {
+      "file": "agent-025-look-193806.jpg",
+      "time": "2026-10-29 19:38:06",
+      "concern": "I am watching it rather than stepping in",
+      "verdict": "real fault",
+      "explanation": "Same turn; by now continuing is plainly wrong, since the top is spaghetti."
+    },
+    {
+      "file": "agent-026-obs-193913-p40.2.jpg",
+      "time": "2026-10-29 19:39:13",
+      "concern": "Spaghetti failure at about 40%: a tangle of loose strings covers the top of the ring.",
+      "verdict": "real fault",
+      "explanation": "Correct, and pausing was right. The part has also come off the sheet, and the agent first noticed that ('it seemed to move between frames') but then wrongly put it down to camera angle."
+    },
+    {
+      "file": "agent-027-look-194001.jpg",
+      "time": "2026-10-29 19:40:01",
+      "concern": "a tangle of loose strings covers the top of the ring",
+      "verdict": "real fault",
+      "explanation": "Same turn; this extra look was taken before pausing, while more spaghetti was laid."
+    },
+    {
+      "file": "agent-028-look-194056.jpg",
+      "time": "2026-10-29 19:40:56",
+      "concern": "a strand trailing onto the bed",
+      "verdict": "real fault",
+      "explanation": "Same turn; the third consecutive position change. The pause came only after this look, about 2 minutes after the event frame."
+    },
+    {
+      "file": "agent-029-look-194131.jpg",
+      "time": "2026-10-29 19:41:31",
+      "concern": "The clear frame taken after the pause shows it still sitting on the sheet",
+      "verdict": "real fault",
+      "explanation": "'Sitting on' is not 'stuck to': frames 26-28 show the part moving with the nozzle, so it was detached. The agent's walk-back of the detachment was wrong, though it rightly left the check to a person."
+    },
+    {
+      "file": "agent-030-obs-194315-p41.2.jpg",
+      "time": "2026-10-29 19:43:15",
+      "concern": "The nozzle and bed are still being held hot (220 C and 60 C) while it waits",
+      "verdict": "other",
+      "explanation": "A fair point to raise for the person; holding the pause and escalating was right."
+    },
+    {
+      "file": "agent-031-obs-194518-p41.2.jpg",
+      "time": "2026-10-29 19:45:18",
+      "concern": "The event frame was half-corrupted by the camera",
+      "verdict": "camera or lighting",
+      "explanation": "Correct: a JPEG smear. Taking a fresh frame was right."
+    },
+    {
+      "file": "agent-032-look-194548.jpg",
+      "time": "2026-10-29 19:45:48",
+      "concern": "The event frame was half-corrupted by the camera",
+      "verdict": "camera or lighting",
+      "explanation": "Same turn; confirms the smear was a camera glitch."
+    },
+    {
+      "file": "agent-033-obs-194719-p41.2.jpg",
+      "time": "2026-10-29 19:47:19",
+      "concern": "The nozzle and bed are still being held hot",
+      "verdict": "other",
+      "explanation": "Informational; correct to leave it for the person."
+    },
+    {
+      "file": "agent-034-obs-194920-p41.2.jpg",
+      "time": "2026-10-29 19:49:20",
+      "concern": "The nozzle (220 C) and bed (60 C) have now been held hot for about eight minutes",
+      "verdict": "other",
+      "explanation": "Informational; holding the pause was right."
+    },
+    {
+      "file": "agent-035-obs-195121-p41.2.jpg",
+      "time": "2026-10-29 19:51:21",
+      "concern": "held hot for about ten minutes with nobody attending",
+      "verdict": "other",
+      "explanation": "Informational; it could reasonably have cooled the nozzle, but holding was acceptable."
+    },
+    {
+      "file": "agent-036-obs-195324-p41.2.jpg",
+      "time": "2026-10-29 19:53:24",
+      "concern": "The camera smeared the bottom of the frame again, the second time this has happened.",
+      "verdict": "camera or lighting",
+      "explanation": "Correct; the part is in the clean area, so the glitch hides nothing."
+    }
+  ],
+  "first_visible_failure": {
+    "file": "agent-023-look-193500.jpg",
+    "what_shows_it": "The top of the rim wall, smooth and clean in frame 20, has become a beaded, porous chain of blobs all round, and a long strand is strung across the open interior. Extrusion is no longer bonding into a solid wall, which is the start of the spaghetti. Frame 24 makes it unmistakable (several strands across the interior, the whole top porous), and frame 26 is the first to show the detachment itself: the part has jumped about 200 px to the right, then moves again in frames 27 and 28. A few beads on the right top edge in frames 21-22 are visible only in hindsight at full zoom."
+  },
+  "right_action": "At agent-023/024, pause the print and escalate for a person. The top of a solid wall going porous and stringing across open air is a real extrusion and bonding failure, not a design feature, and with an unknown material mismatch no temperature or flow tweak is a safe fix. At the latest, pause immediately at agent-026 when the part is seen displaced, without taking two more looks (the pause came only after agent-028, about 2 minutes later). Once the part has moved on the sheet, cancelling is also acceptable, but pause-and-escalate is preferred so a person can check the nozzle for wrapped filament. While paused and unattended, cooling the nozzle would be a reasonable extra step.",
+  "agent_did": "The agent judged the first 35% correctly, then noticed the stringing and porous top at about 19:33-19:38 but rationalised it as a possible design feature and kept watching. It paused and escalated only after the part had visibly detached, two looks and about 2 minutes after the event frame, and it wrongly walked back the detachment as a camera-angle effect. The pause was right but late, the watch at 23-25 was wrong, and the detachment call was wrongly retracted.",
+  "labelling_notes": "Frames are 1920x1080. The agent's 19:12:58 turn describes 'first layers going down cleanly' while its own event frame (row 3) shows an empty sheet; that description comes from the looks in rows 4-5. The 'UTC' times in the agent text (00:25, 01:41) are UTC; local is UTC-6, so the pause was at about 19:41 local, between rows 28 and 29. Unlike the brim in A, the 5 mm brim held the first layers down; the failure began at Z of about 9.4-10 mm, where the rim wall's top stopped bonding and strung across the interior, and the part then broke free and was pushed around by the nozzle (rows 26-28 show three different XY positions). This fits PETG printed at PLA settings (about 220 °C nozzle, 60 °C bed): weak layer and bed bonding plus heavy stringing. The agent never questioned the material and called 220 °C normal for PLA.",
+  "sources": {
+    "3423-TOP-REV F brim.gcode": "the G-code OctoPrint printed, byte for byte, from the run folder",
+    "provenance.json": "the operator's provenance for the run: the model, slicer, profiles and command that made the G-code",
+    "obico-predictions.json": "Obico's score for every frame it saw, exported by the operator's Obico export command",
+    "printobserver-history.json": "every event printobserver recorded for the print, from `printobserver history --print-id <id> --limit 1000 --json`",
+    "3423-TOP-REV F brim.stl": "the model provenance.json names (the same mesh as the first attempt)",
+    "3423-TOP-REV F.3mf": "the original model, as supplied (units: inch)"
+  },
+  "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "wall-top-porous-and-stringing",
+        "summary": "A periodic observation, then looks showing the top of the jar's rim wall turning porous and strung across the open interior; the agent should pause it for a person and never call it a design feature and carry on.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-022-obs-193312-p36.3.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-023-look-193500.jpg"
+          },
+          {
+            "image": "agent-024-look-193624.jpg"
+          }
+        ],
+        "accept_any_of": [
+          [
+            {
+              "operation": "pause"
+            }
+          ],
+          [
+            {
+              "operation": "cancel"
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "continue"
+            }
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "watch"
+            }
+          }
+        ]
+      },
+      {
+        "id": "part-detached-and-moved",
+        "summary": "A periodic observation shows the whole part, brim included, shifted about 200 px on the sheet with spaghetti around it; the agent should pause (or cancel) at once and never resume or adjust.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-026-obs-193913-p40.2.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-027-look-194001.jpg"
+          }
+        ],
+        "accept_any_of": [
+          [
+            {
+              "operation": "pause"
+            }
+          ],
+          [
+            {
+              "operation": "cancel"
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "continue"
+            }
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "watch"
+            }
+          }
+        ]
+      },
+      {
+        "id": "wall-building-cleanly",
+        "summary": "A periodic observation of the rim wall building cleanly at about a third of the way; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-020-obs-193110-p34.3.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-021-look-193300.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

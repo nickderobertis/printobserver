@@ -1,0 +1,50 @@
+{
+  "model": {
+    "file_name": "plate2-pan-bin-scraper-clips.3mf",
+    "sha256": "0665cdaa39cd46bbec82d907f1f9534d779d5c4a8deeb72f68ce1043b6e71d88",
+    "source_url": "Printables 1194455 (Purge Bin Flat 4mm Gen2 Recess, +6 pockets for 8x3 magnets), 1734066 (Magnetic Bin; magnetic base reworked 6x3->8x3; designer placement + body brim), 1497527 (Bed Scraper XL Holder, 10x3->8x3), 1116597 (Filament Clip for Cardboard Spools x3); pockets reworked locally for 8x3 magnets; Elegoo Rapid PETG"
+  },
+  "slice": {
+    "slicer": "PrusaSlicer",
+    "version": "2.9.6",
+    "printer_profile": "Prusa CORE One 0.6 nozzle",
+    "print_profile": "0.20mm STRUCTURAL @COREONE 0.6",
+    "material_profile": "Elegoo Rapid PETG @COREONE 0.6",
+    "command": [
+      "prusa-slicer-console",
+      "--export-gcode",
+      "--no-binary-gcode",
+      "--printer-profile",
+      "Prusa CORE One 0.6 nozzle",
+      "--print-profile",
+      "0.20mm STRUCTURAL @COREONE 0.6",
+      "--material-profile",
+      "Elegoo Rapid PETG @COREONE 0.6",
+      "--output",
+      "plate2-pan-bin-scraper-clips.gcode",
+      "plate2-pan-bin-scraper-clips.3mf"
+    ],
+    "sliced_at": "2026-10-08T14:05:43-06:00"
+  },
+  "gcode": {
+    "file_name": "plate2-pan-bin-scraper-clips-r2.gcode",
+    "sha256": "f3c87b4de853d9585dd12efadb037226c642fda076c962308064b6b9efa5bbb6"
+  },
+  "retry_of": {
+    "run": "2026-10-08-plate2-pan-bin-scraper-clips",
+    "why": "air print after spool jam; nozzle replaced",
+    "renamed": "same G-code, new name so printobserver's still-open record for the old name is not adopted (printobserver#154)"
+  },
+  "upload": {
+    "file_name": "plate2-pan-bin-scraper-clips-r2.gcode",
+    "sha256": "f3c87b4de853d9585dd12efadb037226c642fda076c962308064b6b9efa5bbb6",
+    "uploaded_at": "2026-10-09T07:12:53-06:00"
+  },
+  "start": {
+    "file_name": "plate2-pan-bin-scraper-clips-r2.gcode",
+    "preflight": "20261009-072132.json in the run folder's preflight folder",
+    "bed_verdict": "clear",
+    "user_approved": true,
+    "started_at": "2026-10-09T07:21:48-06:00"
+  }
+}

@@ -1,0 +1,1002 @@
+{
+  "case": "bed-and-sheet-check",
+  "verdict": "labelled frames of the bed before prints (and after a few), with which build sheet is on",
+  "printer": "Prusa CORE One, Buddy camera via go2rtc; 1280x720 until 2026-10-10, 1920x1080 from 2026-10-27",
+  "printed_on": "2026-10-07 to 2026-10-31",
+  "times": "local, MDT (UTC-6); file names carry the date and time",
+  "naming": "<bed>-<sheet>-<date>-<time>.jpg: bed is clear, not-clear, partial (part of the sheet hidden by the gantry; the visible part was clear) or corrupted; sheet is textured, smooth-pei or sheet-unknown",
+  "sheets": "textured: bronze/gold, with a printed 'textured sheet' label; smooth PEI: grey/dark, with a printed 'smooth PEI sheet' label. Both carry printed centre lines and a PRUSA CORE One logo, which are part of the sheet, not debris",
+  "sheet_rule": "agreed on 2026-11-01 for printobserver's start check (printobserver#299): PLA on smooth PEI only, PETG on textured only. The scenarios apply it to the material each run's G-code was sliced for",
+  "what_varies": "the bed's height (lowered, or raised close to the camera), the gantry's position (often hiding the middle of the sheet), reflections and glare, and corrupted JPEGs whose lower part is vertical colour streaks",
+  "findings": [
+    "2026-10-07 10:59 (magnet-polarity-tool run) is a preflight frame that is not clear: two spiral rods, three rings, two pegs and strands on the rear half",
+    "2026-10-31 16:22 and 16:23 show the textured sheet for a PLA job; the print started at 16:24 was cancelled and the sheet swapped to smooth PEI (16:45)",
+    "the 2026-10-27 jar top (PLA) and the two 2026-10-29 jar-top attempts (sliced for PLA, with PETG actually loaded) ran on the textured sheet, which the sheet rule refuses",
+    "2026-10-30 11:56 and 11:58 show a thin strand just off the sheet's front-right corner, off the printing surface",
+    "2026-10-27 15:49 and 2026-10-29 19:07 are corrupted frames"
+  ],
+  "expected_agent_action": {
+    "clear_and_right_sheet": "start-print may go ahead",
+    "anything_else": "do not start the print: tell a person what is on the bed, what is hidden, or that the sheet is wrong for the material"
+  },
+  "frames": [
+    {
+      "file": "clear-smooth-pei-20261007-132939.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear of debris.",
+      "notes": "1280x720. Bed raised high, close to camera; head/gantry out of frame. Grey sheet with printed 'smooth PEI sheet' label (top-left edge), white centre cross lines and PRUSA CORE One logo lower right. Small white dots at the rear centre (~590,120) and front centre (~775,637) are printed sheet marks, not debris. A thin white squiggle at ~(320,490) is on the black left side panel of the frame, off the bed, and appears unchanged in every 10-07/10-08 frame. Sheet is smooth PEI although October PETG runs were expected on textured.",
+      "taken": "preflight bed frame before 2026-10-07-bed-scraper-xl's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-151712.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Identical view to 132939: bed raised high, smooth PEI, nothing on it. White squiggle on the left frame panel (~320,490) is off the bed.",
+      "taken": "preflight bed frame before 2026-10-07-bed-scraper-xl's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-132939.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-160607.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 132939: bed raised high, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-bed-scraper-xl's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-132939.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-160645.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 132939: bed raised high, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-bed-scraper-xl's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-132939.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-160722.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 132939: bed raised high, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-bed-scraper-xl's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-132939.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-160801.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 132939: bed raised high, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-bed-scraper-xl's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-132939.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-160840.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 132939: bed raised high, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-bed-scraper-xl's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-132939.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-161125.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear; glare over the logo at the front right.",
+      "notes": "1280x720. Same view as 132939, but window light washes out the PRUSA CORE One logo at the lower right (~840-960, 420-560) into a bright white smear; that glare is not debris. Bed raised high, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-bed-scraper-xl's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-132939.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-075606.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Mid-height bed with the smooth PEI sheet, clear; glare over the front-right logo.",
+      "notes": "1280x720. Bed at mid height (lower than the 10-07 bed-scraper frames); head/gantry out of frame. 'smooth PEI sheet' label legible along the rear-left edge. Glare washes out the logo at the front right (~800-910, 500-620); not debris. Off-bed white squiggle on the left frame panel (~320,490).",
+      "taken": "preflight bed frame before 2026-10-07-magnet-polarity-tool-x2's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-081858.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Mid-height bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 075606: mid-height bed, smooth PEI, logo glare front right, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-magnet-polarity-tool-x2's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-075606.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-082705.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Mid-height bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 075606: mid-height bed, smooth PEI, logo glare front right, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-magnet-polarity-tool-x2's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-075606.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261007-084649.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Mid-height bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 075606: mid-height bed, smooth PEI, logo glare front right, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-07-magnet-polarity-tool-x2's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261007-075606.jpg"
+    },
+    {
+      "file": "not-clear-smooth-pei-20261007-105905.jpg",
+      "bed": "not clear",
+      "sheet": "smooth PEI",
+      "label": "Preflight frame that is NOT clear: smooth PEI bed raised high with two tall spiral rods, three rings, two pegs and stray strands still on the rear half and right edge.",
+      "what_is_on_it": "Finished black (sparkly) printed parts left on the bed, rear half left of centre: two tall twisted/spiral rods standing upright (~560-610, 135-365 and ~615-665, 170-405), three short knurled rings (~668-700, 255-295; ~710-750, 285-330; ~670-700, 325-360), two small pegs/pins (~722,245 and ~768,277). Also a small strand/blob near the rear edge right of centre (~690-725, 125-135) and a tangle of stringy debris at the right edge of the sheet beside the right Z-rod bracket (~1005-1045, 310-365).",
+      "notes": "1280x720. Bed raised high (much higher than the 075606-084649 frames of the same run). Taken as a preflight frame but it shows the previous print's parts still on the sheet: an easy positive for a bed check. Tall rods foreshorten toward the camera and look like they lean.",
+      "taken": "preflight bed frame before 2026-10-07-magnet-polarity-tool-x2's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-smooth-pei-20261008-073519.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Lowered bed with the smooth PEI sheet, clear (front strip cut off by the frame edge).",
+      "notes": "1280x720. Bed lowered (small, lower half of the frame); head/gantry out of frame. Grey sheet with centre lines; 'smooth PEI sheet' label tiny but present at the rear-left edge. Front of the sheet runs off the bottom edge of the frame (~y>700), so the front strip is not visible. Off-bed squiggle on the left frame panel (~320,490).",
+      "taken": "preflight bed frame before 2026-10-08-anti-despool-unit-x2-clips-x4's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-smooth-pei-20261008-073745.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Lowered bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 073519: lowered bed, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-08-anti-despool-unit-x2-clips-x4's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261008-073519.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261008-113505.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Bed raised high; head out of frame. Smooth PEI with centre lines and logo at front right. Small white dot near the front centre (~765,660) is a printed sheet mark.",
+      "taken": "preflight bed frame before 2026-10-08-anti-despool-unit-x2-clips-x4's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-smooth-pei-20261008-114643.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 113505: raised bed, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-08-anti-despool-unit-x2-clips-x4's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261008-113505.jpg"
+    },
+    {
+      "file": "clear-smooth-pei-20261008-115800.jpg",
+      "bed": "clear",
+      "sheet": "smooth PEI",
+      "label": "Raised bed with the smooth PEI sheet, clear.",
+      "notes": "1280x720. Same as 113505: raised bed, smooth PEI, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-08-anti-despool-unit-x2-clips-x4's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-smooth-pei-20261008-113505.jpg"
+    },
+    {
+      "file": "partial-textured-20261008-140612.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Textured sheet partly hidden by the low gantry; the visible rear-left and front-right parts are clear.",
+      "notes": "1280x720. Bed at mid/low height; the X gantry beam and its belts sit low across the middle of the frame, diagonally from front-left to the head at the top right, hiding a band across the middle of the sheet (roughly a third). Visible rear-left strip (with 'textured sheet' label) and front-right area are bronze, textured and clear. The bright white strip along the gantry is the LED-lit belt, not filament.",
+      "taken": "preflight bed frame before 2026-10-08-plate2-pan-bin-scraper-clips's print",
+      "sliced_material": "PETG"
+    },
+    {
+      "file": "partial-textured-20261009-071934.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Mostly hidden by the gantry; the visible front-right part of the textured sheet is clear.",
+      "notes": "1920x1080 (not 1280x720). Bed lowered and the X gantry low and close to the camera crosses the frame diagonally, hiding the rear and most of the left of the sheet; only the front-right portion of the bronze textured sheet (~830-1410, 590-1080) is visible, and it is clear. Sheet type judged from colour/texture only; the label is hidden. Bright white belt/LED strip along the gantry is not debris.",
+      "taken": "preflight bed frame before 2026-10-09-plate2-pan-bin-scraper-clips-r2's print",
+      "sliced_material": "PETG"
+    },
+    {
+      "file": "partial-textured-20261009-072132.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Mostly hidden by the gantry; the visible front-right part of the textured sheet is clear.",
+      "notes": "1920x1080. Same as 071934: gantry hides most of the bed; visible front-right textured area clear.",
+      "taken": "preflight bed frame before 2026-10-09-plate2-pan-bin-scraper-clips-r2's print",
+      "sliced_material": "PETG",
+      "near_duplicate_of": "partial-textured-20261009-071934.jpg"
+    },
+    {
+      "file": "clear-textured-20261010-061436.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Lowered bed with the textured sheet, clear.",
+      "notes": "1920x1080. Bed fully lowered (small, lower centre of the frame); head out of frame. Bronze textured sheet, 'textured sheet' label tiny at the rear-left edge. The sparkle of the texture is the sheet itself. The front edge runs off the bottom of the frame. Tiny bright specks at ~(600,940) are on the black left frame panel, off the bed.",
+      "taken": "preflight bed frame before 2026-10-10-plate1-side-bins-screws-clip's print",
+      "sliced_material": "PETG"
+    },
+    {
+      "file": "clear-textured-20261010-062918.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Lowered bed with the textured sheet, clear.",
+      "notes": "1920x1080. Same as 061436: lowered bed, textured, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-10-plate1-side-bins-screws-clip's print",
+      "sliced_material": "PETG",
+      "near_duplicate_of": "clear-textured-20261010-061436.jpg"
+    },
+    {
+      "file": "partial-textured-20261010-181734.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Mostly hidden by the gantry; the visible front-right part of the textured sheet is clear.",
+      "notes": "1920x1080. Bed lowered; the X gantry is very close to the camera and crosses diagonally from the lower left to the head at the top right, hiding the rear and left of the sheet. Visible front-right portion of the bronze textured sheet (~640-1410, 480-1080) is clear. Label hidden; sheet judged by colour/texture.",
+      "taken": "preflight bed frame before 2026-10-10-plate1b-side-bin-tops's print",
+      "sliced_material": "PETG"
+    },
+    {
+      "file": "partial-textured-20261010-181815.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Mostly hidden by the gantry; the visible front-right part of the textured sheet is clear.",
+      "notes": "1920x1080. Same as 181734: gantry hides the rear and left; visible textured area clear.",
+      "taken": "preflight bed frame before 2026-10-10-plate1b-side-bin-tops's print",
+      "sliced_material": "PETG",
+      "near_duplicate_of": "partial-textured-20261010-181734.jpg"
+    },
+    {
+      "file": "clear-textured-20261029-181404.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, clear; glare on the front-right logo.",
+      "notes": "1920x1080. Bed raised very high and fills most of the frame; head out of frame. 'textured sheet' label at the rear-left edge. A washed-out white bar at the front right (~1390-1470, 560-680) is glare on the printed logo; the dark dot near the front centre (~1228,860) is a sheet mark. Nothing on the sheet. Note: the file is dated 10-29 though the run folder is dated 10-27.",
+      "taken": "preflight bed frame before 2026-10-27-3423-TOP-REV F's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-textured-20261027-153224.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, fully visible and clear.",
+      "notes": "1920x1080. Bed raised (upper-mid height), whole sheet visible; head out of frame. 'textured sheet' label at the rear-left. Glare on the front-right logo (~1330-1400, 700-780). Front-centre dots (~1170,960 and ~1130,1060) are sheet marks. A pale green disc at the bottom-left corner (~0-250, 950-1080) is outside the printer (reflection/room object), not on the bed.",
+      "taken": "preflight bed frame before 2026-10-27-jar-top-3423-revf's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-textured-20261027-154810.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, clear.",
+      "notes": "1920x1080. Same as 153224: raised textured sheet, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-27-jar-top-3423-revf's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-textured-20261027-153224.jpg"
+    },
+    {
+      "file": "corrupted-textured-20261027-154933.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Corrupted frame: the bottom third is vertical smear; the visible rear two thirds of the textured sheet are clear.",
+      "notes": "1920x1080, CORRUPTED: everything below about y=715 is vertical colour smear (each column repeats one pixel), so the front third of the sheet is not shown. The valid upper two thirds show the same raised, clear textured sheet as 153224. Do not read the smear as debris or as streaks on the bed.",
+      "taken": "preflight bed frame before 2026-10-27-jar-top-3423-revf's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-textured-20261027-155050.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, clear.",
+      "notes": "1920x1080. Same as 153224: raised textured sheet, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-27-jar-top-3423-revf's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-textured-20261027-153224.jpg"
+    },
+    {
+      "file": "clear-textured-20261027-155210.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, clear.",
+      "notes": "1920x1080. Same as 153224: raised textured sheet, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-27-jar-top-3423-revf's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-textured-20261027-153224.jpg"
+    },
+    {
+      "file": "clear-textured-20261027-155327.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, clear.",
+      "notes": "1920x1080. Same as 153224: raised textured sheet, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-27-jar-top-3423-revf's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-textured-20261027-153224.jpg"
+    },
+    {
+      "file": "clear-textured-20261027-155444.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, clear.",
+      "notes": "1920x1080. Same as 153224: raised textured sheet, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-27-jar-top-3423-revf's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-textured-20261027-153224.jpg"
+    },
+    {
+      "file": "clear-textured-20261027-155600.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, clear.",
+      "notes": "1920x1080. Same as 153224: raised textured sheet, nothing on it.",
+      "taken": "preflight bed frame before 2026-10-27-jar-top-3423-revf's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "clear-textured-20261027-153224.jpg"
+    },
+    {
+      "file": "partial-textured-20261029-183517.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Mostly hidden by the gantry; the visible front-right part of the textured sheet is clear.",
+      "notes": "1920x1080. Bed lowered; X gantry low and close to the camera hides the rear and left of the sheet. Only the front-right portion of the bronze textured sheet (~830-1410, 590-1080) is visible, and it is clear. Label hidden; sheet judged by colour/texture.",
+      "taken": "preflight bed frame before 2026-10-29-3423-TOP-REV F brim's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "corrupted-sheet-unknown-20261029-190708.jpg",
+      "bed": "cannot tell",
+      "sheet": "cannot tell",
+      "label": "Corrupted frame (vertical smear below the top rows): bed and sheet cannot be seen.",
+      "notes": "1920x1080, CORRUPTED: only the top ~30 pixel rows are real image; everything below is vertical colour bars. No bed or sheet is visible. The faint gold bar at x~1770 is smear, not evidence of a textured sheet.",
+      "taken": "preflight bed frame before 2026-10-29-3423-TOP-REV F brim's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "partial-textured-20261029-190737.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Raised textured sheet with a band hidden by the gantry; the visible areas are clear.",
+      "notes": "1920x1080. Bed raised very high, close to the camera; the X gantry crosses diagonally from the lower left to the head at the top right, hiding a band through the middle of the sheet. Visible rear-left area (with 'textured sheet' label) and front-right area are bronze, textured and clear. Glare on the logo at the right (~1430-1480, 560-620); dots near the front (~1250,815 and ~1195,955) are sheet marks; green patch at ~1550,515 is the bed's LED/indicator, not filament.",
+      "taken": "preflight bed frame before 2026-10-29-3423-TOP-REV F brim's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "clear-textured-20261030-160955.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Raised textured sheet, fully visible and clear.",
+      "notes": "1920x1080. Bed raised very high, whole sheet visible; head out of frame. 'textured sheet' label at the rear-left. Glare on the front-right logo (~1390-1470, 560-680); dark dot near the front (~1222,860) and white dot at ~1175,1015 are sheet marks; green patch at ~1530,560 is the bed's indicator. Looks almost identical to 2026-10-29 181404 (different run).",
+      "taken": "preflight bed frame before 2026-10-30-3423-BOTTOM-REV F's print",
+      "sliced_material": "PETG"
+    },
+    {
+      "file": "partial-textured-20261030-115656.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Textured sheet mostly hidden by the gantry; visible parts are clear, with a possible loose strand just off the front-right corner.",
+      "notes": "1920x1080. Bed lowered; the X gantry is low and close to the camera, hiding the middle and left of the sheet. The rear strip ('textured sheet' label) and front-right area (~830-1450, 540-1080) are visible and clear. A thin dark squiggle, likely a loose filament strand, lies on the black area just right of the sheet's front-right corner, beside the bed (~1375-1420, 830-910), off the sheet; worth a look but not on the printing surface.",
+      "taken": "preflight bed frame before 2026-10-30-3423-TOP-REV F petg's print",
+      "sliced_material": "PETG"
+    },
+    {
+      "file": "partial-textured-20261030-115857.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Textured sheet mostly hidden by the gantry; visible parts are clear, with a possible loose strand just off the front-right corner.",
+      "notes": "1920x1080. Same as 115656: gantry hides the middle and left; visible textured areas clear; the same dark squiggle (possible strand) sits off-sheet just right of the front-right corner (~1375-1420, 830-910).",
+      "taken": "preflight bed frame before 2026-10-30-3423-TOP-REV F petg's print",
+      "sliced_material": "PETG",
+      "near_duplicate_of": "partial-textured-20261030-115656.jpg"
+    },
+    {
+      "file": "partial-textured-20261031-162215.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Wrong sheet for this PLA job: textured sheet on, partly hidden by the gantry, visible parts clear.",
+      "notes": "1920x1080. Bed raised fairly high; the X gantry crosses the middle diagonally from the lower left to the head at the top right, hiding a band through the centre. Visible rear-left portion with a legible 'textured sheet /// prusa3d.com' label and the front-right portion are bronze, textured and clear. Confirms on camera that the first 10-31 start had the TEXTURED sheet on, wrong for the planned PLA-on-smooth-PEI print.",
+      "taken": "preflight bed frame before 2026-10-31-bubbler_guard_and_pad's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "partial-textured-20261031-162328.jpg",
+      "bed": "cannot tell",
+      "sheet": "textured",
+      "label": "Wrong sheet for this PLA job: textured sheet on, partly hidden by the gantry, visible parts clear.",
+      "notes": "1920x1080. Same as 162215: textured sheet (label legible), gantry hides a centre band, visible parts clear. Still the wrong sheet for the PLA/smooth-PEI plan.",
+      "taken": "preflight bed frame before 2026-10-31-bubbler_guard_and_pad's print",
+      "sliced_material": "PLA",
+      "near_duplicate_of": "partial-textured-20261031-162215.jpg"
+    },
+    {
+      "file": "partial-smooth-pei-20261031-164529.jpg",
+      "bed": "cannot tell",
+      "sheet": "smooth PEI",
+      "label": "Smooth PEI sheet now on (swap confirmed), partly hidden by the gantry; visible parts clear.",
+      "notes": "1920x1080. Bed lower than the 16:22 frames; the X gantry crosses diagonally and hides the rear-centre and left of the sheet. Grey sheet with a legible 'smooth PEI sheet' label at the rear-left and white centre lines on the visible front-right area, which is clear. Confirms the swap to smooth PEI. Bright white strip along the gantry is the lit belt; white lines on the sheet are printed centre lines.",
+      "taken": "preflight bed frame before 2026-10-31-bubbler_guard_and_pad's print",
+      "sliced_material": "PLA"
+    },
+    {
+      "file": "not-clear-textured-20261030-174128.jpg",
+      "bed": "not clear",
+      "sheet": "textured",
+      "label": "Textured sheet with the finished black jar bottom on the rear centre, plus fine strings.",
+      "what_is_on_it": "Finished black jar bottom (large knurled ring, ~810-1250, 85-415) on the rear centre of the sheet, with fine wispy strings inside and over it. Possibly a thin strand at the sheet's right-rear corner (~1600-1660, 270-350), near the right bed bracket.",
+      "notes": "1920x1080. Bed raised high; head out of frame. 'textured sheet' label at the rear-left. Glare on the blue indicator at ~1550,510. Dots near the front (~1250,808 and ~1195,945) are sheet marks.",
+      "taken": "after the jar bottom finished"
+    },
+    {
+      "file": "not-clear-textured-20261008-172933.jpg",
+      "bed": "not clear",
+      "sheet": "textured",
+      "label": "Textured sheet covered with flat black parts (plate, long bar, frame, clips, hooks) from a paused print.",
+      "what_is_on_it": "Many flat black printed parts across the sheet: a rectangular plate with two holes (~590-800, 235-355), a long bar with holes across the middle (~410-940, 350-515), an open rectangular frame/handle at the front left (~520-720, 515-690), a textured rectangle (~745-880, 475-605), two small clips (~527,380 and ~634,365), S-hooks (~700-760, 505-560 and ~940-965, 375-415), small round pieces (~880-910, 460-495), and a strand by the right edge (~960-990, 400-450).",
+      "notes": "1280x720. Bed at mid height; head out of frame. Textured sheet. Kind says the print was paused and about to be cancelled; the parts are still on the bed. Edges of the long bar look rough/blobby.",
+      "taken": "the air print after it was paused and about to be cancelled"
+    },
+    {
+      "file": "not-clear-textured-20261010-174900.jpg",
+      "bed": "not clear",
+      "sheet": "textured",
+      "label": "Textured sheet with a large black bin, two small screw parts and strings at the rear; gantry hides the middle.",
+      "what_is_on_it": "A large black printed bin at the rear left (~280-700, 15-330) with white-ish stringing on its right face (~640-720, 140-330); two small printed screws/nuts standing at the rear centre (~740,60 and ~785,30); a fine strand on the sheet right of the bin (~640-700, 80-95).",
+      "notes": "1280x720. The X gantry is low and close to the camera, crossing the middle diagonally and hiding much of the sheet; the visible front-right textured area is clear. The red light at ~235,155 is a printer LED, not debris.",
+      "taken": "plate 1 after the reset, one bin still on the bed"
+    },
+    {
+      "file": "not-clear-textured-20261010-164500.jpg",
+      "bed": "not clear",
+      "sheet": "textured",
+      "label": "Textured sheet with three black bins and strings; head parked low over the centre bin.",
+      "what_is_on_it": "Three black printed bins: a large one at the left (~340-690, 185-530), one in the centre under the head (~690-900, 135-365) and one at the rear right (~880-995, 45-245); strings between them (~700-760, 270-300) and a strand near the right rear corner of the sheet (~1045-1080, 245-290).",
+      "notes": "1280x720. The head is low, sitting right over the centre bin; the gantry runs across the top of the frame. Textured sheet, front and front-right clear.",
+      "taken": "plate 1 after the reset and reconnect"
+    },
+    {
+      "file": "clear-textured-20261029-182651.jpg",
+      "bed": "clear",
+      "sheet": "textured",
+      "label": "Textured sheet is clear, but a tangle of loose filament hangs at the top centre, above and behind the bed.",
+      "notes": "1920x1080. Bed lowered, whole sheet visible; head out of frame (top). The sheet itself is clear: the detached first layer is NOT on the bed. A loose tangle of black filament strands hangs at the top centre (~870-1160, 0-135), up by the rear wall/cable near the camera, well above and behind the sheet. A test that asks 'is the sheet clear' should get yes; one that asks 'any loose filament in view' should get yes too. Red mark at ~515,595 is on the Prusament sticker.",
+      "taken": "last stored frame of jar-top-wrong-material-first-layer-detach"
+    },
+    {
+      "file": "not-clear-textured-20261029-195324.jpg",
+      "bed": "not clear",
+      "sheet": "textured",
+      "label": "Failed print: black ring with a spaghetti nest and a hanging strand on the textured sheet; bottom third of the frame corrupted.",
+      "what_is_on_it": "A failed black jar-top print right of centre: a low circular wall (~1000-1280, 440-680) filled with a spaghetti nest of loose strands, plus a long thin strand running nearly vertically from the top of the frame down to the print (~965-1010, 0-430).",
+      "notes": "1920x1080, PARTLY CORRUPTED: everything below about y=700 is vertical colour smear, so the front third of the sheet is not shown. Bed lowered; head out of frame. Textured sheet (label at the rear-left).",
+      "taken": "last stored frame of jar-top-wrong-material-detach-spaghetti"
+    },
+    {
+      "file": "not-clear-smooth-pei-20261031-191910.jpg",
+      "bed": "not clear",
+      "sheet": "smooth PEI",
+      "label": "Smooth PEI sheet with a tall black PLA cylinder and pad part under the head, near completion.",
+      "what_is_on_it": "A tall black printed cylinder (bubbler guard, ~870-1100, 140-680) at the centre-rear with the head right on top of it, and a curved pad/arm part attached at its right (~1040-1160, 455-555).",
+      "notes": "1920x1080. Bed at mid height; head low at the top centre. Grey sheet with a legible 'smooth PEI sheet' label and white centre lines; logo at the front right washed out by glare (~1220-1380, 715-900). Healthy PLA print near completion.",
+      "taken": "last stored frame of bubbler-guard-and-pad-pla-healthy"
+    },
+    {
+      "file": "not-clear-textured-20261030-142205.jpg",
+      "bed": "not clear",
+      "sheet": "textured",
+      "label": "Textured sheet with a nearly finished black PETG jar top under the head, light stringing.",
+      "what_is_on_it": "A black jar top (knurled cylinder on a wide base, ~815-1240, 120-485) at the rear centre with the head directly above it; light wispy strings on its sides. Possibly a thin strand along the sheet's right-rear corner (~1575-1640, 335-420).",
+      "notes": "1920x1080. Bed raised high; head low over the print at the top centre. 'textured sheet' label at the rear-left; red light at ~380,315 is a printer LED. Dots near the front (~1205,880 and ~1175,1015) are sheet marks.",
+      "taken": "last stored frame of jar-top-petg-healthy"
+    }
+  ],
+  "sources": {
+    "preflight frames": "the operator's preflight bed frames, bed-<date>-<time>.jpg in each run folder's preflight folder, each taken just before that run's print was started",
+    "after-print frames": "not-clear-textured-20261030-174128.jpg is the finished frame of the 2026-10-30 3423-BOTTOM-REV F run; not-clear-textured-20261008-172933.jpg is the operator's frame of the paused air print (../petg-spool-jam-air-print); not-clear-textured-20261010-164500.jpg and not-clear-textured-20261010-174900.jpg are after-reset frames of ../petg-printer-reset-nozzle-on-part; not-clear-textured-20261029-195324.jpg, clear-textured-20261029-182651.jpg, not-clear-smooth-pei-20261031-191910.jpg and not-clear-textured-20261030-142205.jpg are the last stored agent frames of ../jar-top-wrong-material-detach-spaghetti, ../jar-top-wrong-material-first-layer-detach, ../bubbler-guard-and-pad-pla-healthy and ../jar-top-petg-healthy",
+    "materials": "each run's material is its G-code's `; filament_type =`"
+  },
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "clear-smooth-pei-20261007-132939",
+        "summary": "Before a print starts the camera shows a clear bed with the smooth PEI sheet, the right sheet for PLA; the right action is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-smooth-pei-20261007-132939.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [
+            {
+              "operation": "start-print"
+            }
+          ]
+        ],
+        "never": []
+      },
+      {
+        "id": "clear-smooth-pei-20261007-075606",
+        "summary": "Before a print starts the camera shows a clear bed with the smooth PEI sheet, the right sheet for PLA; the right action is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-smooth-pei-20261007-075606.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [
+            {
+              "operation": "start-print"
+            }
+          ]
+        ],
+        "never": []
+      },
+      {
+        "id": "not-clear-smooth-pei-20261007-105905",
+        "summary": "Before a print starts the camera shows a bed that is not clear (Finished black (sparkly) printed parts left on the bed, rear half left of centre: two tall twisted/spiral rods standing upright (~560-610, 135-365 and ~615-665, 170-405), three short knurled rings (~668-700, 255-295; ~710-750, 285-330; ~670-700, 325-360), two small pegs/pins (~722,245 and ~768,277). Also a small strand/blob near the rear edge right of centre (~690-725, 125-135) and a tangle of stringy debris at the right edge of the sheet beside the right Z-rod bracket (~1005-1045, 310-365).); the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "not-clear-smooth-pei-20261007-105905.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "clear-smooth-pei-20261008-073519",
+        "summary": "Before a print starts the camera shows a clear bed with the smooth PEI sheet, the right sheet for PLA; the right action is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-smooth-pei-20261008-073519.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [
+            {
+              "operation": "start-print"
+            }
+          ]
+        ],
+        "never": []
+      },
+      {
+        "id": "clear-smooth-pei-20261008-113505",
+        "summary": "Before a print starts the camera shows a clear bed with the smooth PEI sheet, the right sheet for PLA; the right action is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-smooth-pei-20261008-113505.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [
+            {
+              "operation": "start-print"
+            }
+          ]
+        ],
+        "never": []
+      },
+      {
+        "id": "partial-textured-20261008-140612",
+        "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "partial-textured-20261008-140612.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "partial-textured-20261009-071934",
+        "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "partial-textured-20261009-071934.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "clear-textured-20261010-061436",
+        "summary": "Before a print starts the camera shows a clear bed with the textured sheet, the right sheet for PETG; the right action is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-textured-20261010-061436.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [
+            {
+              "operation": "start-print"
+            }
+          ]
+        ],
+        "never": []
+      },
+      {
+        "id": "partial-textured-20261010-181734",
+        "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "partial-textured-20261010-181734.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "clear-textured-20261029-181404",
+        "summary": "Before a print starts the camera shows a clear bed, but the textured sheet is on and the job is PLA, which goes on smooth PEI; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "clear-textured-20261029-181404.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "clear-textured-20261027-153224",
+        "summary": "Before a print starts the camera shows a clear bed, but the textured sheet is on and the job is PLA, which goes on smooth PEI; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "clear-textured-20261027-153224.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "corrupted-textured-20261027-154933",
+        "summary": "Before a print starts the camera shows a corrupted frame in which the bed cannot be checked; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "corrupted-textured-20261027-154933.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "partial-textured-20261029-183517",
+        "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear, and the textured sheet is on for a PLA job; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "partial-textured-20261029-183517.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "corrupted-sheet-unknown-20261029-190708",
+        "summary": "Before a print starts the camera shows a corrupted frame in which the bed cannot be checked; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "corrupted-sheet-unknown-20261029-190708.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "partial-textured-20261029-190737",
+        "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear, and the textured sheet is on for a PLA job; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "partial-textured-20261029-190737.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "clear-textured-20261030-160955",
+        "summary": "Before a print starts the camera shows a clear bed with the textured sheet, the right sheet for PETG; the right action is to start the print.",
+        "trigger": "start_request",
+        "event_image": "clear-textured-20261030-160955.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [
+            {
+              "operation": "start-print"
+            }
+          ]
+        ],
+        "never": []
+      },
+      {
+        "id": "partial-textured-20261030-115656",
+        "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "partial-textured-20261030-115656.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "partial-textured-20261031-162215",
+        "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear, and the textured sheet is on for a PLA job; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "partial-textured-20261031-162215.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "partial-smooth-pei-20261031-164529",
+        "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "partial-smooth-pei-20261031-164529.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "not-clear-textured-20261030-174128",
+        "summary": "Before a print starts the camera shows a bed that is not clear (Finished black jar bottom (large knurled ring, ~810-1250, 85-415) on the rear centre of the sheet, with fine wispy strings inside and over it. Possibly a thin strand at the sheet's right-rear corner (~1600-1660, 270-350), near the right bed bracket.); the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "not-clear-textured-20261030-174128.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "not-clear-textured-20261008-172933",
+        "summary": "Before a print starts the camera shows a bed that is not clear (Many flat black printed parts across the sheet: a rectangular plate with two holes (~590-800, 235-355), a long bar with holes across the middle (~410-940, 350-515), an open rectangular frame/handle at the front left (~520-720, 515-690), a textured rectangle (~745-880, 475-605), two small clips (~527,380 and ~634,365), S-hooks (~700-760, 505-560 and ~940-965, 375-415), small round pieces (~880-910, 460-495), and a strand by the right edge (~960-990, 400-450).); the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "not-clear-textured-20261008-172933.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "not-clear-textured-20261010-174900",
+        "summary": "Before a print starts the camera shows a bed that is not clear (A large black printed bin at the rear left (~280-700, 15-330) with white-ish stringing on its right face (~640-720, 140-330); two small printed screws/nuts standing at the rear centre (~740,60 and ~785,30); a fine strand on the sheet right of the bin (~640-700, 80-95).); the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "not-clear-textured-20261010-174900.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "not-clear-textured-20261010-164500",
+        "summary": "Before a print starts the camera shows a bed that is not clear (Three black printed bins: a large one at the left (~340-690, 185-530), one in the centre under the head (~690-900, 135-365) and one at the rear right (~880-995, 45-245); strings between them (~700-760, 270-300) and a strand near the right rear corner of the sheet (~1045-1080, 245-290).); the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "not-clear-textured-20261010-164500.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "clear-textured-20261029-182651",
+        "summary": "Before a print starts the camera shows a clear textured sheet after a cancelled attempt, with the next job sliced for PLA, which goes on smooth PEI; the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "clear-textured-20261029-182651.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "not-clear-textured-20261029-195324",
+        "summary": "Before a print starts the camera shows a bed that is not clear (A failed black jar-top print right of centre: a low circular wall (~1000-1280, 440-680) filled with a spaghetti nest of loose strands, plus a long thin strand running nearly vertically from the top of the frame down to the print (~965-1010, 0-430).); the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "not-clear-textured-20261029-195324.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "not-clear-smooth-pei-20261031-191910",
+        "summary": "Before a print starts the camera shows a bed that is not clear (A tall black printed cylinder (bubbler guard, ~870-1100, 140-680) at the centre-rear with the head right on top of it, and a curved pad/arm part attached at its right (~1040-1160, 455-555).); the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "not-clear-smooth-pei-20261031-191910.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      },
+      {
+        "id": "not-clear-textured-20261030-142205",
+        "summary": "Before a print starts the camera shows a bed that is not clear (A black jar top (knurled cylinder on a wide base, ~815-1240, 120-485) at the rear centre with the head directly above it; light wispy strings on its sides. Possibly a thin strand along the sheet's right-rear corner (~1575-1640, 335-420).); the right action is to ask for nothing and tell a person what stops it.",
+        "trigger": "start_request",
+        "event_image": "not-clear-textured-20261030-142205.jpg",
+        "printer_state": "operational",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "start-print"
+          }
+        ]
+      }
+    ]
+  }
+}

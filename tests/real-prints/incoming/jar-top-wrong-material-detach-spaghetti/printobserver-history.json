@@ -1,0 +1,2683 @@
+{
+  "events": [
+    {
+      "id": "01a18a83-c014-7501-bf03-ded00f40fffe",
+      "kind": "supervision_session_closed",
+      "payload": {
+        "close_reason": "the print reached Operational",
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:54:12.628516500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a83-c012-77a0-97fd-41b9304fec71",
+      "kind": "filament_consumed",
+      "payload": {
+        "analysed_length_mm": 15790.37921000096,
+        "charge_key": {
+          "key": "print",
+          "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+          "segment": 0,
+          "tool": 0
+        },
+        "length_mm": 4010.1456400001352,
+        "method": "gcode_extrusion",
+        "position": {
+          "bytes": 1936081,
+          "observed_at": "2026-10-30T01:53:56.478986300Z",
+          "size_bytes": 4697585
+        },
+        "tool": 0
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:54:12.626670400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a83-c012-77a0-97fd-41cd94777a5a",
+      "kind": "print_ended",
+      "payload": {
+        "last_position": {
+          "bytes": 1936081,
+          "observed_at": "2026-10-30T01:53:56.478986300Z",
+          "size_bytes": 4697585
+        },
+        "outcome": "cancelled",
+        "reason": "the print reached Operational",
+        "state": "operational"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:54:12.626422500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a83-78a9-77d0-aa0b-30770e46ab46",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. Printer connection paused, no adjustments or narrowings in force, detector unchecked, nozzle 219.82 C, bed 60.04 C. 2) Opened the event image. The bottom third is smeared into vertical streaks, the same camera glitch as at 01:45. The top two-thirds are undamaged and show the whole ring: solid lower walls, the spaghetti nest on top and the strand up to the nozzle, all unchanged. 3) Ran `printobserver acknowledge-failure` with disposition stop, and noted the repeated camera glitch in the reason. It was accepted and succeeded (record 01a18a83-6023-7702-87cc-57d93fc60ccb). I took no further look because the part of the frame that shows the print is clean. I made no adjustments and did not resume the print.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "The print is still paused at 41% after the spaghetti failure and is waiting for a person; nothing has changed in about 12 minutes. The camera smeared the bottom of the frame again, the second time this has happened.",
+          "why": "The print is safely paused and still needs a person. None of my adjustments can fix the spaghetti. The whole part is in the undamaged area of the frame, so the glitch does not affect what I can see. It has now happened twice, though, so the camera or stream should be checked. The nozzle (220 C) and bed (60 C) have been held hot for about 12 minutes. The person should check whether the part is still attached, whether filament is wrapped around the nozzle, and whether the filament is wet. Then cancel, or clear the nozzle and resume."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:53:54.345456200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a83-6024-7bc0-ac64-bab63cfdf34b",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a83-6023-7702-87cc-57d93fc60ccb"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:53:48.068441600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a83-6024-7bc0-ac64-baaa4f39779d",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a83-035e-78a1-9f01-ce5f79b7cab4",
+          "reason": "Still paused at 41% and waiting for a person; nothing has changed since I paused it at 01:41, now about 12 minutes ago. The ring and its spaghetti nest are fully visible in the undamaged top of the frame and look unchanged, with the strand still running up to the nozzle. The bottom third of this frame is corrupted by vertical smearing, the second time this camera glitch has appeared (01:45 and 01:53), so please check the camera or stream as well. Nozzle held at 220 C and bed at 60 C. A person should check whether the part is still attached, filament wrapped around the nozzle, and whether the filament is wet, then cancel or clear the nozzle and resume."
+        },
+        "action_id": "01a18a83-6023-7702-87cc-57d93fc60ccb",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:53:48.068244900Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a83-035e-78a1-9f01-ce5f79b7cab4",
+      "image": {
+        "id": "01a18a83-06f7-74b1-afd2-4c1e38fe510d",
+        "sha256": "a3f643ce9e9c7da70c7ed304e26de433363043e6bc20aeccc1a5ec2463d68185"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.41214389947174984
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1936081,
+          "print_time_left_s": 2962,
+          "print_time_s": 1979,
+          "size_bytes": 4697585,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.06
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-10-30T01:53:24.312586100Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.23
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:53:24.318279800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a81-91a5-7f41-9868-e849858506c2",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. Printer connection paused, no adjustments or narrowings in force, detector unchecked, nozzle 220.17 C, bed 59.97 C. 2) Opened the event image. The frame is clean and the same as before: the ring's lower walls are solid on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. 3) Ran `printobserver acknowledge-failure` with disposition stop. It was accepted and succeeded (record 01a18a81-7d76-7220-811d-e3ddb0aebdd4). I took no further look because the event frame is clean and shows the print still paused. I made no adjustments and did not resume the print.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "The print is still paused at 41% after the spaghetti failure and is waiting for a person. Nothing has changed since I paused it at 01:41, about ten minutes ago.",
+          "why": "The print is safely paused and still needs a person. None of my adjustments can fix the spaghetti. The nozzle (220 C) and bed (60 C) have now been held hot for about ten minutes with nobody attending. The person should check whether the part is still attached, whether filament is wrapped around the nozzle, and whether the filament is wet. Then cancel, or clear the nozzle and resume."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:51:49.669038400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a81-7d77-7ce2-896e-73e44439b0d1",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a81-7d76-7220-811d-e3ddb0aebdd4"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:51:44.503314500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a81-7d77-7ce2-896e-73d883fa1d15",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a81-258c-74c2-9677-bb2c704ec9a7",
+          "reason": "Still paused at 41% and waiting for a person; nothing has changed since I paused it at 01:41, now about 10 minutes ago. The ring's lower walls are solid on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. Nozzle held at 220 C and bed at 60 C. A person should check whether the part is still attached, filament wrapped around the nozzle, and whether the filament is wet, then cancel or clear the nozzle and resume."
+        },
+        "action_id": "01a18a81-7d76-7220-811d-e3ddb0aebdd4",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:51:44.503088600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a81-258c-74c2-9677-bb2c704ec9a7",
+      "image": {
+        "id": "01a18a81-2e83-7ca3-8c48-0efe5fd1afc5",
+        "sha256": "07d39e6b387b947520359f49370215a13514aba0c3063dbb75c3d84554f8b682"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.41214389947174984
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1936081,
+          "print_time_left_s": 2962,
+          "print_time_s": 1979,
+          "size_bytes": 4697585,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.97
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-10-30T01:51:21.988474800Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.13
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:51:21.996230600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7f-b4c3-7142-899c-72e9c0f372cb",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. Printer connection paused, no adjustments or narrowings in force, detector unchecked, nozzle 219.92 C, bed 59.96 C. 2) Opened the event image. The frame is clean and the same as before: the ring's lower walls are solid on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. 3) Ran `printobserver acknowledge-failure` with disposition stop. It was accepted and succeeded (record 01a18a7f-a0aa-7f41-9236-0527b5b1dda0). I took no further look because the event frame is clean and shows the print still paused. I made no adjustments and did not resume the print.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "The print is still paused at 41% after the spaghetti failure and is waiting for a person. Nothing has changed since I paused it at 01:41, about eight minutes ago.",
+          "why": "The print is safely paused and still needs a person. None of my adjustments can fix the spaghetti. The nozzle (220 C) and bed (60 C) have now been held hot for about eight minutes. The person should check whether the part is still attached, whether filament is wrapped around the nozzle, and whether the filament is wet. Then cancel, or clear the nozzle and resume."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:49:47.587753600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7f-a0aa-7f41-9236-054d8c1c18d1",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a7f-a0aa-7f41-9236-0527b5b1dda0"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:49:42.442822700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a7f-a0aa-7f41-9236-05351cc5b1b3",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a7f-4bde-7553-a310-90da6d07bced",
+          "reason": "Still paused at 41% and waiting for a person; nothing has changed since I paused it at 01:41, now about 8 minutes ago. The ring's lower walls are solid on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. Nozzle held at 220 C and bed at 60 C. A person should check whether the part is still attached, filament wrapped around the nozzle, and whether the filament is wet, then cancel or clear the nozzle and resume."
+        },
+        "action_id": "01a18a7f-a0aa-7f41-9236-0527b5b1dda0",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:49:42.442646600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a7f-4bde-7553-a310-90da6d07bced",
+      "image": {
+        "id": "01a18a7f-50a8-7421-8d30-e8f7975aa0df",
+        "sha256": "6d9ccc60b9fd9def7186470090b5dac9ea78ac26e5b8feadb59aea95017c0e51"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.41214389947174984
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1936081,
+          "print_time_left_s": 2962,
+          "print_time_s": 1979,
+          "size_bytes": 4697585,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.05
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-10-30T01:49:20.725407600Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.17
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:49:20.734810700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7d-de96-7810-8dd6-84d5ab5aa09d",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. Printer connection paused, no adjustments or narrowings in force, detector unchecked, nozzle 219.82 C, bed 60.0 C. 2) Opened the event image. The frame is clean and the same as before: the ring's lower walls are solid on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. 3) Ran `printobserver acknowledge-failure` with disposition stop. It was accepted and succeeded (record 01a18a7d-c9a2-7ac3-945b-286fa787de60). I took no further look because the event frame is clean and shows the print still paused. I made no adjustments and did not resume the print.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "The print is still paused at 41% after the spaghetti failure and is waiting for a person. Nothing has changed since I paused it at 01:41.",
+          "why": "The print is safely paused and still needs a person. None of my adjustments can fix the spaghetti. The nozzle and bed are still being held hot (220 C and 60 C) while it waits. The person should check whether the part is still attached, whether filament is wrapped around the nozzle, and whether the filament is wet. Then cancel, or clear the nozzle and resume."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:47:47.222293200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7d-c9a3-7412-aae8-cbe8a72ffd90",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a7d-c9a2-7ac3-945b-286fa787de60"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:47:41.859418900Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a7d-c9a3-7412-aae8-cbd59304836d",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a7d-7410-7283-ad8d-f6282f0b6caf",
+          "reason": "Still paused at 41% and waiting for a person; nothing has changed since I paused it at 01:41. The ring's lower walls are solid on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. Nozzle held at 220 C and bed at 60 C. A person should check whether the part is still attached, filament wrapped around the nozzle, and whether the filament is wet, then cancel or clear the nozzle and resume."
+        },
+        "action_id": "01a18a7d-c9a2-7ac3-945b-286fa787de60",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:47:41.859233500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a7d-7410-7283-ad8d-f6282f0b6caf",
+      "image": {
+        "id": "01a18a7d-76f1-7de1-81ff-f9739ea06584",
+        "sha256": "579c29b2a909294b5a2835b12e85044f86b3c7d9bfffe540e3d55dd6e5e29993"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.41214389947174984
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1936081,
+          "print_time_left_s": 2962,
+          "print_time_s": 1979,
+          "size_bytes": 4697585,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.04
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-10-30T01:47:19.946774300Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.0
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:47:19.952527700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7c-3f97-7343-a188-f3945a0b4f66",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. Printer connection paused, no adjustments or narrowings in force, detector unchecked, nozzle 219.84 C, bed 60.06 C. 2) Opened the event image. The bottom half is smeared into vertical streaks, which is a camera glitch, so I could not judge the print from it. The top half matches earlier frames. 3) Ran `printobserver look --wait-s 5`. Job state paused, printer connection paused, nozzle 219.98 C, bed 60.0 C. Opened the frame: it is clean and unchanged. The ring's lower walls are solid on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. 4) Ran `printobserver acknowledge-failure` with disposition stop. It was accepted and succeeded (record 01a18a7c-26d9-7d83-b784-3bc71f55ac7f). I made no adjustments and did not resume the print.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "The print is still paused at 41% after the spaghetti failure and is waiting for a person. The event frame was half-corrupted by the camera, but a fresh frame shows nothing has changed.",
+          "why": "The print is safely paused and still needs a person for the spaghetti failure I escalated at 01:41. The event frame was corrupted, so I took a fresh one rather than read anything into it, and it confirms nothing has changed. The nozzle and bed are still being held hot (220 C and 60 C) while it waits. The person should check whether the part is still attached and whether filament is wrapped around the nozzle. Then cancel, or clear the nozzle and resume. If the smearing shows up again, the camera feed should be checked too."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:46:00.983658200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7c-26da-72d1-9fcb-c289de67a682",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a7c-26d9-7d83-b784-3bc71f55ac7f"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:45:54.650477700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a7c-26da-72d1-9fcb-c275420184f5",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a7b-9b48-7383-a7d6-2f5338e69c2b",
+          "reason": "Still paused at 41% and waiting for a person; nothing has changed since I paused it at 01:41. The bottom half of this event's frame was corrupted by a camera glitch with vertical smearing. A fresh frame is clean and the same as before: the ring's lower walls are solid on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. Nozzle held at 220 C and bed at 60 C. A person should check whether the part is still attached, filament wrapped around the nozzle, and whether the filament is wet, then cancel or clear the nozzle and resume. If the camera smearing repeats, check the camera feed too."
+        },
+        "action_id": "01a18a7c-26d9-7d83-b784-3bc71f55ac7f",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:45:54.650279700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a7c-0d2f-7311-afd2-55f2a0b5fd66",
+      "image": {
+        "id": "01a18a7c-0d35-7560-b757-40138d309a72",
+        "sha256": "ce30ffff8198ccb6f4b25e491a621cb3887eea95a738d4c239272b460ce92785"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 5
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:45:48.079898Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7b-9b48-7383-a7d6-2f5338e69c2b",
+      "image": {
+        "id": "01a18a7b-9f34-7c13-8b39-3b478c3d55c1",
+        "sha256": "aff4e4f0dbb9391a244beca834e1b8522d06fc37327c26311c5fd3c8cc7923d9"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.41214389947174984
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1936081,
+          "print_time_left_s": 2962,
+          "print_time_s": 1979,
+          "size_bytes": 4697585,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.06
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-10-30T01:45:18.911262900Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.76
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:45:18.920546Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7a-3384-7551-bc58-32e7b5b54b43",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. Printer connection paused, no adjustments or narrowings in force, detector unchecked, nozzle 220.21/220 C, bed 59.97/60 C. The last turn's pause and stop records are in the history. 2) Opened the event image. The bed is lowered, the ring's lower walls are solid and on the sheet, a nest of spaghetti covers the top, and a strand runs up to the nozzle. This matches the frame I saw right after pausing. 3) Ran `printobserver acknowledge-failure` with disposition stop, repeating what the person has to check. It was accepted and succeeded (record 01a18a7a-1940-7640-8632-d0c3616606b7). I made no adjustments and did not resume the print.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "The print is still paused at 41% after the spaghetti failure and is waiting for a person. Nothing has changed since I paused it.",
+          "why": "The print is safely paused and this event only shows the same failure I already escalated. It needs a person, and nothing I am allowed to change would fix the tangle. The nozzle and bed are still being held hot (220 C and 60 C) while it waits; the person may want to cool them if the wait will be long. The person should check whether the part is still stuck down, whether there is a layer shift, whether filament is wrapped around the nozzle or fan duct, and whether the filament is wet. Then clear the nozzle and decide whether to cancel or resume. Resuming onto the tangle is unlikely to give a usable part."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:43:46.820807300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a7a-1940-7640-8632-d0eb25638125",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a7a-1940-7640-8632-d0c3616606b7"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:43:40.096933600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a7a-1940-7640-8632-d0d710e7664c",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a79-bac9-7ce1-914e-ad095bbbb65b",
+          "reason": "Still paused at 41% (1979 s), waiting for a person; this is unchanged since I paused it at 01:41. The frame shows the ring's lower walls solid and on the sheet, with a nest of spaghetti over the top and a strand running up to the nozzle. Nozzle is being held at 220 C and bed at 60 C. A person should check whether the part is still attached, whether there is a layer shift, filament wrapped around the nozzle or fan duct, and whether the filament is wet. Then clear the nozzle and cancel or resume; resuming onto the tangle is unlikely to give a usable part."
+        },
+        "action_id": "01a18a7a-1940-7640-8632-d0c3616606b7",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:43:40.096768500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a79-bac9-7ce1-914e-ad095bbbb65b",
+      "image": {
+        "id": "01a18a79-c66b-7c52-b2cb-203d0f351021",
+        "sha256": "aaf9dfb9a767739730b5d3899e35e58cded66c0a829ef3f983d7c1ff7355ba20"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.41214389947174984
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1936081,
+          "print_time_left_s": 2962,
+          "print_time_s": 1979,
+          "size_bytes": 4697585,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.0
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-10-30T01:43:15.907482500Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.95
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:43:15.913852200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a78-5cc6-7ea3-8ff7-50aae6f8c42a",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force, the detector status is unchecked, nozzle 220.89/220 C, bed 59.89/60 C, 40.3% done. Last turn I had recorded watch because strings and a porous top edge had appeared from about 1600 s. 2) Opened the event image. Strings now span the inside of the ring and the top edge is rough and blobby. The ring also appeared to sit further right than in earlier frames, judged against the fixed bed hole. 3) Ran `printobserver look --wait-s 20`. Print time 1912 s. Clumps of black strings and blobs are on top of the ring. 4) Ran `printobserver look --wait-s 45`. Print time 1967 s, 41.1% done, temperatures normal. A dense tangle of loose strings covers the whole top of the ring, one strand trails off onto the bed, and the ring again appeared shifted. 5) Ran `printobserver pause` with a reason listing what the person has to check. It was accepted and succeeded (record 01a18a77-ca17-7320-a498-9490205b8631). 6) Ran `printobserver acknowledge-failure` with disposition stop. It was accepted and succeeded (record 01a18a77-da8f-70c0-a73a-6d89ba365427). 7) Ran `printobserver look --wait-s 15`. Job state paused, printer connection paused. The frame was taken after the bed dropped and gives a clear view: the lower part of the ring is solid black and still sitting on the sheet. On top of it is a nest of loose spaghetti, and a strand runs from the part up to the nozzle.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "Spaghetti failure at about 40%: a tangle of loose strings covers the top of the ring. I paused the print and left it paused for a person. The lower walls look solid.",
+          "why": "The defect grew quickly over about six minutes, from a single string to a full nest of spaghetti with a strand trailing onto the bed. Each further layer would be laid onto loose strands and could wrap the nozzle. None of my adjustments can fix this: lowering the temperature or flow would not clear the tangle and could not reattach a part. I first thought the part had come loose, because it seemed to move between frames. The clear frame taken after the pause shows it still sitting on the sheet, so that apparent movement may only have been the camera angle changing as the bed lowered. A person still needs to check whether it is attached. The cause of the failure is not clear. Possibilities are wet filament, too little material being pushed through for a section with many travel moves, or the slicing of this part. The person should check: whether the part is still stuck down, whether there is a layer shift, how much filament is wrapped around the nozzle and fan duct, and whether the filament is wet. Then clear the nozzle and decide whether to cancel or resume. Resuming onto the current tangle is unlikely to give a usable part."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:41:46.310587600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a78-214f-7a50-86de-6fdf78efb4ea",
+      "image": {
+        "id": "01a18a78-2153-72c3-b434-9d1c5dd29bc6",
+        "sha256": "b62935d29b760a4e4ebf526500ce110ea30c6bebd062b3fb3739e115a1b6e41f"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 15
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:41:31.087709900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a77-da90-7c62-a911-f1a099e1e548",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a77-da8f-70c0-a73a-6d89ba365427"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:41:12.976416100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a77-da90-7c62-a911-f197ab8881f7",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a76-07a8-7c41-b778-fb8f5091fbd0",
+          "reason": "Print paused for a person. The ring part appears to have moved on the bed between frames, and a tangle of spaghetti strings covers its top, with one strand trailing onto the bed. None of my adjustments fixes a detached part. A person should check whether it is still attached, look for a layer shift or filament wrapped around the nozzle, and decide whether to resume or cancel."
+        },
+        "action_id": "01a18a77-da8f-70c0-a73a-6d89ba365427",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:41:12.976233600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a77-ca2b-7bb1-9ca3-087ef84405bd",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a77-ca17-7320-a498-9490205b8631"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:41:08.779051400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a77-ca2a-7790-983f-cebd5333d69d",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "pause",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "reason": "Part appears to have come loose and is being dragged around the bed, with spaghetti forming. Against the fixed bed hole and sheet edges, the ring's position changes between frames (centre at about x=1040 px through 1800 s, then about 1260, 1010 and 900 px at 1864-1967 s). A tangle of loose strings now covers the top of the ring and one strand trails onto the bed. This began around 1600 s (37%) with strings and a porous top edge. Please check: whether the part is still stuck to the sheet, whether there is a layer shift, how much filament is wrapped around the nozzle and fan duct, and whether the filament is wet. Clear the nozzle before resuming or cancelling."
+        },
+        "action_id": "01a18a77-ca17-7320-a498-9490205b8631",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:41:08.778833Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a77-9ac6-7343-9763-e6ffa2450d7d",
+      "image": {
+        "id": "01a18a77-9acb-7952-b9b9-11eec43f83a4",
+        "sha256": "5a6e0ec3c62b489db5bcb3c9616091deb106a8d93daa9eacbdc3028cea0ab3a7"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 45
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:40:56.646947Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a76-c1bc-7d11-b171-43fca664df31",
+      "image": {
+        "id": "01a18a76-c1c0-7c61-9502-1488b21d1748",
+        "sha256": "7dbf2786572a390da6176cf98715fadc634f3acccbdc3e36084cb946d541a2e6"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 20
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:40:01.084429800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a76-07a8-7c41-b778-fb8f5091fbd0",
+      "image": {
+        "id": "01a18a76-1101-7fa3-9614-21a1f8db4f42",
+        "sha256": "997885cab981ac2cf1ee5ef124c1526efbb9cb58149ebeab23e15b38b7025d34"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.4021464220445186
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1889117,
+          "print_time_left_s": 2911,
+          "print_time_s": 1864,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.12
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:39:13.440892800Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.36
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:39:13.448559800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a75-4d26-7b21-b8f8-5fef8b281129",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "low",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 220.47/220 C, bed 60/60 C, 36.5% done. 2) Opened the event image. The ring is clean, with even walls and the brim flat. 3) Ran `printobserver look --wait-s 90`. Print time 1611 s, 37.1% done, and time left rose to 2866 s. In the frame, a thin string crosses the inside of the ring and the top of the ring has a dotted texture. 4) Ran `printobserver look --wait-s 75`. Print time 1693 s, 38.0% done, time left 2907 s. Several fine black strings now cross the inside of the ring, and the top edge looks porous and lattice-like. The lower walls and brim are still clean and attached. 5) Ran `printobserver look --wait-s 90`. Print time 1798 s, 39.3% done, time left 2921 s, nozzle 219.46/220 C, bed 60.16/60 C, no new events, and the detector has not paused anything. The toolhead covers most of the ring; there are strings at the right and the top edge is rough. 6) Ran `printobserver acknowledge-failure` with disposition watch, and the reason explains the uncertainty. It was accepted and succeeded (record 01a18a75-2951-72b1-9ec3-ae010c8fa9d7). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Since about 1600 s (37%), fine strings have been appearing across the inside of the ring and its top edge looks rough and porous. The lower part is still fine, so I am watching it rather than stepping in.",
+          "why": "The change started at a specific height, and the job slowed at the same point: time left rose from about 2776 s to 2921 s. That fits a new section with many short moves, such as a perforated or detailed band in the design, where stringing is common and cosmetic. It could also be under-extrusion starting on that section, and at this camera resolution I can't tell which. The part is still attached, there is no spaghetti mass, and both temperatures are holding. Lowering the nozzle temperature might reduce stringing but would make under-extrusion worse, so I changed nothing rather than guess. Next turn: if the strings pile up into a mass or the walls visibly thin, pause the print and escalate. If the texture stays the same and the walls stay solid, it is most likely the design."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:38:25.702244600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a75-2952-71b1-97f7-e4e5c6d00477",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a75-2951-72b1-9ec3-ae010c8fa9d7"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:38:16.530457500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a75-2952-71b1-97f7-e4d52918fe67",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "watch",
+          "event_id": "01a18a70-8568-7713-9796-955e1aec4a08",
+          "reason": "Something changed around 36-39% (1503-1798 s). The ring's lower walls are still clean and attached, but since about 1600 s the top of the ring has a rough, porous, dotted look, and fine black strings now cross the inside of the ring. That was one string at 1611 s and several by 1693 s. The progress figures have slowed (time left rose from 2776 to 2921 s), which fits a new section with many short moves. This may be a designed feature with lots of travel causing stringing, or it may be under-extrusion on the new section; at this camera resolution I can't tell which. Nozzle 219.5-220/220 C, bed 60/60 C. I am changing nothing yet because I don't know the cause. Next turn: check whether the strings collect into a mass and whether the top edge stays porous."
+        },
+        "action_id": "01a18a75-2951-72b1-9ec3-ae010c8fa9d7",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:38:16.530164800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a75-0380-7020-8f3b-20726800aa19",
+      "image": {
+        "id": "01a18a75-0385-76d0-abef-1c90f2d4765e",
+        "sha256": "efebf9320669b0adb9d5ab9f21106d8f9babbd804728db969f6cd9ef1ec28724"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:38:06.848666700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a73-746e-7ff3-b442-651bab337a7d",
+      "image": {
+        "id": "01a18a73-7472-7c63-b9a7-f7d673888bac",
+        "sha256": "64193a066371ee454800a302463aff28b4883472972a160a7f2bde892fb2ca0d"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 75
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:36:24.686614200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a72-2d3c-7260-b931-9bfc9812a725",
+      "image": {
+        "id": "01a18a72-2d40-7df3-8d6a-3a4c32e78075",
+        "sha256": "9da159f40c253cd2a5472dc27b11a6c5492b4b0660d964f4751b82da0baf2253"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:35:00.924692500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a70-8568-7713-9796-955e1aec4a08",
+      "image": {
+        "id": "01a18a70-88e8-7761-b523-8031a89b3d6b",
+        "sha256": "36271fa1f4ffcfa0f40999e9b7b9edc063c929edf3930998afae9a1e46cae326"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.36314340240783294
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1705897,
+          "print_time_left_s": 2776,
+          "print_time_s": 1503,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.93
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:33:12.415647100Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.98
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:33:12.424666200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a70-7d75-7ba1-944c-7e8253668ae1",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 219.94/220 C, bed 60.05/60 C, 34.5% done. 2) Opened the event image. The ring at the back-centre is clean, with even walls and the brim flat. 3) Ran `printobserver look --wait-s 90`. Print time 1491 s, 36.1% done, time left 2774 s, nozzle 220.0/220 C, bed 60.05/60 C, no new events, and the detector has not paused anything. Opened the frame: the ring is taller and clean, and nothing is lifting or loose. 4) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a70-69c1-7f91-9912-c1cbf5ca8989). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The ring part is building up cleanly at 36%, and the temperatures are steady. The print is going normally.",
+          "why": "Both frames show a clean part that is stuck down and building evenly. The temperatures are holding at their targets and the progress figures keep advancing. This agrees with every earlier turn. There is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:33:10.389402700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a70-69c2-7e93-b127-49f1c85128de",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a70-69c1-7f91-9912-c1cbf5ca8989"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:33:05.346235400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a70-69c1-7f91-9912-c1d198c9b881",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a6e-a94e-79a2-a089-465be65bf13a",
+          "reason": "Printing normally at 34-36% (1381-1491 s). Ring part at rear-center clean in the event frame and 90 s later: even walls growing in height, brim flat and attached, no spaghetti or lifting. Nozzle 220/220 C, bed 60/60 C. No adjustment needed."
+        },
+        "action_id": "01a18a70-69c1-7f91-9912-c1cbf5ca8989",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:33:05.345958200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a70-55e9-7e83-b5e3-228f1b2d65f6",
+      "image": {
+        "id": "01a18a70-55ec-7833-a5c6-1fcd323022a5",
+        "sha256": "e85c608a7ea3879b318534744ed24aa4d33f2cd02a7757b79cbaafe9a3d6b31e"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:33:00.265024Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6e-a94e-79a2-a089-465be65bf13a",
+      "image": {
+        "id": "01a18a6e-b077-7022-be8c-466d0e68a372",
+        "sha256": "5f6a34e27303a3c548a84d75b8b5139f08a95715d1e14b3b0283db426772804f"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.34258901116211843
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1609341,
+          "print_time_left_s": 2790,
+          "print_time_s": 1381,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.97
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:31:10.535130600Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.97
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:31:10.542166100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6e-9ce4-7191-a97a-1f6ed8a17617",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 219.97/220 C, bed 60.08/60 C, 32% done. 2) Opened the event image. The whole ring is in view, with even walls and the brim flat and attached. 3) Ran `printobserver look --wait-s 90`. Print time 1368 s, 34.0% done, time left 2795 s, nozzle 220.0/220 C, bed 60.01/60 C, no new events, and the detector has not paused anything. Opened the frame: the ring is a little taller and clean, and nothing is lifting or loose. 4) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a6e-87ff-7e70-87f6-4048ddec861e). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The ring part is building up cleanly at 34%, and the temperatures are steady. The print is going normally.",
+          "why": "Both frames show a clean part that is stuck down and building evenly. The temperatures are holding at their targets and the progress figures keep advancing. This agrees with every earlier turn. There is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:31:07.364551700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6e-8800-7e60-98e4-14bf7272c2df",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a6e-87ff-7e70-87f6-4048ddec861e"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:31:02.016181100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a6e-87ff-7e70-87f6-4053e677f524",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a6c-ceec-7802-9c7f-650f3f8adcba",
+          "reason": "Printing normally at 31-34% (1260-1368 s). Ring part at rear-center fully visible in the event frame and largely visible 90 s later: even walls, growing in height, brim flat and attached, no spaghetti or lifting. Nozzle 220/220 C, bed 60/60 C. No adjustment needed."
+        },
+        "action_id": "01a18a6e-87ff-7e70-87f6-4048ddec861e",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:31:02.015921500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a6e-7468-7311-a613-016bbea2c25b",
+      "image": {
+        "id": "01a18a6e-746c-7040-babc-52b498621786",
+        "sha256": "406c37e216a0e38b0c28acae5d4487dc73de1e81d7a56734827a84d7a31d3ad1"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:30:57.000529300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6c-ceec-7802-9c7f-650f3f8adcba",
+      "image": {
+        "id": "01a18a6c-d469-7643-90dd-e33226856511",
+        "sha256": "3aaef69f248ee68ce7068bc60552bb2760d9b4144b8a541fc55be3504621a4cd"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.31407606248742703
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1475399,
+          "print_time_left_s": 2891,
+          "print_time_s": 1260,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.04
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:29:09.091390700Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.94
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:29:09.100762800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6c-5c8d-7a32-8a11-a44dabeb5b77",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 219.94/220 C, bed 60.05/60 C, 28% done. 2) Opened the event image. The toolhead was over most of the ring, and the edges I could see were clean. 3) Ran `printobserver look --wait-s 60`. Print time 1220 s, 30.3% done, time left 2952 s, nozzle 219.95/220 C, bed 60.05/60 C, no new events, and the detector has not paused anything. Opened the frame: the whole ring is in view, with even walls, the brim flat, the part attached and no spaghetti. The same small fixed string is at the back-right. 4) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a6c-481f-72e1-b784-ed5dc1fac4a1). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The ring part is building up cleanly at 30%, and the temperatures are steady. The print is going normally.",
+          "why": "The event frame was partly blocked by the toolhead, so I took another look to see the whole part, and it shows no defects. The temperatures are holding at their targets and the progress figures keep advancing. This agrees with every earlier turn. There is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:28:39.821661700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6c-4820-7492-a4d2-0b69cea1cafc",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a6c-481f-72e1-b784-ed5dc1fac4a1"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:28:34.592172Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a6c-4820-7492-a4d2-0b5b941649dd",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a6a-f3b0-7f32-b31e-26682679e35d",
+          "reason": "Printing normally at 28-30% (1138-1220 s). Event frame had the toolhead over the ring; a look 60 s later shows the whole ring clearly: even walls, brim flat, part attached, no spaghetti, same small fixed string at rear-right. Nozzle 220/220 C, bed 60/60 C. No adjustment needed."
+        },
+        "action_id": "01a18a6c-481f-72e1-b784-ed5dc1fac4a1",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:28:34.591998700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a6c-3439-7d93-a157-469575a5ae51",
+      "image": {
+        "id": "01a18a6c-3443-7a90-88ee-fb15f3797a38",
+        "sha256": "12e8822d8560fcb911443144c1c22f645e90815efd39aae94221072d539cbfa2"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 60
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:28:29.497403600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6a-f3b0-7f32-b31e-26682679e35d",
+      "image": {
+        "id": "01a18a6a-fa03-78a0-aa58-28923f41093c",
+        "sha256": "e9ba9ed417220f2ad0265d67fbc00ffd67581fc4505ff5756347402e74e18672"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.2773878492885174
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1303053,
+          "print_time_left_s": 3105,
+          "print_time_s": 1138,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.01
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:27:07.431891200Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.08
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:27:07.440614800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6a-e7a7-76f2-be72-c713c12a22fa",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 219.95/220 C, bed 60.05/60 C, 24% done. 2) Opened the event image. The black ring at the back-centre is clean, even and flat, and the same small fixed string is at its back-right edge. 3) Ran `printobserver look --wait-s 90`. Print time 1125 s, 27.3% done, time left 3135 s, nozzle 220.0/220 C, bed 59.98/60 C, no new events, and the detector has not paused anything. Opened the frame: the toolhead covers most of the ring, the edge I can see is clean, and nothing is loose on the bed. 4) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a6a-d253-7a92-a8b7-322e15f1d254). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The ring part is building up cleanly at 27%, and the temperatures are steady. The print is going normally.",
+          "why": "The event frame shows clean, attached walls. The toolhead hides most of the ring in the later frame, but the edge I can see is clean, and that fits the steady history of earlier turns. The temperatures are holding at their targets and the progress figures keep advancing normally. There is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:27:04.359706500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a6a-d254-7883-96aa-b0188eefb68f",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a6a-d253-7a92-a8b7-322e15f1d254"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:26:58.900152400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a6a-d253-7a92-a8b7-323b6f3c55b8",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a69-1638-79f3-a5ff-68e3dc76d5a2",
+          "reason": "Printing normally at 24-27% (1016-1125 s). Event frame shows the ring part at rear-center clean, even and flat with the same small fixed string at its rear-right edge. The later look has the toolhead over most of the ring; the visible edge is clean and nothing is loose on the bed. Nozzle 220/220 C, bed 60/60 C. No adjustment needed."
+        },
+        "action_id": "01a18a6a-d253-7a92-a8b7-322e15f1d254",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:26:58.899971100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a6a-be81-7f23-bf1e-d3e52b1735be",
+      "image": {
+        "id": "01a18a6a-be85-72a1-9e00-a4783eb2ce5d",
+        "sha256": "6f061dc3ad0436de88d9443fe6a9e3fb9a8289fa3a6b708da02f50a70f645c7d"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:26:53.825852600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a69-1638-79f3-a5ff-68e3dc76d5a2",
+      "image": {
+        "id": "01a18a69-1ec7-75a3-ac6e-a55b35535787",
+        "sha256": "657a30f147d8322d7f17e99f6ac3ea14991b57c3aa58d509eea91e6a9d75b01e"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.2389546969347015
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1122510,
+          "print_time_left_s": 3376,
+          "print_time_s": 1016,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.96
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:25:05.203294500Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.04
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:25:05.208548300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a69-13b6-73f2-8a8e-d19a1cd2c23f",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 220.06/220 C, bed 60.0/60 C, 20% done. 2) Opened the event image. The black ring and brim at the back-centre are clean and flat. The small fixed string at the back-right edge is still there and unchanged. 3) Ran `printobserver look --wait-s 90`. Print time 1005 s, 23.4% done, time left 3427 s, nozzle 220.04/220 C, bed 59.96/60 C, no new events, and the detector has not paused anything. Opened the frame: the toolhead hides part of the ring, and the part I can see is clean, even and attached. 4) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a68-fe85-72e0-a263-23fb2a897d6e). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The ring part is building up cleanly at 23%, and the temperatures are steady. The print is going normally.",
+          "why": "The walls are building evenly and the part is stuck down, with no under-extrusion or spaghetti. The temperatures are holding at their targets. The small string has stayed the same across five frames, so it is cosmetic. This agrees with every earlier turn on this print. There is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:25:04.566810200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a68-fe86-7862-a167-32c25fc3cb30",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a68-fe85-72e0-a263-23fb2a897d6e"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:24:59.142176700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a68-fe86-7862-a167-32b093d80e7f",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a67-3b45-7f23-8fee-7870a3a8da4f",
+          "reason": "Printing normally at 19-23% (895-1005 s). Ring part at rear-center keeps building with even walls; brim and part flat, no lifting, no spaghetti; the same small fixed string at the rear-right edge, not growing. Toolhead partly hides the ring in the later frame but what is visible is clean. Nozzle 220/220 C, bed 60/60 C. No adjustment needed."
+        },
+        "action_id": "01a18a68-fe85-72e0-a263-23fb2a897d6e",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:24:59.142002Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a68-eaf3-77a1-aaab-2c5e19180af3",
+      "image": {
+        "id": "01a18a68-eaf7-70b3-ab4c-e6fb25e4a3f5",
+        "sha256": "f71f152869a723ea94f0f57fbc885d7b2572bb47ed387d6577eeeaca674aee76"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:24:54.131080500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a67-3b45-7f23-8fee-7870a3a8da4f",
+      "image": {
+        "id": "01a18a67-4155-71b2-afcc-b80c298813d1",
+        "sha256": "65cb3f19519afa927e8987c3cb64336685e10cfe7d13eedcfaaacda5a44367f6"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.19328208004751377
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 907959,
+          "print_time_left_s": 3874,
+          "print_time_s": 895,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.0
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:23:03.606635400Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.98
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:23:03.621676500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a67-38cc-72a3-bab8-4cc3c3bd0e3d",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 219.9/220 C, bed 59.97/60 C, 15% done. 2) Opened the event image. The black ring and brim at the back-centre are clean and flat. 3) Ran `printobserver look --wait-s 90`. Print time 883 s, 18.9% done, time left 3924 s, nozzle 220.0/220 C, bed 60.04/60 C, no new events, and the detector has not paused anything. Opened the frame: the ring is taller, with even walls and nothing lifting. The small light-coloured wisp at the ring's back-right edge is the same as before. 4) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a67-2414-7471-ae1f-6d78dfd7b68c). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The ring part is building up cleanly at 19%, and the temperatures are steady. The print is going normally.",
+          "why": "The walls are building evenly and the part is stuck down, with no under-extrusion or spaghetti. The temperatures are holding at their targets. The wisp has not moved or grown across three frames, so it is a fixed cosmetic string and not a developing defect. There is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:23:02.988507400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a67-2415-78d1-b80a-db720811a179",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a67-2414-7471-ae1f-6d78dfd7b68c"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:22:57.685915200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a67-2415-78d1-b80a-db6fb7fe1ddc",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a65-5eb0-7a11-83f0-05c87821980c",
+          "reason": "Printing normally at 14-19% (773-883 s). Black ring part at rear-center keeps growing with even walls; part and brim flat, no lifting, no spaghetti. The small light wisp at the ring's rear-right edge is unchanged in place and size across three frames, so it is a fixed cosmetic string, not growing. Nozzle 220/220 C, bed 60/60 C. No adjustment needed."
+        },
+        "action_id": "01a18a67-2414-7471-ae1f-6d78dfd7b68c",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:22:57.685634400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a67-0e7a-7b63-a7ab-dc09bb14ecb0",
+      "image": {
+        "id": "01a18a67-0e7f-7872-8c55-3644f0d547fb",
+        "sha256": "edb91debb52d839d24563f12856b76ce9cf476247e0c13382b0139dc9428aceb"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:22:52.154909500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a65-5eb0-7a11-83f0-05c87821980c",
+      "image": {
+        "id": "01a18a65-6637-73e3-8fbd-da66aa0a4b29",
+        "sha256": "3ab99f700beaf7cd2777af1a998b3537bfa86960e7b06dca4d5702d4c67a970c"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.14197018255124708
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 666917,
+          "print_time_left_s": 4811,
+          "print_time_s": 773,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.05
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:21:01.604207200Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.89
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:21:01.616581400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a65-5615-7372-8f47-04412e25c073",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 219.95/220 C, bed 60.06/60 C, about 9.7% done. 2) Opened the event image. The black ring and brim at the back-centre are clean, even and flat. 3) Ran `printobserver look --wait-s 90`. Print time 759 s, 13.8% done, nozzle 220.02/220 C, bed 59.98/60 C, time left 4880 s, no new events, and the detector has not paused anything. Opened the frame: the ring is taller, with even walls and nothing lifting. There is a tiny light-coloured wisp at the ring's back-right edge. 4) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a65-411a-7f32-80a4-51f8ac07a45d). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The ring part is building up cleanly at 14%, and the temperatures are steady. The print is going normally.",
+          "why": "Both frames show the walls building evenly, the part stuck down and no spaghetti. The temperatures are holding at their targets. The wisp is probably a fine string or a reflection, and either way it is cosmetic. The time-left estimate rose from about 4800 s to 6463 s and then fell back to 4880 s; that is only the printer re-estimating, not a fault. There is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:20:59.413393900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a65-411b-78a0-8605-de61d4557abd",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a65-411a-7f32-80a4-51f8ac07a45d"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:20:54.043734600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a65-411b-78a0-8605-de55a16fd4d7",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a63-825f-7f60-99c3-a402e30bcd79",
+          "reason": "Printing normally at 9-14% (651-759 s). Black ring part at rear-center keeps growing with even, continuous walls; part and brim flat on the sheet, no lifting, no spaghetti. Only a tiny light wisp at the ring's rear-right edge (likely a fine string or highlight, cosmetic). Nozzle 220/220 C, bed 60/60 C. The time-left estimate jumped to 6463 s then back to 4880 s, which is only the firmware re-estimating. No adjustment needed."
+        },
+        "action_id": "01a18a65-411a-7f32-80a4-51f8ac07a45d",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:20:54.043402400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a65-298a-7a53-96ca-b2c69e0cb84f",
+      "image": {
+        "id": "01a18a65-298f-7fb1-8c84-510f28519769",
+        "sha256": "b98e1ab10e4fd689509b9403829aced8804ab5450f6c18bd250d06890876cbf5"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:20:48.010300800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a63-825f-7f60-99c3-a402e30bcd79",
+      "image": {
+        "id": "01a18a63-89bd-7712-8c0f-acad8699d31c",
+        "sha256": "b77d2ca1f660d44af5129810c06279a1fcdfaec9077b832c28de216ba2191c0f"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.09334711346362012
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 438506,
+          "print_time_left_s": 6463,
+          "print_time_s": 651,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.04
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:18:59.673997100Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.17
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:18:59.679120200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a63-713a-70c0-b864-171b4b03fff2",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. Nozzle 219.97/220 C, bed 59.97/60 C, about 5% done. 2) Opened the event image. The black ring and brim at the back-centre of the bed are clean and flat, and the toolhead is printing at the ring's edge. 3) Ran `printobserver look --wait-s 90`. Print time 635 s, 8.6% done, nozzle 220.17/220 C, bed 59.97/60 C, no new events, and the detector has not paused anything. Opened the frame: the ring is a little taller, with even walls and nothing lifting or stringing. 4) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a63-5b0f-7a23-b983-6d22c178694b). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The ring part and its brim are building up cleanly at 9%, and the temperatures are steady. The print is going normally.",
+          "why": "Both frames show a print that is stuck down and has even walls. There is no sign of under-extrusion, the part lifting or spaghetti. The fine strings I noted last turn are no longer visible. Both temperatures are holding at their targets, so there is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:18:55.290246Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a63-5b11-77a1-a720-79db98bf9cce",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a63-5b0f-7a23-b983-6d22c178694b"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:18:49.617057100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a63-5b10-7850-bbea-d5ec1c2e2bf4",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a61-aad9-74a0-9ff7-6a98402f73ec",
+          "reason": "Printing normally at 4-9% (530-635 s). Black ring part with brim at rear-center is building up cleanly in both the event frame and a look 90 s later: walls even and continuous, part and brim flat on the sheet, no lifting, no spaghetti; the fine stringing noted last turn is no longer visible. Nozzle 220/220 C, bed 60/60 C. No adjustment needed."
+        },
+        "action_id": "01a18a63-5b0f-7a23-b983-6d22c178694b",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:18:49.616324Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a63-4560-75b1-853d-a2d069856037",
+      "image": {
+        "id": "01a18a63-4566-76d3-be41-8e8510c95463",
+        "sha256": "d274627338c0310034affa006c3802f9aec938921ac66f96f9b55c1ecd7543cb"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:18:44.064962900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a61-aad9-74a0-9ff7-6a98402f73ec",
+      "image": {
+        "id": "01a18a61-ad75-7341-ab50-a825b7c06ca9",
+        "sha256": "a79a545f815152e2270e8e0c472a796f4f81d3d98c0ccd507aee7a85b22aba26"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.043260526419426154
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 203220,
+          "print_time_left_s": 4796,
+          "print_time_s": 530,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.91
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:16:58.965178200Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.17
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:16:58.969783800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a61-4aff-7770-b747-95dab423cfb2",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. There are no adjustments or narrowings in force and the detector status is unchecked. The nozzle was at 230.49 against a 230 C target and the bed was at about 60 C. 2) Opened the event image. The bed was still empty and the gantry was crossing the frame, so the printer was still heating up. 3) Ran `printobserver look --wait-s 90`. Print time 396 s, about 1% done, nozzle 220.74/220 C, bed 59.6/60 C, no new events. The frame shows black brim and part lines being laid at the back-centre of the bed, continuous and flat. 4) Ran `printobserver look --wait-s 90` again. Print time 492 s, 3% done, nozzle 219.95/220 C, bed 59.84/60 C, no new events. The frame shows the ring and brim building up with clean, attached lines, nothing lifting and no gaps. There are only a few fine strings along the back edge. 5) Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded (record 01a18a61-2ef6-7783-9add-c2076c76f22a). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The first layers of the ring-shaped part and its brim are going down cleanly at the back-centre of the bed, and the temperatures are steady. The print is going normally.",
+          "why": "The first layer is sticking and the lines are even, with no under-extrusion and nothing lifting. Both temperatures are holding at their targets. The 230 C nozzle target only lasted through the start sequence and it then settled at 220 C, which is normal for PLA. The few fine strings are cosmetic. There is nothing to correct."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:16:34.431433200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a61-2ef6-7783-9add-c223f959d473",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a61-2ef6-7783-9add-c2076c76f22a"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:16:27.254915300Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a61-2ef6-7783-9add-c21d987395f3",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a5d-fe5b-7231-9e5c-501d9abcacbf",
+          "reason": "Printing normally. Event frame was still in heat-up (nozzle 223->230 C purge/first-layer heat, bed 60 C, bed empty). Two later looks (396 s, 492 s; 3% done) show a black ring-shaped part with brim building at rear-center of the bed: lines continuous, flat and stuck down, no lifting, no gaps; only a few fine wisps of stringing on the rear edge. Nozzle settled at 220/220 C, bed 59.8/60 C. No adjustment needed."
+        },
+        "action_id": "01a18a61-2ef6-7783-9add-c2076c76f22a",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:16:27.254779600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a61-1512-7bb1-9f2b-e12fcd8954a0",
+      "image": {
+        "id": "01a18a61-1515-7e40-87a5-2903b27ef1a5",
+        "sha256": "7b83f758cb8cf87901f3c603c4e8de7a64e1afd7c322406b79c1f6d423f409d1"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:16:20.626008Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a5f-a15a-7440-b363-99ab99917bfb",
+      "image": {
+        "id": "01a18a5f-a15f-7a42-a32b-500dea215dc5",
+        "sha256": "293bca5dd8d3d56249f311b9e87b74b92af9772c74a10cb91b18c53269c118b2"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:14:45.466451900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a5d-fe5b-7231-9e5c-501d9abcacbf",
+      "image": {
+        "id": "01a18a5e-011b-7e91-bc8e-55882860c036",
+        "sha256": "243f015b0626fa8e45a5117d625f9d682646293504a020b8bc46fdd25160390f"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.00039062624731644026
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1835,
+          "print_time_left_s": 5022,
+          "print_time_s": 247,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.02
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:12:58.196514600Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 222.88
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 230.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:12:58.203181600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a5c-43f7-70a1-9830-4577dee1fdd8",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1) Ran `printobserver context`. The print started at 01:08 with an operator start that passed preflight and had a clear bed frame. No adjustments or narrowings are in force and the detector status is unchecked. 2) Opened the event image. The bed is empty and the X gantry is passing across the frame. 3) Ran `printobserver look --wait-s 90`. Bed 59.85/60 C, nozzle 146.47/150 C (the target dropped from 170 to 150 for the probe soak), job printing at 154 s, file position 1582 bytes, no new events. Opened that frame too: the bed is still clean and empty, the toolhead is parked at the rear-left, and there is a small ooze wisp at the nozzle tip. 4) Ran `printobserver acknowledge-failure` with disposition continue and a reason describing the start-up phase. It was accepted and succeeded (record 01a18a5c-2781-77f1-9ef9-44c117bc91ef). I made no adjustments.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The print is still warming up and hasn't laid down any filament yet. The bed is clean and the heaters are reaching their targets; I see nothing wrong.",
+          "why": "The job is only about 1.5 KB into the file and is still in the heat and pre-probe phase. The nozzle target moving from 170 to 150 C matches a Core One warming up before it probes the bed. Neither frame shows any extruded plastic or debris, and the temperatures are on track. There is nothing to correct yet, so I changed nothing. The first layer is the next thing to check."
+        },
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:11:04.951289800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a5c-43f6-7a42-99d4-85b9414a4d3b",
+      "kind": "supervision_session_opened",
+      "payload": {
+        "harness_identity": "claude-code",
+        "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:11:04.950864200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a5c-2782-7bb3-ac37-8f2cf34fc57a",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a5c-2781-77f1-9ef9-44c117bc91ef"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:10:57.666089100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a5c-2781-77f1-9ef9-44d52a4fcbb8",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a5a-4296-7ca3-89be-a92e997e1104",
+          "reason": "Start-up phase, nothing extruded yet: bed reached 59.85/60 C, nozzle at 146/150 C (Core One pre-probe soak), toolhead parked at the rear-left corner. Bed is clean and empty in both frames; only a small ooze wisp at the nozzle tip, which is normal. No action needed."
+        },
+        "action_id": "01a18a5c-2781-77f1-9ef9-44c117bc91ef",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a59-92a1-7572-bc5d-f327ad605411"
+          }
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:10:57.665755500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a5c-0c11-72d3-8c2e-01aa519931c3",
+      "image": {
+        "id": "01a18a5c-0c15-78a1-aa20-2c5c90c1b41e",
+        "sha256": "7f85e9964d0e0769975a601189f792008b14def0c44f9b89f0a0b58dcafbf066"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 90
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:10:50.641439Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a5a-4296-7ca3-89be-a92e997e1104",
+      "image": {
+        "id": "01a18a5a-5498-7893-97da-558b3d05c5be",
+        "sha256": "1973dd75424b0a6ed466f368644a746ba6085f67991f005d08306a6ba1727513"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.0002473611440772227
+          },
+          "estimated_print_time_s": 5188,
+          "filament": [
+            {
+              "length_mm": 15790.37921000096,
+              "tool": 0,
+              "volume_cm3": 37.98031291958226
+            }
+          ],
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1162,
+          "print_time_left_s": 5187,
+          "print_time_s": 0,
+          "size_bytes": 4697585,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 43.32
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T01:08:53.520575900Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 158.24
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 170.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:08:53.526142100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a59-92ed-74e0-aa8f-6776d53ca875",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a59-92b2-7be3-9ab5-05d38bce93f0"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:08:08.557550500Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a18a59-92ed-74e0-aa8f-67698a1a691f",
+      "kind": "print_started",
+      "payload": {
+        "file_name": "3423-TOP-REV F brim.gcode",
+        "loaded": [],
+        "preflight": {
+          "checked_at": "2026-10-30T01:08:08.498177900Z",
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "tools": [
+            {
+              "result": {
+                "verdict": "unchecked"
+              },
+              "tool": 0
+            }
+          ],
+          "verdict": "unchecked"
+        },
+        "started_by": "01a18a59-92b2-7be3-9ab5-05d38bce93f0"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:08:08.557382Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a59-92ec-7eb2-9cf4-e2751c12237e",
+      "kind": "preflight_checked",
+      "payload": {
+        "action_id": "01a18a59-92b2-7be3-9ab5-05d38bce93f0",
+        "preflight": {
+          "checked_at": "2026-10-30T01:08:08.498177900Z",
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "tools": [
+            {
+              "result": {
+                "verdict": "unchecked"
+              },
+              "tool": 0
+            }
+          ],
+          "verdict": "unchecked"
+        }
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:08:08.556513200Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a18a59-92eb-7082-857e-d902a12f76e3",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "start_print",
+          "actor": "operator",
+          "file_name": "3423-TOP-REV F brim.gcode",
+          "manifest": {
+            "allowed": {},
+            "file_name": "3423-TOP-REV F brim.gcode",
+            "material": "Prusament PLA @COREONE 0.6",
+            "metadata": {
+              "bed_frame": "bed-20261029-190737.jpg in the run folder's preflight folder",
+              "bed_frame_age_s": "16",
+              "bed_frame_max_age_s": "120",
+              "bed_frame_sha256": "dce748c64ef6260dbaccd7757c0cb6a93b0eb408b4cd00eb7921fabd81e7c79b",
+              "bed_frame_taken_at": "2026-10-29T19:07:52-06:00",
+              "bed_verdict": "clear",
+              "gcode_sha256": "1d27ad72b9ac698f3c1666fc86dec5a342cba45b63344d2e5397e8542dc8fb83",
+              "octoprint_state": "Operational",
+              "preflight_file": "3423-TOP-REV F brim.gcode",
+              "preflight_passed": "true",
+              "preflight_report": "20261029-190737.json in the run folder's preflight folder",
+              "preflight_stamp": "20261029-190737",
+              "started_by": "the operator's start command",
+              "user_approved": "true"
+            },
+            "nozzle_diameter_mm": 0.6,
+            "slicer_profile": "0.20mm STRUCTURAL @COREONE 0.6"
+          },
+          "reason": "the operator's start command: preflight 20261029-190737.json passed, the bed frame was judged clear, and a person approved this print"
+        },
+        "action_id": "01a18a59-92b2-7be3-9ab5-05d38bce93f0",
+        "actor": "operator"
+      },
+      "print_id": "01a18a59-92a1-7572-bc5d-f327ad605411",
+      "received_at": "2026-10-30T01:08:08.555962200Z",
+      "source": "operator"
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "events": [
+    {
+      "id": "01a17f1b-0ac2-72b2-9434-fb67c92601d1",
+      "kind": "supervision_session_closed",
+      "payload": {
+        "close_reason": "the print reached Offline",
+        "session_name": "print-01a125ca-9198-7a60-9992-e01c4652d116"
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-27T20:44:01.090510500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a17f1b-0ac0-7743-a7d6-cf643d387a43",
+      "kind": "print_ended",
+      "payload": {
+        "outcome": "interrupted",
+        "reason": "the print reached Offline",
+        "state": "offline"
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-27T20:44:01.088168100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a17f1b-0abf-7ad2-bbce-779696dd7bf4",
+      "kind": "print_untracked",
+      "payload": {
+        "reason": "the print was already open when spool tracking was installed, so it is not charged"
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-27T20:44:01.087721200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a126b2-82b0-7c41-a051-7e1075aa0e07",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "1. `printobserver context`: printing at 28.6%. Nozzle 249.2/250 C, bed 84.97/85 C. No adjustments are in force, and this alert is the only recent event.\n2. Opened the alert image. The detector boxes sit on the top edge and infill at the back of the left bin, next to its inner divider. The 1280px frame has too little detail to tell what it is.\n3. Ran `look` with no wait. The 16:39:38 frame shows all parts attached and clean walls. There is a slightly fuzzy, rough patch in the diamond grid infill at the flagged spot. `detector_paused` is false.\n4. Ran `look --wait-s 90` twice, giving frames at 16:41:16 and 16:42:55, from two different angles as the head moved. The patch looks the same and has not spread. There are no loose strands, nothing has come off the bed, and temperatures are steady at 250/85 C. Progress went from 28.6% to 29.1%. No new events arrived during any look.\n5. Ran `acknowledge-failure` with disposition `watch` on event 01a126ae-e303-7c71-abd9-8727b12c42c2, with a reason describing what I saw. The answer was accepted and succeeded (record 01a126b2-5ae8-7ee2-8ddc-d98bc8bd6a21).\nI made no adjustments to the machine.",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The Obico warning at about 29% points to a small rough patch in the grid infill at the back of the left bin. Over about 3 minutes of watching it did not grow, the parts stayed on the bed and there is no spaghetti, so the print carries on and I'm still watching it.",
+          "why": "The detector only gave a warning and did not pause the print. Three new frames over about 3 minutes show no signs of failure: no spaghetti, no part off the bed, no missing layers, and the rough patch is not growing as new layers go down. The most likely reading is a cosmetic blemish in the infill. None of my adjustments clearly addresses it, and changing fan, speed or flow without a clear cause could do more harm than good. So I'm letting the print run and watching it, not adjusting or pausing it. Confidence is medium, not high, because the camera can't show the patch in fine detail, so a small local defect can't be ruled out. If later alerts show it growing or strands appearing, I'll take another look."
+        },
+        "session_name": "print-01a125ca-9198-7a60-9992-e01c4652d116"
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-10T16:43:15.504195300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a126b2-82af-7e63-ac88-a38ffb6d78e7",
+      "kind": "supervision_session_opened",
+      "payload": {
+        "harness_identity": "claude-code",
+        "session_name": "print-01a125ca-9198-7a60-9992-e01c4652d116"
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-10T16:43:15.503779100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a126b2-5ae9-7722-ba86-220f1bf12b1d",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a126b2-5ae8-7ee2-8ddc-d98bc8bd6a21"
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-10T16:43:05.321970500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a126b2-5ae9-7722-ba86-21fd848454d2",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a125ca-9198-7a60-9992-e01c4652d116"
+            }
+          },
+          "disposition": "watch",
+          "event_id": "01a126ae-e303-7c71-abd9-8727b12c42c2",
+          "reason": "Obico warning (not a pause) at ~29%. Flagged box is a small rough/fuzzy patch in the grid infill at the back of the left-hand bin, next to its inner divider wall. Three fresh frames over ~3 min (16:39:38, 16:41:16, 16:42:55) show all parts attached to the bed, walls clean and straight, no loose strands or spaghetti, and the patch not growing while layers are added. Nozzle 250/250 C, bed 85/85 C, steady. Reading it as a cosmetic infill blemish rather than a failure. No adjustment made; carrying on and watching."
+        },
+        "action_id": "01a126b2-5ae8-7ee2-8ddc-d98bc8bd6a21",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a125ca-9198-7a60-9992-e01c4652d116"
+          }
+        }
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-10T16:43:05.321627200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a126b2-33db-7df3-a187-b34ea6f63ba4",
+      "image": {
+        "id": "01a126b2-3af7-7b82-8148-2cd62c5a044b",
+        "sha256": "830908121cc80de3cd19600a85f27e7f908f3fd0d1ae7d45ee2813c9f77a0cea"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 90
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-10T16:42:55.323077700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a126b0-b20d-7002-b9b3-ca8c3b4dd548",
+      "image": {
+        "id": "01a126b0-b8d5-7f93-8772-5195191d5f27",
+        "sha256": "6b489a2d8c3082f0f76c9cd56061b460992319ce8553daaf35e404e217ef7e14"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 90
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-10T16:41:16.557475400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a126af-30ef-7393-9a03-1b6b61920d58",
+      "image": {
+        "id": "01a126af-35f1-7852-b9f2-7e5eecdc73ae",
+        "sha256": "d0ad9f84f57c0cbe697ca45b035fb79f12433e14f65187b1acb47a7497011b3f"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "waited_s": 0
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "received_at": "2026-10-10T16:39:37.967585Z",
+      "source": "system"
+    },
+    {
+      "id": "01a126ae-e303-7c71-abd9-8727b12c42c2",
+      "image": {
+        "id": "01a126ae-e320-7040-811d-ec6f105f3f5e",
+        "sha256": "1ed6bdcc9aad12b877f81d3f1968d5c94c5ebd11f410e483c29c60774b9631d4"
+      },
+      "kind": "obico_failure_alert",
+      "payload": {
+        "file_name": "plate1-side-bins-screws-clip.gcode",
+        "is_warning": true,
+        "obico_print_id": 11,
+        "print_paused": false,
+        "started_at": "2026-10-10T12:29:49.003863096Z"
+      },
+      "print_id": "01a125ca-9198-7a60-9992-e01c4652d116",
+      "raw": "eyJldmVudCI6IHsidHlwZSI6ICJQcmludEZhaWx1cmUiLCAiaXNfd2FybmluZyI6IHRydWUsICJwcmludF9wYXVzZWQiOiBmYWxzZX0sICJwcmludGVyIjogeyJpZCI6IDEsICJuYW1lIjogIlBydXNhIENvcmUgT25lKyBHZW4gMiAoT2N0b3ByaW50KSJ9LCAicHJpbnQiOiB7ImlkIjogMTEsICJmaWxlbmFtZSI6ICJwbGF0ZTEtc2lkZS1iaW5zLXNjcmV3cy1jbGlwLmdjb2RlIiwgInN0YXJ0ZWRfYXQiOiAxNzkxNjM1Mzg5LjAwMzg2MywgImVuZGVkX2F0IjogIiJ9LCAiaW1nX3VybCI6ICJodHRwOi8vb2JpY28tc2VydmVyLmludmFsaWQvbWVkaWEvdHNkLXBpY3Mvc25hcHNob3RzLzEvMTc5MTY1MDM1OC4wMjQ5MTRfcm90YXRlZC5qcGcifQ==",
+      "received_at": "2026-10-10T16:39:18.019190200Z",
+      "source": "obico"
+    }
+  ]
+}
