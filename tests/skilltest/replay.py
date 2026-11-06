@@ -504,7 +504,7 @@ class Replay:
             doubles.octoprint(self.timeline, self.minted.octoprint_key),
             doubles.camera(self.timeline),
             doubles.obico(self.timeline),
-            doubles.control(self._harness_started, self._harness_exited),
+            doubles.control(self._harness_started, self._harness_exited, self.errors.append),
         ]
         self.port = _free_port()
         self.server: subprocess.Popen[str] | None = None
@@ -751,7 +751,12 @@ class Replay:
                 return
             harness_exits = sum(1 for harness_run in self.runs if harness_run.ended_at)
             if ended > harness_exits:
-                msg = f"a turn ended with no harness run to show for it: {self._log_tail()}"
+                said = self.bin / "launcher.log"
+                told = said.read_text("utf-8", "replace") if said.is_file() else "nothing"
+                msg = (
+                    f"a turn ended with no harness run to show for it: {self._log_tail()}; "
+                    f"the launcher said {told}"
+                )
                 raise ReplayError(msg)
             if time.monotonic() > deadline:
                 msg = (

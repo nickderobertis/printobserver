@@ -23,6 +23,7 @@ import json
 import re
 import threading
 import time
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -485,20 +486,26 @@ def obico(timeline: Timeline) -> ThreadingHTTPServer:
     return _serving(Handler)
 
 
-def control(started: Callable[[], str], exited: Callable[[], None]) -> ThreadingHTTPServer:
+def control(
+    started: Callable[[], str], exited: Callable[[], None], failed: Callable[[str], None]
+) -> ThreadingHTTPServer:
     """Where the launcher reports the harness's start and its exit, each answered when done with."""
 
     class Handler(_Quiet):
         def do_POST(self) -> None:
             self.body()
-            match self.path:
-                case "/started":
-                    self.answer(200, started().encode(), "text/plain")
-                case "/exited":
-                    exited()
-                    self.answer(200)
-                case _:
-                    self.answer(404)
+            try:
+                match self.path:
+                    case "/started":
+                        self.answer(200, started().encode(), "text/plain")
+                    case "/exited":
+                        exited()
+                        self.answer(200)
+                    case _:
+                        self.answer(404)
+            except Exception:
+                failed(traceback.format_exc())
+                self.answer(500)
 
     return _serving(Handler)
 

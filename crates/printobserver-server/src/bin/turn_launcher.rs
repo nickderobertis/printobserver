@@ -25,6 +25,9 @@ use printobserver_types::serde::Deserialize;
 /// The file beside this program saying what to start and whom to tell.
 const LAUNCH_FILE: &str = "launch.json";
 
+/// The file beside this program a failed launch leaves its reason in.
+const LOG_FILE: &str = "launcher.log";
+
 /// The status an answer the replay took a report under carries.
 const ANSWERED: &str = "200";
 
@@ -146,9 +149,25 @@ fn launched() -> Result<ExitCode, String> {
     Ok(status)
 }
 
+/// Leave why this launch failed beside it: a harness's error stream goes to the
+/// engine, which drops it, and the replay reads this to say what went wrong.
+fn keep_the_reason(why: &str) {
+    let Ok(program) = std::env::current_exe() else {
+        return;
+    };
+    if let Ok(mut log) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(program.with_file_name(LOG_FILE))
+    {
+        let _ = writeln!(log, "{why}");
+    }
+}
+
 fn main() -> ExitCode {
     launched().unwrap_or_else(|why| {
         eprintln!("printobserver-server-turn-launcher: {why}");
+        keep_the_reason(&why);
         ExitCode::FAILURE
     })
 }

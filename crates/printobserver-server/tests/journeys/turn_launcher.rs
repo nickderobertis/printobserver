@@ -214,6 +214,8 @@ fn a_refused_report_is_a_failure() {
     let output = launched(&launcher, &[]);
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("refused /started"));
+    let kept = std::fs::read_to_string(scratch.path().join("launcher.log")).expect("kept");
+    assert!(kept.contains("refused /started"), "{kept}");
 }
 
 /// A control address nothing answers at stops the run before it starts anything.
