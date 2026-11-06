@@ -149,6 +149,9 @@ def neutral_environment(bin_directory: Path, home: Path) -> dict[str, str]:
         "HOME": str(home),
         "USERPROFILE": str(home),
         "LANG": "C.UTF-8",
+        # A turn's harness must not replace itself under the next turn: while npm swaps
+        # the install, the next harness run finds no program to start.
+        "DISABLE_AUTOUPDATER": "1",
     }
     for name in ("SystemRoot", "SYSTEMROOT", "TEMP", "TMP", "COMSPEC", "PATHEXT"):
         if name in os.environ:
