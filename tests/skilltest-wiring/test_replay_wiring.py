@@ -922,6 +922,8 @@ def test_a_turn_the_engine_gave_up_on_fails_its_own_decision_point(scratch: Path
     truth(first.why_not is not None, describing="the failed turn to fail its decision point")
     contains(str(first.why_not), "the turn failed")
     truth(second.moment.id == case.moments[1].id, describing="the next event to get its turn")
+    equal(first.assessment, None, describing="the failed turn, which answered nothing")
+    truth(second.assessment is not None, describing="the next turn's assessment to be its own")
     equal(done.replayed.passed, False)
 
 

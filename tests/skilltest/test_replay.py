@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from cases import read_case, replayed_case_names
-from replay import Replay, harness_token, kept_harness
+from replay import Replay, harness_token, kept_harness, refuse_a_pointer
 from repo_checks import expect
 
 RUN_DIR = os.environ.get("SKILLTEST_RUN_DIR", "").strip()
@@ -32,7 +32,9 @@ def test_the_agent_supervises_the_print(name: str) -> None:
     if harness_token() is None:
         pytest.fail("no credential for the harness: set CLAUDE_CODE_OAUTH_TOKEN, or sign in")
     case = read_case(name)
-    replay = Replay(case, [program], gcode=case.gcode.read_bytes())
+    replay = Replay(
+        case, [program], gcode=refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name)
+    )
     try:
         replayed = replay.run()
         if RUN_DIR:

@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, NewType, NotRequired, TypedDict
+from typing import Any, NamedTuple, NewType, NotRequired, TypedDict
 
 from jsonschema import Draft202012Validator
 from repo_checks.checks_real_prints import printed_gcode, stored_size
@@ -197,6 +197,13 @@ def _captured(document: dict[str, Any], frame: dict[str, Any]) -> str:
     return f"{frame.get('progress_pct', 100.0):08.3f}"
 
 
+class PrintedAt(NamedTuple):
+    """Where the recording puts the job's file position at one instant."""
+
+    at: datetime
+    position: int
+
+
 class RecordedEvent(TypedDict):
     """One event of a case's recorded history, as far as the replay reads one."""
 
@@ -281,9 +288,9 @@ class Case:
         position never goes back and the job moves at the rate the recording shows.
         """
         points = sorted(
-            [(instant(moment.at), moment.file_position_bytes) for moment in self.moments]
+            [PrintedAt(instant(moment.at), moment.file_position_bytes) for moment in self.moments]
             + [
-                (at, int(frame.progress_pct / 100 * self.gcode_size))
+                PrintedAt(at, int(frame.progress_pct / 100 * self.gcode_size))
                 for at, frame in zip(self.frame_times(), self.frames, strict=True)
                 if frame.progress_pct is not None
             ]
@@ -291,23 +298,23 @@ class Case:
         highest = 0
         earlier, later = points[0], points[-1]
         for point in points:
-            highest = max(highest, point[1])
-            if point[0] <= when:
-                earlier = (point[0], highest)
+            highest = max(highest, point.position)
+            if point.at <= when:
+                earlier = PrintedAt(point.at, highest)
             else:
-                later = (point[0], highest)
+                later = PrintedAt(point.at, highest)
                 break
-        span = (later[0] - earlier[0]).total_seconds()
-        if when >= points[-1][0]:
+        span = (later.at - earlier.at).total_seconds()
+        if when >= points[-1].at:
             # Past what the recording says, at the rate it shows, to the end of the file.
-            overall = (points[-1][0] - points[0][0]).total_seconds()
-            rate = (highest - points[0][1]) / overall if overall > 0 else 0
-            past = (when - points[-1][0]).total_seconds()
+            overall = (points[-1].at - points[0].at).total_seconds()
+            rate = (highest - points[0].position) / overall if overall > 0 else 0
+            past = (when - points[-1].at).total_seconds()
             return min(highest + int(rate * past), self.gcode_size - 1)
-        if span <= 0 or when <= earlier[0]:
-            return earlier[1]
-        share = min(1.0, (when - earlier[0]).total_seconds() / span)
-        return earlier[1] + int((later[1] - earlier[1]) * share)
+        if span <= 0 or when <= earlier.at:
+            return earlier.position
+        share = min(1.0, (when - earlier.at).total_seconds() / span)
+        return earlier.position + int((later.position - earlier.position) * share)
 
     def recorded_alert(self, event_id: str) -> dict[str, Any]:
         """The body Obico posted for a recorded alert, as the history keeps it."""

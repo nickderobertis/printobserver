@@ -36,6 +36,7 @@ from typing import Any, Literal, NewType, NotRequired, TextIO, TypedDict, cast, 
 
 import doubles
 from cases import REPO, Case, Moment, Request
+from jsonschema import Draft202012Validator
 from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
 from repo_checks.model import Repo
@@ -60,6 +61,10 @@ CLIENT_DEADLINE_S = 120
 RUN_ALLOWANCE_PER_ENTRY = 3
 #: How often the server's record is read while a turn runs.
 POLL_S = 0.5
+#: Who may ask for something, as the server's own schema declares it.
+ACTOR = Draft202012Validator(
+    json.loads((REPO / "schemas/printobserver-core/Actor.json").read_text(encoding="utf-8"))
+)
 #: The kinds an agent's request is recorded under.
 REQUESTED = {"action_requested", "recovery_requested"}
 #: The kinds a turn ending is recorded under.
@@ -284,14 +289,8 @@ def _is_requested_action(action: object) -> bool:
 
 
 def _is_actor(actor: object) -> bool:
-    """Whether it is one of the three actors the server's `Actor` declares."""
-    if isinstance(actor, dict):
-        match actor:
-            case {"agent": {"session_name": str()}}:
-                return actor.keys() == {"agent"}
-            case _:
-                return False
-    return isinstance(actor, str) and actor in {"operator", "system"}
+    """Whether it is an actor the server's committed `Actor` schema declares."""
+    return ACTOR.is_valid(actor)
 
 
 def is_assessment(assessment: object) -> bool:
@@ -976,7 +975,15 @@ class Replay:
             report = RunReport()
             for harness_run in runs:
                 report.take(_lines_of(harness_run))
-            points.append(self._point(moment, triggers[number], events, runs, report))
+            until = next(
+                (
+                    harness_run.started_at
+                    for harness_run in self.runs
+                    if harness_run.moment_index > number
+                ),
+                None,
+            )
+            points.append(self._point(moment, triggers[number], events, runs, report, until))
         return points
 
     @staticmethod
@@ -986,6 +993,7 @@ class Replay:
         events: list[HistoryEvent],
         runs: list[Run],
         report: RunReport,
+        until: datetime | None,
     ) -> DecisionPoint:
         begun, ended = runs[0].started_at, runs[-1].ended_at or runs[-1].started_at
         during = [event for event in events if begun <= _received(event) <= ended]
@@ -1014,7 +1022,9 @@ class Replay:
                 (
                     event["payload"].get("assessment")
                     for event in events
-                    if event["kind"] == ASSESSED and _received(event) >= ended
+                    if event["kind"] == ASSESSED
+                    and _received(event) >= ended
+                    and (until is None or _received(event) < until)
                 ),
                 None,
             ),
