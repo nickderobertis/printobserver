@@ -71,6 +71,14 @@ fn tell(control: SocketAddr, report: Report) -> Result<String, String> {
     if head.split_whitespace().nth(1) != Some(ANSWERED) {
         return Err(format!("{control} refused {path}: {head}"));
     }
+    let declared = head.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.eq_ignore_ascii_case("content-length")
+            .then(|| value.trim().parse::<usize>().ok())?
+    });
+    if declared != Some(body.len()) {
+        return Err(format!("{control} answered {path} with no whole response"));
+    }
     Ok(body.to_owned())
 }
 

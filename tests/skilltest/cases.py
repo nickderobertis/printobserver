@@ -141,7 +141,8 @@ class Frame:
     @property
     def order(self) -> str:
         """Text sorting in capture order among frames of one case."""
-        return self.captured or f"{self.progress_pct or 100.0:08.3f}"
+        progress = 100.0 if self.progress_pct is None else self.progress_pct
+        return self.captured or f"{progress:08.3f}"
 
 
 @dataclass(frozen=True)

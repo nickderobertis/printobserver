@@ -4515,7 +4515,7 @@ reason = "A one-shot local program run through `repo_checks.shell.run`, the repo
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest/classify.py"
-site = "return run([\"npm\", \"install\", \"-g\", package], capture=False).returncode"
+site = "return run(harness_install(Path(POLICY)), capture=False).returncode"
 reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
 
 [[suppression]]
