@@ -268,3 +268,17 @@ async fn a_look_the_store_will_not_write_down_is_refused_and_nothing_is_kept() {
     );
     world.server.stop().await;
 }
+
+/// A look at the printer says when its frame was captured: the moment the camera
+/// answered, when the camera says nothing of its own.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_look_at_the_printer_says_when_its_frame_was_captured() {
+    let camera = crate::http_host::image_host(crate::ingress::snapshot_bytes()).await;
+    let world = with_camera(camera.url()).await;
+    let (status, look) = world.get(&world.url("/look")).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(
+        look["event"]["payload"]["frame_captured_at"].is_string(),
+        "{look}"
+    );
+}

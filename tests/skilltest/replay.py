@@ -271,9 +271,9 @@ class Run:
     moment_index: int
     #: How far each session transcript had grown when it started.
     transcript_sizes: dict[Path, int]
-    #: What its session transcripts gained while it ran.
     #: When it started, on the clock the server's record is kept by, and when it ended.
     started_at: datetime
+    #: What its session transcripts gained while it ran.
     transcript: list[dict[str, Any]] = field(default_factory=list)
     ended_at: datetime | None = None
 
@@ -631,7 +631,7 @@ class Replay:
 
     def _job_started_epoch(self) -> float:
         """When the print the server holds says its job started, or when this replay's did."""
-        prints = json.loads(self._client("prints"))["prints"]
+        prints = self._prints()
         started = prints[0].get("job_started_at") if prints else None
         return (
             datetime.fromisoformat(started[:26].rstrip("Z") + "+00:00").timestamp()
@@ -675,9 +675,19 @@ class Replay:
             raise ReplayError(msg)
         return done.stdout
 
+    def _prints(self) -> list[dict[str, Any]]:
+        """The prints the server holds, once they have what is read from them."""
+        prints = json.loads(self._client("prints")).get("prints")
+        if not isinstance(prints, list) or not all(
+            isinstance(held, dict) and isinstance(held.get("id"), str) for held in prints
+        ):
+            msg = "the server's prints answered no list of prints"
+            raise ReplayError(msg)
+        return prints
+
     def _print_id(self) -> str:
         if self.print_id is None:
-            prints = json.loads(self._client("prints"))["prints"]
+            prints = self._prints()
             if not prints:
                 msg = "the server holds no print"
                 raise ReplayError(msg)
@@ -691,7 +701,12 @@ class Replay:
         except ReplayError:
             return []
         events = json.loads(answered).get("events")
-        if not isinstance(events, list):
+        if not isinstance(events, list) or not all(
+            isinstance(event, dict)
+            and isinstance(event.get("kind"), str)
+            and isinstance(event.get("received_at"), str)
+            for event in events
+        ):
             msg = "the server's history answered no list of events"
             raise ReplayError(msg)
         return list(reversed(events))

@@ -26,10 +26,10 @@ rather than leaving it undone.
    recent events, the latest picture.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    and neither is a picture too dark, blurred or aimed at nothing: say so. Loose
-   strands where a wall should be, walls you can see through (under-extrusion),
+   strands where a wall should be, walls you can see through,
    strands hanging or tangling where a bridge is laid, a sagging overhang, a part
    off the bed, a first layer not sticking: that is a failing print. A file's name
-   makes nothing intended.
+   excuses nothing.
 
    Judge each frame against this print's own earlier frames. What has been printed
    stays where it was laid: measure it against the sheet's holes, edges and marks,
@@ -48,7 +48,8 @@ rather than leaving it undone.
    at 1.0, and sagging bridges the fan at 100. Change a setting only on a clear
    defect; unsure, watch.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
-   already old. A look can wait a minute and a half first, so a few show a defect growing or settling.
+   already old. A look reads now, and it can wait up to a minute and a half first, so a few show a
+   defect growing or settling.
    Open each. Each frame says when it was captured. One time twice means the camera
    has nothing newer, which is no reason to stop: keep the print running, watch, and
    say so in your reason. A plate unchanged across frames captured far apart while

@@ -92,6 +92,16 @@ fn a_turn_is_told_its_situation() {
     assert_eq!(undetected.detector_paused_the_print, None);
 }
 
+/// An alert's frame says when it was captured: the moment it was fetched, when its
+/// source says nothing of its own.
+#[test]
+fn an_alerts_frame_is_said_to_be_captured_when_it_was_fetched() {
+    let world = World::new();
+    let _ = world.handle(failure_alert(7)).expect("handled");
+    let turns = world.agent.turns();
+    assert!(turns[0].situation.frame_captured_at.is_some());
+}
+
 /// A print whose turn saw it end releases its inbox: what was waiting for it
 /// gets no turn, and neither does an event that arrives for it afterwards.
 #[test]

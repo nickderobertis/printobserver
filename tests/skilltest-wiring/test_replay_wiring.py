@@ -17,7 +17,7 @@ import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import classify
 import pytest
@@ -38,6 +38,7 @@ from cases import (
 )
 from mock_turn import ScriptedRun, Seen
 from replay import (
+    Assessment,
     Replay,
     Replayed,
     ReplayError,
@@ -51,6 +52,7 @@ from replay import (
 from replay import Secrets as Minted
 from repo_checks.__main__ import main as repo_check
 from repo_checks.checks_real_prints import POSITIONED_TRIGGERS, printed_gcode, stored_size
+from repo_checks.checks_real_prints import Trigger as RepoCheckTrigger
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
@@ -189,6 +191,11 @@ def test_the_suites_vocabularies_are_the_contracts() -> None:
     schema = json.loads((CASES / "case.schema.json").read_text(encoding="utf-8"))
     declared = schema["$defs"]["Scenario"]["properties"]["trigger"]["enum"]
     equal(sorted(trigger.value for trigger in Trigger), sorted(declared))
+    equal(sorted(get_args(RepoCheckTrigger)), sorted(declared))
+    assessment = json.loads(
+        (REPO / "schemas/printobserver-supervisor-api/AgentAssessment.json").read_text("utf-8")
+    )
+    equal(sorted(Assessment.__annotations__), sorted(assessment["properties"]))
     truth(set(declared) >= POSITIONED_TRIGGERS, describing="positioned triggers to be triggers")
     states = json.loads((REPO / "schemas/printobserver-types/PrinterState.json").read_text("utf-8"))
     named = {arm["const"] for arm in states["oneOf"] if "const" in arm}

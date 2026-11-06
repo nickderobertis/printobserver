@@ -84,6 +84,7 @@ def _test_record(path: Path) -> TestRecord:
         or not isinstance(document.get("sessions"), list)
         or not isinstance(document.get("decision_points"), list)
         or not all(_decision_point_is_whole(point) for point in document["decision_points"])
+        or document["turns"] != len(document["decision_points"])
         or document["passed"] != all(point["passed"] for point in document["decision_points"])
     ):
         msg = f"{path} is no test's record"
