@@ -113,12 +113,13 @@ class Timeline:
     finished: bool = False
     paused: bool = False
     fetches: list[str] = field(default_factory=list)
-    #: Where the job was at each frame, and the real seconds looks have waited past the newest.
+    #: Where the job was at each frame.
     positions: list[int] = field(default_factory=list)
-    crept_s: float = 0.0
+    #: When the event began, and the real seconds this turn's looks have waited.
+    event_began: float = 0.0
+    waited_s: float = 0.0
     #: The print's clock never goes back: the server reads that as a later job.
     longest_print_time_s: int = 0
-    fetched_at: float = 0.0
     stopped: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     heaters: Heaters = field(default_factory=Heaters)
