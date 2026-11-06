@@ -52,6 +52,13 @@
       "required": ["scenarios"],
       "additionalProperties": false,
       "properties": {
+        "replay": {
+          "description": "The events this case's test feeds, in order: ids of this case's scenarios, in strictly increasing `at`. A case with no `replay` has no test.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
         "scenarios": {
           "type": "array",
           "minItems": 1,
@@ -64,6 +71,7 @@
       "type": "object",
       "required": [
         "id",
+        "at",
         "summary",
         "trigger",
         "event_image",
@@ -80,6 +88,20 @@
           "description": "Kebab-case, unique within the case.",
           "type": "string",
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "at": {
+          "description": "The local time this scenario's event happened, from its recorded event or its frame's capture time.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+        },
+        "file_position_bytes": {
+          "description": "How far into the case's G-code the job had read when this event happened. Required on every periodic_observation, recorded_alert and synthetic_alert scenario of a case that carries its G-code, which `checks_real_prints` holds because only it can see the case's files; it must lie inside that G-code.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "file_position_source": {
+          "description": "Where `file_position_bytes` came from: `recorded`, the job snapshot in this scenario's recorded event; or `progress`, the frame's progress times the G-code's size.",
+          "enum": ["recorded", "progress"]
         },
         "summary": {
           "description": "One sentence: what the agent is shown and what it should do.",
@@ -130,7 +152,15 @@
           "items": { "$ref": "#/$defs/Step" }
         }
       },
+      "dependentRequired": {
+        "file_position_bytes": ["file_position_source"],
+        "file_position_source": ["file_position_bytes"]
+      },
       "allOf": [
+        {
+          "if": { "properties": { "trigger": { "const": "start_request" } } },
+          "then": { "not": { "required": ["file_position_bytes"] } }
+        },
         {
           "if": { "properties": { "trigger": { "const": "recorded_alert" } } },
           "then": { "required": ["event_id"] },

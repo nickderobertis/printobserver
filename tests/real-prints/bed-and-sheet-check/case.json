@@ -513,6 +513,7 @@
     "scenarios": [
       {
         "id": "clear-smooth-pei-20261007-132939",
+        "at": "2026-10-07T13:29:39",
         "summary": "Before a print starts the camera shows a clear bed with the smooth PEI sheet, the right sheet for PLA; the right action is to start the print.",
         "trigger": "start_request",
         "event_image": "clear-smooth-pei-20261007-132939.jpg",
@@ -531,6 +532,7 @@
       },
       {
         "id": "clear-smooth-pei-20261007-075606",
+        "at": "2026-10-07T07:56:06",
         "summary": "Before a print starts the camera shows a clear bed with the smooth PEI sheet, the right sheet for PLA; the right action is to start the print.",
         "trigger": "start_request",
         "event_image": "clear-smooth-pei-20261007-075606.jpg",
@@ -549,6 +551,7 @@
       },
       {
         "id": "not-clear-smooth-pei-20261007-105905",
+        "at": "2026-10-07T10:59:05",
         "summary": "Before a print starts the camera shows a bed that is not clear (Finished black (sparkly) printed parts left on the bed, rear half left of centre: two tall twisted/spiral rods standing upright (~560-610, 135-365 and ~615-665, 170-405), three short knurled rings (~668-700, 255-295; ~710-750, 285-330; ~670-700, 325-360), two small pegs/pins (~722,245 and ~768,277). Also a small strand/blob near the rear edge right of centre (~690-725, 125-135) and a tangle of stringy debris at the right edge of the sheet beside the right Z-rod bracket (~1005-1045, 310-365).); the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "not-clear-smooth-pei-20261007-105905.jpg",
@@ -567,6 +570,7 @@
       },
       {
         "id": "clear-smooth-pei-20261008-073519",
+        "at": "2026-10-08T07:35:19",
         "summary": "Before a print starts the camera shows a clear bed with the smooth PEI sheet, the right sheet for PLA; the right action is to start the print.",
         "trigger": "start_request",
         "event_image": "clear-smooth-pei-20261008-073519.jpg",
@@ -585,6 +589,7 @@
       },
       {
         "id": "clear-smooth-pei-20261008-113505",
+        "at": "2026-10-08T11:35:05",
         "summary": "Before a print starts the camera shows a clear bed with the smooth PEI sheet, the right sheet for PLA; the right action is to start the print.",
         "trigger": "start_request",
         "event_image": "clear-smooth-pei-20261008-113505.jpg",
@@ -603,6 +608,7 @@
       },
       {
         "id": "partial-textured-20261008-140612",
+        "at": "2026-10-08T14:06:12",
         "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "partial-textured-20261008-140612.jpg",
@@ -621,6 +627,7 @@
       },
       {
         "id": "partial-textured-20261009-071934",
+        "at": "2026-10-09T07:19:34",
         "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "partial-textured-20261009-071934.jpg",
@@ -639,6 +646,7 @@
       },
       {
         "id": "clear-textured-20261010-061436",
+        "at": "2026-10-10T06:14:36",
         "summary": "Before a print starts the camera shows a clear bed with the textured sheet, the right sheet for PETG; the right action is to start the print.",
         "trigger": "start_request",
         "event_image": "clear-textured-20261010-061436.jpg",
@@ -657,6 +665,7 @@
       },
       {
         "id": "partial-textured-20261010-181734",
+        "at": "2026-10-10T18:17:34",
         "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "partial-textured-20261010-181734.jpg",
@@ -675,6 +684,7 @@
       },
       {
         "id": "clear-textured-20261029-181404",
+        "at": "2026-10-29T18:14:04",
         "summary": "Before a print starts the camera shows a clear bed, but the textured sheet is on and the job is PLA, which goes on smooth PEI; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "clear-textured-20261029-181404.jpg",
@@ -693,6 +703,7 @@
       },
       {
         "id": "clear-textured-20261027-153224",
+        "at": "2026-10-27T15:32:24",
         "summary": "Before a print starts the camera shows a clear bed, but the textured sheet is on and the job is PLA, which goes on smooth PEI; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "clear-textured-20261027-153224.jpg",
@@ -711,6 +722,7 @@
       },
       {
         "id": "corrupted-textured-20261027-154933",
+        "at": "2026-10-27T15:49:33",
         "summary": "Before a print starts the camera shows a corrupted frame in which the bed cannot be checked; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "corrupted-textured-20261027-154933.jpg",
@@ -729,6 +741,7 @@
       },
       {
         "id": "partial-textured-20261029-183517",
+        "at": "2026-10-29T18:35:17",
         "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear, and the textured sheet is on for a PLA job; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "partial-textured-20261029-183517.jpg",
@@ -747,6 +760,7 @@
       },
       {
         "id": "corrupted-sheet-unknown-20261029-190708",
+        "at": "2026-10-29T19:07:08",
         "summary": "Before a print starts the camera shows a corrupted frame in which the bed cannot be checked; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "corrupted-sheet-unknown-20261029-190708.jpg",
@@ -765,6 +779,7 @@
       },
       {
         "id": "partial-textured-20261029-190737",
+        "at": "2026-10-29T19:07:37",
         "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear, and the textured sheet is on for a PLA job; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "partial-textured-20261029-190737.jpg",
@@ -783,6 +798,7 @@
       },
       {
         "id": "clear-textured-20261030-160955",
+        "at": "2026-10-30T16:09:55",
         "summary": "Before a print starts the camera shows a clear bed with the textured sheet, the right sheet for PETG; the right action is to start the print.",
         "trigger": "start_request",
         "event_image": "clear-textured-20261030-160955.jpg",
@@ -801,6 +817,7 @@
       },
       {
         "id": "partial-textured-20261030-115656",
+        "at": "2026-10-30T11:56:56",
         "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "partial-textured-20261030-115656.jpg",
@@ -819,6 +836,7 @@
       },
       {
         "id": "partial-textured-20261031-162215",
+        "at": "2026-10-31T16:22:15",
         "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear, and the textured sheet is on for a PLA job; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "partial-textured-20261031-162215.jpg",
@@ -837,6 +855,7 @@
       },
       {
         "id": "partial-smooth-pei-20261031-164529",
+        "at": "2026-10-31T16:45:29",
         "summary": "Before a print starts the camera shows a bed partly hidden by the gantry, so this frame cannot confirm it is clear; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "partial-smooth-pei-20261031-164529.jpg",
@@ -855,6 +874,7 @@
       },
       {
         "id": "not-clear-textured-20261030-174128",
+        "at": "2026-10-30T17:41:28",
         "summary": "Before a print starts the camera shows a bed that is not clear (Finished black jar bottom (large knurled ring, ~810-1250, 85-415) on the rear centre of the sheet, with fine wispy strings inside and over it. Possibly a thin strand at the sheet's right-rear corner (~1600-1660, 270-350), near the right bed bracket.); the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "not-clear-textured-20261030-174128.jpg",
@@ -873,6 +893,7 @@
       },
       {
         "id": "not-clear-textured-20261008-172933",
+        "at": "2026-10-08T17:29:33",
         "summary": "Before a print starts the camera shows a bed that is not clear (Many flat black printed parts across the sheet: a rectangular plate with two holes (~590-800, 235-355), a long bar with holes across the middle (~410-940, 350-515), an open rectangular frame/handle at the front left (~520-720, 515-690), a textured rectangle (~745-880, 475-605), two small clips (~527,380 and ~634,365), S-hooks (~700-760, 505-560 and ~940-965, 375-415), small round pieces (~880-910, 460-495), and a strand by the right edge (~960-990, 400-450).); the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "not-clear-textured-20261008-172933.jpg",
@@ -891,6 +912,7 @@
       },
       {
         "id": "not-clear-textured-20261010-174900",
+        "at": "2026-10-10T17:49:00",
         "summary": "Before a print starts the camera shows a bed that is not clear (A large black printed bin at the rear left (~280-700, 15-330) with white-ish stringing on its right face (~640-720, 140-330); two small printed screws/nuts standing at the rear centre (~740,60 and ~785,30); a fine strand on the sheet right of the bin (~640-700, 80-95).); the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "not-clear-textured-20261010-174900.jpg",
@@ -909,6 +931,7 @@
       },
       {
         "id": "not-clear-textured-20261010-164500",
+        "at": "2026-10-10T16:45:00",
         "summary": "Before a print starts the camera shows a bed that is not clear (Three black printed bins: a large one at the left (~340-690, 185-530), one in the centre under the head (~690-900, 135-365) and one at the rear right (~880-995, 45-245); strings between them (~700-760, 270-300) and a strand near the right rear corner of the sheet (~1045-1080, 245-290).); the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "not-clear-textured-20261010-164500.jpg",
@@ -927,6 +950,7 @@
       },
       {
         "id": "clear-textured-20261029-182651",
+        "at": "2026-10-29T18:26:51",
         "summary": "Before a print starts the camera shows a clear textured sheet after a cancelled attempt, with the next job sliced for PLA, which goes on smooth PEI; the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "clear-textured-20261029-182651.jpg",
@@ -945,6 +969,7 @@
       },
       {
         "id": "not-clear-textured-20261029-195324",
+        "at": "2026-10-29T19:53:24",
         "summary": "Before a print starts the camera shows a bed that is not clear (A failed black jar-top print right of centre: a low circular wall (~1000-1280, 440-680) filled with a spaghetti nest of loose strands, plus a long thin strand running nearly vertically from the top of the frame down to the print (~965-1010, 0-430).); the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "not-clear-textured-20261029-195324.jpg",
@@ -963,6 +988,7 @@
       },
       {
         "id": "not-clear-smooth-pei-20261031-191910",
+        "at": "2026-10-31T19:19:10",
         "summary": "Before a print starts the camera shows a bed that is not clear (A tall black printed cylinder (bubbler guard, ~870-1100, 140-680) at the centre-rear with the head right on top of it, and a curved pad/arm part attached at its right (~1040-1160, 455-555).); the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "not-clear-smooth-pei-20261031-191910.jpg",
@@ -981,6 +1007,7 @@
       },
       {
         "id": "not-clear-textured-20261030-142205",
+        "at": "2026-10-30T14:22:05",
         "summary": "Before a print starts the camera shows a bed that is not clear (A black jar top (knurled cylinder on a wide base, ~815-1240, 120-485) at the rear centre with the head directly above it; light wispy strings on its sides. Possibly a thin strand along the sheet's right-rear corner (~1575-1640, 335-420).); the right action is to ask for nothing and tell a person what stops it.",
         "trigger": "start_request",
         "event_image": "not-clear-textured-20261030-142205.jpg",

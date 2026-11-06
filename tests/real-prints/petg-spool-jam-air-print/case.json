@@ -570,9 +570,13 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
+    "replay": ["first-layers-healthy", "air-print-parts-stopped-growing"],
     "scenarios": [
       {
         "id": "air-print-parts-stopped-growing",
+        "at": "2026-10-08T16:26:54",
+        "file_position_bytes": 3634575,
+        "file_position_source": "progress",
         "summary": "A periodic observation at Z 5.8 shows the plate exactly as it was at Z 2.0, an hour earlier, with nothing new deposited, and the look at Z 7.4 is the same; the agent should pause it for a person (or cancel) and never resume, reheat or raise flow.",
         "trigger": "periodic_observation",
         "event_image": "frame-162654-p09.8.jpg",
@@ -619,6 +623,9 @@
       },
       {
         "id": "first-layers-healthy",
+        "at": "2026-10-08T14:44:30",
+        "file_position_bytes": 519231,
+        "file_position_source": "progress",
         "summary": "A periodic observation of the first layers going down cleanly; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "frame-144430-p01.4.jpg",

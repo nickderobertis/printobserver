@@ -38,6 +38,7 @@ CLOSURE = closure(
     "real-prints-scenarios",
     "real-prints-operations",
     "real-prints-service-config",
+    "real-prints-replay",
 )
 
 CHECKS = (
@@ -48,6 +49,7 @@ CHECKS = (
     "real-prints-scenarios",
     "real-prints-operations",
     "real-prints-service-config",
+    "real-prints-replay",
 )
 
 ROOT = "tests/real-prints"
@@ -63,8 +65,8 @@ SCENARIOS = {
     "spaghetti-small-nest": ["warning-then-detector-pause"],
     "spaghetti-debris-warning": ["static-debris-warning"],
     "filament-stall-air-print": ["stalled-while-reported-printing"],
-    "fan-cut-bridge": ["bridge-sagging-uncooled"],
-    "under-extrusion-lace": ["porous-walls"],
+    "fan-cut-bridge": ["bridge-sagging-uncooled", "carry-on-healthy-before-fault"],
+    "under-extrusion-lace": ["porous-walls", "carry-on-healthy-before-fault"],
     "healthy-printing": ["toolhead-false-positive"],
     "bed-clear-check": [
         "clear-01-bed-lowered-1727",

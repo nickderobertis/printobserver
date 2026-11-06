@@ -1356,9 +1356,13 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
+    "replay": ["carry-on-004-other", "carry-on-013-other", "carry-on-024-support", "carry-on-028-bridge", "carry-on-031-other", "carry-on-042-other", "carry-on-049-support", "carry-on-059-other"],
     "scenarios": [
       {
         "id": "carry-on-004-other",
+        "at": "2026-10-30T12:06:27",
+        "file_position_bytes": 1827,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 0.0% shows what the agent called 'A thin wisp of stringing is normal for PETG', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-004-obs-120627-p00.0.jpg",
@@ -1405,6 +1409,9 @@
       },
       {
         "id": "carry-on-013-other",
+        "at": "2026-10-30T12:24:37",
+        "file_position_bytes": 834565,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 14.8% shows what the agent called 'The thin wisps are ordinary PETG stringing', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-013-obs-122437-p14.8.jpg",
@@ -1447,6 +1454,9 @@
       },
       {
         "id": "carry-on-018-other",
+        "at": "2026-10-30T12:32:46",
+        "file_position_bytes": 1385571,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 24.5% shows what the agent called 'One hair-thin PETG string trails across the sheet', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-018-obs-123246-p24.5.jpg",
@@ -1489,6 +1499,9 @@
       },
       {
         "id": "carry-on-024-support",
+        "at": "2026-10-30T12:44:56",
+        "file_position_bytes": 2048301,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 36.3% shows what the agent called 'The surface of the outer band has changed to a finer, denser texture', which is support; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-024-obs-124456-p36.3.jpg",
@@ -1538,6 +1551,9 @@
       },
       {
         "id": "carry-on-027-support",
+        "at": "2026-10-30T12:48:58",
+        "file_position_bytes": 2198070,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 38.9% shows what the agent called 'Last turn's textured outer band is a ring of evenly spaced radial ribs', which is support; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-027-obs-124858-p38.9.jpg",
@@ -1580,6 +1596,9 @@
       },
       {
         "id": "carry-on-031-other",
+        "at": "2026-10-30T12:57:03",
+        "file_position_bytes": 2439105,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 43.2% shows what the agent called 'The outer band shows an even diagonal lattice', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-031-obs-125703-p43.2.jpg",
@@ -1622,6 +1641,9 @@
       },
       {
         "id": "carry-on-042-other",
+        "at": "2026-10-30T13:17:20",
+        "file_position_bytes": 3021933,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 53.5% shows what the agent called 'only the same fine strings that affect its look', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-042-obs-131720-p53.5.jpg",
@@ -1664,6 +1686,9 @@
       },
       {
         "id": "carry-on-049-support",
+        "at": "2026-10-30T13:31:31",
+        "file_position_bytes": 3330051,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 59.0% shows what the agent called 'A regular toothed ring of ribs is rising around the inner boss as part of the design', which is support; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-049-obs-133131-p59.0.jpg",
@@ -1706,6 +1731,9 @@
       },
       {
         "id": "carry-on-059-other",
+        "at": "2026-10-30T13:51:46",
+        "file_position_bytes": 4189291,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 74.2% shows what the agent called 'An even grid infill layer now covers the rib ring', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-059-obs-135146-p74.2.jpg",
@@ -1748,9 +1776,57 @@
       },
       {
         "id": "carry-on-069-other",
+        "at": "2026-10-30T14:12:00",
+        "file_position_bytes": 4995731,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy jar top at 88.4% shows what the agent called 'The whole top of the part is now an even square grid infill', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-069-obs-141200-p88.4.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-028-bridge",
+        "at": "2026-10-30T12:51:00",
+        "file_position_bytes": 2244987,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 39.7% shows the shoulder's underside closing inward with bridge infill and overhang perimeters over the support, which is bridging; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-028-obs-125100-p39.7.jpg",
         "printer_state": "printing",
         "detector_warned": null,
         "detector_paused_the_print": null,

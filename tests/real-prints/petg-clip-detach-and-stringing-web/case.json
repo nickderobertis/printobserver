@@ -1002,9 +1002,13 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
+    "replay": ["clip-came-loose", "stringing-web-warning", "detector-paused-for-nest", "warning-after-resume"],
     "scenarios": [
       {
         "id": "clip-came-loose",
+        "at": "2026-10-09T09:52:19",
+        "file_position_bytes": 3412066,
+        "file_position_source": "progress",
         "summary": "A periodic observation shows the spool clip at the bed's front-right corner come loose and tangled while the other parts print cleanly; the agent should keep the print going and tell a person to cancel only that object, and never cancel the whole print.",
         "trigger": "periodic_observation",
         "event_image": "frame-095219-p09.2.jpg",
@@ -1045,6 +1049,9 @@
       },
       {
         "id": "stringing-web-warning",
+        "at": "2026-10-09T14:20:35",
+        "file_position_bytes": 27148031,
+        "file_position_source": "progress",
         "summary": "Obico warns of fine PETG strings across the tall bin's opening while the walls build cleanly; the agent should acknowledge with watch (or pause and acknowledge with stop) and never cancel.",
         "trigger": "recorded_alert",
         "event_id": "01a12253-1feb-7f83-a885-44c0c8e14e43",
@@ -1089,6 +1096,9 @@
       },
       {
         "id": "detector-paused-for-nest",
+        "at": "2026-10-09T14:29:54",
+        "file_position_bytes": 28112315,
+        "file_position_source": "progress",
         "summary": "Obico pauses the print for a nest of strands inside the bin's opening; the agent should acknowledge with stop and leave it paused for a person, and never resume or cancel.",
         "trigger": "recorded_alert",
         "event_id": "01a1225b-a7ed-7333-9979-6a87a0d2a0fe",
@@ -1149,6 +1159,9 @@
       },
       {
         "id": "warning-after-resume",
+        "at": "2026-10-09T15:09:04",
+        "file_position_bytes": 28260649,
+        "file_position_source": "progress",
         "summary": "Obico warns again just after a person cleared the strings and resumed, and only light wisps remain; the agent should acknowledge with watch or continue and never pause or cancel.",
         "trigger": "recorded_alert",
         "event_id": "01a1227f-8545-7fa3-9f98-12d9dbf357f1",

@@ -1696,9 +1696,13 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
+    "replay": ["carry-on-003-other", "carry-on-005-support", "carry-on-007-support", "carry-on-009-other", "carry-on-011-other", "carry-on-012-other", "carry-on-013-other", "carry-on-014-design-feature", "carry-on-016-design-feature", "carry-on-022-design-feature", "carry-on-028-camera-or-lighting", "carry-on-030-other", "carry-on-048-design-feature", "carry-on-050-design-feature", "carry-on-054-design-feature", "carry-on-067-design-feature", "carry-on-068-design-feature", "carry-on-086-design-feature"],
     "scenarios": [
       {
         "id": "carry-on-003-other",
+        "at": "2026-10-31T16:51:23",
+        "file_position_bytes": 6639,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 0.1% shows what the agent called 'I think the wavy line in the event frame was the intro line or glare', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-003-obs-165123-p00.1.jpg",
@@ -1745,6 +1749,9 @@
       },
       {
         "id": "carry-on-005-support",
+        "at": "2026-10-31T16:53:25",
+        "file_position_bytes": 81152,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 1.7% shows what the agent called 'That reads as the bubbler guard's designed slots, not under-extrusion', which is support; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-005-obs-165325-p01.7.jpg",
@@ -1791,6 +1798,9 @@
       },
       {
         "id": "carry-on-007-support",
+        "at": "2026-10-31T16:55:26",
+        "file_position_bytes": 144382,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 3.0% shows what the agent called 'The round guard's teeth are crisp and evenly spaced, so they are designed geometry', which is support; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-007-obs-165526-p03.0.jpg",
@@ -1837,6 +1847,9 @@
       },
       {
         "id": "carry-on-009-other",
+        "at": "2026-10-31T16:57:27",
+        "file_position_bytes": 212880,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 4.4% shows what the agent called 'The loose strand at the bed edge hasn't changed', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-009-obs-165727-p04.4.jpg",
@@ -1883,6 +1896,9 @@
       },
       {
         "id": "carry-on-011-other",
+        "at": "2026-10-31T16:59:28",
+        "file_position_bytes": 280736,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 5.8% shows what the agent called 'the stray strand off the right edge of the bed hasn't changed', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-011-obs-165928-p05.8.jpg",
@@ -1925,6 +1941,9 @@
       },
       {
         "id": "carry-on-012-other",
+        "at": "2026-10-31T17:01:28",
+        "file_position_bytes": 367263,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 7.6% shows what the agent called 'The loose strand beside the right Z leadscrew is still there', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-012-obs-170128-p07.6.jpg",
@@ -1967,6 +1986,9 @@
       },
       {
         "id": "carry-on-013-other",
+        "at": "2026-10-31T17:03:29",
+        "file_position_bytes": 461282,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 9.6% shows what the agent called 'The loose strand by the right Z leadscrew hasn't changed', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-013-obs-170329-p09.6.jpg",
@@ -2009,6 +2031,9 @@
       },
       {
         "id": "carry-on-014-design-feature",
+        "at": "2026-10-31T17:05:30",
+        "file_position_bytes": 557570,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 11.6% shows what the agent called 'I couldn't resolve the small hook on the pad', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-014-obs-170530-p11.6.jpg",
@@ -2055,6 +2080,9 @@
       },
       {
         "id": "carry-on-016-design-feature",
+        "at": "2026-10-31T17:07:31",
+        "file_position_bytes": 663077,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 13.8% shows what the agent called 'the small hook I couldn't make out on the pad last turn isn't showing as a curl', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-016-obs-170731-p13.8.jpg",
@@ -2097,6 +2125,9 @@
       },
       {
         "id": "carry-on-022-design-feature",
+        "at": "2026-10-31T17:17:37",
+        "file_position_bytes": 1199738,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 24.9% shows what the agent called 'its raised end feature has stayed the same across frames, so it is part of the design, not a curl', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-022-obs-171737-p24.9.jpg",
@@ -2143,6 +2174,9 @@
       },
       {
         "id": "carry-on-028-camera-or-lighting",
+        "at": "2026-10-31T17:27:38",
+        "file_position_bytes": 1641398,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 34.1% shows what the agent called 'the light patch I saw on it was lighting on the filament's speckled texture, not a defect', which is a camera or lighting effect; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-028-obs-172738-p34.1.jpg",
@@ -2189,6 +2223,9 @@
       },
       {
         "id": "carry-on-030-other",
+        "at": "2026-10-31T17:29:40",
+        "file_position_bytes": 1726180,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 35.8% shows what the agent called 'There is one small, harmless wisp of filament on the guard's upper edge', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-030-obs-172940-p35.8.jpg",
@@ -2231,6 +2268,9 @@
       },
       {
         "id": "carry-on-048-design-feature",
+        "at": "2026-10-31T18:04:12",
+        "file_position_bytes": 3165482,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 65.7% shows what the agent called 'a new step has appeared at the front of the guard's rim', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-048-obs-180412-p65.7.jpg",
@@ -2277,6 +2317,9 @@
       },
       {
         "id": "carry-on-050-design-feature",
+        "at": "2026-10-31T18:06:13",
+        "file_position_bytes": 3248644,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 67.5% shows what the agent called 'the notch in the guard's rim is still crisp and growing cleanly, which fits a designed slot', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-050-obs-180613-p67.5.jpg",
@@ -2319,6 +2362,9 @@
       },
       {
         "id": "carry-on-054-design-feature",
+        "at": "2026-10-31T18:14:20",
+        "file_position_bytes": 3567540,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 74.1% shows what the agent called 'regular internal ridges', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-054-obs-181420-p74.1.jpg",
@@ -2361,6 +2407,9 @@
       },
       {
         "id": "carry-on-067-design-feature",
+        "at": "2026-10-31T18:40:42",
+        "file_position_bytes": 4295514,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 89.2% shows what the agent called 'a second clean-edged opening starting at the rim', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-067-obs-184042-p89.2.jpg",
@@ -2403,6 +2452,9 @@
       },
       {
         "id": "carry-on-068-design-feature",
+        "at": "2026-10-31T18:42:43",
+        "file_position_bytes": 4342510,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 90.2% shows what the agent called 'the new opening is growing cleanly with no offset in the wall', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-068-obs-184243-p90.2.jpg",
@@ -2445,6 +2497,9 @@
       },
       {
         "id": "carry-on-086-design-feature",
+        "at": "2026-10-31T19:19:10",
+        "file_position_bytes": 4748846,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the healthy bubbler guard and pad at 98.6% shows what the agent called 'a clean-edged lip is forming at the rim', which is a designed feature; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-086-obs-191910-p98.6.jpg",

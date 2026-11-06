@@ -42,9 +42,13 @@
   },
   "obico_scores": "obico-predictions.json",
   "assertions": {
+    "replay": ["carry-on-healthy-before-fault", "porous-walls"],
     "scenarios": [
       {
         "id": "porous-walls",
+        "at": "2026-09-27T19:41:02",
+        "file_position_bytes": 216660,
+        "file_position_source": "progress",
         "summary": "A periodic observation, with no detector alert, shows the walls turning porous with the flow cut to 30 percent, and the look shows the same; the agent should set the flowrate factor back to 1.0.",
         "trigger": "periodic_observation",
         "event_image": "03-flow-30pct-porous-p61.jpg",
@@ -58,6 +62,51 @@
           [{"operation": "set-flowrate-factor", "args": {"factor": 1.0}}]
         ],
         "never": [{"operation": "cancel"}, {"operation": "resume"}]
+      },
+      {
+        "id": "carry-on-healthy-before-fault",
+        "at": "2026-09-27T19:30:13",
+        "file_position_bytes": 106048,
+        "file_position_source": "progress",
+        "summary": "A periodic observation of the healthy box at 29.9%, before its flow is cut; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "01-healthy-before-fault-p30.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
       }
     ]
   }

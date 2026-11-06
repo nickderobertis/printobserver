@@ -324,9 +324,13 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
+    "replay": ["first-layer-before-the-failure", "ring-dragged-off-its-place"],
     "scenarios": [
       {
         "id": "ring-dragged-off-its-place",
+        "at": "2026-10-29T18:24:50",
+        "file_position_bytes": 143566,
+        "file_position_source": "recorded",
         "summary": "A periodic observation shows the rim ring dragged about 300 px off where it was printed, a few layers into the print; the agent should pause it for a person (or cancel) and never resume or adjust.",
         "trigger": "periodic_observation",
         "event_image": "agent-009-obs-182450-p03.1.jpg",
@@ -385,6 +389,9 @@
       },
       {
         "id": "first-layer-before-the-failure",
+        "at": "2026-10-29T18:22:48",
+        "file_position_bytes": 13018,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the first layer going down at the back centre, before anything has moved; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-007-obs-182248-p00.3.jpg",

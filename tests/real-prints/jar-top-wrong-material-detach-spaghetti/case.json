@@ -903,9 +903,13 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
+    "replay": ["wall-building-cleanly", "wall-top-porous-and-stringing", "part-detached-and-moved"],
     "scenarios": [
       {
         "id": "wall-top-porous-and-stringing",
+        "at": "2026-10-29T19:33:12",
+        "file_position_bytes": 1705897,
+        "file_position_source": "recorded",
         "summary": "A periodic observation, then looks showing the top of the jar's rim wall turning porous and strung across the open interior; the agent should pause it for a person and never call it a design feature and carry on.",
         "trigger": "periodic_observation",
         "event_image": "agent-022-obs-193312-p36.3.jpg",
@@ -967,6 +971,9 @@
       },
       {
         "id": "part-detached-and-moved",
+        "at": "2026-10-29T19:39:13",
+        "file_position_bytes": 1889117,
+        "file_position_source": "recorded",
         "summary": "A periodic observation shows the whole part, brim included, shifted about 200 px on the sheet with spaghetti around it; the agent should pause (or cancel) at once and never resume or adjust.",
         "trigger": "periodic_observation",
         "event_image": "agent-026-obs-193913-p40.2.jpg",
@@ -1025,6 +1032,9 @@
       },
       {
         "id": "wall-building-cleanly",
+        "at": "2026-10-29T19:31:10",
+        "file_position_bytes": 1609341,
+        "file_position_source": "recorded",
         "summary": "A periodic observation of the rim wall building cleanly at about a third of the way; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-020-obs-193110-p34.3.jpg",
