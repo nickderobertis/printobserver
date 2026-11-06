@@ -97,9 +97,12 @@ fn a_turn_is_told_its_situation() {
 #[test]
 fn an_alerts_frame_is_said_to_be_captured_when_it_was_fetched() {
     let world = World::new();
-    let _ = world.handle(failure_alert(7)).expect("handled");
-    let turns = world.agent.turns();
-    assert!(turns[0].situation.frame_captured_at.is_some());
+    let _ = world
+        .handle(crate::world::failure_alert_with_image(7))
+        .expect("handled");
+    assert!(world.agent.turns()[0].situation.frame_captured_at.is_some());
+    let _ = world.handle(failure_alert(8)).expect("handled");
+    assert!(world.agent.turns()[1].situation.frame_captured_at.is_none());
 }
 
 /// A print whose turn saw it end releases its inbox: what was waiting for it

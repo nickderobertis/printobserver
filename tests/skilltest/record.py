@@ -16,7 +16,7 @@ import tempfile
 from pathlib import Path
 from typing import TypedDict
 
-from replay import TestRecord
+from replay import DecisionRecord, TestRecord
 from repo_checks.shell import run
 from turns_per_run import CASES, turns_per_test
 
@@ -60,15 +60,17 @@ class UnreadableRunError(Exception):
     """A run's directory holding something that is no test's record, or nothing at all."""
 
 
-def _decision_point_is_whole(point: object) -> bool:
-    """Whether a decision point carries what the record is folded and read from."""
+def _decision_point_is_readable(point: object) -> bool:
+    """Whether a decision point has every field of `DecisionRecord`, with those read here typed."""
     return (
         isinstance(point, dict)
-        and isinstance(point.get("scenario"), str)
-        and isinstance(point.get("passed"), bool)
-        and isinstance(point.get("compacted"), bool)
-        and isinstance(point.get("commands"), list)
-        and isinstance(point.get("models"), list)
+        and DecisionRecord.__annotations__.keys() <= point.keys()
+        and isinstance(point["scenario"], str)
+        and isinstance(point["passed"], bool)
+        and isinstance(point["compacted"], bool)
+        and isinstance(point["commands"], list)
+        and all(isinstance(command, str) for command in point["commands"])
+        and isinstance(point["models"], list)
         and all(isinstance(model, str) for model in point["models"])
     )
 
@@ -83,7 +85,7 @@ def _test_record(path: Path) -> TestRecord:
         or not isinstance(document.get("turns"), int)
         or not isinstance(document.get("sessions"), list)
         or not isinstance(document.get("decision_points"), list)
-        or not all(_decision_point_is_whole(point) for point in document["decision_points"])
+        or not all(_decision_point_is_readable(point) for point in document["decision_points"])
         or document["turns"] != len(document["decision_points"])
         or document["passed"] != all(point["passed"] for point in document["decision_points"])
     ):
@@ -98,8 +100,8 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
     points = [point for test in tests for point in test["decision_points"]]
     counted = turns_per_test(cases)
     for test in tests:
-        if test["test"] not in counted:
-            msg = f"{test['test']} is no case with a replay"
+        if counted.get(test["test"]) != len(test["decision_points"]):
+            msg = f"{test['test']} is no case with a replay of that many decision points"
             raise UnreadableRunError(msg)
     return {
         "figures": {"turns": len(points)},

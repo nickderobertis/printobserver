@@ -729,26 +729,47 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
     monkeypatch.setattr(record, "commit", lambda: "a-commit")
     finished = tmp_path / "finished"
     finished.mkdir()
+    point = {
+        "scenario": "a-scenario",
+        "at": "2026-09-27T18:40:05",
+        "trigger": "periodic_observation",
+        "passed": True,
+        "why_not": None,
+        "requests": [],
+        "commands": [],
+        "opened": [],
+        "assessment": None,
+        "looks": 0,
+        "usage": None,
+        "models": [],
+        "compacted": False,
+    }
     test_record = {
         "test": "fan-cut-bridge",
         "passed": True,
-        "turns": 0,
+        "turns": 2,
         "sessions": [],
-        "decision_points": [],
+        "decision_points": [point, point],
     }
     (finished / "fan-cut-bridge.json").write_text(json.dumps(test_record), encoding="utf-8")
     equal(record.main([str(finished)]), 0)
     equal(json.loads(written.read_text("utf-8"))["detail"]["commit"], "a-commit")
     failed = tmp_path / "failed"
     failed.mkdir()
+    failing = {**point, "passed": False}
     (failed / "fan-cut-bridge.json").write_text(
-        json.dumps({**test_record, "passed": False}), encoding="utf-8"
+        json.dumps({**test_record, "passed": False, "decision_points": [point, failing]}),
+        encoding="utf-8",
     )
     equal(record.main([str(failed)]), 1)
     empty = tmp_path / "empty"
     empty.mkdir()
     equal(record.main([str(empty)]), 1)
-    for name, unusable in (("list", []), ("truthy", {**test_record, "passed": "false"})):
+    for name, unusable in (
+        ("list", []),
+        ("truthy", {**test_record, "passed": "false"}),
+        ("short", {**test_record, "turns": 0, "decision_points": []}),
+    ):
         unreadable = tmp_path / name
         unreadable.mkdir()
         (unreadable / "a.json").write_text(json.dumps(unusable), encoding="utf-8")
