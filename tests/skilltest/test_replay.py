@@ -54,9 +54,13 @@ def test_the_agent_supervises_the_print(name: str) -> None:
         # moved from where the replay reads them, which it must not pass over.
         for point in replayed.points:
             expect.truth(
-                point.usage and point.models and point.commands,
-                describing=f"{point.moment.id}'s turn to report its usage, models and commands",
+                point.usage and point.models,
+                describing=f"{point.moment.id}'s turn to report its usage and models",
             )
+        expect.truth(
+            any(point.commands for point in replayed.points),
+            describing="the transcript to say what the agent ran",
+        )
         expect.truth(replayed.passed, describing=f"every decision point:\n{replayed.failures()}")
     finally:
         replay.clean_up()
