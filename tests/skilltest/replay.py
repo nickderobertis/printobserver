@@ -50,16 +50,13 @@ OBSERVATION_INTERVAL_S = 5
 #: Longer than a turn's own timeout and the agent's looks together; a turn that
 #: takes longer has hung, and the replay reports which.
 TURN_DEADLINE_S = 1800
-#: How long the server has to answer once it is started.
 START_DEADLINE_S = 60
 #: How long the server has to write down an alert it answered.
 ALERT_DEADLINE_S = 30
-#: How long one operator command may take.
 CLIENT_DEADLINE_S = 120
 #: The engine re-prompts a turn at most twice, so a whole replay spending more than
 #: this many harness runs per entry has gone wrong.
 RUN_ALLOWANCE_PER_ENTRY = 3
-#: How often the server's record is read while a turn runs.
 POLL_S = 0.5
 #: Who may ask for something, as the server's own schema declares it.
 ACTOR = Draft202012Validator(

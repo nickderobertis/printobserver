@@ -355,7 +355,10 @@ class _Quiet(BaseHTTPRequestHandler):
         if not (declared.isascii() and declared.isdigit()):
             self.answer_json(400, {"error": "Malformed Content-Length"})
             return None
-        data = self.rfile.read(min(int(declared), MAX_BODY_BYTES))
+        if int(declared) > MAX_BODY_BYTES:
+            self.answer_json(413, {"error": "Body too large"})
+            return None
+        data = self.rfile.read(int(declared))
         try:
             parsed = json.loads(data) if data else {}
         except ValueError:
@@ -530,7 +533,8 @@ def control(
 
     class Handler(_Quiet):
         def do_POST(self) -> None:
-            self.body()
+            if self.body() is None:
+                return
             try:
                 match self.path:
                     case "/started":

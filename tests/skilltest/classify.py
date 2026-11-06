@@ -123,13 +123,17 @@ def _decided(root: Path, base: str, head: str) -> Classification:
     )
 
 
+def harness_install(policy: Path) -> list[str]:
+    """The command installing the Claude Code release the policy pins."""
+    pinned = tomllib.loads(policy.read_text(encoding="utf-8"))["skilltest"]["claude_code"]
+    return ["npm", "install", "-g", f"@anthropic-ai/claude-code@{pinned}"]
+
+
 def main(arguments: list[str]) -> int:
     """Print the classification of one diff, or install the release the job runs on."""
     if arguments == ["--install-harness"]:
-        policy = tomllib.loads(Path(POLICY).read_text(encoding="utf-8"))
-        package = f"@anthropic-ai/claude-code@{policy['skilltest']['claude_code']}"
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        return run(["npm", "install", "-g", package], capture=False).returncode
+        return run(harness_install(Path(POLICY)), capture=False).returncode
     if len(arguments) != 2:
         print("usage: classify.py BASE HEAD", file=sys.stderr)
         return 2

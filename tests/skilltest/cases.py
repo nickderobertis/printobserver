@@ -134,8 +134,14 @@ class Frame:
     """One camera frame of a case, and when it was captured."""
 
     file: str
-    captured: str
+    #: When it was captured, in the case's local time, where the case kept that.
+    captured: str | None
     progress_pct: float | None
+
+    @property
+    def order(self) -> str:
+        """Text sorting in capture order among frames of one case."""
+        return self.captured or f"{self.progress_pct or 100.0:08.3f}"
 
 
 @dataclass(frozen=True)
@@ -184,8 +190,8 @@ def _step(document: dict[str, Any]) -> Step:
     return Step(document["operation"], dict(document.get("args", {})))
 
 
-def _captured(document: dict[str, Any], frame: dict[str, Any]) -> str:
-    """When a frame was captured, as text sorting in time, or its progress if it has only that."""
+def _captured(document: dict[str, Any], frame: dict[str, Any]) -> str | None:
+    """When a frame was captured, as text sorting in time, if its case kept that."""
     time = frame.get("time")
     day = re.match(r"\d{4}-\d{2}-\d{2}", str(document.get("printed_on", "")))
     if isinstance(time, str):
@@ -194,7 +200,7 @@ def _captured(document: dict[str, Any], frame: dict[str, Any]) -> str:
     if named and isinstance(document.get("frames"), list):
         dated = next(entry["time"] for entry in document["frames"] if "time" in entry)
         return f"{dated[:10]}T{named['hour']}:{named['minute']}:00"
-    return f"{frame.get('progress_pct', 100.0):08.3f}"
+    return None
 
 
 class PrintedAt(NamedTuple):
@@ -234,14 +240,14 @@ class Case:
     @property
     def has_frame_times(self) -> bool:
         """Whether its frames carry when they were captured, rather than only their progress."""
-        return bool(self.frames) and "T" in self.frames[0].captured
+        return bool(self.frames) and self.frames[0].captured is not None
 
     def frame_at_or_before(self, at: str, image: str) -> int:
         """The index of the frame a moment stands at: its own image, or the latest before `at`."""
         for index, frame in enumerate(self.frames):
             if frame.file == image:
                 return index
-        earlier = [index for index, frame in enumerate(self.frames) if frame.captured <= at]
+        earlier = [index for index, frame in enumerate(self.frames) if frame.order <= at]
         return earlier[-1] if earlier else -1
 
     def frame_times(self) -> list[datetime]:
@@ -251,7 +257,7 @@ class Case:
         the recording's rate between its events puts that progress at.
         """
         if self.has_frame_times:
-            return [instant(frame.captured) for frame in self.frames]
+            return [instant(frame.order) for frame in self.frames]
         return [
             self._instant_of(int((frame.progress_pct or 0) / 100 * self.gcode_size))
             for frame in self.frames
@@ -352,7 +358,7 @@ def read_case(name: str) -> Case:
             if not NOT_FROM_THE_CAMERA.search(frame["file"])
             and frame.get("kind") != "obico_failure_alert"
         ),
-        key=lambda frame: frame.captured,
+        key=lambda frame: frame.order,
     )
     moments = tuple(
         Moment(

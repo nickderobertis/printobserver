@@ -218,6 +218,24 @@ fn a_refused_report_is_a_failure() {
     assert!(kept.contains("refused /started"), "{kept}");
 }
 
+/// A control endpoint closing before a whole response is a failure naming that.
+#[test]
+fn a_report_with_no_whole_answer_is_a_failure() {
+    let scratch = TempDir::new().expect("a directory");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    let address = listener.local_addr().expect("its address").to_string();
+    std::thread::spawn(move || {
+        let (mut connection, _) = listener.accept().expect("a connection");
+        let mut request = [0_u8; 1024];
+        let _ = connection.read(&mut request);
+        let _ = connection.write_all(b"HTTP/1.1 200 OK");
+    });
+    let launcher = installed(scratch.path(), &address, &responder());
+    let output = launched(&launcher, &[]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no whole response"));
+}
+
 /// A control address nothing answers at stops the run before it starts anything.
 #[test]
 fn a_control_address_nothing_answers_at_starts_nothing() {

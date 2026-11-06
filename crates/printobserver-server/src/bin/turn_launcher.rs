@@ -111,6 +111,7 @@ fn run(launch: &Launch, record: &Path) -> Result<ExitCode, String> {
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|error| format!("{program} could not be started: {error}"))?;
+    // llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
     let mut from_child = child
         .stdout
         .take()

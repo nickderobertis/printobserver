@@ -2308,6 +2308,12 @@ reason = "One TCP connect to a server this test just started on the loopback add
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = "let mut from_child = child"
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-server/src/server.rs"
 site = "let written = file.write_all(contents).and_then(|()| file.sync_all());"
 reason = "A write or sync failing into the verifier file this start just created exclusively is a full or failing disk, which no journey can arrange on a runner without root. The conversion it serves, and the start after it, are driven by `a_legacy_installation_keeps_its_operators_credential_through_every_route` against the real server."

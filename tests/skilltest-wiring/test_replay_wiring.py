@@ -789,6 +789,25 @@ def test_a_history_event_the_replay_could_not_read_is_refused(event: object) -> 
     equal(is_event(event), False)
 
 
+def test_the_harness_install_is_the_pinned_release_and_says_how_it_went(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command names the policy's release, and its failure is the program's."""
+    policy = tmp_path / "repo-policy.toml"
+    policy.write_text('[skilltest]\nclaude_code = "9.9.9"\n', encoding="utf-8")
+    equal(
+        classify.harness_install(policy),
+        ["npm", "install", "-g", "@anthropic-ai/claude-code@9.9.9"],
+    )
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    suffix = ".exe" if sys.platform == "win32" else ""
+    shutil.copy2(program("printobserver-server-responder"), fake / f"npm{suffix}")
+    monkeypatch.setenv("PATH", f"{fake}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("MOCK_EXIT", "7")
+    equal(classify.main(["--install-harness"]), 7)
+
+
 def test_a_supervisor_table_ending_its_template_is_still_read() -> None:
     """A change to the last table of an install template is a change to the settings."""
     equal(classify.supervisor_table("[supervisor]\nharness = 'a'\n"), "harness = 'a'\n")
@@ -920,6 +939,7 @@ def test_the_doubles_refuse_what_no_adapter_sends(scratch: Path) -> None:
         for server, path, body, status in (
             (octoprint, "/api/job", "not json", 400),
             (octoprint, "/api/job", "[]", 400),
+            (octoprint, "/api/job", "x" * (doubles.MAX_BODY_BYTES + 1), 413),
             (octoprint, "/api/printer/tool", '{"command": "x"}', 400),
             (octoprint, "/api/printer/bed", '{"command": "target", "target": 60}', 204),
             (obico, "/api/other", "{}", 404),
