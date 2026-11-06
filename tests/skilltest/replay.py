@@ -1,0 +1,752 @@
+"""One case's replay: the real server, fed the case's events in order, one turn each.
+
+The server is the real `printobserver server`, configured as the installer
+configures it, and its supervisor port runs the shipped harness with the shipped
+turn prompt and skill. Everything about the agent's world is a neutral temporary
+directory laid out as a per-user install: nothing it can read names this
+repository, a test or a test runner.
+
+Each `replay` entry waits for the turn before it to end. A `periodic_observation`
+is the server's own scheduled check; an alert is posted to its real webhook, as
+Obico's plugin posts one. Each decision point is then judged from the server's
+own history of what the agent requested during that turn.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import tempfile
+import threading
+import time
+import tomllib
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime
+from http.client import HTTPConnection
+from pathlib import Path
+from typing import Any, TextIO
+
+import doubles
+from cases import REPO, Case, Moment, Request
+from repo_checks import platforms
+from repo_checks.checks_real_prints import pointer
+from repo_checks.model import Repo
+from repo_checks.shell import run, start
+
+INSTALLER = REPO / "scripts" / "install.sh"
+SKILL = REPO / "skills" / "printobserver"
+#: What the installer's interval option writes: short, because each check waits on
+#: this after the turn before it ends, and its value is what the event then says.
+OBSERVATION_INTERVAL_S = 5
+#: Longer than a turn's own timeout and the agent's looks together; a turn that
+#: takes longer has hung, and the replay reports which.
+TURN_DEADLINE_S = 1800
+#: How long the server has to answer once it is started.
+START_DEADLINE_S = 60
+#: How long the server has to write down an alert it answered.
+ALERT_DEADLINE_S = 30
+#: How long one operator command may take.
+CLIENT_DEADLINE_S = 120
+#: How often the server's record is read while a turn runs.
+POLL_S = 0.5
+#: The kinds an agent's request is recorded under.
+REQUESTED = {"action_requested", "recovery_requested"}
+#: The kinds a turn ending is recorded under.
+ASSESSED = "agent_assessment"
+FAILED = "port_failure"
+FAILED_SITE = "supervision_turn"
+#: The event kinds a replay entry is delivered under.
+TRIGGERS = {"periodic_observation", "obico_failure_alert"}
+
+
+class ReplayError(Exception):
+    """A replay that could not put the agent in front of its events."""
+
+
+def program(name: str) -> Path:
+    """A built program of this workspace."""
+    suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+    return REPO / "target" / "debug" / f"{name}{suffix}"
+
+
+def _installer_template() -> str:
+    """The configuration the per-user installer writes, as the shell script holds it."""
+    found = re.search(
+        r"<<CONFIG \|\| die [^\n]*\n(?P<body>.*?)^CONFIG$",
+        INSTALLER.read_text(encoding="utf-8"),
+        re.DOTALL | re.MULTILINE,
+    )
+    if found is None:
+        msg = f"{INSTALLER} no longer writes its configuration from a here-document"
+        raise ReplayError(msg)
+    return found["body"]
+
+
+@dataclass(frozen=True)
+class Secrets:
+    """What the doubles and the server authenticate each other with, minted per replay."""
+
+    octoprint_key: str = field(default_factory=lambda: secrets.token_hex(16))
+    ingress: str = field(default_factory=lambda: secrets.token_hex(16))
+    operator: str = field(default_factory=lambda: secrets.token_hex(32))
+    obico_token: str = field(default_factory=lambda: secrets.token_hex(16))
+
+
+def service_config(
+    state: Path, listen: str, octoprint: str, camera: str, obico: str, minted: Secrets
+) -> str:
+    """The installer's configuration, with what an operator fills in filled in."""
+    verifier = hashlib.sha256(minted.operator.encode()).hexdigest()
+    text = (
+        _installer_template()
+        .replace("$RUNTIME_STATE", state.as_posix())
+        .replace("$INTERVAL_LINE", f"observation_interval_s = {OBSERVATION_INTERVAL_S}")
+        .replace('listen = "127.0.0.1:8420"', f'listen = "{listen}"')
+        .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
+        .replace('api_key = ""', f'api_key = "{minted.octoprint_key}"')
+        .replace('shared_secret = ""', f'shared_secret = "{minted.ingress}"')
+    )
+    text = f'api.credential_verifier = "sha256:{verifier}"\n{text}'
+    text += (
+        f'\n[camera]\nsnapshot_url = "{camera}/api/frame.jpeg"\n'
+        f'\n[obico]\nurl = "{obico}"\naccess_token = "{minted.obico_token}"\n'
+        f'ml_api_url = "{obico}/ml/"\n'
+    )
+    tomllib.loads(text)
+    return text
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def neutral_environment(bin_directory: Path, home: Path) -> dict[str, str]:
+    """A service's environment: its search path, its home, and the harness's credential alone.
+
+    Built up rather than stripped down, so nothing this process was started with
+    reaches the agent by being forgotten. No entry of the search path is inside
+    this repository, and the first is the install's own.
+    """
+    kept = [
+        entry
+        for entry in os.environ.get("PATH", "").split(os.pathsep)
+        if entry and not Path(entry).resolve().is_relative_to(REPO)
+    ]
+    environment = {
+        "PATH": os.pathsep.join([str(bin_directory), *kept]),
+        "HOME": str(home),
+        "USERPROFILE": str(home),
+        "LANG": "C.UTF-8",
+    }
+    for name in ("SystemRoot", "SYSTEMROOT", "TEMP", "TMP", "COMSPEC", "PATHEXT"):
+        if name in os.environ:
+            environment[name] = os.environ[name]
+    token = harness_token()
+    if token:
+        environment["CLAUDE_CODE_OAUTH_TOKEN"] = token
+    return environment
+
+
+def harness_token() -> str | None:
+    """What the shipped harness authenticates with, in the variable a service would be given.
+
+    CI hands it `CLAUDE_CODE_OAUTH_TOKEN`. A signed-in host hands the access token
+    of its own sign-in instead, read and never written back, because a copy of the
+    sign-in would rotate its refresh token out from under the original.
+    """
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+    if token:
+        return token
+    configured = os.environ.get("CLAUDE_CONFIG_DIR")
+    directory = Path(configured) if configured else Path.home() / ".claude"
+    try:
+        document = json.loads((directory / ".credentials.json").read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return None
+    held = document.get("claudeAiOauth", {}).get("accessToken")
+    return held if isinstance(held, str) else None
+
+
+def real_picture(case: Case) -> Callable[[str], bytes]:
+    """A frame's bytes from the case's own directory, refusing an unfetched LFS pointer."""
+
+    def read(name: str) -> bytes:
+        data = (case.directory / name).read_bytes()
+        if pointer(data[:2048]) is not None:
+            msg = f"{case.name}/{name} is an LFS pointer: run `just real-prints-fetch`"
+            raise ReplayError(msg)
+        return data
+
+    return read
+
+
+@dataclass
+class Run:
+    """One harness run: the replay entry it served, and where what it said is kept."""
+
+    #: Its output, which is the provider's one result document.
+    record: Path
+    moment_index: int
+    #: How far each session transcript had grown when it started.
+    transcript_sizes: dict[Path, int]
+    #: What its session transcripts gained while it ran.
+    transcript: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class DecisionPoint:
+    """One entry of the replay, and what became of it."""
+
+    moment: Moment
+    requests: list[Request]
+    commands: list[str]
+    opened: list[str]
+    assessment: dict[str, Any] | None
+    usage: dict[str, Any] | None
+    models: list[str]
+    compacted: bool
+    failure: str | None
+    event_kind: str | None
+    image_sha256: str | None
+    looks: int
+
+    @property
+    def why_not(self) -> str | None:
+        """Why this decision point failed, or nothing when it passed."""
+        if self.failure:
+            return f"the turn failed: {self.failure}"
+        return self.moment.verdict(self.requests)
+
+    def as_record(self) -> dict[str, Any]:
+        """The decision point as `results/latest.json` carries it."""
+        return {
+            "scenario": self.moment.id,
+            "at": self.moment.at,
+            "trigger": self.moment.trigger,
+            "passed": self.why_not is None,
+            "why_not": self.why_not,
+            "requests": [request.describe() for request in self.requests],
+            "commands": self.commands,
+            "opened": self.opened,
+            "assessment": self.assessment,
+            "looks": self.looks,
+            "usage": self.usage,
+            "models": self.models,
+            "compacted": self.compacted,
+        }
+
+
+@dataclass
+class Replayed:
+    """A finished replay: its decision points, and what the port wrote down."""
+
+    case: Case
+    points: list[DecisionPoint]
+    ledger: dict[str, Any]
+    fetches: list[str]
+    state: Path
+    transcript: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def passed(self) -> bool:
+        """Whether every decision point passed, which is what passing the test is."""
+        return all(point.why_not is None for point in self.points)
+
+    def failures(self) -> str:
+        """Each decision point that failed, for a test's message."""
+        return "\n".join(
+            f"{point.moment.id} ({point.moment.summary}): {point.why_not}\n"
+            f"  it requested: {[request.describe() for request in point.requests]}"
+            for point in self.points
+            if point.why_not
+        )
+
+    def as_record(self) -> dict[str, Any]:
+        """The replay as `results/latest.json` carries it."""
+        return {
+            "test": self.case.name,
+            "passed": self.passed,
+            "turns": len(self.points),
+            "sessions": [
+                session.get("session_name") for session in self.ledger.get("sessions", [])
+            ],
+            "decision_points": [point.as_record() for point in self.points],
+        }
+
+
+def _json_lines(text: str) -> list[dict[str, Any]]:
+    lines = []
+    for line in text.splitlines():
+        try:
+            parsed = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(parsed, dict):
+            lines.append(parsed)
+    return lines
+
+
+def _lines_of(harness_run: Run) -> list[dict[str, Any]]:
+    """Everything one harness run wrote: its transcript, then its result document."""
+    record = harness_run.record
+    answered = _json_lines(record.read_text("utf-8", "replace")) if record.is_file() else []
+    return [*harness_run.transcript, *answered]
+
+
+@dataclass
+class RunReport:
+    """What the runs of one turn said of themselves.
+
+    A harness run answers one result document, carrying the run's usage and the
+    models it used. What it did and whether it compacted are only in the session
+    transcript the harness keeps under its configuration directory, which the
+    harness's sign-in directory is.
+    """
+
+    commands: list[str] = field(default_factory=list)
+    opened: list[str] = field(default_factory=list)
+    seen_tool_uses: set[str] = field(default_factory=set)
+    usage: dict[str, Any] | None = None
+    models: list[str] = field(default_factory=list)
+    compacted: bool = False
+
+    def take(self, lines: list[dict[str, Any]]) -> None:
+        """Read one run's output into this turn's report."""
+        for line in lines:
+            if line.get("type") == "system" and line.get("subtype") == "compact_boundary":
+                self.compacted = True
+            if line.get("type") == "result" and isinstance(line.get("usage"), dict):
+                self._add_usage(line["usage"])
+            for model in line.get("modelUsage") or {}:
+                self._saw(model)
+            message = line.get("message")
+            if not isinstance(message, dict):
+                continue
+            if isinstance(message.get("model"), str):
+                self._saw(message["model"])
+            content = message.get("content")
+            for block in content if isinstance(content, list) else []:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    self._used(block)
+
+    def _used(self, block: dict[str, Any]) -> None:
+        """One tool call of the transcript, which writes a call once per streamed message."""
+        called = str(block.get("id", id(block)))
+        if called in self.seen_tool_uses:
+            return
+        self.seen_tool_uses.add(called)
+        given = block.get("input", {})
+        if block.get("name") == "Bash":
+            self.commands.append(str(given.get("command", "")))
+        elif block.get("name") == "Read":
+            self.opened.append(Path(str(given.get("file_path", ""))).name)
+
+    def _add_usage(self, usage: dict[str, Any]) -> None:
+        """A turn the engine re-prompted is one turn of several runs, so its usage adds up."""
+        if self.usage is None:
+            self.usage = dict(usage)
+            return
+        for name, value in usage.items():
+            held = self.usage.get(name)
+            if isinstance(value, int) and isinstance(held, int):
+                self.usage[name] = held + value
+            else:
+                self.usage.setdefault(name, value)
+
+    def _saw(self, model: str) -> None:
+        # `<synthetic>` is the harness's own bookkeeping message, which no model wrote.
+        if not model.startswith("<") and model not in self.models:
+            self.models.append(model)
+
+
+class Replay:
+    """One running replay of one case."""
+
+    def __init__(
+        self,
+        case: Case,
+        target: list[str],
+        picture: Callable[[str], bytes] | None = None,
+        gcode: bytes | None = None,
+    ) -> None:
+        """Lay the install out and start the doubles; nothing runs until [`Replay.run`]."""
+        self.case = case
+        self.target = target
+        self.root = Path(tempfile.mkdtemp())
+        self.state = self.root / "state"
+        self.home = self.root / "home"
+        self.bin = self.root / "bin"
+        self.records = self.root / "records"
+        for directory in (self.state, self.home, self.bin, self.records):
+            directory.mkdir()
+        self.minted = Secrets()
+        self.timeline = doubles.Timeline(
+            case=case,
+            picture=picture or real_picture(case),
+            started_epoch=time.time()
+            - doubles.print_time_s(case, case.moments[0].at, case.moments[0].file_position_bytes),
+            gcode=gcode,
+        )
+        self.runs: list[Run] = []
+        self.errors: list[str] = []
+        self.servers = [
+            doubles.octoprint(self.timeline, self.minted.octoprint_key),
+            doubles.camera(self.timeline),
+            doubles.obico(self.timeline),
+            doubles.control(self._harness_started, self._harness_exited),
+        ]
+        self.port = _free_port()
+        self.server: subprocess.Popen[str] | None = None
+        self.print_id: str | None = None
+
+    def _install(self) -> Path:
+        """Put the programs, the skill and the configuration where the installer puts them."""
+        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        shutil.copy2(program("printobserver"), self.bin / f"printobserver{suffix}")
+        shutil.copy2(program("printobserver-server-turn-launcher"), self.bin / f"claude{suffix}")
+        (self.bin / "launch.json").write_text(
+            json.dumps(
+                {
+                    "control": doubles.address(self.servers[3]).removeprefix("http://"),
+                    "target": self.target,
+                }
+            ),
+            encoding="utf-8",
+        )
+        shutil.copytree(SKILL, self.state / "skills" / "printobserver")
+        config = self.root / "config.toml"
+        config.write_text(
+            service_config(
+                self.state,
+                f"127.0.0.1:{self.port}",
+                doubles.address(self.servers[0]),
+                doubles.address(self.servers[1]),
+                doubles.address(self.servers[2]),
+                self.minted,
+            ),
+            encoding="utf-8",
+        )
+        return config
+
+    def _harness_started(self) -> str:
+        """Note one harness run, and say where its output is to be kept."""
+        self.timeline.harness_started()
+        record = self.records / f"{len(self.runs):04}.json"
+        self.runs.append(Run(record, self.timeline.index, self._transcript_sizes()))
+        return str(record)
+
+    def _transcripts(self) -> list[Path]:
+        return sorted(self.state.glob("harness/claude-code/projects/*/*.jsonl"))
+
+    def _transcript_sizes(self) -> dict[Path, int]:
+        return {path: path.stat().st_size for path in self._transcripts()}
+
+    def _harness_exited(self) -> None:
+        """Stand at the next event before the server can let its scheduled check fire."""
+        run = self.runs[-1]
+        for path in self._transcripts():
+            with path.open("rb") as transcript:
+                transcript.seek(run.transcript_sizes.get(path, 0))
+                run.transcript.extend(_json_lines(transcript.read().decode("utf-8", "replace")))
+        try:
+            self._next_event()
+        except (ReplayError, OSError, subprocess.SubprocessError) as error:
+            self.errors.append(str(error))
+
+    def _next_event(self) -> None:
+        timeline = self.timeline
+        following = timeline.index + 1
+        if following >= len(self.case.moments):
+            with timeline.lock:
+                timeline.finished = True
+            return
+        upcoming = self.case.moments[following]
+        if timeline.paused and upcoming.printer_state == "printing":
+            self._operator_resumes()
+        with timeline.lock:
+            timeline.stand_at(following)
+            timeline.moved_at_exit = True
+        if upcoming.is_alert:
+            self._deliver_alert(upcoming)
+
+    def _operator_resumes(self) -> None:
+        """The person who was told takes it from there, as the record of the real print has it."""
+        print_id = self._print_id()
+        self._client(
+            "resume",
+            "--print-id",
+            print_id,
+            "--actor",
+            '"operator"',
+            "--reason",
+            "Looked at the print, cleared what was wrong and resumed it.",
+        )
+
+    def _post_alert(self, moment: Moment) -> None:
+        """Post a recorded alert to the real webhook, as Obico's plugin posts one.
+
+        Its body is what the history recorded, with two things this run answers
+        differently: where its picture is, and when the job started, which is how
+        the server knows the alert is about the print it already has.
+        """
+        if moment.event_id is None:
+            msg = f"{moment.id} is an alert with no recorded event to deliver"
+            raise ReplayError(msg)
+        body = self.case.recorded_alert(moment.event_id)
+        body["img_url"] = f"{doubles.address(self.servers[2])}/media/{moment.event_image}"
+        body["print"]["started_at"] = self._job_started_epoch()
+        connection = HTTPConnection("127.0.0.1", self.port, timeout=ALERT_DEADLINE_S)
+        connection.request(
+            "POST",
+            f"/obico/webhook?token={self.minted.ingress}",
+            body=json.dumps(body),
+            headers={"Content-Type": "application/json"},
+        )
+        connection.getresponse().read()
+        connection.close()
+
+    def _job_started_epoch(self) -> float:
+        """When the print the server holds says its job started, or when this replay's did."""
+        prints = json.loads(self._client("prints"))["prints"]
+        started = prints[0].get("job_started_at") if prints else None
+        return (
+            datetime.fromisoformat(started[:26].rstrip("Z") + "+00:00").timestamp()
+            if started
+            else self.timeline.started_epoch
+        )
+
+    def _deliver_alert(self, moment: Moment) -> None:
+        """Post an alert while the last turn still holds the print, and wait until it is kept.
+
+        The server hands what arrived during a turn to the next one when it ends,
+        so no scheduled check can come between the two.
+        """
+        before = self._trigger_count()
+        self._post_alert(moment)
+        deadline = time.monotonic() + ALERT_DEADLINE_S
+        while self._trigger_count() <= before:
+            if time.monotonic() > deadline:
+                msg = f"the server never recorded the alert of {moment.id}"
+                raise ReplayError(msg)
+            time.sleep(0.05)
+
+    def _client_environment(self) -> dict[str, str]:
+        return {
+            **neutral_environment(self.bin, self.home),
+            "PRINTOBSERVER_SERVER": f"http://127.0.0.1:{self.port}",
+            "PRINTOBSERVER_CREDENTIAL": self.minted.operator,
+        }
+
+    def _client(self, *arguments: str) -> str:
+        """One operator command, through the installed program."""
+        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        done = run(
+            [str(self.bin / f"printobserver{suffix}"), *arguments, "--json"],
+            env=self._client_environment(),
+            timeout=CLIENT_DEADLINE_S,
+        )
+        if done.returncode != 0:
+            msg = f"`printobserver {arguments[0]}` answered {done.returncode}: {done.stderr}"
+            raise ReplayError(msg)
+        return done.stdout
+
+    def _print_id(self) -> str:
+        if self.print_id is None:
+            prints = json.loads(self._client("prints"))["prints"]
+            if not prints:
+                msg = "the server holds no print"
+                raise ReplayError(msg)
+            self.print_id = prints[0]["id"]
+        return self.print_id
+
+    def _events(self) -> list[dict[str, Any]]:
+        """The print's whole history, oldest first."""
+        try:
+            answered = self._client("history", "--print-id", self._print_id(), "--limit", "1000")
+        except ReplayError:
+            return []
+        return list(reversed(json.loads(answered)["events"]))
+
+    def _trigger_count(self) -> int:
+        return sum(1 for event in self._events() if event["kind"] in TRIGGERS)
+
+    def _turns_ended(self, events: list[dict[str, Any]]) -> int:
+        ended = 0
+        for event in events:
+            if event["kind"] == ASSESSED or (
+                event["kind"] == FAILED and event["payload"].get("site") == FAILED_SITE
+            ):
+                ended += 1
+        return ended
+
+    def _keep_the_log(self, server: subprocess.Popen[str]) -> None:
+        """Keep what the server prints, so neither pipe fills and it is there to read."""
+
+        def kept(stream: TextIO | None) -> None:
+            with (self.root / "server.log").open("a", encoding="utf-8") as log:
+                for line in stream or ():
+                    log.write(line)
+                    log.flush()
+
+        for stream in (server.stdout, server.stderr):
+            threading.Thread(target=kept, args=(stream,), daemon=True).start()
+
+    def _wait_for_server(self) -> None:
+        deadline = time.monotonic() + START_DEADLINE_S
+        while time.monotonic() < deadline:
+            if self.server is not None and self.server.poll() is not None:
+                log = (self.root / "server.log").read_text(encoding="utf-8", errors="replace")
+                msg = f"the server exited at start: {log}"
+                raise ReplayError(msg)
+            with socket.socket() as probe:
+                probe.settimeout(0.2)
+                if probe.connect_ex(("127.0.0.1", self.port)) == 0:
+                    return
+            time.sleep(0.05)
+        msg = f"the server did not answer within {START_DEADLINE_S} s"
+        raise ReplayError(msg)
+
+    def _wait_for_every_turn(self) -> None:
+        deadline = time.monotonic() + TURN_DEADLINE_S * len(self.case.moments)
+        wanted = len(self.case.moments)
+        while True:
+            if self.errors:
+                raise ReplayError("; ".join(self.errors))
+            if self.timeline.finished and self._turns_ended(self._events()) >= wanted:
+                return
+            if time.monotonic() > deadline:
+                msg = (
+                    f"{self._turns_ended(self._events())} of {wanted} turns ended in "
+                    f"{TURN_DEADLINE_S * wanted} s"
+                )
+                raise ReplayError(msg)
+            time.sleep(POLL_S)
+
+    def run(self) -> Replayed:
+        """Feed every event in order, and judge each decision point from the server's record."""
+        config = self._install()
+        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        self.server = start(
+            [str(self.bin / f"printobserver{suffix}"), "server", "--config", str(config)],
+            cwd=self.state,
+            env=neutral_environment(self.bin, self.home),
+        )
+        self._keep_the_log(self.server)
+        try:
+            self._wait_for_server()
+            first = self.case.moments[0]
+            if first.is_alert:
+                self._post_alert(first)
+            self._wait_for_every_turn()
+            events = self._events()
+            return Replayed(
+                case=self.case,
+                points=self._judged(events),
+                ledger=self._ledger(),
+                fetches=list(self.timeline.fetches),
+                state=self.state,
+                transcript=[line for harness_run in self.runs for line in _lines_of(harness_run)],
+            )
+        finally:
+            self.stop()
+
+    def _ledger(self) -> dict[str, Any]:
+        path = self.state / "supervisor-sessions" / f"{self._print_id()}.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+    def _judged(self, events: list[dict[str, Any]]) -> list[DecisionPoint]:
+        """Split the print's record where each turn ended, and judge each.
+
+        An alert posted as a turn ended is kept before that turn's own assessment,
+        so the record is split on the ends rather than on the events delivered.
+        """
+        triggers = [event for event in events if event["kind"] in TRIGGERS]
+        ends = [
+            index
+            for index, event in enumerate(events)
+            if event["kind"] == ASSESSED
+            or (event["kind"] == FAILED and event["payload"].get("site") == FAILED_SITE)
+        ]
+        points = []
+        for number, moment in enumerate(self.case.moments):
+            if number >= len(triggers) or number >= len(ends):
+                msg = f"the server recorded no event or no end of turn for {moment.id}"
+                raise ReplayError(msg)
+            begin = ends[number - 1] + 1 if number else 0
+            window = events[begin : ends[number] + 1]
+            report = RunReport()
+            for harness_run in self.runs:
+                if harness_run.moment_index == number:
+                    report.take(_lines_of(harness_run))
+            points.append(self._point(moment, triggers[number], window, report))
+        return points
+
+    @staticmethod
+    def _point(
+        moment: Moment,
+        trigger: dict[str, Any],
+        window: list[dict[str, Any]],
+        report: RunReport,
+    ) -> DecisionPoint:
+        requests = []
+        for event in window:
+            if event["kind"] not in REQUESTED:
+                continue
+            action = event["payload"].get("action", {})
+            if "agent" not in (action.get("actor") or {}):
+                continue
+            requests.append(Request(str(action.get("action", "")).replace("_", "-"), dict(action)))
+        failures = [
+            event["payload"].get("detail", "")
+            for event in window
+            if event["kind"] == FAILED and event["payload"].get("site") == FAILED_SITE
+        ]
+        image = trigger.get("image") or {}
+        return DecisionPoint(
+            moment=moment,
+            requests=requests,
+            commands=report.commands,
+            opened=report.opened,
+            assessment=next(
+                (
+                    event["payload"].get("assessment")
+                    for event in window
+                    if event["kind"] == ASSESSED
+                ),
+                None,
+            ),
+            usage=report.usage,
+            models=report.models,
+            compacted=report.compacted,
+            failure=failures[0] if failures else None,
+            event_kind=trigger["kind"],
+            image_sha256=image.get("sha256"),
+            looks=sum(1 for event in window if event["kind"] == "camera_look"),
+        )
+
+    def stop(self) -> None:
+        """Stop the server and every double."""
+        self.timeline.stopped.set()
+        if self.server is not None and self.server.poll() is None:
+            self.server.terminate()
+            try:
+                self.server.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self.server.kill()
+                self.server.wait()
+        for server in self.servers:
+            server.shutdown()
+            server.server_close()
+
+    def clean_up(self) -> None:
+        """Remove the install, once what a test reads from it has been read."""
+        shutil.rmtree(self.root, ignore_errors=True)

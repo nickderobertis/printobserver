@@ -3,7 +3,6 @@ revision = 3
 requires-python = ">=3.14"
 
 [manifest]
-overrides = [{ name = "oneharness-cli", marker = "(platform_machine != 'ARM64' and platform_machine != 'aarch64') or sys_platform != 'win32'", specifier = ">=0.16.0,<0.17" }]
 
 [manifest.dependency-groups]
 dev = [
@@ -18,8 +17,6 @@ dev = [
     { name = "pyyaml", specifier = ">=6" },
     { name = "ruff", specifier = ">=0.16" },
     { name = "shellcheck-py", specifier = ">=0.11" },
-    { name = "skilltest-pytest", specifier = ">=0.12.0" },
-    { name = "skilltest-sdk", specifier = ">=0.12.0" },
     { name = "ty", specifier = ">=0.0.79" },
 ]
 zig = [{ name = "ziglang", specifier = ">=0.16" }]
@@ -196,18 +193,6 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/fd/ae7662dbd55a6370a1b564810e66b94b64bf8dc4f375cc077d1776601db6/onebudgetspec_sdk-0.1.5-py3-none-any.whl", hash = "sha256:c2bd0535d20d72418f1dae3a1a5ed6d18537f2084beefac7021b961a0dede00e", size = 13921, upload-time = "2026-10-13T18:17:00.385Z" },
-]
-
-[[package]]
-name = "oneharness-cli"
-version = "0.16.2"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9b/e1/902a583c806e9834e7cfc720b1c70e84cea593e947b99e5c62311a9276a4/oneharness_cli-0.16.2-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:281fd2221d0d17d9c79283d42d745b3f71e57cfc169f97653a6534611516da0b", size = 3481160, upload-time = "2026-09-22T15:46:50.824Z" },
-    { url = "https://files.pythonhosted.org/packages/63/78/ec253f529cf463283c97b1a67785b0ba4b9b3c3e1b1f1dc1d488b26317cd/oneharness_cli-0.16.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:45ab7ab4ed0681bd12027d36b1fcf8370e6d4cbaf51e01b0d0aac660a4a10bf7", size = 3304403, upload-time = "2026-09-22T15:46:53.056Z" },
-    { url = "https://files.pythonhosted.org/packages/90/27/edabe77e38c9c64d63584e5028d7736523fd4c5bae93dea7f59960d12122/oneharness_cli-0.16.2-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:34e6704e15ce833f0ef67448fae5797a677bba30f79715467357fe76c3747cd3", size = 3359800, upload-time = "2026-09-22T15:46:55.172Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/e3/928897b406ee4a7d6f0374e5e45c754313085c3ab330986ecc86721a9363/oneharness_cli-0.16.2-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:83717a6652a7dde25819e14bab864fc17756f32d6fab47b226e7dc1ab6599210", size = 3608606, upload-time = "2026-09-22T15:46:57.099Z" },
-    { url = "https://files.pythonhosted.org/packages/87/09/b26d732d01f4c3f0741a9ed2af85a60aad423b9bdbb02550924ce310c6ec/oneharness_cli-0.16.2-py3-none-win_amd64.whl", hash = "sha256:0c8569e1f82a9601be2f78618eb5cd73d421eed1832d7b259e64da9945683728", size = 3587353, upload-time = "2026-09-22T15:46:59.392Z" },
 ]
 
 [[package]]
@@ -487,36 +472,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/61/ac/2a84c37171c0cf5a10ea4b0a27d43eb0a1d29bd98b49c2c5ffe17ad24bbe/shellcheck_py-0.11.0.1-py2.py3-none-macosx_11_0_arm64.whl", hash = "sha256:6b88d0a244c82ed07e06a53e444da841f69330ca59ae15d4a66c391655dae7a0", size = 11381835, upload-time = "2025-08-09T17:53:36.852Z" },
     { url = "https://files.pythonhosted.org/packages/96/55/250e0e3367613a5c22bd82e33b16b889287d81ab0f7dda67e6514a4cccf4/shellcheck_py-0.11.0.1-py2.py3-none-manylinux1_x86_64.manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:1b274df81de5b000ff78db433e7328b87e52e3c38481c60f8e488c3095beef05", size = 3800600, upload-time = "2025-08-09T17:53:38.643Z" },
     { url = "https://files.pythonhosted.org/packages/15/5b/bb14c0a7474463b1aa3c09e866cb172dffc66ed2993b7ea8f1db581e86ee/shellcheck_py-0.11.0.1-py2.py3-none-win_amd64.whl", hash = "sha256:784156289ecb17e91c692cd783ab5152333309588cabb10032a047331c63e759", size = 8027541, upload-time = "2025-08-09T17:53:40.889Z" },
-]
-
-[[package]]
-name = "skilltest-pytest"
-version = "0.12.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pytest" },
-    { name = "skilltest-sdk" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/85/13/3d52d6544d4654717b6510790b620e9a77dd9d9a42b01b43b5ae336033b9/skilltest_pytest-0.12.0.tar.gz", hash = "sha256:38d5e8a3ddd595124f592ab4170efe79e2d508686915bfc48e7e87e13384bc20", size = 13304, upload-time = "2026-10-03T02:48:45.233Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/3c/39e8f6c014c5d8c678e49d9e03b7b510cb976ece1640dfe6e83997ba1963/skilltest_pytest-0.12.0-py3-none-any.whl", hash = "sha256:a8d26c96b25b1b972ab303760806170351eb736f8e69f1b136cf6c6bd3901a38", size = 5740, upload-time = "2026-10-03T02:48:44.143Z" },
-]
-
-[[package]]
-name = "skilltest-sdk"
-version = "0.12.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "oneharness-cli", marker = "(platform_machine != 'ARM64' and platform_machine != 'aarch64') or sys_platform != 'win32'" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/41/f1/7002ec55441e408355cf7f9e9b361a589233f18b90180bd6d2e61ee087cf/skilltest_sdk-0.12.0.tar.gz", hash = "sha256:3cff92ef9b8f18081bbb3d4584caa2e883fd552868a1cd29fdff608b0a829662", size = 41930, upload-time = "2026-10-03T02:48:42.378Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/24/65678208752680e3d9c4f823b8292c1c293689ecbf8efbf2cc6a16e52d91/skilltest_sdk-0.12.0-py3-none-any.whl", hash = "sha256:08c43f2d267a378bb3e2e539db9022eb2ec5aaea1ead8ac17d3c0e6b92ae640d", size = 35479, upload-time = "2026-10-03T02:48:36.006Z" },
-    { url = "https://files.pythonhosted.org/packages/4c/db/d9684922a0d4ca15c0cbe7daaaf062abfadfc1f0d0686fab4750c769e506/skilltest_sdk-0.12.0-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:1bb7bc69914004aea0d0a8da09ff6f33f40348527a31642137f0279fc97195c6", size = 1746793, upload-time = "2026-10-03T02:48:37.357Z" },
-    { url = "https://files.pythonhosted.org/packages/23/7a/6d45ff1a5f624bdc1584e9dac83fc6dd790abfa6d5c29c7e89e9e1dd76e5/skilltest_sdk-0.12.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:0b1b9f665a27000bbbff1c003a3289a8876c87a5fd146f8c0dfd52cd96aacd42", size = 1644482, upload-time = "2026-10-03T02:48:38.693Z" },
-    { url = "https://files.pythonhosted.org/packages/8a/ad/0c42d2159443ee711a212d6e9d25a19f446e8108d32b5ba88d1607263a3a/skilltest_sdk-0.12.0-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:4c4c858208ccb4dd111247382da2ec8218d361c9095c7918b4e5af1bbfdac155", size = 1791593, upload-time = "2026-10-03T02:48:40.133Z" },
-    { url = "https://files.pythonhosted.org/packages/21/2c/c3fab2103cb7fb29f3ab9a94dad4f71adc807e0d469992653c17865485dd/skilltest_sdk-0.12.0-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:5d11a87b185fbf8de44b461fa62dfcbfd15958c4525206aed52ef7b12dddcbbd", size = 1852714, upload-time = "2026-10-03T02:48:41.325Z" },
 ]
 
 [[package]]

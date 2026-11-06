@@ -3,7 +3,7 @@
   "root": "tests/skilltest",
   "projectType": "library",
   "tags": ["lang:python", "type:e2e"],
-  "implicitDependencies": ["printobserver-sdk-python", "repo-checks"],
+  "implicitDependencies": ["printobserver", "printobserver-server", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tests/skilltest" },
     "format-check": { "command": "uv run -q ruff format --check tests/skilltest" },
@@ -11,9 +11,17 @@
     "typecheck": {
       "command": "uv run -q ty check tests/skilltest && uv run -q ty check --python-platform win32 tests/skilltest"
     },
+    "build-programs": {
+      "command": "cargo build -p printobserver -p printobserver-server --features printobserver-server/test-responder --bins --locked"
+    },
     "skilltest": { "metadata": { "description": "llmlint: ignore[new_projects_keep_the_graph_uniform] suppressions.toml has the reason." },
-      "command": "uv run -q pytest tests/skilltest/test_real_prints_skilltest.py",
+      "command": "uv run -q pytest tests/skilltest/test_replay.py -n 4",
       "options": { "env": { "SKILLTEST_E2E": "1" } },
+      "dependsOn": ["build-programs"],
+      "cache": false
+    },
+    "budgets": {
+      "command": "bunx onebudgetspec check tests/skilltest/budgets.yaml",
       "cache": false
     }
   }

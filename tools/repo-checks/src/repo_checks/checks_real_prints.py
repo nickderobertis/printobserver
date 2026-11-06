@@ -750,7 +750,7 @@ def _replay_findings(case: Case) -> Iterator[str]:
 
 
 def real_prints_replay(repo: Repo) -> list[str]:
-    """Every `replay` keeps its case's scenarios in time order; every position is inside its file."""
+    """Every `replay` is in time order over its own scenarios; every position is in its file."""
     findings: list[str] = []
     for case in _readable(repo, "real-prints-replay", findings):
         findings.extend(_replay_findings(case))

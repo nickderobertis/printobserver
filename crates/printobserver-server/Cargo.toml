@@ -73,5 +73,11 @@ name = "printobserver-server-responder"
 path = "src/bin/responder.rs"
 required-features = ["test-responder"]
 
+# The real-print replay's pass-through in front of the harness; see its source.
+[[bin]]
+name = "printobserver-server-turn-launcher"
+path = "src/bin/turn_launcher.rs"
+required-features = ["test-responder"]
+
 [lints]
 workspace = true
