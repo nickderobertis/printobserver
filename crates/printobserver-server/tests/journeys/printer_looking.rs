@@ -124,6 +124,10 @@ async fn a_camera_refusing_every_attempt_is_recorded_as_the_printers() {
     assert_eq!(status, reqwest::StatusCode::OK, "{look}");
     assert!(look.get("frame").is_none(), "{look}");
     assert!(look.get("image_path").is_none(), "{look}");
+    assert!(
+        look["event"]["payload"]["frame_captured_at"].is_null(),
+        "{look}"
+    );
     assert_eq!(camera.exchanges().len(), 4);
     let events = printers_own(&world).await;
     let retries: Vec<(u32, u16, String)> = events
@@ -166,6 +170,10 @@ async fn a_camera_giving_only_blank_frames_degrades_the_printers_look() {
     assert!(look["event"].get("print_id").is_none(), "{look}");
     assert_eq!(look["event"]["payload"]["cause"], "blank", "{look}");
     assert!(look.get("frame").is_none(), "{look}");
+    assert!(
+        look["event"]["payload"]["frame_captured_at"].is_null(),
+        "{look}"
+    );
     assert_eq!(camera.exchanges().len(), 3);
     let events = printers_own(&world).await;
     assert!(

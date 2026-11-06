@@ -29,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, TypedDict
 from urllib.parse import unquote, urlsplit
 
 from cases import Case, MachineState, Moment, instant
@@ -80,6 +80,86 @@ def numbered(jpeg: bytes, number: int) -> bytes:
 
 #: The one request the Obico adapter makes of Obico's API.
 ACKNOWLEDGEMENT = re.compile(r"/api/v1/printers/\d+/acknowledge_alert/")
+
+
+class JobFile(TypedDict):
+    """The file block of what `GET /api/job` answers."""
+
+    name: str
+    origin: str
+    size: int
+
+
+class JobFacts(TypedDict):
+    """The job block of what `GET /api/job` answers."""
+
+    file: JobFile
+    estimatedPrintTime: None
+    filament: None
+
+
+class JobProgress(TypedDict):
+    """The progress block of what `GET /api/job` answers."""
+
+    completion: float
+    filepos: int
+    printTime: int
+    printTimeLeft: None
+
+
+class JobDocument(TypedDict):
+    """What `GET /api/job` answers."""
+
+    job: JobFacts
+    progress: JobProgress
+    state: str
+    error: str
+
+
+class PrinterFlags(TypedDict):
+    """The flags of what `GET /api/printer` answers."""
+
+    operational: bool
+    printing: bool
+    paused: bool
+    cancelling: bool
+    error: bool
+    closedOrError: bool
+
+
+class PrinterStateBlock(TypedDict):
+    """The state block of what `GET /api/printer` answers."""
+
+    text: str
+    flags: PrinterFlags
+
+
+class Temperature(TypedDict):
+    """One heater of what `GET /api/printer` answers."""
+
+    actual: float
+    target: float
+    offset: int
+
+
+class PrinterDocument(TypedDict):
+    """What `GET /api/printer` answers."""
+
+    state: PrinterStateBlock
+    temperature: dict[str, Temperature]
+
+
+class ErrorDocument(TypedDict):
+    """What OctoPrint answers instead, once its printer is gone."""
+
+    error: str
+
+
+class JsonAnswer(NamedTuple):
+    """One status and the JSON it answers with."""
+
+    status: int
+    document: JobDocument | PrinterDocument | ErrorDocument
 
 
 class FrameDue(NamedTuple):
@@ -263,15 +343,15 @@ class Timeline:
         self.longest_print_time_s = max(self.longest_print_time_s, running)
         return self.longest_print_time_s
 
-    def job_body(self) -> tuple[int, dict[str, Any]]:
+    def job_body(self) -> JsonAnswer:
         """What `GET /api/job` answers, which the real adapter reads as it reads OctoPrint's."""
         with self.lock:
             # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
             if not self.moment.printer_state.answers:
-                return 503, {"error": "the printer's serial port is gone"}
+                return JsonAnswer(503, {"error": "the printer's serial port is gone"})
             position = self.position()
             size = self.case.gcode_size
-            return 200, {
+            job: JobDocument = {
                 "job": {
                     "file": {"name": self.case.gcode.name, "origin": "local", "size": size},
                     "estimatedPrintTime": None,
@@ -286,17 +366,18 @@ class Timeline:
                 "state": "Paused" if self.paused else "Printing",
                 "error": "",
             }
+            return JsonAnswer(200, job)
 
-    def printer_body(self) -> tuple[int, dict[str, Any]]:
+    def printer_body(self) -> JsonAnswer:
         """What `GET /api/printer` answers, which the real adapter reads as it reads OctoPrint's."""
         with self.lock:
             # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
             if not self.moment.printer_state.answers:
-                return 503, {"error": "the printer's serial port is gone"}
+                return JsonAnswer(503, {"error": "the printer's serial port is gone"})
             position = self.position()
             tool = Heaters.at(self.heaters.tool, position)
             bed = Heaters.at(self.heaters.bed, position)
-            return 200, {
+            printer: PrinterDocument = {
                 "state": {
                     "text": "Paused" if self.paused else "Printing",
                     "flags": {
@@ -313,6 +394,7 @@ class Timeline:
                     "bed": {"actual": bed, "target": bed, "offset": 0},
                 },
             }
+            return JsonAnswer(200, printer)
 
     def set_paused(self, *, paused: bool) -> None:
         """Take a job command the machine has obeyed."""

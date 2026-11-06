@@ -712,6 +712,10 @@ async fn an_observation_with_no_camera_runs_on_telemetry_alone() {
         .expect("the turn is on an observation")
         .expect("of its own type");
     assert!(
+        payload.frame_captured_at.is_none(),
+        "no capture time for a frame nobody took"
+    );
+    assert!(
         payload.printer.is_some(),
         "the printer's telemetry is carried"
     );
