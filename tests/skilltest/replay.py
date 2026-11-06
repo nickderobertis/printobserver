@@ -235,7 +235,12 @@ def is_event(event: object) -> bool:
     ):
         return False
     payload = event.get("payload")
-    if not isinstance(payload, dict) or not isinstance(event.get("image") or {}, dict):
+    image = event.get("image") or {}
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(image, dict)
+        or not isinstance(image.get("sha256", ""), str)
+    ):
         return False
     match event["kind"]:
         case "port_failure":
@@ -260,7 +265,11 @@ def _is_requested_action(action: object) -> bool:
 def _is_actor(actor: object) -> bool:
     """Whether it is one of the three actors the server's `Actor` declares."""
     if isinstance(actor, dict):
-        return actor.keys() == {"agent"} and isinstance(actor["agent"], dict)
+        match actor:
+            case {"agent": {"session_name": str()}}:
+                return actor.keys() == {"agent"}
+            case _:
+                return False
     return isinstance(actor, str) and actor in {"operator", "system"}
 
 
