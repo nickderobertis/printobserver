@@ -399,6 +399,49 @@ def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
     equal(done.replayed.fetches[:4], [first.event_image] * 3 + [second.event_image])
 
 
+def test_a_look_may_reach_the_next_events_healthy_frame_and_goes_no_further(scratch: Path) -> None:
+    """Adjacent healthy events: looks stop at the next event's own frame, which it hands again."""
+    case = read_case("bubbler-guard-and-pad-pla-healthy")
+    names = [frame.file for frame in case.frames]
+    adjacent = next(
+        number
+        for number, moment in enumerate(case.moments[:-1])
+        if names.index(case.moments[number + 1].event_image) == names.index(moment.event_image) + 1
+    )
+    runs: list[ScriptedRun] = [{"commands": [LOOK, LOOK]} for _ in case.moments]
+    done = mock_replay(case, runs, scratch)
+    following = case.moments[adjacent + 1].event_image
+    equal(
+        [done.seen_frame(adjacent, 0), done.seen_frame(adjacent, 1)],
+        [following, following],
+    )
+    truth(case.frames[names.index(following)].healthy, describing="that frame to be healthy")
+
+
+def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Path) -> None:
+    """Over the real cases whose next event shows a fault, however many looks a turn takes."""
+    for name in ("jar-top-wrong-material-first-layer-detach", "under-extrusion-lace"):
+        case = read_case(name)
+        faulty = case.moments[-1].event_image
+        names = [frame.file for frame in case.frames]
+        truth(
+            not case.frames[names.index(faulty)].healthy,
+            describing=f"{faulty} to be labelled with a fault",
+        )
+        directory = scratch / name
+        directory.mkdir()
+        done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], directory)
+        seen = [done.seen_frame(0, look) for look in range(3)]
+        truth(faulty not in seen, describing=f"{faulty} not to be among {seen}")
+
+
+def test_the_print_clock_never_goes_back_whatever_a_look_waited(scratch: Path) -> None:
+    """A clock going back reads to the server as a later job: one print, one session."""
+    case = read_case("fan-cut-bridge")
+    done = mock_replay(case, [{"commands": [LOOK]}], scratch)
+    equal(len(done.replayed.ledger["sessions"]), 1)
+
+
 def test_a_recorded_alert_reaches_the_agent_at_its_time(scratch: Path) -> None:
     """Posted to the real webhook, it is the next turn's event, with its own picture and state."""
     case = read_case("petg-clip-detach-and-stringing-web")

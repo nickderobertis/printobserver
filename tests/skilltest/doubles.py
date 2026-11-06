@@ -115,6 +115,8 @@ class Timeline:
     #: Where the job was at each frame, and the real seconds looks have waited past the newest.
     positions: list[int] = field(default_factory=list)
     crept_s: float = 0.0
+    #: The print's clock never goes back: the server reads that as a later job.
+    longest_print_time_s: int = 0
     fetched_at: float = 0.0
     stopped: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -142,7 +144,7 @@ class Timeline:
             self.cursor = max(self.cursor, at)
             self.owed_event_frame = False
         else:
-            self.owed_event_frame = at > self.cursor
+            self.owed_event_frame = True
             self.at_event_frame = at
         self.event_cursor = max(self.cursor, at)
         self.paused = moment.printer_state is MachineState.PAUSED or (
@@ -152,7 +154,7 @@ class Timeline:
     def harness_started(self) -> None:
         """A second run within one turn, the engine's own re-prompt, is still that turn's."""
         with self.lock:
-            if self.moved_at_exit and self.owed_event_frame and self.index > 0:
+            if self.moved_at_exit and self.index > 0:
                 self.index -= 1
                 self.owed_event_frame = False
             self.moved_at_exit = False
@@ -161,15 +163,18 @@ class Timeline:
         """The last frame a look of this turn may answer: nothing newer exists yet.
 
         In replay time a frame captured after the next event's moment has not been
-        captured, so a turn's looks stop at the last one before that event's frame.
+        captured, so a turn's looks stop there. A look may reach the next event's own
+        frame, which time equals and does not pass, unless that frame shows a fault:
+        a carry-on point must never be shown what the next decision point is about.
         """
         following = self.case.moments[self.index + 1 :]
         if not following:
             return len(self.case.frames) - 1
         upcoming = following[0]
-        return self.case.frame_at_or_before(upcoming.at, upcoming.event_image) - (
-            0 if upcoming.is_alert else 1
-        )
+        at = self.case.frame_at_or_before(upcoming.at, upcoming.event_image)
+        if upcoming.is_alert or self.case.frames[at].healthy:
+            return at
+        return at - 1
 
     def next_fetch(self) -> str | None:
         """The frame this fetch answers: the event's own, then the next before the next event."""
@@ -178,7 +183,7 @@ class Timeline:
                 return None
             frames = self.case.frames
             if self.owed_event_frame:
-                self.cursor = self.at_event_frame
+                self.cursor = max(self.cursor, self.at_event_frame)
                 self.owed_event_frame = False
                 self.fetched_at = time.monotonic()
             elif self.cursor < self._window_end():
@@ -230,7 +235,9 @@ class Timeline:
         at = self.moment.at
         if self.cursor > self.event_cursor and self.case.has_frame_times:
             at = self.case.frames[self.cursor].captured
-        return print_time_s(self.case, at, position) + int(self.crept_s)
+        now = print_time_s(self.case, at, position) + int(self.crept_s)
+        self.longest_print_time_s = max(self.longest_print_time_s, now)
+        return self.longest_print_time_s
 
     def job_body(self) -> tuple[int, dict[str, Any]]:
         """What `GET /api/job` answers, which the real adapter reads as it reads OctoPrint's."""

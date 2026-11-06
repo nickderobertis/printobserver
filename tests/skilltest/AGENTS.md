@@ -11,8 +11,9 @@ it runs.
   `printobserver-server-turn-launcher` reports the exit synchronously, before the
   server can release it. It is a Rust program so the gate's wiring tests run on
   Windows, and `test-responder` keeps it off what a consumer installs.
-- **Nothing a turn can read moves past the next event's moment.** A look stops at
-  the last frame before it and answers that again, in new bytes, as a still scene's
+- **Nothing a turn can read moves past the next event's moment.** A look may reach
+  that event's own frame when it is labelled healthy. It never sees a fault early:
+  it stops at the last frame before one, and answers that again, in new bytes, as a still scene's
   frames from a real camera are, while the job creeps on below the next event's
   position. A frozen counter is what a real stall looks like, so a healthy print
   never shows one; a repeated frame over a moving job is a stale camera, which is

@@ -55,6 +55,8 @@ START_DEADLINE_S = 60
 ALERT_DEADLINE_S = 30
 #: How long one operator command may take.
 CLIENT_DEADLINE_S = 120
+#: The engine re-prompts a turn at most twice; anything past that is a replay gone wrong.
+MOST_RUNS_PER_ENTRY = 3
 #: How often the server's record is read while a turn runs.
 POLL_S = 0.5
 #: The kinds an agent's request is recorded under.
@@ -540,7 +542,10 @@ class Replay:
 
     def _harness_started(self) -> str:
         """Note one harness run, and say where its output is to be kept."""
-        self.timeline.harness_started()
+        if self._trigger_count() <= self.timeline.index:
+            self.timeline.harness_started()
+        else:
+            self.timeline.moved_at_exit = False
         record = self.records / f"{len(self.runs):04}.json"
         self.runs.append(Run(record, self.timeline.index, self._transcript_sizes()))
         return str(record)
@@ -738,6 +743,9 @@ class Replay:
         while True:
             if self.errors:
                 raise ReplayError("; ".join(self.errors))
+            if len(self.runs) > MOST_RUNS_PER_ENTRY * wanted:
+                msg = f"{len(self.runs)} harness runs for {wanted} events: stopping the spend"
+                raise ReplayError(msg)
             ended = self._turns_ended(self._events())
             if self.timeline.finished and ended >= wanted:
                 return

@@ -250,8 +250,9 @@ How a replay stands in for the time it does not have:
 
 - The camera answers an event with the frame for that moment, and each later look
   with the next frame in capture order. A frame captured after the next event's
-  moment does not exist yet, so a look past the last frame before it answers that
-  last frame again, while the job creeps on below that event's position.
+  moment does not exist yet, so a look reaches at most that event's own frame, and
+  only when it is labelled healthy. Before a fault's frame it answers the last
+  earlier frame again, while the job creeps on below that event's position.
 - A scheduled check is the server's own, on an interval of 5 seconds, and the
   stand-ins stand at the next event from the moment the last turn's harness exits.
 - An alert is posted to the real webhook, with the body the history recorded. Where
