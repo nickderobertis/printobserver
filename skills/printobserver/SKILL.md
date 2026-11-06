@@ -34,15 +34,15 @@ rather than leaving it undone.
 
    Judge each frame against this print's own earlier frames. What has been printed
    stays where it was laid: measure it against the sheet's holes, edges and marks,
-   however the view shifts; a changed offset means it moved. A printing part keeps
-   growing: once several percent of the file has passed between two frames, by the
-   job's own position whatever the clock says, it must look taller or fuller, and
-   head and bed moving over a part that does not is the failure. A part that moved
-   or stopped growing is failing however clean the frame looks. A wall's outer face
-   reads smooth: speckled or pitted like mesh, it is under-extruding though it
-   stands, unless that starts where the part's shape changes. Inside the outline
-   supports, bridges and infill look open, in straight regular lines; curved or
-   tangled strands are a defect, never a continue. Change nothing as a precaution.
+   however the view shifts. A part that seems to have moved is a person's to check:
+   pause. A printing part keeps growing: the bed sinks as layers rise, by the job's
+   position whatever the clock says, so once the bed sits visibly lower the part's
+   sides must show more wall. If they show none it has stopped growing, however clean
+   the frame looks. A wall's whole outer face reads smooth: speckled or pitted like
+   mesh, worse above than below, it is under-extruding though it stands, unless that
+   starts where the part's shape changes. Inside the outline supports, bridges and
+   infill look open, in straight regular lines; curved or tangled strands are a
+   defect, never a continue. Change nothing as a precaution.
 
    The printer reports neither its flow factor nor its fan, so a file that cut
    either shows only in the print: under-extruding walls want the flow factor at
