@@ -550,6 +550,22 @@ def test_a_change_only_elsewhere_owes_nothing(clone: Clone) -> None:
     contains(answer.outputs(), "owed=false\nreason=")
 
 
+def test_the_command_says_why_in_the_runs_summary(
+    clone: Clone,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A change that owes nothing passes, and the run's summary says why."""
+    head = clone.commit({"README.md": "changed\n"})
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.chdir(clone.root)
+    equal(classify.main([clone.base, head]), 0)
+    contains(capsys.readouterr().out, "owed=false")
+    contains(summary.read_text(encoding="utf-8"), "not owed")
+
+
 def test_a_lock_change_owes_it_only_when_oneharness_moves(clone: Clone) -> None:
     """Another package's release moves nothing the agent sees."""
     other = clone.commit({classify.LOCK: LOCK_TEMPLATE.format(oneharness="1.0.0", serde="2.0.0")})

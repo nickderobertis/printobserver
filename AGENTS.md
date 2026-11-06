@@ -376,6 +376,8 @@ what makes a job running once a decision rather than an omission.
 - `gate-windows-x86_64` — it is the aggregating job of the sharded `gate (windows-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-x86_64`, whose cells are on that platform's runner.
 - `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
 - `gate-macos` — it is the aggregating job of the sharded `gate (macos-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-macos-aarch64`, whose cells are on that platform's runner.
+- `skilltest-classify` — it reads one diff, whose paths and packages are the same whichever host reads them, and answers whether the real-print suite is owed.
+- `skilltest` — the real-print suite proves the agent's judgement over recorded prints through the server, whose supervision does not differ by platform in anything the agent is asked to judge, and each run spends real model quota; a second cell would be a second verdict on one change rather than a second platform.
 - `integration-macos` — it is the `macos-aarch64` cell of the printer integration job run as a job of its own, on that platform's runner, which `repo-policy.toml`'s `[[workflows.carried]]` holds to the cell's runner and commands; a matrix of one cell would say nothing a carried record does not, and the account's shared macOS slots allow no second cell.
 [//]: # (END unmatrixed-jobs)
 
@@ -1333,6 +1335,7 @@ the swap and the merge of that change belong to one window.
 - `integration (windows-aarch64)`
 - `llmlint`
 - `pr-title`
+- `skilltest`
 [//]: # (END required-checks)
 
 `just check-repo` derives those contexts from the committed workflows and refuses
@@ -1365,8 +1368,9 @@ anything. The required check names are the same at either tier.
 Outside both tiers: the `integration (<platform>)` jobs run `just
 test-integration` on every pull request whatever the affected set reaches;
 `llmlint`, `pr-title`, `skill-install` and `supply-chain` are jobs of their own
-on every change; the Obico tier and the registry install-path proof run on their
-schedules; `just skilltest` and the real-printer smoke run only by hand.
+on every change; the `skilltest` job runs the real-print suite where its
+classifier says the change owes it; the Obico tier and the registry install-path
+proof run on their schedules; the real-printer smoke runs only by hand.
 
 **Which subjects release.** `repo-policy.toml`'s `commits.release_types` is the
 source: **`feat`, `fix` and `perf`** cut a release (and `!` / `BREAKING CHANGE`
@@ -1580,6 +1584,25 @@ request the server took and recorded nowhere leaves history unchanged, and a
 client that can reach nothing reaches nothing whatever it is asked. What the
 step asserts is that the proxy — which the same call *did* go through, one read
 earlier — saw nothing.
+
+## The real-print suite
+
+`just skilltest` replays each real print with a `replay` under
+`tests/real-prints/` through the real server, supervisor port, skill and harness,
+as one continued conversation, and every decision point must pass. A change to
+anything `repo-policy.toml`'s `[skilltest] owed_paths` names, or an install
+template's `[supervisor]` table, an `oneharness` package's release or the Claude
+Code release in that table, runs the whole suite before it lands with every test
+passing, and the `skilltest` job runs it on the same list. A flaky test is fixed
+at its cause, never retried, excluded or tolerated. A change adding a module the
+agent's context is built from adds it to that list.
+
+Doubled are only what no test host has: OctoPrint, the camera and Obico. A
+pass-through in front of the harness, `printobserver-server-turn-launcher`, keeps
+each run's output and reports its exit, because the next event must stand before
+the server can release the print; it is a Rust program so that the gate's wiring
+tests run on Windows too, and `test-responder` keeps it off what a consumer
+installs. `just skilltest-record` writes `tests/skilltest/results/latest.json`.
 
 ## The real-print cases in Git LFS
 

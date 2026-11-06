@@ -84,17 +84,19 @@ were left out.
 
 ## What these are for
 
-These cases are the basis for skill tests that give the agent a case's
-pictures and simulated event data:
-- an Obico alert with its image;
-- the `situation` and `context` a turn begins with;
-- the frames later `look`s answer;
-- for `filament-stall-air-print`, the OctoPrint telemetry of a stall that
-  raised no event.
+These cases are the basis for the real-print suite, `just skilltest`. Each case
+with an `assertions.replay` is one test: its events, in time order, fed through
+printobserver's real server and supervisor port, on the harness and model
+production runs, as one continued conversation. OctoPrint, the camera and Obico
+are the only doubles. It is judged from the server's own record of what the agent
+requested during each turn.
 
-The `printobserver` CLI is mocked, and the tests check that the agent's
-commands match the case's `assertions`, including every action
-it must never take.
+**When it runs.** A change to anything `repo-policy.toml`'s `[skilltest]
+owed_paths` names, or an install template's supervisor settings, an `oneharness`
+package's release in `Cargo.lock` or the Claude Code release the job installs,
+runs the whole suite before it lands with every test passing. CI's `skilltest`
+job runs it on the same list. A flaky test is fixed at its cause, never retried,
+excluded or tolerated. There is no rate and no list of known misses.
 
 ## How the October cases were sampled and labelled
 
@@ -179,7 +181,7 @@ just real-prints-fetch
 It downloads them into the clone's LFS store, which all its worktrees share. A
 host whose git configuration sets `lfs.storage` shares one store across all its
 clones, and the fetch reuses objects already there instead of downloading them
-again. `just skilltest` runs the fetch before replaying any scenario. In
+again. `just skilltest` runs the fetch before replaying any case. In
 continuous integration the suite's job runs the steps in
 `tests/real-prints-lfs/ci-steps.yml`, which restore the store from the Actions
 cache under `just real-prints-cache-key`. They fetch only on a cache miss and
@@ -200,10 +202,21 @@ every assertion from it at run time, and the prose fields
 (`expected_agent_action` among them) are a reader's record rather than a
 second copy. `case.schema.json` declares its shape.
 
+`assertions.replay`, on a case that has a test, lists the scenarios that test
+feeds, by id, in strictly increasing `at`. A case with no `replay` has no test.
+
 `assertions.scenarios` lists one or more situations to put the agent in. Each
 scenario has:
 
 - `id`, kebab-case and unique within the case, and a one-sentence `summary`;
+- `at`, the local time its event happened, from its recorded event or its frame's
+  capture time;
+- `file_position_bytes` with `file_position_source`, on every event of a print
+  whose case carries its G-code: `recorded`, from the job snapshot in its recorded
+  event, or `progress`, the frame's progress times the G-code's size, at the start
+  of the next line. For a frame with no progress of its own, that is the latest
+  dated frame at or before it, and where a case dates nothing, where its fault
+  starts;
 - `trigger`: `recorded_alert` (an Obico alert this case's history recorded,
   named by `event_id`), `synthetic_alert` (an alert a test raises because
   Obico never did), `periodic_observation` (the supervisor's own scheduled
@@ -215,9 +228,9 @@ scenario has:
 - `printer_state`, in the printer contract's `PrinterState` spelling, and
   `detector_warned` and `detector_paused_the_print`, `null` when the trigger
   is not a detection;
-- `looks`: what successive `printobserver look` calls answer, in order, the
-  last repeating; each may list `arrived_event_ids`, the history events it
-  delivers;
+- `looks`: the frames the recorded turn's looks answered, each with the
+  `arrived_event_ids` it delivered, which a reader of the case can follow; a
+  replay answers looks from the case's frames in capture order;
 - `accept_any_of`, the acceptable outcomes, and `never`, the steps the agent
   must not take. A step is an `operation` (a `printobserver` command,
   hyphenated) and optional `args`, named as the operation's parameters in
@@ -225,17 +238,32 @@ scenario has:
 
 How a run is judged:
 
-- An outcome is met when its steps occur in order among the `printobserver`
-  commands the agent ran. Other commands may come between them. An empty
-  outcome asks for nothing.
-- A step with `args` matches a command naming each listed parameter with that
+- An outcome is met when its steps occur in order among the requests the server
+  recorded the agent making during that scenario's turn. Others may come between
+  them. An empty outcome asks for nothing.
+- A step with `args` matches a request naming each listed parameter with that
   value. Numbers are compared numerically.
-- A scenario passes when at least one outcome is met and no command the agent
-  ran matches any `never` step.
+- A scenario passes when at least one outcome is met and no request matches any
+  `never` step. A test passes when every one of its decision points does.
+
+How a replay stands in for the time it does not have:
+
+- The camera answers an event with the frame for that moment, and each later look
+  with the next frame in capture order. A frame captured after the next event's
+  moment does not exist yet, so a look past the last frame before it answers that
+  last frame again while the job creeps on.
+- A scheduled check is the server's own, on an interval of 5 seconds, and the
+  stand-ins stand at the next event from the moment the last turn's harness exits.
+- An alert is posted to the real webhook, with the body the history recorded. Where
+  the agent paused a print the next event finds running, the operator's resume goes
+  through the real program first, and is in the record the agent reads.
+- A scenario whose `printer_state` is one the server's scheduled check does not
+  fire on is replayed as a machine that does not answer, which is how it looks to
+  the server when the port is gone, so the check still comes.
 
 ## What holds them
 
-`just check-repo` runs seven deterministic checks over this directory, from
+`just check-repo` runs eight deterministic checks over this directory, from
 `tools/repo-checks`'s `checks_real_prints`: every `case.json` satisfies
 `case.schema.json`, and every `printobserver-history.json` the server's own
 `schemas/printobserver-server/HistoryAnswer.json` (`real-prints-schema`);
@@ -252,4 +280,6 @@ are in its case's history and its images are files of the case
 (`real-prints-scenarios`); every step is an operation of
 `schemas/printobserver-server/operations.json` with that operation's own
 parameters (`real-prints-operations`); and `service-config.toml` parses with
-every credential redacted (`real-prints-service-config`).
+every credential redacted (`real-prints-service-config`); and every `replay` names
+its case's scenarios in strictly increasing `at`, with every position required
+present and inside its G-code (`real-prints-replay`).

@@ -5,12 +5,14 @@ names, the `[supervisor]` table an install template writes, the release of an
 `oneharness` package in `Cargo.lock`, or the Claude Code release the job installs.
 Unknown is never omission: a diff it cannot read owes the suite.
 
-It prints the `name=value` lines a workflow step appends to `GITHUB_OUTPUT`.
+It prints the `name=value` lines a workflow step appends to `GITHUB_OUTPUT`, and
+says why in the step summary a run names.
 """
 
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
 import sys
 import tomllib
@@ -117,11 +119,21 @@ def _decided(root: Path, base: str, head: str) -> Classification:
 
 
 def main(arguments: list[str]) -> int:
-    """Print the classification of one diff."""
+    """Print the classification of one diff, or the release the job installs."""
+    if arguments == ["--claude-code"]:
+        policy = tomllib.loads(Path(POLICY).read_text(encoding="utf-8"))
+        print(policy["skilltest"]["claude_code"])
+        return 0
     if len(arguments) != 2:
         print("usage: classify.py BASE HEAD", file=sys.stderr)
         return 2
-    sys.stdout.write(classify(Path.cwd(), arguments[0], arguments[1]).outputs())
+    answer = classify(Path.cwd(), arguments[0], arguments[1])
+    sys.stdout.write(answer.outputs())
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with Path(summary).open("a", encoding="utf-8") as written:
+            owed = "owed" if answer.owed else "not owed"
+            written.write(f"The real-print suite is {owed}: {answer.reason}\n")
     return 0
 
 

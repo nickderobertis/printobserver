@@ -25,6 +25,9 @@ files:
     - "tests/real-prints/under-extrusion-lace/lace-test.clean.gcode"
     - "tests/real-prints/under-extrusion-lace/lace-test.gcode"
     - "tests/real-prints/*/*.gcode"
+    # What the last full run of the real-print suite did, written by its record
+    # command: a report no rule here is about.
+    - "tests/skilltest/results/*.json"
     # What printobserver and Obico recorded of each print, and the models the
     # prints were sliced from: recorded evidence no rule here is about, for the
     # same reason as the G-code beside them.

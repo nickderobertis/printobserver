@@ -731,6 +731,79 @@ jobs:
       - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: just test-skill-install
 
+  # Whether this change owes the real-print suite: a change to anything that can
+  # move what the agent sees or how it judges does, by the list `repo-policy.toml`
+  # holds. Unknown is never omission, and the step's summary says why either way.
+  skilltest-classify:
+    name: skilltest-classify
+    runs-on: ubuntu-24.04
+    outputs:
+      owed: ${{ steps.classify.outputs.owed }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+          # The classifier diffs against the merge base, which a shallow
+          # checkout does not carry.
+          fetch-depth: 0
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - id: classify
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: just skilltest-classify "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
+
+  # The real-print suite, on the harness and model production runs. Where the
+  # classifier says it is not owed this is skipped, which the forge reports as a
+  # passing check, and `skilltest-classify`'s summary says why; a classifier that
+  # could not answer owes it. A failed test fails this job: nothing retries.
+  skilltest:
+    name: skilltest
+    needs: skilltest-classify
+    if: >-
+      !cancelled() && (needs.skilltest-classify.outputs.owed == 'true' ||
+      needs.skilltest-classify.result != 'success')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+      - run: just bootstrap
+      # The steps `tests/real-prints-lfs/ci-steps.yml` holds, verbatim.
+      - id: real-prints-key
+        run: just real-prints-cache-key >> "$GITHUB_OUTPUT"
+      - id: real-prints-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.real-prints-key.outputs.key }}
+      - if: steps.real-prints-cache.outputs.cache-hit != 'true'
+        run: just real-prints-fetch
+      - if: steps.real-prints-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.real-prints-key.outputs.key }}
+      - if: steps.real-prints-cache.outputs.cache-hit == 'true'
+        run: just real-prints-checkout
+      - run: just skilltest-install-harness
+      - env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: just skilltest-record
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skilltest-report
+          path: tests/skilltest/results/latest.json
+          if-no-files-found: warn
+
   supply-chain:
     name: supply-chain
     # The Rust supply-chain gate: `deny.toml`'s advisory, licence, ban and
