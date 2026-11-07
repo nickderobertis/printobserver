@@ -68,7 +68,7 @@ use printobserver_printer_api::{JobSnapshot, PrinterSnapshot, PrinterState};
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId};
+use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, Timestamp};
 
 use crate::error::CoreError;
 use crate::inbox::Arrival;
@@ -176,6 +176,7 @@ impl Supervisor {
                 let payload = CameraLookPayload {
                     waited_s: u32::try_from(waited.as_secs()).unwrap_or(u32::MAX),
                     delivered: arrived.iter().map(|each| each.event.id).collect(),
+                    frame_captured_at: self.frame_captured_at(fetched.as_ref()),
                 };
                 self.write_with_frame(Some(print.id), &payload, fetched)
                     .await
@@ -232,6 +233,7 @@ impl Supervisor {
         let payload = CameraLookPayload {
             waited_s: u32::try_from(waited.as_secs()).unwrap_or(u32::MAX),
             delivered: Vec::new(),
+            frame_captured_at: self.frame_captured_at(fetched.as_ref()),
         };
         let event = self.write_with_frame(None, &payload, fetched).await?;
         let printer = self.read_snapshot().await.ok();
@@ -278,6 +280,16 @@ impl Supervisor {
             .to_owned();
         let fetched = self.fetch_frame(&url, print_id).await;
         Some((url, fetched))
+    }
+
+    /// When a fetched frame was captured: what its source says, or now.
+    pub(crate) fn frame_captured_at(&self, fetched: Option<&(String, Frame)>) -> Option<Timestamp> {
+        match fetched {
+            Some((_, Frame::Good(image))) => {
+                Some(image.captured_at.unwrap_or_else(|| self.clock().now()))
+            }
+            _ => None,
+        }
     }
 
     /// Write one event down with what a fetch gave as its image.

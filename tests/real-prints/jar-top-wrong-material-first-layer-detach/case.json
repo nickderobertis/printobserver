@@ -1,0 +1,441 @@
+{
+  "case": "jar-top-wrong-material-first-layer-detach",
+  "verdict": "real failure: the part came off the sheet on the first layers",
+  "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), textured sheet",
+  "printed_on": "2026-10-29, 18:14 to about 18:27",
+  "times": "local, MDT (UTC-6)",
+  "part": "3423-TOP-REV F, the top (lid) of a jar, printed opening-down without supports",
+  "fault": "a wrong-material print: the G-code was sliced with the Prusament PLA profile (215-220 °C nozzle, 60 °C bed) while Elegoo Rapid PETG was loaded, on the textured sheet. The rim ring did not bond and was dragged off its place by the nozzle a few layers in",
+  "what_it_looks_like": "the ring, printed at the back centre, appears about 300 px to the right in the next frame; the bed only moves in Z, so a part that moves sideways has come loose",
+  "fixable_by_the_agent": "no: nothing reattaches a detached part, and the material mismatch was invisible to the agent",
+  "expected_agent_action": {
+    "at_the_first_visible_failure": "pause and leave it for a person; cancel is also acceptable",
+    "never": [
+      "resume",
+      "acknowledge with continue or watch",
+      "temperature, fan, flow or speed changes"
+    ]
+  },
+  "detector": "Obico raised no alert",
+  "agent_turn": "printobserver's agent saw the detachment in the first frame that showed it, took one look and paused at about 18:25:49, then held the pause until a person cancelled. It did not notice the material mismatch",
+  "frames": [
+    {
+      "file": "agent-001-obs-181445-p00.0.jpg",
+      "time": "2026-10-29 18:14:45",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "bare textured sheet during warm-up (start G-code)",
+      "label": "Start-up: the bed is empty and clean with the gantry out of view; the bottom third of the frame is a smeared, streaked camera artefact, not anything on the bed.",
+      "agent_concern": {
+        "concern": "The streaked bottom of the first frame is a camera fault",
+        "verdict": "camera or lighting",
+        "explanation": "Correct: the vertical streaks are a corrupted lower half of the JPEG; the upper half shows a clean, empty sheet."
+      }
+    },
+    {
+      "file": "agent-002-look-181605.jpg",
+      "time": "2026-10-29 18:16:05",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "not printing",
+      "in_view": "bare sheet and gantry during start-up",
+      "label": "Start-up: the X gantry crosses the frame diagonally over an empty, clean sheet; nothing printed yet.",
+      "agent_concern": {
+        "concern": "The streaked bottom of the first frame is a camera fault",
+        "verdict": "camera or lighting",
+        "explanation": "Same turn as row 1; this fresh frame is clean, which confirms the smear was a one-off camera glitch."
+      }
+    },
+    {
+      "file": "agent-003-look-181730.jpg",
+      "time": "2026-10-29 18:17:30",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "not printing",
+      "in_view": "bare sheet and gantry during start-up",
+      "label": "Start-up (bed probing): the gantry crosses an empty, clean sheet; nothing printed yet.",
+      "agent_concern": {
+        "concern": "This observation had no picture because the camera failed once",
+        "verdict": "camera or lighting",
+        "explanation": "A camera dropout plus a minute-long pause in file position during the bed probe; the agent read both correctly as benign start-up behaviour."
+      }
+    },
+    {
+      "file": "agent-004-look-181855.jpg",
+      "time": "2026-10-29 18:18:55",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "not printing",
+      "in_view": "bare sheet and gantry during start-up",
+      "label": "Start-up (bed probing): the gantry crosses an empty, clean sheet with the toolhead at the right; nothing printed yet.",
+      "agent_concern": {
+        "concern": "The file position sat still for about a minute",
+        "verdict": "camera or lighting",
+        "explanation": "Same turn as row 3; the stall was the slow probe step and the missing picture a camera dropout, both correctly dismissed."
+      }
+    },
+    {
+      "file": "agent-005-obs-182047-p00.0.jpg",
+      "time": "2026-10-29 18:20:47",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "bare sheet, toolhead heating",
+      "label": "Start-up: the toolhead is parked at the back-centre heating to print temperature over a clean, empty sheet; nothing extruded yet."
+    },
+    {
+      "file": "agent-006-look-182204.jpg",
+      "time": "2026-10-29 18:22:04",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "not printing",
+      "in_view": "bare sheet and gantry during start-up",
+      "label": "Start-up: the gantry crosses the frame over a clean, empty sheet; still no plastic on the bed."
+    },
+    {
+      "file": "agent-007-obs-182248-p00.3.jpg",
+      "time": "2026-10-29 18:22:48",
+      "progress_pct": 0.3,
+      "z_mm": 0.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "first layer, external and inner perimeters of the rim ring",
+      "label": "First layer: a thin, continuous black ring (the lid's rim, printed opening-down) lies flat at the back-centre of the sheet, with a short dark strand to the right of the nozzle; it looks healthy.",
+      "agent_concern": {
+        "concern": "The nozzle reading above target came from the 230 °C warm-up",
+        "verdict": "other",
+        "explanation": "A temperature overshoot that settled by itself to 220 °C; dismissing it was right. Neither the agent nor the temperatures reveal that PETG is loaded under a PLA profile."
+      }
+    },
+    {
+      "file": "agent-008-look-182419.jpg",
+      "time": "2026-10-29 18:24:19",
+      "progress_pct": 0.3,
+      "z_mm": 0.4,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "first few layers of the rim ring (perimeters)",
+      "label": "Early layers of the rim ring, still in the same spot on the sheet; its front edge now shows a wider glossy band, which fits the wall growing a few layers taller; no displacement or obvious lifting."
+    },
+    {
+      "file": "agent-009-obs-182450-p03.1.jpg",
+      "time": "2026-10-29 18:24:50",
+      "progress_pct": 3.1,
+      "z_mm": 1.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "the first layers of the rim ring, detached and dragged",
+      "label": "Detached: the rim ring has moved about 300 px to the right of where it was printed (now at the back-right beside the nozzle) and the strand right of the nozzle is gone, so the ring has come off the sheet and is being dragged by the nozzle.",
+      "agent_concern": {
+        "concern": "The first layer of 3423-TOP-REV F came off the sheet and was dragged around by the nozzle.",
+        "verdict": "real fault",
+        "explanation": "Correct: compared with frames 7-8 the ring has moved on a fixed sheet, which is the clearest sign of detachment. Pausing and escalating was right."
+      }
+    },
+    {
+      "file": "agent-010-look-182532.jpg",
+      "time": "2026-10-29 18:25:32",
+      "progress_pct": 3.1,
+      "z_mm": 1.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "dragged rim ring at the nozzle, debris on the sheet",
+      "label": "Detached and dragged: the ring is now carried further to the back-right behind the toolhead, and small light filament fragments lie on the sheet left of the nozzle; the print is still running.",
+      "agent_concern": {
+        "concern": "came off the sheet and was dragged around by the nozzle",
+        "verdict": "real fault",
+        "explanation": "Same turn as row 9; this confirming look came just before the pause at about 18:25:49."
+      }
+    },
+    {
+      "file": "agent-011-look-182614.jpg",
+      "time": "2026-10-29 18:26:14",
+      "progress_pct": 3.1,
+      "z_mm": 1.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "bare sheet after the pause; dragged filament at the top of the frame",
+      "label": "Paused: the bed is lowered and the sheet is bare, with no part left on it; a loop of black filament (most likely the dragged ring hanging from the parked nozzle) and thin strands hang at the top centre.",
+      "agent_concern": {
+        "concern": "the paused frame shows a bare sheet with a loop of black filament near the parked toolhead",
+        "verdict": "real fault",
+        "explanation": "Correct reading: the part is gone from the sheet, so the print cannot continue."
+      }
+    },
+    {
+      "file": "agent-012-obs-182651-p05.2.jpg",
+      "time": "2026-10-29 18:26:51",
+      "progress_pct": 5.2,
+      "z_mm": 2.0,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "faulty",
+      "in_view": "bare sheet while paused; dragged filament at the top of the frame",
+      "label": "Still paused: the sheet is bare and the black filament loop still hangs at the top centre; unchanged from the previous frame.",
+      "agent_concern": {
+        "concern": "I can't tell for certain whether the loop at the top of the frame is the dragged ring or the printer's own cable or tubing.",
+        "verdict": "real fault",
+        "explanation": "The loop is most likely the dragged ring or extruded filament on the nozzle, since the braided cables nearby look different. Either way the bare sheet alone proves the failure; staying paused and escalated was right."
+      }
+    }
+  ],
+  "agent_images": [
+    {
+      "file": "agent-001-obs-181445-p00.0.jpg",
+      "event_id": "01a18a28-b24a-7a01-be10-a8cfb181258f"
+    },
+    {
+      "file": "agent-002-look-181605.jpg",
+      "event_id": "01a18a29-ebaf-7c33-b6b0-5eeb2b9a90ae"
+    },
+    {
+      "file": "agent-003-look-181730.jpg",
+      "event_id": "01a18a2b-3792-73d3-b696-bd89473802cf"
+    },
+    {
+      "file": "agent-004-look-181855.jpg",
+      "event_id": "01a18a2c-81f9-70b2-97c3-b4ab787f7835"
+    },
+    {
+      "file": "agent-005-obs-182047-p00.0.jpg",
+      "event_id": "01a18a2e-3a80-7df3-a083-1fa48a80628c"
+    },
+    {
+      "file": "agent-006-look-182204.jpg",
+      "event_id": "01a18a2f-6448-7020-bdca-d35626665335"
+    },
+    {
+      "file": "agent-007-obs-182248-p00.3.jpg",
+      "event_id": "01a18a30-1304-7401-97f3-41421f9e1651"
+    },
+    {
+      "file": "agent-008-look-182419.jpg",
+      "event_id": "01a18a31-74ce-7053-adb0-3c0a5e1b264a"
+    },
+    {
+      "file": "agent-009-obs-182450-p03.1.jpg",
+      "event_id": "01a18a31-ed50-7021-99e1-a2632d381871"
+    },
+    {
+      "file": "agent-010-look-182532.jpg",
+      "event_id": "01a18a32-942f-7270-ad49-b8410e228416"
+    },
+    {
+      "file": "agent-011-look-182614.jpg",
+      "event_id": "01a18a33-36d1-7ee0-8b3a-e22a11446dfe"
+    },
+    {
+      "file": "agent-012-obs-182651-p05.2.jpg",
+      "event_id": "01a18a33-c783-7370-9cf1-c3a3321ae07d"
+    }
+  ],
+  "agent_images_source": "copied from printobserver's image store through `printobserver image --image-id <id> --json`; each file's sha256 is the one its event records in printobserver-history.json",
+  "agent_concerns": [
+    {
+      "file": "agent-001-obs-181445-p00.0.jpg",
+      "time": "2026-10-29 18:14:45",
+      "concern": "The streaked bottom of the first frame is a camera fault",
+      "verdict": "camera or lighting",
+      "explanation": "Correct: the vertical streaks are a corrupted lower half of the JPEG; the upper half shows a clean, empty sheet."
+    },
+    {
+      "file": "agent-002-look-181605.jpg",
+      "time": "2026-10-29 18:16:05",
+      "concern": "The streaked bottom of the first frame is a camera fault",
+      "verdict": "camera or lighting",
+      "explanation": "Same turn as row 1; this fresh frame is clean, which confirms the smear was a one-off camera glitch."
+    },
+    {
+      "file": "agent-003-look-181730.jpg",
+      "time": "2026-10-29 18:17:30",
+      "concern": "This observation had no picture because the camera failed once",
+      "verdict": "camera or lighting",
+      "explanation": "A camera dropout plus a minute-long pause in file position during the bed probe; the agent read both correctly as benign start-up behaviour."
+    },
+    {
+      "file": "agent-004-look-181855.jpg",
+      "time": "2026-10-29 18:18:55",
+      "concern": "The file position sat still for about a minute",
+      "verdict": "camera or lighting",
+      "explanation": "Same turn as row 3; the stall was the slow probe step and the missing picture a camera dropout, both correctly dismissed."
+    },
+    {
+      "file": "agent-007-obs-182248-p00.3.jpg",
+      "time": "2026-10-29 18:22:48",
+      "concern": "The nozzle reading above target came from the 230 °C warm-up",
+      "verdict": "other",
+      "explanation": "A temperature overshoot that settled by itself to 220 °C; dismissing it was right. Neither the agent nor the temperatures reveal that PETG is loaded under a PLA profile."
+    },
+    {
+      "file": "agent-009-obs-182450-p03.1.jpg",
+      "time": "2026-10-29 18:24:50",
+      "concern": "The first layer of 3423-TOP-REV F came off the sheet and was dragged around by the nozzle.",
+      "verdict": "real fault",
+      "explanation": "Correct: compared with frames 7-8 the ring has moved on a fixed sheet, which is the clearest sign of detachment. Pausing and escalating was right."
+    },
+    {
+      "file": "agent-010-look-182532.jpg",
+      "time": "2026-10-29 18:25:32",
+      "concern": "came off the sheet and was dragged around by the nozzle",
+      "verdict": "real fault",
+      "explanation": "Same turn as row 9; this confirming look came just before the pause at about 18:25:49."
+    },
+    {
+      "file": "agent-011-look-182614.jpg",
+      "time": "2026-10-29 18:26:14",
+      "concern": "the paused frame shows a bare sheet with a loop of black filament near the parked toolhead",
+      "verdict": "real fault",
+      "explanation": "Correct reading: the part is gone from the sheet, so the print cannot continue."
+    },
+    {
+      "file": "agent-012-obs-182651-p05.2.jpg",
+      "time": "2026-10-29 18:26:51",
+      "concern": "I can't tell for certain whether the loop at the top of the frame is the dragged ring or the printer's own cable or tubing.",
+      "verdict": "real fault",
+      "explanation": "The loop is most likely the dragged ring or extruded filament on the nozzle, since the braided cables nearby look different. Either way the bare sheet alone proves the failure; staying paused and escalated was right."
+    }
+  ],
+  "first_visible_failure": {
+    "file": "agent-009-obs-182450-p03.1.jpg",
+    "what_shows_it": "The rim ring that sat at the back-centre in frames 7-8 is now about 300 px to the right, beside the nozzle, on a sheet that only moves in Z. A part that changes XY position between frames has come off the bed and is being dragged. The short dark strand right of the nozzle has also gone. Frame 8 shows a wider glossy band on the ring's front edge, but the ring has not moved and the band fits a wall a few layers taller, so it is not a usable warning; reading it as lifting is hindsight at best."
+  },
+  "right_action": "Pause the print at once (agent-009) and escalate for a person: the part is off the sheet in the first few layers, so nothing is salvageable and no temperature, fan, flow or speed change can reattach it. A person must clear the filament from the nozzle, clean the sheet and cancel. Cancelling outright would also be acceptable, since every remaining layer would be laid onto nothing, but pause-and-escalate is preferred so a person can inspect the nozzle. It must not take several more looks first: each minute of printing winds more filament around the nozzle.",
+  "agent_did": "The agent called the start-up and first-layer frames correctly, recognised the detachment at the first frame that showed it (18:24:50), took one confirming look and paused at about 18:25:49 with escalation, then held the pause until a person cancelled. That was right and fast, but like everyone else it did not notice the material mismatch (it called 220 °C normal).",
+  "labelling_notes": "Frames are 1920x1080, not the stated 1280x720. Rows 1-4 share agent turns with their looks, as do 5-6, 7-8 and 9-11. The G-code fields drift after the pause (z 1.6 to 2.0, progress 3.1 to 5.2 while paused), probably because of buffered moves and how the packet sampled position, so the camera is the better clock here. When the ring was dragged, the G-code was already at z 1.6 with solid infill in the layer: the base ring had a few layers, but on camera it never got past a thin first-layer ring. Root cause, from the case description: Elegoo PETG printed with the Prusament PLA profile (about 215-220 °C nozzle and 60 °C bed), which gives weak first-layer adhesion. Nothing in the frames shows the wrong material before the detachment.",
+  "sources": {
+    "3423-TOP-REV F.gcode": "the G-code OctoPrint printed, byte for byte, from the run folder",
+    "provenance.json": "the operator's provenance for the run: the model, slicer, profiles and command that made the G-code",
+    "obico-predictions.json": "Obico's score for every frame it saw, exported by the operator's Obico export command",
+    "printobserver-history.json": "every event printobserver recorded for the print, from `printobserver history --print-id <id> --limit 1000 --json`",
+    "3423-TOP-REV F.stl": "the model provenance.json names: the jar top converted to millimetres and turned opening-down",
+    "3423-TOP-REV F.3mf": "the original model, as supplied (units: inch)"
+  },
+  "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
+  "assertions": {
+    "replay": ["first-layer-before-the-failure", "ring-dragged-off-its-place"],
+    "scenarios": [
+      {
+        "id": "ring-dragged-off-its-place",
+        "at": "2026-10-29T18:24:50",
+        "file_position_bytes": 143566,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation shows the rim ring dragged about 300 px off where it was printed, a few layers into the print; the agent should pause it for a person (or cancel) and never resume or adjust.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-009-obs-182450-p03.1.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-010-look-182532.jpg"
+          }
+        ],
+        "accept_any_of": [
+          [
+            {
+              "operation": "pause"
+            }
+          ],
+          [
+            {
+              "operation": "cancel"
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "continue"
+            }
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "watch"
+            }
+          }
+        ]
+      },
+      {
+        "id": "first-layer-before-the-failure",
+        "at": "2026-10-29T18:22:48",
+        "file_position_bytes": 13018,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the first layer going down at the back centre, before anything has moved; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-007-obs-182248-p00.3.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-008-look-182419.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

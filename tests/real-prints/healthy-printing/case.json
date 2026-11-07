@@ -24,6 +24,7 @@
     "scenarios": [
       {
         "id": "toolhead-false-positive",
+        "at": "2026-09-27T15:28:48",
         "summary": "A synthetic alert carries Obico's warm-up frame boxing the toolhead, a false positive, and the look shows a clean part printing; the agent should acknowledge with continue and change nothing.",
         "trigger": "synthetic_alert",
         "event_image": "07-warm-up-obico-boxes-toolhead-1528-obico.jpg",

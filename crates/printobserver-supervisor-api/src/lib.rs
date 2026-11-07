@@ -36,7 +36,7 @@ use std::sync::Arc;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventPayload, EventRecord, PrintId, PrinterState};
+use printobserver_types::{EventPayload, EventRecord, PrintId, PrinterState, Timestamp};
 
 pub use access::{CREDENTIAL_ENV, SERVER_ENV, TurnAccess, TurnPass, TurnSession};
 pub use assessment::{AgentAssessment, Confidence};
@@ -101,6 +101,10 @@ pub struct TurnSituation {
     /// by anything else.
     #[serde(default)]
     pub noticed: Option<String>,
+    /// When the frame an alert brought was captured, which its source says or the
+    /// moment it answered; absent when the event says so itself or has no frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_captured_at: Option<Timestamp>,
 }
 
 impl Sample for TurnSituation {
@@ -115,6 +119,7 @@ impl Sample for TurnSituation {
                  (the print reached Offline)"
                     .to_owned(),
             ),
+            frame_captured_at: Some(Timestamp::sample_full()),
         }
     }
 

@@ -1,0 +1,59 @@
+{
+  "model": {
+    "file_name": "bubbler_guard_and_pad.stl",
+    "sha256": "fdd9b7141dfd141859e35081dd7f7edd8396abb4614bc894807546d796f9a88e",
+    "source_url": "the operator's own design, published as a gist"
+  },
+  "slice": {
+    "slicer": "PrusaSlicer",
+    "version": "2.9.6",
+    "printer_profile": "Prusa CORE One 0.6 nozzle",
+    "print_profile": "0.20mm STRUCTURAL @COREONE 0.6",
+    "material": "PLA",
+    "material_from": "the spool loaded in printobserver: Prusament PLA black (PLA, 700 g left) (01a19409-cf40-7b53-87cc-799acbcfc775)",
+    "material_profile": "Prusament PLA @COREONE 0.6",
+    "supports": "auto",
+    "overrides": {
+      "load": "the operator's build-plate-only supports override",
+      "brim_width": "5"
+    },
+    "command": [
+      "prusa-slicer-console",
+      "--export-gcode",
+      "--no-binary-gcode",
+      "--printer-profile",
+      "Prusa CORE One 0.6 nozzle",
+      "--print-profile",
+      "0.20mm STRUCTURAL @COREONE 0.6",
+      "--material-profile",
+      "Prusament PLA @COREONE 0.6",
+      "--support-material",
+      "--support-material-auto",
+      "--load",
+      "the operator's build-plate-only supports override",
+      "--brim-width",
+      "5",
+      "--output",
+      "bubbler_guard_and_pad.gcode",
+      "bubbler_guard_and_pad.stl"
+    ],
+    "sliced_at": "2026-10-31T16:19:51-06:00"
+  },
+  "gcode": {
+    "file_name": "bubbler_guard_and_pad.gcode",
+    "sha256": "0d8a067ef338d7852789716093121e228ec56821f2fdda5fcbefe5856a9c420f"
+  },
+  "upload": {
+    "file_name": "bubbler_guard_and_pad.gcode",
+    "sha256": "0d8a067ef338d7852789716093121e228ec56821f2fdda5fcbefe5856a9c420f",
+    "uploaded_at": "2026-10-31T16:22:09-06:00"
+  },
+  "start": {
+    "file_name": "bubbler_guard_and_pad.gcode",
+    "preflight": "20261031-164529.json in the run folder's preflight folder",
+    "bed_verdict": "clear",
+    "user_approved": true,
+    "print_id": "01a19424-3b2f-77a3-8de1-7b5beba46d4d",
+    "started_at": "2026-10-31T16:46:05-06:00"
+  }
+}

@@ -120,3 +120,19 @@ fn a_launcher_with_no_package_or_a_harness_without_one_is_started_by_name() {
         PathBuf::from("codex")
     );
 }
+
+/// A harness that can replace itself is told not to, in every turn's environment.
+#[test]
+fn every_claude_code_turn_is_kept_from_replacing_its_program() {
+    let claude = SIGN_INS
+        .iter()
+        .find(|entry| entry.identity() == "claude-code")
+        .expect("the entry");
+    let assigned: Vec<String> = claude
+        .session_assignments()
+        .expect("the table's assignments are assignments")
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(assigned, ["DISABLE_AUTOUPDATER=1"]);
+}

@@ -58,6 +58,9 @@
     "scenarios": [
       {
         "id": "paused-alert",
+        "at": "2026-09-27T15:45:56",
+        "file_position_bytes": 133801,
+        "file_position_source": "progress",
         "summary": "Obico's second alert reports it has paused the print over a spaghetti nest that no adjustment repairs, so the agent should leave the print held and acknowledge the alert with stop.",
         "trigger": "recorded_alert",
         "event_id": "01a0e4d4-f282-7303-a7b4-d147e98219ed",

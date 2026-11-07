@@ -1,0 +1,287 @@
+[
+ {
+  "updated_at": "2026-10-30T00:14:42.028Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:14:52.797Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:15:03.544Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:15:14.761Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:15:34.788Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:15:45.569Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:15:56.128Z",
+  "current_p": 0.10294374823570251,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:16:06.753Z",
+  "current_p": 0.19385573267936707,
+  "normalized_p": 0.02063505455541077
+ },
+ {
+  "updated_at": "2026-10-30T00:16:17.507Z",
+  "current_p": 0.5480270683765411,
+  "normalized_p": 0.08869513378916588
+ },
+ {
+  "updated_at": "2026-10-30T00:16:28.212Z",
+  "current_p": 0.5524163246154785,
+  "normalized_p": 0.13703572485209228
+ },
+ {
+  "updated_at": "2026-10-30T00:16:38.950Z",
+  "current_p": 0.5715777575969696,
+  "normalized_p": 0.13782223888264006
+ },
+ {
+  "updated_at": "2026-10-30T00:16:49.721Z",
+  "current_p": 0.7336132526397705,
+  "normalized_p": 0.1407069221293468
+ },
+ {
+  "updated_at": "2026-10-30T00:17:00.496Z",
+  "current_p": 0.4652961790561676,
+  "normalized_p": 0.1382111694958132
+ },
+ {
+  "updated_at": "2026-10-30T00:17:11.503Z",
+  "current_p": 0.0,
+  "normalized_p": 0.12419893421274061
+ },
+ {
+  "updated_at": "2026-10-30T00:17:31.710Z",
+  "current_p": 0.0,
+  "normalized_p": 0.11136456540514388
+ },
+ {
+  "updated_at": "2026-10-30T00:17:42.349Z",
+  "current_p": 0.18487122654914856,
+  "normalized_p": 0.10719945861751647
+ },
+ {
+  "updated_at": "2026-10-30T00:17:53.190Z",
+  "current_p": 0.24598142504692078,
+  "normalized_p": 0.106295811973732
+ },
+ {
+  "updated_at": "2026-10-30T00:18:03.826Z",
+  "current_p": 0.2823018431663513,
+  "normalized_p": 0.1070439879137989
+ },
+ {
+  "updated_at": "2026-10-30T00:18:14.397Z",
+  "current_p": 0.13696065545082092,
+  "normalized_p": 0.10098450090270125
+ },
+ {
+  "updated_at": "2026-10-30T00:18:25.118Z",
+  "current_p": 0.09221524000167847,
+  "normalized_p": 0.09350573703582077
+ },
+ {
+  "updated_at": "2026-10-30T00:18:35.831Z",
+  "current_p": 0.0,
+  "normalized_p": 0.08170883775836549
+ },
+ {
+  "updated_at": "2026-10-30T00:18:46.826Z",
+  "current_p": 0.0,
+  "normalized_p": 0.07096219917128752
+ },
+ {
+  "updated_at": "2026-10-30T00:18:57.688Z",
+  "current_p": 0.0,
+  "normalized_p": 0.06120118132699764
+ },
+ {
+  "updated_at": "2026-10-30T00:19:08.573Z",
+  "current_p": 0.0,
+  "normalized_p": 0.052356866296298606
+ },
+ {
+  "updated_at": "2026-10-30T00:19:19.382Z",
+  "current_p": 0.0,
+  "normalized_p": 0.04435878041516239
+ },
+ {
+  "updated_at": "2026-10-30T00:19:29.921Z",
+  "current_p": 0.0,
+  "normalized_p": 0.03713689722433708
+ },
+ {
+  "updated_at": "2026-10-30T00:19:40.683Z",
+  "current_p": 0.0,
+  "normalized_p": 0.030623075566315446
+ },
+ {
+  "updated_at": "2026-10-30T00:19:51.969Z",
+  "current_p": 0.0,
+  "normalized_p": 0.02475205714646205
+ },
+ {
+  "updated_at": "2026-10-30T00:20:12.049Z",
+  "current_p": 0.0,
+  "normalized_p": 0.019462123281581853
+ },
+ {
+  "updated_at": "2026-10-30T00:20:22.922Z",
+  "current_p": 0.0,
+  "normalized_p": 0.014695490555574696
+ },
+ {
+  "updated_at": "2026-10-30T00:20:33.580Z",
+  "current_p": 0.0,
+  "normalized_p": 0.010398508856733043
+ },
+ {
+  "updated_at": "2026-10-30T00:20:44.344Z",
+  "current_p": 0.0,
+  "normalized_p": 0.006521712106833052
+ },
+ {
+  "updated_at": "2026-10-30T00:20:55.009Z",
+  "current_p": 0.16105985641479492,
+  "normalized_p": 0.023480575771174468
+ },
+ {
+  "updated_at": "2026-10-30T00:21:05.903Z",
+  "current_p": 0.08684423565864563,
+  "normalized_p": 0.02869665081203699
+ },
+ {
+  "updated_at": "2026-10-30T00:21:16.594Z",
+  "current_p": 0.0,
+  "normalized_p": 0.022414523202297795
+ },
+ {
+  "updated_at": "2026-10-30T00:21:27.292Z",
+  "current_p": 0.0,
+  "normalized_p": 0.01640799922666539
+ },
+ {
+  "updated_at": "2026-10-30T00:21:38.044Z",
+  "current_p": 0.0,
+  "normalized_p": 0.011161885163655818
+ },
+ {
+  "updated_at": "2026-10-30T00:21:48.815Z",
+  "current_p": 0.0,
+  "normalized_p": 0.006723243600557609
+ },
+ {
+  "updated_at": "2026-10-30T00:21:59.553Z",
+  "current_p": 0.0,
+  "normalized_p": 0.00296784794641888
+ },
+ {
+  "updated_at": "2026-10-30T00:22:10.264Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:22:21.078Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:22:31.784Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:22:42.336Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:22:53.577Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:23:13.667Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:23:24.906Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:23:45.142Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:23:55.795Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:24:06.634Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:24:17.531Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:24:28.193Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:24:38.838Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:24:49.930Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:25:10.062Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:25:20.812Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:25:31.578Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ },
+ {
+  "updated_at": "2026-10-30T00:25:42.413Z",
+  "current_p": 0.0,
+  "normalized_p": 0.0
+ }
+]

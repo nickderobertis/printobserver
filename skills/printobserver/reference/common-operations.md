@@ -547,7 +547,7 @@ nothing of the machine and is valid from every state, which is what makes it the
 way an observation is put into the record.
 
 ```console
-$ printobserver acknowledge-failure --print-id PRINT_ID --actor operator --event-id EVENT_ID --disposition watch --reason "spaghetti in the alert image, but the part is still attached; watching it"
+$ printobserver acknowledge-failure --print-id PRINT_ID --actor operator --event-id EVENT_ID --disposition watch --reason "a few thin strands in the alert image, not clearly growing; watching it"
 record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID
@@ -557,7 +557,7 @@ record.request.action.action: acknowledge_failure
 record.request.action.actor: operator
 record.request.action.disposition: watch
 record.request.action.event_id: EVENT_ID
-record.request.action.reason: spaghetti in the alert image, but the part is still attached; watching it
+record.request.action.reason: a few thin strands in the alert image, not clearly growing; watching it
 record.request.actor: operator
 record.request.requested_at: TIMESTAMP
 ```
@@ -607,6 +607,7 @@ event.image.id: ID
 event.image.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 event.kind: camera_look
 event.payload.delivered: []
+event.payload.frame_captured_at: TIMESTAMP
 event.payload.waited_s: 1
 event.print_id: PRINT_ID
 event.received_at: TIMESTAMP
@@ -652,6 +653,7 @@ event.image.id: ID
 event.image.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 event.kind: camera_look
 event.payload.delivered: []
+event.payload.frame_captured_at: TIMESTAMP
 event.payload.waited_s: 0
 event.received_at: TIMESTAMP
 event.source: system

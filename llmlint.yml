@@ -24,6 +24,17 @@ files:
     - "tests/real-prints/spaghetti-small-nest/spaghetti-two-stage.gcode"
     - "tests/real-prints/under-extrusion-lace/lace-test.clean.gcode"
     - "tests/real-prints/under-extrusion-lace/lace-test.gcode"
+    - "tests/real-prints/*/*.gcode"
+    # What the last full run of the real-print suite did, written by its record
+    # command: a report no rule here is about.
+    - "tests/skilltest/results/*.json"
+    # What printobserver and Obico recorded of each print, and the models the
+    # prints were sliced from: recorded evidence no rule here is about, for the
+    # same reason as the G-code beside them.
+    - "tests/real-prints/*/printobserver-history.json"
+    - "tests/real-prints/*/obico-predictions.json"
+    - "tests/real-prints/*/*.stl"
+    - "tests/real-prints/*/*.3mf"
     # Byte-identical copies of two of those, kept as plain files where the
     # G-code reader's journey reads them: the cases themselves are Git LFS
     # pointers until the real-print suite fetches them.

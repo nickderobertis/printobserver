@@ -68,6 +68,7 @@
     "scenarios": [
       {
         "id": "static-debris-warning",
+        "at": "2026-09-27T22:40:30",
         "summary": "Obico warns of fallen strands that two later looks show static beside a second part printing cleanly; there is no single right action, since acknowledging with watch and pausing then acknowledging with stop are both acceptable.",
         "trigger": "recorded_alert",
         "event_id": "01a0e650-820a-72a3-be40-f85f5b2d2c41",

@@ -1,0 +1,32 @@
+# The real-print suite's own budget. The command runs from the repository root
+# (`uv run --directory ../..`) and starts no model.
+schema_version: 1
+budgets:
+  - id: skilltest-turns-per-run
+    description: >-
+      Real model turns one full skill-test run spends. Real harness turns one
+      full `just skilltest` run makes: one turn per event a test feeds, each
+      `replay` entry of each case under `tests/real-prints/` and each watch line
+      an outside-supervisor conversation is handed, plus the lean-checks node's
+      2 probe turns once they exist, never retried and never repeated. Detail:
+      turns per test and per conversation. Arithmetic over the cases' `replay`
+      lists and the later nodes' stated additions. Workload: the suite as this
+      node lands it, 9 print replays feeding 41 checks, 41 turns per full run, 1
+      run per change with no repetitions, about 10 minutes with 4 tests at once.
+      Later nodes add 22 start requests, 8 watch lines, 2 probe turns and about
+      44 carry-on checks, about 121 turns, mostly one-call lean checks, about 25
+      minutes, which the same threshold holds. About 20 to 25 full runs while
+      this plan lands and 2 to 4 a month after. Threshold 135 leaves room for a
+      few more carry-on checks than the estimate and one more decision point.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - tests/skilltest/turns_per_run.py
+    unit: turns
+    direction: max
+    threshold: 135
+    timeout_seconds: 60

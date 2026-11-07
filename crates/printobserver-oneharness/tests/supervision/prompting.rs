@@ -72,12 +72,23 @@ fn fillings(literals: &[String], prompt: &str) -> Option<Vec<String>> {
     Some(found)
 }
 
+/// A situation in which everything is known, and an earlier event was never taken.
+fn knowing_everything(print_id: PrintId) -> TurnSituation {
+    TurnSituation {
+        printer_state: Some(PrinterState::Paused),
+        detector_warned: Some(false),
+        detector_paused_the_print: Some(true),
+        arrived_while_busy: vec![event(print_id, unreadable("an earlier alert"))],
+        noticed: Some("print_ended: the print ended interrupted".to_owned()),
+        frame_captured_at: None,
+    }
+}
+
 /// Every prompt is the committed template with only its slots differing, and
 /// the actor it hands the agent is the agent in the session the turn ran in.
 #[test]
 fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
-    // Every answer this journey drives is judged by the checked-in assessment
-    // schema, so it is held still while the journey reads it.
+    // Every answer here is judged by the checked-in schema, so it is held still.
     let schemas = schema_read_lock();
     let fixture = Fixture::new("prompting");
     let watch = Arc::new(Watch::default());
@@ -110,16 +121,9 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     for (index, (payload, image)) in triggers.into_iter().enumerate() {
         let print_id = PrintId::new();
         let mut request = turn(print_id, event(print_id, payload), image.clone());
-        // The first turn began with everything known, and arrived after an
-        // event its print's previous turn never took; the others knew nothing.
+        // The first turn knew everything, and came after an event never taken.
         if index == 0 {
-            request.situation = TurnSituation {
-                printer_state: Some(PrinterState::Paused),
-                detector_warned: Some(false),
-                detector_paused_the_print: Some(true),
-                arrived_while_busy: vec![event(print_id, unreadable("an earlier alert"))],
-                noticed: Some("print_ended: the print ended interrupted".to_owned()),
-            };
+            request.situation = knowing_everything(print_id);
         }
         let expected_event =
             serde_json::to_string_pretty(&request.event).expect("the event is writable");
@@ -381,8 +385,7 @@ fn system_prompt_over(
 /// read from the tree when the port is built.
 #[test]
 fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
-    // Every answer this journey drives is judged by the checked-in assessment
-    // schema, so it is held still while the journey reads it.
+    // Every answer here is judged by the checked-in schema, so it is held still.
     let schemas = schema_read_lock();
     let fixture = Fixture::new("skill");
 
@@ -432,8 +435,7 @@ fn the_system_prompt_is_the_skill_file_at_the_configured_path() {
 /// so neither shape changes it.
 #[test]
 fn a_skill_as_an_install_rewrote_it_is_sent_as_the_same_prose() {
-    // Every answer this journey drives is judged by the checked-in assessment
-    // schema, so it is held still while the journey reads it.
+    // Every answer here is judged by the checked-in schema, so it is held still.
     let schemas = schema_read_lock();
     let fixture = Fixture::new("skill-installed");
     let committed = fs::read_to_string(skill_path()).expect("the committed skill is readable");

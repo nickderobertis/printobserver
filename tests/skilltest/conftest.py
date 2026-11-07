@@ -1,36 +1,22 @@
-"""The opt-in switch for this project's harness-driven skill tests.
+"""What keeps this project's live tests from firing by accident.
 
-Each live test runs the `printobserver` skill through a real coding harness and
-spends real model turns, so it must never fire by accident. Two mechanisms keep
-it from doing so, for two different callers:
-
-* **The project graph** keeps it out of the gate. This directory is its own Nx
-  project whose only test target is `skilltest`, and no gate recipe fans out
-  over that name, so `just check` never runs the live tests. The deterministic
-  tests, which build every scenario without a model, are `skilltest-wiring`'s.
-* **This conftest** is for a developer who types a bare `pytest` over the tree:
-  a test marked ``@pytest.mark.skilltest_e2e`` is skipped unless
-  ``SKILLTEST_E2E`` is set, which the `skilltest` target (and `just skilltest`)
-  does.
+Each runs a real harness and spends real model turns. The project graph keeps
+them out of the gate: this directory's only test target is `skilltest`, and no
+gate recipe fans out over that name. This keeps them from a developer's bare
+`pytest` over the tree: they are collected only when the run opted in, as the
+`skilltest` target and `just skilltest` do.
 """
 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
-import pytest
-
-_TRUTHY = {"1", "true", "yes", "on"}
+collect_ignore = [] if os.environ.get("SKILLTEST_E2E") == "1" else ["test_replay.py"]
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip every live skill test unless the run opted in."""
-    del config
-    if os.environ.get("SKILLTEST_E2E", "").strip().lower() in _TRUTHY:
-        return
-    skip = pytest.mark.skip(
-        reason="opt-in skill test: set SKILLTEST_E2E=1 (or run `just skilltest`)"
-    )
-    for item in items:
-        if "skilltest_e2e" in item.keywords:
-            item.add_marker(skip)
+def pytest_ignore_collect(collection_path: Path) -> bool | None:
+    """Leave the live module out unless the run opted in, whatever pytest was pointed at."""
+    if collection_path.name in collect_ignore:
+        return True
+    return None

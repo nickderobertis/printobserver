@@ -730,13 +730,13 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
                             sign_in.directory(&config.state_dir).display()
                         ),
                     })?;
-            vec![
-                sign_in
-                    .assignment(&directory)
-                    .map_err(|error| StartError::Supervisor {
-                        detail: error.to_string(),
-                    })?,
-            ]
+            let refused = |error: printobserver_oneharness::ConfigError| StartError::Supervisor {
+                detail: error.to_string(),
+            };
+            let mut assigned = vec![sign_in.assignment(&directory).map_err(refused)?];
+            // llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
+            assigned.extend(sign_in.session_assignments().map_err(refused)?);
+            assigned
         }
         None => Vec::new(),
     };

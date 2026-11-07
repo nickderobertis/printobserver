@@ -40,6 +40,11 @@ pub struct HarnessSignIn {
     /// npm writes the program's `.cmd` launcher into, for a harness npm installs
     /// as a native program behind that launcher. `None` for one it does not.
     npm_program: Option<&'static str>,
+    /// What every turn on this harness runs with beyond its sign-in, as
+    /// `NAME=value`: a program that replaces itself while a print is supervised
+    /// leaves the next turn with no program to start.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+    session_env: &'static [&'static str],
 }
 
 /// Every harness identity this program can sign in, and there is no other.
@@ -57,6 +62,8 @@ pub const SIGN_INS: [HarnessSignIn; 2] = [
         arguments: &["auth", "login"],
         // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] npm's layout for this package has no machine-readable source: the package's own `bin` entry names `bin/claude.exe`, which its install step replaces with the platform's native program, and the `claude.cmd` launcher npm writes beside `node_modules` runs that file.
         npm_program: Some("node_modules/@anthropic-ai/claude-code/bin/claude.exe"),
+        // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+        session_env: &["DISABLE_AUTOUPDATER=1"],
     },
     HarnessSignIn {
         identity: "codex",
@@ -65,6 +72,7 @@ pub const SIGN_INS: [HarnessSignIn; 2] = [
         // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] A third-party CLI's login command has no machine-readable source: OneHarness declares each harness's program, which the tests hold `program` to, but not its sign-in. This is read from `codex login --help`, and a gate drift check would have to install and run the paid provider's CLI.
         arguments: &["login", "--device-auth"],
         npm_program: None,
+        session_env: &[],
     },
 ];
 
@@ -100,6 +108,19 @@ impl HarnessSignIn {
     #[must_use]
     pub const fn program(&self) -> &'static str {
         self.program
+    }
+
+    /// What every turn on this harness runs with beyond its sign-in.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`ConfigError`] of an assignment that is none, which no entry
+    /// of [`SIGN_INS`] is held to writing.
+    pub fn session_assignments(&self) -> Result<Vec<EnvAssignment>, ConfigError> {
+        self.session_env
+            .iter()
+            .map(|assigned| EnvAssignment::new(assigned))
+            .collect()
     }
 
     /// The arguments of this harness's own interactive sign-in.

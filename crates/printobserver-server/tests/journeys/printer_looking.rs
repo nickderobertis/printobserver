@@ -16,6 +16,7 @@ use printobserver_core::{
     PortFailureSite,
 };
 use printobserver_types::{EventPayload as _, EventRecord, PrintId};
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 use crate::agent::StandInAgent;
 use crate::camera_host::{GO2RTC_FAILURE, Scripted, ScriptedHost};
@@ -123,6 +124,10 @@ async fn a_camera_refusing_every_attempt_is_recorded_as_the_printers() {
     assert_eq!(status, reqwest::StatusCode::OK, "{look}");
     assert!(look.get("frame").is_none(), "{look}");
     assert!(look.get("image_path").is_none(), "{look}");
+    assert!(
+        look["event"]["payload"]["frame_captured_at"].is_null(),
+        "{look}"
+    );
     assert_eq!(camera.exchanges().len(), 4);
     let events = printers_own(&world).await;
     let retries: Vec<(u32, u16, String)> = events
@@ -165,6 +170,10 @@ async fn a_camera_giving_only_blank_frames_degrades_the_printers_look() {
     assert!(look["event"].get("print_id").is_none(), "{look}");
     assert_eq!(look["event"]["payload"]["cause"], "blank", "{look}");
     assert!(look.get("frame").is_none(), "{look}");
+    assert!(
+        look["event"]["payload"]["frame_captured_at"].is_null(),
+        "{look}"
+    );
     assert_eq!(camera.exchanges().len(), 3);
     let events = printers_own(&world).await;
     assert!(
@@ -265,6 +274,97 @@ async fn a_look_the_store_will_not_write_down_is_refused_and_nothing_is_kept() {
             .iter()
             .all(|event| event.kind().as_str() != CameraLookPayload::KIND),
         "a refused look was kept"
+    );
+    world.server.stop().await;
+}
+
+/// A frame the image store refuses was still captured, so the look says when and
+/// carries no image.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_look_whose_frame_the_store_refuses_still_says_when_it_was_captured() {
+    let camera = ScriptedHost::answering(vec![Scripted::frame(snapshot_bytes())]).await;
+    let world = with_camera_over(camera.url(), |stores| {
+        let (stores, events) = HeldEvents::over(stores);
+        events.refusing_images(true);
+        stores
+    })
+    .await;
+
+    let (status, look) = world.get(&world.url("/look")).await;
+
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(look.get("image_path").is_none(), "{look}");
+    assert!(
+        look["event"]["payload"]["frame_captured_at"].is_string(),
+        "{look}"
+    );
+    world.server.stop().await;
+}
+
+/// A look at the printer says when its frame was captured: the moment the camera
+/// answered, when the camera says nothing of its own.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_look_at_the_printer_says_when_its_frame_was_captured() {
+    let camera = crate::http_host::image_host(crate::ingress::snapshot_bytes()).await;
+    let world = with_camera(camera.url()).await;
+    let (status, look) = world.get(&world.url("/look")).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(
+        look["event"]["payload"]["frame_captured_at"].is_string(),
+        "{look}"
+    );
+}
+
+/// A camera on the loopback address answering every request with one frame under
+/// this `Last-Modified`, well-formed or not.
+async fn camera_declaring(declared: &'static str) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a loopback port");
+    let address = listener.local_addr().expect("the bound address");
+    let body = snapshot_bytes();
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request).await;
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\
+                 Last-Modified: {declared}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes()).await;
+            let _ = stream.write_all(&body).await;
+            let _ = stream.shutdown().await;
+        }
+    });
+    format!("http://{address}/snapshot.jpg")
+}
+
+/// A camera's own `Last-Modified` is when its frame was captured, and one naming no
+/// time leaves the look standing, at the moment the camera answered.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cameras_last_modified_is_read_and_a_malformed_one_is_passed_over() {
+    let world = with_camera(camera_declaring("Thu, 29 Oct 2026 18:24:50 GMT").await).await;
+    let (status, look) = world.get(&world.url("/look")).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert_eq!(
+        look["event"]["payload"]["frame_captured_at"], "2026-10-29T18:24:50Z",
+        "{look}"
+    );
+    world.server.stop().await;
+
+    let world = with_camera(camera_declaring("yesterday").await).await;
+    let before = printobserver_types::Timestamp::now();
+    let (status, look) = world.get(&world.url("/look")).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    let captured: printobserver_types::Timestamp = look["event"]["payload"]["frame_captured_at"]
+        .as_str()
+        .expect("the moment the camera answered")
+        .parse()
+        .expect("a time");
+    assert!(
+        before <= captured && captured <= printobserver_types::Timestamp::now(),
+        "{look}"
     );
     world.server.stop().await;
 }

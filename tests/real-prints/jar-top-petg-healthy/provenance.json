@@ -1,0 +1,55 @@
+{
+  "model": {
+    "file_name": "3423-TOP-REV F petg.stl",
+    "sha256": "125706395284f2c9cf14fa8491ec814440c4ddfc7c184d5e857aa4c6c87f952f"
+  },
+  "slice": {
+    "slicer": "PrusaSlicer",
+    "version": "2.9.6",
+    "printer_profile": "Prusa CORE One 0.6 nozzle",
+    "print_profile": "0.20mm STRUCTURAL @COREONE 0.6",
+    "material": "PETG",
+    "material_from": "--material",
+    "material_profile": "Elegoo Rapid PETG @COREONE 0.6",
+    "supports": "auto",
+    "overrides": {
+      "brim_width": "8"
+    },
+    "command": [
+      "prusa-slicer-console",
+      "--export-gcode",
+      "--no-binary-gcode",
+      "--printer-profile",
+      "Prusa CORE One 0.6 nozzle",
+      "--print-profile",
+      "0.20mm STRUCTURAL @COREONE 0.6",
+      "--material-profile",
+      "Elegoo Rapid PETG @COREONE 0.6",
+      "--support-material",
+      "--support-material-auto",
+      "--brim-width",
+      "8",
+      "--output",
+      "3423-TOP-REV F petg.gcode",
+      "3423-TOP-REV F petg.stl"
+    ],
+    "sliced_at": "2026-10-30T10:06:57-06:00"
+  },
+  "gcode": {
+    "file_name": "3423-TOP-REV F petg.gcode",
+    "sha256": "06501aae3fa6b57ae7b0cd279f643f6232af455cf6e3183a8c02f5d95e52a267"
+  },
+  "upload": {
+    "file_name": "3423-TOP-REV F petg.gcode",
+    "sha256": "06501aae3fa6b57ae7b0cd279f643f6232af455cf6e3183a8c02f5d95e52a267",
+    "uploaded_at": "2026-10-30T11:58:50-06:00"
+  },
+  "start": {
+    "file_name": "3423-TOP-REV F petg.gcode",
+    "preflight": "20261030-115857.json in the run folder's preflight folder",
+    "bed_verdict": "clear",
+    "user_approved": true,
+    "print_id": "01a18df7-7311-72f1-ad84-9a23835602be",
+    "started_at": "2026-10-30T11:59:26-06:00"
+  }
+}

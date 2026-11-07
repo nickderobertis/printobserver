@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { before, describe, test } from "node:test";
 import { condition, loadWorkflows, plan, Unresolved } from "../lib/graph.mjs";
 import { isObject } from "../lib/util.mjs";
-import { classified, fixture, history, outputsOf, ROOT } from "./support/histories.mjs";
+import { ciOutputsOf, classified, fixture, history, ROOT } from "./support/histories.mjs";
 import { dispatchRunner, pullRequestPayload, runsFor, WORKFLOWS } from "./support/lifecycle.mjs";
 
 const workflows = loadWorkflows(WORKFLOWS);
@@ -82,7 +82,7 @@ function pullRequest(diff, branch, results = {}) {
       file,
       run: plan(workflows, file, {
         event: { name: "pull_request", action: "opened", payload },
-        outputs: file === "ci.yml" ? { classify: outputsOf(classification) } : {},
+        outputs: file === "ci.yml" ? ciOutputsOf(classification) : {},
         results,
       }),
     });
@@ -113,6 +113,39 @@ describe("an ordinary pull request", () => {
     for (const name of REQUIRED) {
       assert.equal(reported.filter((one) => one === name).length, 1, `${name} is reported once`);
     }
+  });
+});
+
+describe("the real-print suite's job", () => {
+  /** The `ci.yml` run of an ordinary pull request, with the suite's classifier answering `answered`. */
+  function ciRun(answered, results = {}) {
+    const made = history("source");
+    const payload = pullRequestPayload("opened", "ordinary", "same-repository", made);
+    const classification = classified("pull_request", payload, made);
+    return plan(workflows, "ci.yml", {
+      event: { name: "pull_request", action: "opened", payload },
+      outputs: { ...ciOutputsOf(classification), "skilltest-classify": answered },
+      results,
+    });
+  }
+  const ran = (run) => run.jobs.some((job) => job.job === "skilltest");
+
+  test("runs where the classifier says the suite is owed", () => {
+    const run = ciRun({ owed: "true", reason: "skills/printobserver/SKILL.md changed" });
+    assert.ok(ran(run), "the suite runs");
+    assert.ok(!run.skipped.includes("skilltest"), "and is not skipped");
+  });
+
+  test("is skipped, which reports as passing, where it is not owed", () => {
+    const run = ciRun({ owed: "false", reason: "no owed path changed" });
+    assert.ok(!ran(run), "the suite does not run");
+    assert.ok(run.skipped.includes("skilltest"), "it is skipped");
+  });
+
+  test("runs where the classifier could not answer", () => {
+    // A job that failed answers its outputs empty, as the forge does.
+    const run = ciRun({ owed: "", reason: "" }, { "skilltest-classify": "failure" });
+    assert.ok(ran(run), "a classifier that failed owes the suite");
   });
 });
 
@@ -344,7 +377,7 @@ describe("pushes and the release", () => {
       workflows,
       { name: "push", ref: payload.ref, payload },
       {
-        "ci.yml": { classify: outputsOf(classification) },
+        "ci.yml": ciOutputsOf(classification),
         "release-plz.yml": { release: { released } },
       },
     );

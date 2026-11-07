@@ -1,0 +1,1050 @@
+{
+  "events": [
+    {
+      "id": "01a18a34-7216-7951-a2b5-628f8e09d859",
+      "kind": "supervision_session_closed",
+      "payload": {
+        "close_reason": "the print reached Operational",
+        "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:27:35.318760200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a34-7214-7f03-bb77-0b513728ea75",
+      "kind": "filament_consumed",
+      "payload": {
+        "analysed_length_mm": 15687.969630000933,
+        "charge_key": {
+          "key": "print",
+          "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+          "segment": 0,
+          "tool": 0
+        },
+        "length_mm": 532.2067400000026,
+        "method": "gcode_extrusion",
+        "position": {
+          "bytes": 246073,
+          "observed_at": "2026-10-30T00:27:19.247864400Z",
+          "size_bytes": 4696042
+        },
+        "tool": 0
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:27:35.315686500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a34-7214-7f03-bb77-0b652ef074d5",
+      "kind": "print_ended",
+      "payload": {
+        "last_position": {
+          "bytes": 246073,
+          "observed_at": "2026-10-30T00:27:19.247864400Z",
+          "size_bytes": 4696042
+        },
+        "outcome": "cancelled",
+        "reason": "the print reached Operational",
+        "state": "operational"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:27:35.314420900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a34-2bd9-7c90-940d-7f3b29241992",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "1. I ran `printobserver context`. The printer connection reads paused, there are no adjustments in place and the detector status is \"unchecked\". The most recent records are my earlier pause and stop.\n2. I opened the event frame (528967c5…). It matches the frame taken after the pause: the bed has dropped and the textured sheet is bare, with no ring and no purge line. The loop of black filament is still at the top of the frame. The nozzle is at 220.51 °C and the bed at 60.51 °C, both still heating.\n3. I ran `printobserver acknowledge-failure` on event 01a18a33-c783… with the disposition stop and what the person needs to do. It was accepted and succeeded (record 01a18a34-112c…).\nI did not pause again, resume or change anything.",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "Print 3423-TOP-REV F is still paused from my pause at 00:25:49. The sheet is bare because the first layer came off and was dragged away, and it is waiting for a person.",
+          "why": "Nothing has changed since I paused. The first layer came off, so resuming would print into empty air or onto the stray filament, and none of my adjustments fixes that.\n\nI'm at medium confidence because I can't tell for certain whether the loop at the top of the frame is the dragged ring or the printer's own cable or tubing. The bare sheet, with even the purge line gone, is clear on its own.\n\nThe heaters are still on while it waits. The person should:\n- remove the loose filament and check the nozzle is clean;\n- clean and reseat the textured sheet;\n- cancel and restart the print;\n- check the first-layer height (live-Z) if it happens again."
+        },
+        "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:27:17.337526400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a34-112d-7d12-80ad-195f909044b6",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a34-112c-7161-a49d-44cb4a2a645e"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:27:10.509096400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a34-112c-7161-a49d-44da05afe3d7",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a33-c783-7370-9cf1-c3a3321ae07d",
+          "reason": "No change since I paused at 00:25:49: still paused, waiting for a person. This frame matches the paused frame. The sheet is bare (no first-layer ring, no purge line) and a loop of black filament is at the top of the frame near the back. The first layer detached and was dragged, so the print cannot resume as-is. Heaters are still on (nozzle 220C, bed 60C) while paused. Person needed: remove the loose filament, check the nozzle is clean, clean and reseat the textured sheet, cancel and restart. Check the first-layer Z if it repeats."
+        },
+        "action_id": "01a18a34-112c-7161-a49d-44cb4a2a645e",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+          }
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:27:10.508880600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a33-c783-7370-9cf1-c3a3321ae07d",
+      "image": {
+        "id": "01a18a33-ccfb-7670-94a4-bf03d4f5f2c9",
+        "sha256": "528967c5c1daeb4b2a29c82c74fe0a66294e5cacda3892f51c3c62525ce462c0"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.0524000850077576
+          },
+          "estimated_print_time_s": 5148,
+          "filament": [
+            {
+              "length_mm": 15687.969630000933,
+              "tool": 0,
+              "volume_cm3": 37.733989012940384
+            }
+          ],
+          "file_name": "3423-TOP-REV F.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 246073,
+          "print_time_left_s": 4604,
+          "print_time_s": 679,
+          "size_bytes": 4696042,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.51
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-10-30T00:26:51.645480200Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.51
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:26:51.651588400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a33-8088-7e11-804a-f97fa6e75643",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "1. I ran `printobserver context`. No adjustments are in place and the detector status is \"unchecked\". The bed was at 59.81 °C against 60 °C and the nozzle at 220.08 °C against 220 °C.\n2. I opened the event frame (8e57e30b…). The dark ring was at the back-right of the sheet, but in the two earlier frames (a9163413… and 0a74f64d…) it was back-center. With the camera and sheet fixed, its old spot was now empty.\n3. I ran `printobserver look --wait-s 20` and opened frame ab5a29b3…. The ring's visible outline had changed again next to the toolhead. The file position was 211014 bytes and print time 662 s.\n4. I ran `printobserver pause` with a reason for the operator. It was accepted and succeeded (record 01a18a32-d4f7…).\n5. I ran `printobserver look --wait-s 20` and opened frame 3edd65fe…. The job and connection both read paused and the file position was 246073 bytes. The bed has dropped and the sheet is completely bare, with no ring and no purge line. A loop of black filament hangs near the parked toolhead at the top of the frame.\n6. I ran `printobserver acknowledge-failure` on event 01a18a31-ed50… with the disposition stop and a list of what the person should check. It was accepted and succeeded (record 01a18a33-5d39…).",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "The first layer of 3423-TOP-REV F came off the sheet and was dragged around by the nozzle. I paused the print, and the paused frame shows a bare sheet with a loop of black filament near the parked toolhead. It is waiting for a person.",
+          "why": "A first layer that moves between frames from a fixed camera means it is not stuck to the sheet. The bare sheet after the pause, with even the purge line gone, backs that up. I can't see clearly from here whether the ring is stuck to the nozzle or loose in the chamber, which is why I'm at medium rather than high confidence. Either way, no change to speed, flow, fan or temperature can fix a part that has lifted off, and continuing would only pile filament onto the nozzle. The print stays paused for a person, who needs to:\n- remove the loose filament and check the nozzle is clean;\n- clean the textured sheet with IPA (or dish soap and water) and check it is seated;\n- cancel and restart the print;\n- check the first-layer height (live-Z) if it happens again."
+        },
+        "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:26:33.480575Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a33-5d39-7f23-969f-0c02a4646e1c",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a33-5d39-7f23-969f-0be224d0d7cf"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:26:24.441878200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a33-5d39-7f23-969f-0bf48ccfc2d3",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a18a31-ed50-7021-99e1-a2632d381871",
+          "reason": "The first layer detached and was dragged. The black PLA ring that sat back-center at 00:22-00:24 was back-right at 00:24:50 and had moved again by 00:25:30. I paused at 00:25:49. In the paused frame the bed has dropped and the sheet is completely bare: no ring, no purge line. A loop of black filament hangs near the parked toolhead at the top of the frame. No speed, flow, fan or temperature change fixes a part that is not stuck to the sheet. Person needed: remove the filament from the nozzle and chamber, check the nozzle is clean, clean the textured sheet (IPA, or dish soap and water) and check it is seated. Then cancel and restart. If it repeats, check the first-layer Z / live-Z."
+        },
+        "action_id": "01a18a33-5d39-7f23-969f-0be224d0d7cf",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+          }
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:26:24.441744600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a33-36d1-7ee0-8b3a-e22a11446dfe",
+      "image": {
+        "id": "01a18a33-36d6-7170-b20e-1fb82a57c36a",
+        "sha256": "3edd65feec98edbe3df66aa831826bafed8e5ef0ce12332546762869f586d4b8"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 20
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:26:14.609852700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a32-d50b-7242-a0c8-c888fecc5e08",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a32-d4f7-79d0-8745-9708a8cdf1f8"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:25:49.579107400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a32-d50a-7c00-9e6e-0ae6fa8b7876",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "pause",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+            }
+          },
+          "reason": "The first-layer ring looks like it is being dragged across the sheet. The camera and sheet are fixed, but the dark ring sat back-center at 00:22-00:24 and is back-right at 00:24:50, with the original spot now empty. At 00:25:30 its outline had changed again by the toolhead. Please check whether the first layer came off the sheet or is stuck to the nozzle, clear it, and check the sheet is clean and seated before restarting. If the ring is actually still in place and bonded, resume."
+        },
+        "action_id": "01a18a32-d4f7-79d0-8745-9708a8cdf1f8",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+          }
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:25:49.578955700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a32-942f-7270-ad49-b8410e228416",
+      "image": {
+        "id": "01a18a32-9433-7eb2-8bc3-bcbdf53b0918",
+        "sha256": "ab5a29b38e0ed851f3f0ab4716bb571ad87f28c4bc9a6b649d60edf2c2a80995"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 20
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:25:32.975411900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a31-ed50-7021-99e1-a2632d381871",
+      "image": {
+        "id": "01a18a31-f29d-7521-a94c-4d6711da7433",
+        "sha256": "8e57e30b310bd2dd9ac984b80cd915f85dd4d5133bc7f76ab4d55707cb3daa4b"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.030571702723272063
+          },
+          "estimated_print_time_s": 5148,
+          "filament": [
+            {
+              "length_mm": 15687.969630000933,
+              "tool": 0,
+              "volume_cm3": 37.733989012940384
+            }
+          ],
+          "file_name": "3423-TOP-REV F.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 143566,
+          "print_time_left_s": 4663,
+          "print_time_s": 619,
+          "size_bytes": 4696042,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.76
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T00:24:50.250983300Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.84
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:24:50.256601300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a31-aae2-7861-aec4-6512d4bd5314",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1. I ran `printobserver context`. No adjustments are in place, the detector status is \"unchecked\" and there were no camera failures. The bed was at 60.25 °C against 60 °C and the nozzle at 222.33 °C against 220 °C, settling down from the event's 229.32 °C.\n2. I opened the event frame (a9163413…). It shows the purge line and the first ring of the part at the back-center of the sheet.\n3. I ran `printobserver look --wait-s 75` and opened frame 0a74f64d…. The file position went from 13018 to 108402 bytes and print time to 589 s. The ring is wider and still even, with no gaps, lifting, blobs or strands. The nozzle was at 219.98 °C against 220 °C and the bed at 59.76 °C. The detector did not pause the print and no new events arrived.\n4. I ran `printobserver acknowledge-failure` on event 01a18a30-1304… with the disposition continue. It was accepted and succeeded (record 01a18a31-912a…).",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The first layer of 3423-TOP-REV F has started. A dark circular ring is going down at the back-center of the sheet, and it looks continuous and stuck flat with no defects.",
+          "why": "Across two frames the first layer is sticking and growing evenly. The nozzle reading above target came from the 230 °C warm-up and settled on its own at 220 °C, so there is nothing to correct. The ring is still thin, so the next observations should show whether the first layer stays even as more of it goes down."
+        },
+        "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:24:33.250956400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a31-912b-7a93-b7ff-dfef6b7c8a4d",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a31-912a-7a93-85ea-b4f2d70b25fb"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:24:26.667657500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a31-912b-7a93-b7ff-dfd38e643ec7",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a30-1304-7401-97f3-41421f9e1651",
+          "reason": "First layer is going down cleanly. The event frame shows the purge line and a dark circular ring at the back-center of the sheet. The nozzle read 229C against a 220C target, an overshoot from the 230C preheat that settled to 220.0C a minute later. In a fresh look 75s on, file position had gone 13018 to 108402 bytes and the ring was wider (more perimeters) and still continuous and flat on the sheet. No gaps, lifting, blobs or strands. Bed held 60C. Nothing to adjust. I'll keep watching how the ring fills in on the next observations."
+        },
+        "action_id": "01a18a31-912a-7a93-85ea-b4f2d70b25fb",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+          }
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:24:26.667224800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a31-74ce-7053-adb0-3c0a5e1b264a",
+      "image": {
+        "id": "01a18a31-74d3-75f3-979c-6a5da4b43c23",
+        "sha256": "0a74f64d91d9459bd4ba85f3f4fd44fa48d804b2c45b3f9b7d3093d1999a2134"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 75
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:24:19.406669400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a30-1304-7401-97f3-41421f9e1651",
+      "image": {
+        "id": "01a18a30-186e-7bd2-a83f-64ac04488944",
+        "sha256": "a916341330f143cb7b5dafd903fb993e6e6092d3a034f97cb7ee0543dbc266bb"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.0027721217144139683
+          },
+          "estimated_print_time_s": 5148,
+          "filament": [
+            {
+              "length_mm": 15687.969630000933,
+              "tool": 0,
+              "volume_cm3": 37.733989012940384
+            }
+          ],
+          "file_name": "3423-TOP-REV F.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 13018,
+          "print_time_left_s": 4785,
+          "print_time_s": 498,
+          "size_bytes": 4696042,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.28
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T00:22:48.832421300Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 229.32
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:22:48.836716100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2f-9530-7461-963c-7be2722b39af",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1. I ran `printobserver context`. No adjustments are in place and the detector status is \"unchecked\". The bed was at 60.01 °C against 60 °C and the nozzle at 150.42 °C against 150 °C. There were no new camera failures.\n2. I opened the event frame (8f325d01…). The toolhead is at the back of a clean, empty textured sheet with nothing on the bed.\n3. I ran `printobserver look --wait-s 60` and opened frame 61ad7ed0…. The bed is still empty and clean. The file position went from 1576 to 1829 bytes and print time to 415 s. The nozzle was at 220.06 °C, heating toward a 230 °C target, and the bed was at 60.1 °C. The detector did not pause the print and no new events arrived.\n4. I ran `printobserver acknowledge-failure` on event 01a18a2e-3a80… with the disposition continue. It was accepted and succeeded (record 01a18a2f-7d71…).",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Print 3423-TOP-REV F has finished measuring the bed and is heating the nozzle to its printing temperature. The bed is still empty and clean, and nothing has been extruded yet.",
+          "why": "The temperatures follow the normal start: 170 °C, then 150 °C while the bed was measured, then up toward 230 °C. I take 230 °C to be the temperature set in this print file. The file keeps advancing, the camera is working and the bed is clean, so nothing is wrong and nothing needs changing. Nothing has been printed yet, so the first layer is the next thing to check once it starts going down."
+        },
+        "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:22:16.624146900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2f-7d72-7693-904c-7f31fd52ada2",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a2f-7d71-7660-93a2-1f72b5b48147"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:22:10.546845200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a2f-7d72-7693-904c-7f2afa7ff243",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a2e-3a80-7df3-a083-1fa48a80628c",
+          "reason": "Startup is progressing normally and nothing has been extruded yet. The event frame showed the toolhead over an empty, clean sheet with the nozzle at 150/150C (the probing temperature). In a fresh look 60s later, file position had advanced 1576 to 1829 bytes (print time 415s) and the nozzle was heating 220 toward 230C (the sliced print temperature). The bed held 60C and was still clean. Nothing to adjust. The first layer is the next thing to check."
+        },
+        "action_id": "01a18a2f-7d71-7660-93a2-1f72b5b48147",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+          }
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:22:10.546477200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a2f-6448-7020-bdca-d35626665335",
+      "image": {
+        "id": "01a18a2f-644c-7ce1-aed3-24e12ad1e7af",
+        "sha256": "61ad7ed000c19e6f5d1e83708af77af48d30126c988e5851744bde38cb99712c"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 60
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:22:04.104471900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2e-3a80-7df3-a083-1fa48a80628c",
+      "image": {
+        "id": "01a18a2e-3e31-7131-b32f-974c62093bf8",
+        "sha256": "8f325d01c55568d2507f50dd91d3a70b98b4e4f861736e22b7a8ae80c04228ed"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.00033560176846799924
+          },
+          "estimated_print_time_s": 5148,
+          "filament": [
+            {
+              "length_mm": 15687.969630000933,
+              "tool": 0,
+              "volume_cm3": 37.733989012940384
+            }
+          ],
+          "file_name": "3423-TOP-REV F.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1576,
+          "print_time_left_s": 4914,
+          "print_time_s": 314,
+          "size_bytes": 4696042,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.93
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T00:20:47.867412700Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 150.52
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 150.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:20:47.872572600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2c-b875-7390-b752-136fed977b15",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1. I ran `printobserver context`. No adjustments are in place and the detector status is \"unchecked\". It listed a camera_look `port_failure` for this event: the camera address answered \"500 Internal Server Error\". At that point the file position was 1219 bytes and print time 71 s.\n2. I ran `printobserver look --wait-s 30` and opened frame db1c6566…. The bed is clean and empty and the gantry is in the middle of it. The bed was at 59.88 °C against 60 °C and the nozzle at 170.02 °C against 170 °C. The file position was unchanged at 1219 bytes.\n3. I ran `printobserver look --wait-s 75` and opened frame e532af5e…. The bed is still empty and the gantry has moved. The file position went up to 1498 bytes and print time to 264 s. The bed was at 59.71 °C and the nozzle at 171.26 °C. The detector did not pause the print and no new events arrived.\n4. I ran `printobserver acknowledge-failure` on event 01a18a2a-9068… with the disposition continue. It was accepted and succeeded (record 01a18a2c-9b76…).",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Print 3423-TOP-REV F is still in startup with nothing printed yet. This observation had no picture because the camera failed once, but two later pictures show a clean empty bed and the printer is moving through the startup steps.",
+          "why": "The missing picture was one brief camera failure, since both later looks returned clean frames. The file position sat still for about a minute and then moved on with the gantry moving, which looks like one slow bed-measuring step before printing rather than a stall. I'm fairly sure of that reading, not certain. Temperatures are at their targets and the bed is clean, so there is nothing wrong and nothing to change. If the camera starts failing again, or the file position stops moving for several minutes, that should be looked at again. The first layer is the next real thing to check."
+        },
+        "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:19:09.045295400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2c-9b77-7e50-8635-b1479a1a8fac",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a2c-9b76-7af1-88a5-72ebb00e7a43"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:19:01.623786200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a2c-9b77-7e50-8635-b13a0fd15306",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a2a-9068-7310-bc29-5a57afc930b1",
+          "reason": "Still in startup. Nothing has been extruded yet. This observation came with no image because the camera endpoint (go2rtc frame.jpeg?src=buddy) returned a 500 once, but two later looks got clean frames, so the camera fault was brief. File position held at 1219 bytes for about a minute, consistent with a single long bed-probing command, then advanced to 1498 bytes (print time 264s). The gantry moved between frames. Bed was at 59.7/60C and nozzle at 171/170C. Both frames show an empty, clean bed. Nothing to adjust. The first layer is the next thing to check."
+        },
+        "action_id": "01a18a2c-9b76-7af1-88a5-72ebb00e7a43",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+          }
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:19:01.623323Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a2c-81f9-70b2-97c3-b4ab787f7835",
+      "image": {
+        "id": "01a18a2c-81fd-7311-a4ae-201cde0922af",
+        "sha256": "e532af5e86917952d2307d5f9d6a58437830f67bd73224734f13e0a396c6fd1a"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 75
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:18:55.097067900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2b-3792-73d3-b696-bd89473802cf",
+      "image": {
+        "id": "01a18a2b-3797-7d42-aaa3-98ca27dff4ac",
+        "sha256": "db1c65665a35d81728cb1e1155fe2867014ff32b6bbfcd2d15b50e187bc0c08b"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 30
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:17:30.514916600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2a-90b2-7102-a32b-b6a8bea42bfc",
+      "kind": "port_failure",
+      "payload": {
+        "detail": "the source is unreachable: http://127.0.0.1:1984/api/frame.jpeg?src=buddy answered 500 Internal Server Error",
+        "event_id": "01a18a2a-9068-7310-bc29-5a57afc930b1",
+        "site": "camera_look"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:16:47.794512300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2a-9068-7310-bc29-5a57afc930b1",
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.0002595803018797532
+          },
+          "estimated_print_time_s": 5148,
+          "filament": [
+            {
+              "length_mm": 15687.969630000933,
+              "tool": 0,
+              "volume_cm3": 37.733989012940384
+            }
+          ],
+          "file_name": "3423-TOP-REV F.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1219,
+          "print_time_left_s": 5147,
+          "print_time_s": 71,
+          "size_bytes": 4696042,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.88
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T00:16:47.714275400Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 169.6
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 170.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:16:47.720167200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2a-1ec2-7ad3-af5e-98a9e2b06707",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "1. I ran `printobserver context`. The print started at 00:14:33Z with Prusament PLA and a 0.6 mm nozzle. Preflight passed, the bed was judged clear and a person approved the start. No adjustments are in place, the detector status is \"unchecked\", and print time was 0 s.\n2. I opened the event frame. The textured sheet is empty and clean. The bottom third of the frame is smeared into vertical streaks, which is a camera glitch.\n3. I ran `printobserver look --wait-s 60` and opened the new frame (56334f8e…). The bed is still empty and the gantry is moving across it. The bed is at 59.43 °C against a 60 °C target and the nozzle at 173.28 °C against 170 °C. File position is 1219 bytes, print time 71 s, and the detector did not pause the print.\n4. I ran `printobserver acknowledge-failure` on event 01a18a28-b24a… with the disposition continue. It was accepted and succeeded (record 01a18a2a-039b…).",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Print 3423-TOP-REV F has just started and is still warming up and getting ready. Nothing has been printed yet, the bed is empty and the temperatures are where they should be.",
+          "why": "Both frames show an empty bed during the warm-up, and the temperatures match what the printer normally does before it checks the bed and starts printing. The streaked bottom of the first frame is a camera fault, not anything on the bed, and the fresh frame is clean. With no material laid down yet, there is no sign of trouble and nothing to adjust. The first layer is the next thing to check once it starts going down."
+        },
+        "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:16:18.626620500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2a-1ec1-7f30-9843-69eae2e4ab1a",
+      "kind": "supervision_session_opened",
+      "payload": {
+        "harness_identity": "claude-code",
+        "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:16:18.625429300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a2a-039b-76e1-b29a-093ddf7b4e8e",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a2a-039b-76e1-b29a-0914f8dd37a2"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:16:11.675840900Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a2a-039b-76e1-b29a-09296300924d",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a18a28-b24a-7a01-be10-a8cfb181258f",
+          "reason": "Start-up phase, nothing printed yet. The event frame showed an empty, clean textured sheet, but its bottom third was smeared/streaked (a camera glitch, not something on the bed). In a fresh look 60s later the bed was still empty and the gantry was moving across it. Bed was at 59.4/60C, nozzle 173/170C (preheat temp before probing, as expected), file position 1219 bytes. Nothing to fix."
+        },
+        "action_id": "01a18a2a-039b-76e1-b29a-0914f8dd37a2",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a18a28-7731-74c3-b7ed-8b442d9c59e3"
+          }
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:16:11.675610100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a18a29-ebaf-7c33-b6b0-5eeb2b9a90ae",
+      "image": {
+        "id": "01a18a29-ebb2-7773-97c9-dfc5ffb99edd",
+        "sha256": "56334f8ec9ee2f4fdddac1e21402a9e61da4e5fc658364d7a02f3d4082ba9f31"
+      },
+      "kind": "camera_look",
+      "payload": {
+        "delivered": [],
+        "waited_s": 60
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:16:05.551128400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a28-b24a-7a01-be10-a8cfb181258f",
+      "image": {
+        "id": "01a18a28-bb80-76d2-b2ff-4a36a57f520d",
+        "sha256": "84501a0d76a56e87937bf1e38559ee56039dbbaedd00722b5043b23328a80ceb"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.00024616474895241565
+          },
+          "estimated_print_time_s": 5148,
+          "filament": [
+            {
+              "length_mm": 15687.969630000933,
+              "tool": 0,
+              "volume_cm3": 37.733989012940384
+            }
+          ],
+          "file_name": "3423-TOP-REV F.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1156,
+          "print_time_left_s": 5147,
+          "print_time_s": 0,
+          "size_bytes": 4696042,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 28.6
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-10-30T00:14:45.317456700Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 63.69
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 170.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:14:45.322270Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a28-7794-7ff1-aafd-8388fec50392",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a18a28-774b-7ba2-9985-fbcde11b277b"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:14:30.292619600Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a18a28-7794-7ff1-aafd-8378a1c3ae2c",
+      "kind": "print_started",
+      "payload": {
+        "file_name": "3423-TOP-REV F.gcode",
+        "loaded": [],
+        "preflight": {
+          "checked_at": "2026-10-30T00:14:30.219839300Z",
+          "file_name": "3423-TOP-REV F.gcode",
+          "tools": [
+            {
+              "result": {
+                "verdict": "unchecked"
+              },
+              "tool": 0
+            }
+          ],
+          "verdict": "unchecked"
+        },
+        "started_by": "01a18a28-774b-7ba2-9985-fbcde11b277b"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:14:30.292380900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a18a28-7792-7851-a3b7-179bfbe0579b",
+      "kind": "preflight_checked",
+      "payload": {
+        "action_id": "01a18a28-774b-7ba2-9985-fbcde11b277b",
+        "preflight": {
+          "checked_at": "2026-10-30T00:14:30.219839300Z",
+          "file_name": "3423-TOP-REV F.gcode",
+          "tools": [
+            {
+              "result": {
+                "verdict": "unchecked"
+              },
+              "tool": 0
+            }
+          ],
+          "verdict": "unchecked"
+        }
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:14:30.290452800Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a18a28-7791-7041-84d1-056b36d5f20d",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "start_print",
+          "actor": "operator",
+          "file_name": "3423-TOP-REV F.gcode",
+          "manifest": {
+            "allowed": {},
+            "file_name": "3423-TOP-REV F.gcode",
+            "material": "Prusament PLA @COREONE 0.6",
+            "metadata": {
+              "bed_frame": "bed-20261029-181404.jpg in the run folder's preflight folder",
+              "bed_frame_age_s": "13",
+              "bed_frame_max_age_s": "120",
+              "bed_frame_sha256": "8f17e39ce59bed3374c0bf5e8cedd4b489ae282b08dfbf20ed6bf2b5f9e6fa64",
+              "bed_frame_taken_at": "2026-10-29T18:14:17-06:00",
+              "bed_verdict": "clear",
+              "gcode_sha256": "7ce963cb6d8214f47f68633a0ae755142b3438c18f4fab40605468a0554e4d82",
+              "octoprint_state": "Operational",
+              "preflight_file": "3423-TOP-REV F.gcode",
+              "preflight_passed": "true",
+              "preflight_report": "20261029-181404.json in the run folder's preflight folder",
+              "preflight_stamp": "20261029-181404",
+              "started_by": "the operator's start command",
+              "user_approved": "true"
+            },
+            "nozzle_diameter_mm": 0.6,
+            "slicer_profile": "0.20mm STRUCTURAL @COREONE 0.6"
+          },
+          "reason": "the operator's start command: preflight 20261029-181404.json passed, the bed frame was judged clear, and a person approved this print"
+        },
+        "action_id": "01a18a28-774b-7ba2-9985-fbcde11b277b",
+        "actor": "operator"
+      },
+      "print_id": "01a18a28-7731-74c3-b7ed-8b442d9c59e3",
+      "received_at": "2026-10-30T00:14:30.289313700Z",
+      "source": "operator"
+    }
+  ]
+}

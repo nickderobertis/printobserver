@@ -812,6 +812,7 @@ impl Supervisor {
             return Ok(());
         };
         let arrival = Arrival {
+            frame_captured_at: None,
             event,
             detection: None,
         };
@@ -984,6 +985,7 @@ impl Supervisor {
             return Ok(None);
         }
         let arrival = Arrival {
+            frame_captured_at: None,
             event,
             detection: None,
         };

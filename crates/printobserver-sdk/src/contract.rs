@@ -399,6 +399,13 @@ pub struct CameraLookPayload {
     /// handed to whoever looked, oldest first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivered: Option<Vec<EventId>>,
+    /// When the frame this look answered was captured, which its source says
+    /// or
+    /// the moment it answered; absent when there is no frame. Two looks
+    /// naming one
+    /// instant saw one frame: no newer one had been taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_captured_at: Option<Timestamp>,
     /// How long the look waited for something to happen before it was taken,
     /// in whole seconds.
     pub waited_s: i64,
@@ -1420,6 +1427,11 @@ pub struct PendingTaken {
 /// at the same moment, untagged by any detector, is this event's image.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PeriodicObservationPayload {
+    /// When the observation's frame was captured, which its source says or
+    /// the
+    /// moment it answered; absent when there is no frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_captured_at: Option<Timestamp>,
     /// How often these are taken, in whole seconds.
     pub interval_s: i64,
     /// The job the printer reported as the observation was taken, absent when

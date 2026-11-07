@@ -61,7 +61,7 @@ fn every_stated_look_wait_is_the_cores_limit() {
     for (relative, passage) in [
         (
             "SKILL.md",
-            format!("it can wait up to {} first", spoken(limit)),
+            format!("can wait up to {} first", spoken(limit)),
         ),
         ("reference/api-and-clients.md", figure.clone()),
         ("reference/command-surface.md", figure.clone()),

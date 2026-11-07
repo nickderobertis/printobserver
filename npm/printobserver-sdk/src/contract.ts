@@ -307,6 +307,13 @@ export interface CameraLookPayload {
    */
   delivered?: Array<EventId>;
   /**
+   * When the frame this look answered was captured, which its source says or
+   * the moment it answered; absent when there is no frame. Two looks naming
+   * one
+   * instant saw one frame: no newer one had been taken.
+   */
+  frame_captured_at?: Timestamp | null;
+  /**
    * How long the look waited for something to happen before it was taken,
    * in whole seconds.
    */
@@ -1143,6 +1150,11 @@ export interface PendingTaken {
  * at the same moment, untagged by any detector, is this event's image.
  */
 export interface PeriodicObservationPayload {
+  /**
+   * When the observation's frame was captured, which its source says or the
+   * moment it answered; absent when there is no frame.
+   */
+  frame_captured_at?: Timestamp | null;
   /** How often these are taken, in whole seconds. */
   interval_s: number;
   /**
@@ -2888,6 +2900,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "ref": "EventId"
       },
       "non_empty": false
+     }
+    },
+    "frame_captured_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
      }
     },
     "waited_s": {
@@ -4872,6 +4893,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
  "PeriodicObservationPayload": {
   "struct": {
    "fields": {
+    "frame_captured_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
     "interval_s": {
      "paired_with": "",
      "required": true,

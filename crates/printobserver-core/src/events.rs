@@ -37,7 +37,7 @@ use crate::store::{EventDraft, HistoryQuery, ImageLookup};
 use printobserver_printer_api::{JobSnapshot, PrinterState};
 use printobserver_supervisor_api::SessionPhase;
 use printobserver_supervisor_api::{SupervisionSessionOpenedPayload, TurnRequest, TurnSituation};
-use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId};
+use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, Timestamp};
 use printobserver_vision_api::NormalizedAlert;
 
 use crate::context::PrintContext;
@@ -182,9 +182,10 @@ impl Supervisor {
                 print
             }
         };
-        let image = self
+        let (image, frame_captured_at) = self
             .write_image(&print, &event, alert.image_url.clone())
-            .await;
+            .await
+            .map_or((None, None), |(image, at)| (Some(image), Some(at)));
         if print.ended_at.is_some() {
             return Ok(Received { event, turn: None });
         }
@@ -201,6 +202,7 @@ impl Supervisor {
         let arrival = Arrival {
             event: carried,
             detection: alert.detection,
+            frame_captured_at,
         };
         let turn = self
             .inboxes()
@@ -329,7 +331,7 @@ impl Supervisor {
         print: &PrintRecord,
         event: &EventRecord,
         image_url: Option<String>,
-    ) -> Option<ImageRef> {
+    ) -> Option<(ImageRef, Timestamp)> {
         let source_url = image_url?;
         let fetched = match self.vision().fetch_image(source_url.clone()).await {
             Ok(fetched) => fetched,
@@ -344,6 +346,7 @@ impl Supervisor {
                 return None;
             }
         };
+        let captured_at = fetched.captured_at.unwrap_or_else(|| self.clock().now());
         match self
             .stores()
             .images
@@ -356,10 +359,13 @@ impl Supervisor {
             )
             .await
         {
-            Ok(record) => Some(ImageRef {
-                id: record.id,
-                sha256: record.sha256,
-            }),
+            Ok(record) => Some((
+                ImageRef {
+                    id: record.id,
+                    sha256: record.sha256,
+                },
+                captured_at,
+            )),
             Err(error) => {
                 self.record_port_failure(
                     print.id,
@@ -416,6 +422,7 @@ impl Supervisor {
                 .map(|detection| detection.paused_the_print),
             arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
             noticed: noticed_of(event),
+            frame_captured_at: arrival.frame_captured_at,
         };
         // The turn's credentials are bound to it from here, and revoked the
         // moment it returns — whatever it returned — and when this future is
