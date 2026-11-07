@@ -2,9 +2,9 @@
 
 One turn per event a test feeds, so the figure is the `replay` entries of every
 case on disk. A re-prompt the engine makes inside a turn is part of that turn, not
-another one, and this does not count it. It is counted fresh and runs no model. A test that runs the replay
-holds the count here to the turns the harness actually received
-(`tests/skilltest-wiring`).
+another one, and this does not count it. It is counted fresh and runs no model. A
+test that runs the replay holds the count here to the turns the harness actually
+received (`tests/skilltest-wiring`).
 """
 
 from __future__ import annotations
