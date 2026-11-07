@@ -42,7 +42,9 @@ class Classification:
 
     def outputs(self) -> str:
         """The lines a workflow step appends to `GITHUB_OUTPUT`."""
-        return f"owed={'true' if self.owed else 'false'}\nreason={self.reason}\n"
+        # A reason can carry git's own multi-line diagnostics, and each output is one line.
+        reason = " ".join(self.reason.split())
+        return f"owed={'true' if self.owed else 'false'}\nreason={reason}\n"
 
 
 def _git(root: Path, *arguments: str) -> str:

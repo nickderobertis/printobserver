@@ -58,9 +58,9 @@ CLIENT_DEADLINE_S = 120
 #: this many harness runs per entry has gone wrong.
 RUN_ALLOWANCE_PER_ENTRY = 3
 POLL_S = 0.5
-#: Who may ask for something, as the server's own schema declares it.
-ACTOR = Draft202012Validator(
-    json.loads((REPO / "schemas/printobserver-core/Actor.json").read_text(encoding="utf-8"))
+#: What may be asked for, as the server's own schema declares it.
+PRINT_ACTION = Draft202012Validator(
+    json.loads((REPO / "schemas/printobserver-core/PrintAction.json").read_text(encoding="utf-8"))
 )
 #: The kind an agent's request is recorded under in its print's history. A recovery is
 #: the printer's rather than the print's, and is no outcome any decision point names.
@@ -284,15 +284,8 @@ def is_event(event: object) -> bool:
 
 
 def _is_requested_action(action: object) -> bool:
-    """Whether a request says what was asked and who asked, which is how it is judged."""
-    if not isinstance(action, dict) or not isinstance(action.get("action"), str):
-        return False
-    return _is_actor(action.get("actor"))
-
-
-def _is_actor(actor: object) -> bool:
-    """Whether it is an actor the server's committed `Actor` schema declares."""
-    return ACTOR.is_valid(actor)
+    """Whether a request is one the server's committed `PrintAction` schema declares."""
+    return PRINT_ACTION.is_valid(action)
 
 
 def is_assessment(assessment: object) -> bool:

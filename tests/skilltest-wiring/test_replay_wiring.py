@@ -864,6 +864,31 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         },
         {
             "id": "e",
+            "kind": "action_requested",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {
+                "action": {
+                    "action": "shake_the_printer",
+                    "actor": {"agent": {"session_name": "print-a"}},
+                    "reason": "no such action",
+                }
+            },
+        },
+        {
+            "id": "e",
+            "kind": "action_requested",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {
+                "action": {
+                    "action": "set_fan_percent",
+                    "actor": {"agent": {"session_name": "print-a"}},
+                    "reason": "an argument of the wrong type",
+                    "percent": "full",
+                }
+            },
+        },
+        {
+            "id": "e",
             "kind": "agent_assessment",
             "received_at": "2026-01-01T00:00:00Z",
             "payload": {"assessment": {"summary": "fine"}},
@@ -1490,6 +1515,19 @@ def test_a_change_under_an_owed_path_owes_the_suite(clone: Clone, path: str) -> 
     head = clone.commit({path: "changed\n"})
     answer = classify.classify(clone.root, clone.base, head)
     truth(answer.owed, describing=f"{path} to owe it: {answer.reason}")
+
+
+def test_a_reason_git_wrote_over_several_lines_stays_one_output(clone: Clone) -> None:
+    """A base git cannot read owes the suite, in the two lines the workflow reads."""
+    answer = classify.classify(clone.root, "no-such-revision", clone.base)
+    truth(answer.owed, describing=f"an unreadable diff to owe it: {answer.reason}")
+    multiline = classify.Classification(owed=True, reason="git said:\nfatal: first\nhint: second\n")
+    equal(
+        multiline.outputs(),
+        "owed=true\nreason=git said: fatal: first hint: second\n",
+        describing="what the workflow appends to its output file",
+    )
+    equal(len(answer.outputs().splitlines()), 2, describing=answer.outputs())
 
 
 def test_a_change_only_elsewhere_owes_nothing(clone: Clone) -> None:
