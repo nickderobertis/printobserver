@@ -79,6 +79,7 @@ def test_copies_running_the_locked_install_at_once_all_succeed(
         truth(not (copy.root / "node_modules" / ".bin").is_symlink(), describing="its own `.bin`")
 
     def installed(copy: GateCopy) -> subprocess.CompletedProcess[str]:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         return run(["bun", "install", "--frozen-lockfile"], cwd=copy.root, timeout=120)
 
     with ThreadPoolExecutor(max_workers=len(copies)) as pool:

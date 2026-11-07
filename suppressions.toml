@@ -4637,3 +4637,9 @@ rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest-wiring/mock_turn.py"
 site = "return run("
 reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/repo-e2e/tests/test_isolation_copies.py"
+site = "llmlint: ignore[async_typed_clients_at_boundaries]"
+reason = "A test that makes a package manager race itself across copies: the concurrency is the thread pool around this one blocking call to the program under test, and `repo_checks.shell.run` is how every subprocess here starts. An async client would change nothing a test of this kind reads."
