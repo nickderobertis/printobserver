@@ -28,6 +28,7 @@ import re
 import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import NamedTuple
 from pathlib import Path
 
 from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
@@ -57,9 +58,18 @@ SCANNED_NAMES = frozenset({"justfile", "Justfile", ".justfile"})
 # this repository made.
 SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
 
-#: One file the directive scanners read: its path, that path from the tree's root,
-#: its lines, and those lines joined by newlines.
-type Scanned = tuple[Path, Path, list[str], str]
+
+class Scanned(NamedTuple):
+    """One file the directive scanners read."""
+
+    #: Where it is.
+    path: Path
+    #: Where it is from the tree's root.
+    relative: Path
+    #: Its lines.
+    lines: list[str]
+    #: Those lines joined by newlines, which a whole-file pattern is asked first.
+    text: str
 
 
 def _anywhere(patterns: Sequence[re.Pattern[str]]) -> re.Pattern[str]:
@@ -304,7 +314,7 @@ def _scannable(root: Path) -> list[Scanned]:
     for path in _walked(root):
         if path.suffix in SCANNED_SUFFIXES or path.name in SCANNED_NAMES:
             lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-            found.append((path, path.relative_to(root), lines, "\n".join(lines)))
+            found.append(Scanned(path, path.relative_to(root), lines, "\n".join(lines)))
     return found
 
 
