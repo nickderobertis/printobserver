@@ -750,8 +750,10 @@ def test_a_plain_pytest_collects_no_live_test_and_an_opted_in_one_does() -> None
     """Nothing fires by accident, and the opt-in reaches every case."""
     command = ["uv", "run", "-q", "pytest", "--collect-only", "-q", "tests/skilltest"]
     environment = {k: v for k, v in os.environ.items() if k != "SKILLTEST_E2E"}
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     plain = run(command, cwd=REPO, env=environment)
     truth("test_replay" not in plain.stdout, describing=f"no live test in {plain.stdout}")
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     opted = run(command, cwd=REPO, env={**environment, "SKILLTEST_E2E": "1"}, check=True)
     contains(opted.stdout, f"test_replay.py: {len(replayed_case_names())}")
 
@@ -924,6 +926,7 @@ def test_the_kept_harness_is_a_copy_that_starts_and_outlives_its_install(
     truth(kept is not None, describing="a kept copy of the harness on PATH")
     equal(Path(str(kept)).parent, root / "target" / "skilltest" / "harness")
     source.unlink()
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     equal(run([str(kept), "--version"]).returncode, 0)
     shutil.copy2(built, source)
     equal(kept_harness(root), kept)
@@ -940,6 +943,7 @@ def test_the_kept_harness_is_a_copy_that_starts_and_outlives_its_install(
 def test_the_budgets_command_reports_the_turns_the_cases_count(scratch: Path) -> None:
     """Its entry point writes the total and each test's turns where the budget reads them."""
     result = scratch / "result.json"
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     done = run(
         [sys.executable, str(REPO / "tests" / "skilltest" / "turns_per_run.py")],
         env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
@@ -957,6 +961,7 @@ def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
     script = str(REPO / "tests" / "skilltest" / "turns_per_run.py")
     result = scratch / "result.json"
     for cases in (scratch / "absent", scratch):
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         done = run(
             [sys.executable, script, str(cases)],
             env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
@@ -993,6 +998,7 @@ def test_a_case_whose_replay_is_no_list_of_ids_is_refused(document: object, scra
     with pytest.raises(UnreadableCaseError):
         turns_per_test(cases)
     result = scratch / "result.json"
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     done = run(
         [sys.executable, str(REPO / "tests" / "skilltest" / "turns_per_run.py"), str(cases)],
         env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
@@ -1422,8 +1428,11 @@ class Clone:
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         run(["git", "add", "-A"], cwd=self.root, check=True)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         run(["git", "commit", "-q", "-m", "chore: change"], cwd=self.root, check=True)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         return run(["git", "rev-parse", "HEAD"], cwd=self.root, check=True).stdout.strip()
 
 
@@ -1445,6 +1454,7 @@ def clone(tmp_path: Path) -> Clone:
     root = tmp_path / "clone"
     init_repository(root)
     for name, value in (("user.name", "wiring"), ("user.email", "wiring@invalid")):
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         run(["git", "config", "--local", name, value], cwd=root, check=True)
     shutil.copy2(REPO / classify.POLICY, root / classify.POLICY)
     (root / classify.LOCK).write_text(
@@ -1455,8 +1465,11 @@ def clone(tmp_path: Path) -> Clone:
         '[supervisor]\nharness = "claude-code"\n\n[ingress]\nshared_secret = ""\n',
         encoding="utf-8",
     )
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     run(["git", "add", "-A"], cwd=root, check=True)
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     run(["git", "commit", "-q", "-m", "chore: base"], cwd=root, check=True)
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     base = run(["git", "rev-parse", "HEAD"], cwd=root, check=True).stdout.strip()
     return Clone(root, base)
 

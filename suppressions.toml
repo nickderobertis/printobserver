@@ -4643,3 +4643,15 @@ rule = "async_typed_clients_at_boundaries"
 file = "tests/repo-e2e/tests/test_isolation_copies.py"
 site = "llmlint: ignore[async_typed_clients_at_boundaries]"
 reason = "A test that makes a package manager race itself across copies: the concurrency is the thread pool around this one blocking call to the program under test, and `repo_checks.shell.run` is how every subprocess here starts. An async client would change nothing a test of this kind reads."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/test_replay_wiring.py"
+site = "run("
+reason = "A synchronous test running one real program to its exit and reading what it did: pytest, the kept harness, the suite's own budget command, and git building a scratch history. Each goes through `repo_checks.shell.run`, the one subprocess path this repository allows; there is nothing to overlap, and those programs' command lines are the interface under test, so a typed client would replace what the test proves."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/replay.py"
+site = "self.server = start("
+reason = "This starts the real `printobserver server` as the long-running child process a replay drives, through `repo_checks.shell.start`, the one path this repository allows for one. No request is exchanged here for a typed client to model; the replay talks to it separately once its port answers."

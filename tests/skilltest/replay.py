@@ -936,6 +936,7 @@ class Replay:
         """Feed every event in order, and judge each decision point from the server's record."""
         config = self._install()
         suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         self.server = start(
             [str(self.bin / f"printobserver{suffix}"), "server", "--config", str(config)],
             cwd=self.state,
