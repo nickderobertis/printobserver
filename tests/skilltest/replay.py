@@ -566,12 +566,14 @@ class RunReport:
                 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
                 case {"type": "system", "subtype": "compact_boundary"}:
                     self.compacted = True
+                # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
                 case {"type": "result", "usage": dict(usage), **rest}:
                     self._add_usage(usage)
                     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
                     models = rest.get("modelUsage")
                     for model in models if isinstance(models, dict) else ():
                         self._saw(str(model))
+                # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
                 case {"message": {"model": str(model), "content": list(content)}}:
                     self._saw(model)
                     for block in content:
@@ -583,6 +585,7 @@ class RunReport:
         """One tool call of the transcript, which writes a call once per streamed message."""
         # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         match block:
+            # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
             case {"type": "tool_use", "id": str(called), "name": str(name), "input": dict(given)}:
                 if called in self.seen_tool_uses:
                     return

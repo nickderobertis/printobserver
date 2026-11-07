@@ -4471,6 +4471,42 @@ site = "self.server.kill()"
 reason = "A server ignoring termination for 30 s, which the real server does not do and which no test could cause on every platform the gate runs on: a Windows process cannot ignore it at all. `test_stopping_a_replay_stops_its_server_and_its_doubles` proves the ordinary path."
 
 [[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case {\"type\": \"result\", \"usage\": dict(usage), **rest}:"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case {\"message\": {\"model\": str(model), \"content\": list(content)}}:"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case {\"type\": \"tool_use\", \"id\": str(called), \"name\": str(name), \"input\": dict(given)}:"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "transcript = Path(os.environ[\"CLAUDE_CONFIG_DIR\"]) / \"projects\" / \"workspace\""
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "message = {"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "result = {"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "tests/skilltest/cases.py"
 site = "return sorted(replays(CASES))"

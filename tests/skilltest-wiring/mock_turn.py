@@ -185,6 +185,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     time.sleep(scripted.get("stall_s", 0))
     session = f"mock-session-{script['session']}"
     usage = scripted.get("usage", {"input_tokens": 10, "output_tokens": 5})
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
     transcript = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "workspace"
     transcript.mkdir(parents=True, exist_ok=True)
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
@@ -192,6 +193,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     if scripted.get("compact"):
         # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         lines.append({"type": "system", "subtype": "compact_boundary"})
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
     message = {
         "type": "assistant",
         "message": {
@@ -227,6 +229,7 @@ def main(script_path: str, arguments: list[str]) -> int:
         if scripted.get("unreadable")
         else {"result": json.dumps(assessment), "structured_output": assessment}
     )
+    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
     result = {
         "type": "result",
         "subtype": "success",
