@@ -23,9 +23,10 @@ the scanner needs no exemption for the file that defines it.
 from __future__ import annotations
 
 import json
+import os
 import re
 import tomllib
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,6 +56,10 @@ SCANNED_NAMES = frozenset({"justfile", "Justfile", ".justfile"})
 # so a directive inside one is somebody else's source rather than a suppression
 # this repository made.
 SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
+
+#: One file the directive scanners read: its path, that path from the tree's root,
+#: and its lines.
+type Scanned = tuple[Path, Path, list[str]]
 
 # A block opening silences the region and needs its entry. ignore-end closes
 # that region without silencing anything else, so it needs no second entry.
@@ -90,16 +95,20 @@ class Directive:
 
 def directives_in(text: str, relative: str) -> list[Directive]:
     """Every suppression directive in one file."""
-    lines = text.splitlines()
+    return _directives_in_lines(text.splitlines(), relative)
+
+
+def _directives_in_lines(lines: list[str], relative: str) -> list[Directive]:
+    """Every suppression directive in one file's lines."""
     found: list[Directive] = []
     for index, line in enumerate(lines):
-        following = tuple(
-            candidate for candidate in lines[index + 1 : index + 8] if candidate.strip()
-        )[:3]
         for pattern, is_list in DIRECTIVE_PATTERNS:
             for match in pattern.finditer(line):
                 captured = match.group(1)
                 rules = [r.strip() for r in captured.split(",")] if is_list else [captured.strip()]
+                following = tuple(
+                    candidate for candidate in lines[index + 1 : index + 8] if candidate.strip()
+                )[:3]
                 found.extend(
                     Directive(relative, index + 1, rule, line.strip(), following)
                     for rule in rules
@@ -108,20 +117,29 @@ def directives_in(text: str, relative: str) -> list[Directive]:
     return found
 
 
+def _walked(root: Path) -> list[Path]:
+    """Every file of a tree in sorted order, never entering an uncommitted directory."""
+    found: list[Path] = []
+    for directory, subdirectories, names in os.walk(root):
+        subdirectories[:] = [name for name in subdirectories if name not in SKIPPED_DIRECTORIES]
+        found.extend(
+            Path(directory, name)
+            for name in names
+            if name not in SKIPPED_DIRECTORIES and Path(directory, name).is_file()
+        )
+    return sorted(found)
+
+
 def scan(root: Path) -> list[Directive]:
     """Every suppression directive in a tree."""
+    return _scan_of(_scannable(root))
+
+
+def _scan_of(files: Sequence[Scanned]) -> list[Directive]:
+    """Every suppression directive in files already read."""
     found: list[Directive] = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or (
-            path.suffix not in SCANNED_SUFFIXES and path.name not in SCANNED_NAMES
-        ):
-            continue
-        relative = path.relative_to(root)
-        if SKIPPED_DIRECTORIES & set(relative.parts):
-            continue
-        found.extend(
-            directives_in(path.read_text(encoding="utf-8", errors="replace"), relative.as_posix())
-        )
+    for _, relative, lines in files:
+        found.extend(_directives_in_lines(lines, relative.as_posix()))
     return found
 
 
@@ -134,7 +152,6 @@ RUFF_SUPPRESSION_KEYS = (
     "extend-per-file-ignores",
 )
 SILENCED_LEVELS = frozenset({"allow", "ignore", "off", "none"})
-CONFIG_DIRECTORIES = UNCOMMITTED_DIRECTORIES
 
 
 def _load_toml(path: Path) -> dict[str, object]:
@@ -143,16 +160,9 @@ def _load_toml(path: Path) -> dict[str, object]:
         return tomllib.load(handle)
 
 
-def _config_files(root: Path, names: tuple[str, ...]) -> list[Path]:
-    """Every configuration file of the given names, ignoring vendored trees."""
-    found: list[Path] = []
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.name not in names:
-            continue
-        if CONFIG_DIRECTORIES & set(path.relative_to(root).parts):
-            continue
-        found.append(path)
-    return found
+def _config_files(files: Sequence[Path], names: tuple[str, ...]) -> list[Path]:
+    """Every configuration file of the given names among a walked tree's files."""
+    return [path for path in files if path.name in names]
 
 
 def _ruff_findings(where: str, ruff: dict[str, object]) -> list[str]:
@@ -200,8 +210,9 @@ def _levels_set_to_silence(prefix: str, table: object) -> list[str]:
 def configured_suppressions(root: Path) -> list[str]:
     """Refuse a rule silenced in a configuration file rather than at its site."""
     findings: list[str] = []
+    files = _walked(root)
 
-    for path in _config_files(root, ("pyproject.toml", "ruff.toml", ".ruff.toml")):
+    for path in _config_files(files, ("pyproject.toml", "ruff.toml", ".ruff.toml")):
         relative = path.relative_to(root)
         data = _load_toml(path)
         tools = data.get("tool")
@@ -221,7 +232,7 @@ def configured_suppressions(root: Path) -> list[str]:
                 for f in _levels_set_to_silence("[tool.ty.rules]", ty.get("rules"))
             )
 
-    for path in _config_files(root, ("Cargo.toml",)):
+    for path in _config_files(files, ("Cargo.toml",)):
         relative = path.relative_to(root)
         data = _load_toml(path)
         workspace = data.get("workspace")
@@ -235,7 +246,7 @@ def configured_suppressions(root: Path) -> list[str]:
             for f in _levels_set_to_silence("[lints]", data.get("lints"))
         )
 
-    for path in _config_files(root, ("biome.json", "biome.jsonc")):
+    for path in _config_files(files, ("biome.json", "biome.jsonc")):
         relative = path.relative_to(root)
         data = json.loads(path.read_text(encoding="utf-8"))
         for section in ("linter", "formatter", "assist"):
@@ -272,20 +283,20 @@ FILE_LEVEL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
-def _scannable(root: Path) -> Iterator[tuple[Path, Path, list[str]]]:
+def _scannable(root: Path) -> list[Scanned]:
     """Every file the directive scanners read, with its lines."""
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or (
-            path.suffix not in SCANNED_SUFFIXES and path.name not in SCANNED_NAMES
-        ):
-            continue
-        relative = path.relative_to(root)
-        if SKIPPED_DIRECTORIES & set(relative.parts):
-            continue
-        yield path, relative, path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return [
+        (
+            path,
+            path.relative_to(root),
+            path.read_text(encoding="utf-8", errors="replace").splitlines(),
+        )
+        for path in _walked(root)
+        if path.suffix in SCANNED_SUFFIXES or path.name in SCANNED_NAMES
+    ]
 
 
-def whole_file_directives(root: Path, admitted: Sequence[str]) -> list[str]:
+def whole_file_directives(files: Sequence[Scanned], admitted: Sequence[str]) -> list[str]:
     """Refuse a whole-file llmlint directive naming a rule that is not intrinsically one.
 
     llmlint is the one tool here with rules that are about a file as a whole
@@ -300,8 +311,7 @@ def whole_file_directives(root: Path, admitted: Sequence[str]) -> list[str]:
     allowlist entry with a reason like any other.
     """
     findings: list[str] = []
-    for path, relative, lines in _scannable(root):
-        del path
+    for _, relative, lines in files:
         for number, line in enumerate(lines, start=1):
             for match in WHOLE_FILE_LLMLINT.finditer(line):
                 findings.extend(
@@ -315,11 +325,10 @@ def whole_file_directives(root: Path, admitted: Sequence[str]) -> list[str]:
     return findings
 
 
-def file_level_directives(root: Path) -> list[str]:
+def file_level_directives(files: Sequence[Scanned]) -> list[str]:
     """Refuse every directive that silences a rule for a whole file."""
     findings: list[str] = []
-    for path, relative, lines in _scannable(root):
-        del path
+    for _, relative, lines in files:
         for number, line in enumerate(lines, start=1):
             findings.extend(
                 f"{relative.as_posix()}:{number} carries a file-level {tool} directive, which "
@@ -342,11 +351,12 @@ def _allowlist(repo: Repo) -> tuple[str, list[dict[str, str]]]:
 def suppressions(repo: Repo, base: str | None = None) -> list[str]:
     """Every directive has an entry, every entry has a reason, and every entry matches."""
     relative, entries = _allowlist(repo)
-    found = [d for d in scan(repo.root) if d.file != relative]
+    files = _scannable(repo.root)
+    found = [d for d in _scan_of(files) if d.file != relative]
     findings: list[str] = configured_suppressions(repo.root)
-    findings.extend(file_level_directives(repo.root))
+    findings.extend(file_level_directives(files))
     findings.extend(
-        whole_file_directives(repo.root, repo.policy["suppressions"].get("whole_file_rules", []))
+        whole_file_directives(files, repo.policy["suppressions"].get("whole_file_rules", []))
     )
 
     for index, entry in enumerate(entries):

@@ -481,6 +481,13 @@ def test_an_unknown_operation_or_argument_is_refused(check: Run, tree: Callable[
             "AcknowledgementDisposition is not a valid JSON Schema",
         ),
         (
+            "schemas/printobserver-core/ActionRecord.json",
+            '"description": "What an operator\'s acknowledgement of a failure event asks',
+            '"type": 5, "description": "What an operator\'s acknowledgement of a failure event asks',
+            "real-prints-operations",
+            "ActionRecord's $defs.AcknowledgementDisposition is not a valid JSON Schema",
+        ),
+        (
             "tests/real-prints/case.schema.json",
             '"type": "object",',
             '"type": 5,',

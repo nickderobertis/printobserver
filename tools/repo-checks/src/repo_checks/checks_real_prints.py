@@ -793,13 +793,28 @@ def _type_definitions(repo: Repo) -> dict[str, Any]:
     A type file's own `$defs` are copies of the types it refers to, so they are
     pooled first and the files themselves, each standing for its own name, win.
     """
-    declared = {
-        name: _valid_schema(schema, name) for name, schema in read_schemas(repo.root).items()
-    }
+    declared = read_schemas(repo.root)
+    checked: set[str] = set()
+
+    def valid_once(schema: object, named: str) -> None:
+        """Check one schema, unless an identical one has been: the copies are many."""
+        key = json.dumps(schema, sort_keys=True)
+        if key not in checked:
+            _valid_schema(schema, named)
+            checked.add(key)
+
     pooled: dict[str, dict[str, Any]] = {}
     for name, schema in declared.items():
-        for inner, definition in schema.get("$defs", {}).items():
-            pooled[inner] = _valid_schema(definition, f"{name}'s $defs.{inner}")
+        definitions = schema.get("$defs") if isinstance(schema, dict) else None
+        if isinstance(definitions, dict):
+            # Each definition is checked by itself below, so only once however
+            # many files carry a copy of it.
+            valid_once({k: v for k, v in schema.items() if k != "$defs"}, name)
+            for inner, definition in definitions.items():
+                valid_once(definition, f"{name}'s $defs.{inner}")
+                pooled[inner] = definition
+        else:
+            valid_once(schema, name)
     pooled.update(declared)
     return {
         name: {key: value for key, value in schema.items() if key not in {"$schema", "$defs"}}
