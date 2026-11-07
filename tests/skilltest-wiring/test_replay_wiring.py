@@ -1144,6 +1144,11 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         unreadable.mkdir()
         (unreadable / "a.json").write_text(json.dumps(unusable), encoding="utf-8")
         equal(record.main([str(unreadable)]), 1, describing=name)
+    twice = tmp_path / "twice"
+    twice.mkdir()
+    for name in ("one.json", "two.json"):
+        (twice / name).write_text(json.dumps(test_record), encoding="utf-8")
+    equal(record.main([str(twice)]), 1)
     # A `just` of this test's own, standing where the real recipe would run the suite.
     fake = tmp_path / "bin"
     fake.mkdir()

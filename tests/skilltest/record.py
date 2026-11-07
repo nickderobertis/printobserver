@@ -108,6 +108,10 @@ def _test_record(path: Path) -> TestRecord:
 def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
     """The record of one run, from each test's record in its directory."""
     tests = [_test_record(path) for path in sorted(directory.glob("*.json"))]
+    named = [test["test"] for test in tests]
+    if len(set(named)) != len(named):
+        msg = f"{directory} holds one test twice: {sorted(named)}"
+        raise UnreadableRunError(msg)
     points = [point for test in tests for point in test["decision_points"]]
     replayed = replays(cases)
     for test in tests:

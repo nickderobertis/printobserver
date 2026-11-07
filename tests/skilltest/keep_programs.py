@@ -15,7 +15,7 @@ SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 
 def main() -> int:
-    """Copy each program out of cargo's output directory."""
+    """Copy before the next ordinary build replaces them, or the run tests the wrong build."""
     kept = TARGET / "skilltest"
     kept.mkdir(exist_ok=True)
     for name in (

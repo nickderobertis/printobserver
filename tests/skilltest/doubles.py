@@ -428,7 +428,7 @@ class _Quiet(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def answer_json(self, status: int, document: object) -> None:
-        """Send one JSON response."""
+        """Answer with a JSON document, which everything OctoPrint and Obico say is."""
         self.answer(status, json.dumps(document).encode())
 
     def body(self) -> dict[str, Any] | None:
