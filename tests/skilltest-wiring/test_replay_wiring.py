@@ -157,7 +157,7 @@ class Scripted:
     def seen_frame(self, turn: int, look: int) -> str:
         """The frame the `look`th scripted look of one turn answered."""
         ran = [entry for entry in self.turns[turn]["ran"] if entry["words"][1] == "look"]
-        return self.images[json.loads(ran[look]["out"])["image_path"]]
+        return self.images[Path(json.loads(ran[look]["out"])["image_path"]).name]
 
 
 def mock_replay(
@@ -181,7 +181,8 @@ def mock_replay(
     try:
         replayed = replay.run()
         images = {
-            str(path): frame_name(path.read_bytes())
+            # By name: a temporary directory's path can be spelled two ways on Windows.
+            path.name: frame_name(path.read_bytes())
             for path in replay.state.glob("images/*/*")
             if path.is_file()
         }
@@ -454,7 +455,7 @@ def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch
     for turn, moment in zip(done.turns, case.moments, strict=True):
         answered = json.loads(turn["ran"][0]["out"])
         equal(answered["context"]["job"]["file_position_bytes"], moment.file_position_bytes)
-        equal(done.images[answered["image_path"]], moment.event_image)
+        equal(done.images[Path(answered["image_path"]).name], moment.event_image)
 
 
 def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch: Path) -> None:
@@ -578,7 +579,10 @@ def test_a_recorded_alert_reaches_the_agent_at_its_time(scratch: Path) -> None:
             "obico_failure_alert",
         ],
     )
-    pictures = [done.images[json.loads(turn["ran"][0]["out"])["image_path"]] for turn in done.turns]
+    pictures = [
+        done.images[Path(json.loads(turn["ran"][0]["out"])["image_path"]).name]
+        for turn in done.turns
+    ]
     equal(pictures[1:], [moment.event_image for moment in case.moments[1:]])
 
 
@@ -1058,12 +1062,18 @@ def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: P
     equal(usage, {"input_tokens": 11, "output_tokens": 22})
     equal(len(done.replayed.ledger["turns"]), 2)
     first, second = case.moments
-    equal(done.images[json.loads(done.turns[0]["ran"][0]["out"])["image_path"]], first.event_image)
+    equal(
+        done.images[Path(json.loads(done.turns[0]["ran"][0]["out"])["image_path"]).name],
+        first.event_image,
+    )
     equal(
         done.seen_frame(1, 0),
         case.frames[case.frame_at_or_before(first.at, first.event_image) + 1].file,
     )
-    equal(done.images[json.loads(done.turns[2]["ran"][0]["out"])["image_path"]], second.event_image)
+    equal(
+        done.images[Path(json.loads(done.turns[2]["ran"][0]["out"])["image_path"]).name],
+        second.event_image,
+    )
 
 
 def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
@@ -1248,6 +1258,8 @@ def clone(tmp_path: Path) -> Clone:
     """A repository holding the real policy, a lock and an install template."""
     root = tmp_path / "clone"
     init_repository(root)
+    for name, value in (("user.name", "wiring"), ("user.email", "wiring@invalid")):
+        run(["git", "config", "--local", name, value], cwd=root, check=True)
     shutil.copy2(REPO / classify.POLICY, root / classify.POLICY)
     (root / classify.LOCK).write_text(
         LOCK_TEMPLATE.format(oneharness="1.0.0", serde="1.0.0"), encoding="utf-8"

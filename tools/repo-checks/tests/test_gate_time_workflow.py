@@ -73,6 +73,7 @@ MOVED = {
 #: reach and no lane of the integration tier does.
 ADDED = {
     "gate (macos-aarch64)": {
+        ("skilltest", "budgets"),
         ("printobserver-sdk-node-integration", "format-check"),
         ("printobserver-sdk-node-integration", "lint"),
         ("printobserver-sdk-node-integration", "typecheck"),

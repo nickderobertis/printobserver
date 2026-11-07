@@ -322,6 +322,12 @@ MACOS_OWED = (
     "(github.event_name == 'pull_request' && needs.classify.result != 'success'))"
 )
 
+#: The one condition the real-print suite runs under: it is owed, or that could not be read.
+SKILLTEST_OWED = (
+    "!cancelled() && (needs.skilltest-classify.outputs.owed == 'true' || "
+    "needs.skilltest-classify.result != 'success')"
+)
+
 #: The status contexts a pull request to the base branch must always report,
 #: whatever the affected set reaches — the fixed contract this repository's
 #: protection names, as the plan read it.
@@ -338,6 +344,7 @@ FIXED_CONTEXTS = (
     "integration (windows-x86_64)",
     "integration (windows-aarch64)",
     "llmlint",
+    "skilltest",
 )
 
 
@@ -378,6 +385,15 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
                 " ".join(str(condition).split()),
                 MACOS_OWED,
                 describing=f"`{context.job}`'s condition, waiting on the classifier",
+            )
+            continue
+        if needs == "skilltest-classify":
+            # The real-print suite runs where the diff owes it and where the
+            # classifier could not say; otherwise it is skipped, which passes.
+            equal(
+                " ".join(str(condition).split()),
+                SKILLTEST_OWED,
+                describing=f"`{context.job}`'s condition, waiting on its classifier",
             )
             continue
         if needs is not None:

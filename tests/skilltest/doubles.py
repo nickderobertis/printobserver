@@ -33,6 +33,7 @@ from typing import Any, NamedTuple, TypedDict
 from urllib.parse import unquote, urlsplit
 
 from cases import Case, MachineState, Moment, instant
+from repo_checks.loopback import LoopbackServer
 
 #: A heater command in the G-code, and the temperature it sets.
 HEATER = re.compile(rb"^M(?P<code>104|109|140|190)\s[^;\n]*?S(?P<value>\d+(?:\.\d+)?)", re.M)
@@ -451,7 +452,7 @@ class _Quiet(BaseHTTPRequestHandler):
         return parsed
 
 
-class _Double(ThreadingHTTPServer):
+class _Double(LoopbackServer):
     """A loopback server a stopped program's closed connection is nothing to."""
 
     def handle_error(self, request: object, client_address: object) -> None:
@@ -460,7 +461,7 @@ class _Double(ThreadingHTTPServer):
 
 
 def _serving(handler: type[BaseHTTPRequestHandler]) -> ThreadingHTTPServer:
-    server = _Double(("127.0.0.1", 0), handler)
+    server = _Double(handler)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
