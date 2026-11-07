@@ -1286,7 +1286,7 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
     equal(json.loads(written.read_text("utf-8"))["detail"]["commit"], "a-commit")
     failed = tmp_path / "failed"
     failed.mkdir()
-    failing = {**points[1], "passed": False}
+    failing = {**points[1], "passed": False, "why_not": "it paused"}
     (failed / "jar-top-wrong-material-first-layer-detach.json").write_text(
         json.dumps({**test_record, "passed": False, "decision_points": [points[0], failing]}),
         encoding="utf-8",
@@ -1298,6 +1298,27 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
     for name, unusable in (
         ("list", []),
         ("truthy", {**test_record, "passed": "false"}),
+        ("boolean-turns", {**test_record, "turns": True, "decision_points": points[:1]}),
+        (
+            "negative-looks",
+            {**test_record, "decision_points": [{**points[0], "looks": -1}, points[1]]},
+        ),
+        (
+            "boolean-looks",
+            {**test_record, "decision_points": [{**points[0], "looks": True}, points[1]]},
+        ),
+        (
+            "passed-with-a-reason",
+            {**test_record, "decision_points": [{**points[0], "why_not": "it paused"}, points[1]]},
+        ),
+        (
+            "failed-with-no-reason",
+            {
+                **test_record,
+                "passed": False,
+                "decision_points": [{**points[0], "passed": False}, points[1]],
+            },
+        ),
         ("short", {**test_record, "turns": 0, "decision_points": []}),
         ("repeated", {**test_record, "decision_points": [points[0], points[0]]}),
         ("reordered", {**test_record, "decision_points": points[::-1]}),

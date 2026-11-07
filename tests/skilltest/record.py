@@ -73,8 +73,10 @@ def _decision_point_is_readable(point: object) -> bool:
         and isinstance(point["opened"], list)
         and all(isinstance(name, str) for name in point["opened"])
         and (point["why_not"] is None or isinstance(point["why_not"], str))
+        and point["passed"] is (point["why_not"] is None)
         and is_assessment(point["assessment"])
-        and isinstance(point["looks"], int)
+        and type(point["looks"]) is int
+        and point["looks"] >= 0
         and (point["usage"] is None or isinstance(point["usage"], dict))
         and isinstance(point["passed"], bool)
         and isinstance(point["compacted"], bool)
@@ -92,7 +94,7 @@ def _test_record(path: Path) -> TestRecord:
         not isinstance(document, dict)
         or not isinstance(document.get("test"), str)
         or not isinstance(document.get("passed"), bool)
-        or not isinstance(document.get("turns"), int)
+        or type(document.get("turns")) is not int
         or not isinstance(document.get("sessions"), list)
         or not all(isinstance(session, str) for session in document["sessions"])
         or not isinstance(document.get("decision_points"), list)
