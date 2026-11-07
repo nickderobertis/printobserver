@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print's G-code was read and indexed: what the slicer planned at each\nfile position is now known for it, without reading the file again.\n\nWritten once per index built, which is once per print for as long as the\nserver runs.",
+  "properties": {
+    "bytes": {
+      "description": "How many bytes of it were read.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "file_name": {
+      "description": "The file that was indexed.",
+      "type": "string"
+    },
+    "layers": {
+      "description": "How many layers it plans.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "file_name",
+    "bytes",
+    "layers"
+  ],
+  "title": "GcodeIndexedPayload",
+  "type": "object",
+  "x-event-kind": "gcode_indexed"
+}

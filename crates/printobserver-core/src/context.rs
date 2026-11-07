@@ -4,8 +4,9 @@
 //! record, the printer and job as the printer port last reported them, the
 //! manifest and the bounds in force, the interventions still active, the
 //! events most recently written down — the print's own, and what the printer
-//! watch recorded of the machine since the print opened — and the failure
-//! detector's health. The loop collects it when it handles an
+//! watch recorded of the machine since the print opened — the failure
+//! detector's health, and what the slicer planned at the job's current file
+//! position ([`crate::gcode_index`]). The loop collects it when it handles an
 //! event, holds it for the turn that event prompts, and answers it to the
 //! `context` operation, so what the agent reasons about is the state the event
 //! was handled at rather than whatever the machine has drifted to since.
@@ -14,6 +15,7 @@
 //! this domain's to collect: a domain that adds a fact a turn should see edits
 //! this crate and regenerates the clients, and nothing central.
 
+use crate::gcode_index::SlicerPlan;
 use crate::records::{EffectiveBounds, Intervention, JobManifest, PrintRecord};
 use crate::watch::DetectorHealth;
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
@@ -50,6 +52,11 @@ pub struct PrintContext {
     /// The failure detector's health, and since when it has been so.
     #[serde(default)]
     pub detector: DetectorHealth,
+    /// What the slicer planned at the job's current file position, read from
+    /// the print's own G-code: absent when the file could not be read, or the
+    /// job is not this print's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slicer_plan: Option<SlicerPlan>,
 }
 
 impl Sample for PrintContext {
@@ -64,6 +71,7 @@ impl Sample for PrintContext {
             recent_events: vec![EventRecord::sample_full()],
             latest_image: Some(ImageRef::sample_full()),
             detector: DetectorHealth::sample_full(),
+            slicer_plan: Some(SlicerPlan::sample_full()),
         }
     }
 
@@ -78,6 +86,7 @@ impl Sample for PrintContext {
             recent_events: vec![],
             latest_image: None,
             detector: DetectorHealth::sample_minimal(),
+            slicer_plan: None,
         }
     }
 }

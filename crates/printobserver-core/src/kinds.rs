@@ -106,6 +106,11 @@ pub struct ActionExecutedPayload {
     /// The bounded intervention it opened, when it opened one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intervention_id: Option<InterventionId>,
+    /// How far into its file the print had last been read to have got when
+    /// the action was taken, in bytes, when that was known: what places a
+    /// change against the commands the file sets the same thing with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_position_bytes: Option<i64>,
 }
 
 impl EventPayload for ActionExecutedPayload {
@@ -117,6 +122,7 @@ impl Sample for ActionExecutedPayload {
         Self {
             action_id: ActionId::sample_full(),
             intervention_id: Some(InterventionId::sample_full()),
+            file_position_bytes: Some(4_096),
         }
     }
 
@@ -124,6 +130,7 @@ impl Sample for ActionExecutedPayload {
         Self {
             action_id: ActionId::sample_full(),
             intervention_id: None,
+            file_position_bytes: None,
         }
     }
 }
@@ -440,6 +447,37 @@ impl Sample for CameraDegradedPayload {
             detail: "every frame failed a strict decode: the image ends early".to_owned(),
             ..Self::sample_full()
         }]
+    }
+}
+
+/// A print's G-code was read and indexed: what the slicer planned at each
+/// file position is now known for it, without reading the file again.
+///
+/// Written once per index built, which is once per print for as long as the
+/// server runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct GcodeIndexedPayload {
+    /// The file that was indexed.
+    pub file_name: String,
+    /// How many bytes of it were read.
+    pub bytes: u64,
+    /// How many layers it plans.
+    pub layers: u64,
+}
+
+impl EventPayload for GcodeIndexedPayload {
+    const KIND: &'static str = "gcode_indexed";
+}
+
+impl Sample for GcodeIndexedPayload {
+    fn sample_full() -> Self {
+        Self {
+            file_name: "benchy.gcode".to_owned(),
+            bytes: 440_608,
+            layers: 150,
+        }
     }
 }
 
