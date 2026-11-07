@@ -278,8 +278,8 @@ class Case:
         recording's rate puts the file's first byte.
         """
         for event in self.history:
-            job = event.get("payload", {}).get("job") or {}
-            if isinstance(job.get("print_time_s"), int):
+            job = event.get("payload", {}).get("job")
+            if isinstance(job, dict) and isinstance(job.get("print_time_s"), int):
                 received = datetime.fromisoformat(event["received_at"][:19]).replace(tzinfo=UTC)
                 return received - timedelta(seconds=job["print_time_s"])
         for event in self.history:

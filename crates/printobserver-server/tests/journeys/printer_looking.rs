@@ -278,6 +278,29 @@ async fn a_look_the_store_will_not_write_down_is_refused_and_nothing_is_kept() {
     world.server.stop().await;
 }
 
+/// A frame the image store refuses was still captured, so the look says when and
+/// carries no image.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_look_whose_frame_the_store_refuses_still_says_when_it_was_captured() {
+    let camera = ScriptedHost::answering(vec![Scripted::frame(snapshot_bytes())]).await;
+    let world = with_camera_over(camera.url(), |stores| {
+        let (stores, events) = HeldEvents::over(stores);
+        events.refusing_images(true);
+        stores
+    })
+    .await;
+
+    let (status, look) = world.get(&world.url("/look")).await;
+
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(look.get("image_path").is_none(), "{look}");
+    assert!(
+        look["event"]["payload"]["frame_captured_at"].is_string(),
+        "{look}"
+    );
+    world.server.stop().await;
+}
+
 /// A look at the printer says when its frame was captured: the moment the camera
 /// answered, when the camera says nothing of its own.
 #[tokio::test(flavor = "multi_thread")]

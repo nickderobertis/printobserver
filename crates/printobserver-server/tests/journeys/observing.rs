@@ -750,6 +750,15 @@ async fn a_frame_the_store_refuses_is_recorded_against_the_observation() {
         "a frame the store refused was carried"
     );
     assert!(turn.image_path.is_none());
+    assert!(
+        turn.event
+            .payload_as::<PeriodicObservationPayload>()
+            .expect("the turn is on an observation")
+            .expect("of its own type")
+            .frame_captured_at
+            .is_some(),
+        "the frame was captured, whatever became of it"
+    );
     let failures = failures_against(&world, print_id, turn.event.id).await;
     assert!(
         failures
