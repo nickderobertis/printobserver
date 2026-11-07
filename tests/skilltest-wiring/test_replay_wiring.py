@@ -893,6 +893,12 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
             "received_at": "2026-01-01T00:00:00Z",
             "payload": {"assessment": {"summary": "fine"}},
         },
+        {
+            "id": "e",
+            "kind": "agent_assessment",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {},
+        },
     ],
 )
 def test_a_history_event_the_replay_could_not_read_is_refused(event: object) -> None:
@@ -1272,16 +1278,8 @@ def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: P
     )
 
 
-def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Given a directory it folds that; given none it runs the suite, and exits as that did."""
-    written = tmp_path / "latest.json"
-    monkeypatch.setattr(record, "RESULT", written)
-    monkeypatch.setattr(record, "REPO", tmp_path)
-    monkeypatch.setattr(record, "commit", lambda: "a-commit")
-    finished = tmp_path / "finished"
-    finished.mkdir()
+def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """A real case's decision points, and the record of a test that passed them."""
     point = {
         "scenario": "a-scenario",
         "at": "2026-09-27T18:40:05",
@@ -1306,6 +1304,20 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         "sessions": [],
         "decision_points": points,
     }
+    return points, test_record
+
+
+def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Given a directory it folds that; given none it runs the suite, and exits as that did."""
+    written = tmp_path / "latest.json"
+    monkeypatch.setattr(record, "RESULT", written)
+    monkeypatch.setattr(record, "REPO", tmp_path)
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    finished = tmp_path / "finished"
+    finished.mkdir()
+    points, test_record = _a_finished_test()
     (finished / "jar-top-wrong-material-first-layer-detach.json").write_text(
         json.dumps(test_record), encoding="utf-8"
     )
@@ -1385,6 +1397,52 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
     monkeypatch.setenv("MOCK_EXIT", "7")
     equal(record.main([]), 7)
     equal(json.loads(written.read_text("utf-8"))["figures"], {"turns": 0})
+
+
+def test_the_record_command_runs_the_suite_and_folds_what_that_run_wrote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Its arguments reach the recipe, which writes where it is told, and that is folded."""
+    written = tmp_path / "latest.json"
+    monkeypatch.setattr(record, "RESULT", written)
+    monkeypatch.setattr(record, "REPO", tmp_path)
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    _, test_record = _a_finished_test()
+    produced = tmp_path / "produced.json"
+    produced.write_text(json.dumps(test_record), encoding="utf-8")
+    called = tmp_path / "called.json"
+    stand_in = tmp_path / "stand_in.py"
+    stand_in.write_text(
+        "import json, os, shutil, sys\n"
+        f"json.dump(sys.argv[1:], open({str(called)!r}, 'w'))\n"
+        f"shutil.copy({str(produced)!r}, "
+        "os.path.join(os.environ['SKILLTEST_RUN_DIR'], 'a-test.json'))\n",
+        encoding="utf-8",
+    )
+    # `just` as each platform's PATH finds one: a script here, a batch file on Windows.
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    script = fake / "just"
+    script.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{stand_in}" "$@"\n', encoding="utf-8")
+    script.chmod(0o755)
+    (fake / "just.bat").write_text(f'@"{sys.executable}" "{stand_in}" %*\n', encoding="utf-8")
+    monkeypatch.setenv("PATH", f"{fake}{os.pathsep}{os.environ['PATH']}")
+
+    equal(record.main(["-k", "a-test"]), 0)
+
+    equal(
+        json.loads(called.read_text("utf-8")),
+        ["skilltest", "-k", "a-test"],
+        describing="what the recipe was asked",
+    )
+    folded = json.loads(written.read_text("utf-8"))
+    equal(folded["figures"], {"turns": 2}, describing="the turns the run wrote")
+    equal(folded["detail"]["passed"], True, describing="the run's verdict")
+    equal(
+        [test["test"] for test in folded["detail"]["tests"]],
+        ["jar-top-wrong-material-first-layer-detach"],
+        describing="the tests the run wrote",
+    )
 
 
 def test_the_harness_credential_is_the_variable_then_the_hosts_sign_in(

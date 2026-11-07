@@ -278,7 +278,8 @@ def is_event(event: object) -> bool:
         case "action_requested":
             return _is_requested_action(payload.get("action"))
         case "agent_assessment":
-            return is_assessment(payload.get("assessment"))
+            assessment = payload.get("assessment")
+            return assessment is not None and is_assessment(assessment)
         case _:
             return True
 
