@@ -22,11 +22,10 @@ one command at a time, beginning with the program's name and written out in full
 no variable, no chain, no usage listing. When it refuses one, write it that way
 rather than leaving it undone.
 
-1. **Read the context.** The printer, the job, the bounds, what is standing,
-   recent events, the latest picture.
+1. **Read the context.** The printer, the job, the bounds, recent events, the
+   latest picture.
 2. **Look at the image.** Open the file the context names. A path is not evidence
-   and neither is a picture too dark, blurred or aimed at nothing: say so, and read
-   it as uncertain. A file's name excuses nothing.
+   and neither is a picture too dark, blurred or aimed at nothing: say so: it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
    already old. A look reads now and can wait up to a minute and a half first, so a few show a
    defect growing or settling.
@@ -37,10 +36,11 @@ rather than leaving it undone.
 5. **Act, and say why.** If something should change, ask for it, with a reason a
    reader of the record can act on and, when temporary, the time it should stand.
    [The intervention policy](reference/intervention-policy.md) holds the bounds,
-   the rejections and what happens at expiry. After acting, look again to see whether it helped.
+   the rejections and what happens at expiry. After a setting, look again.
 6. **Record what you saw.** Acknowledge this turn's failure or observation, with
    a reason saying what you saw and what you made of it: disposition stop with every
-   pause; watch when you are uncertain or changed a setting; continue when nothing
+   pause, yours or the detector's; watch after a setting, or when uncertain on a
+   running print; continue when nothing
    is there, a false alarm included.
 
 ## The decision order
@@ -78,15 +78,18 @@ Reading frames:
 
 ## When the detector has already paused the print
 
-The situation says whether the detector paused the print first. A paused print is
-safe, so take the time to look. It moves no further, so there is nothing to watch.
+The situation says whether the detector paused the print first. The order holds,
+with that pause standing. A paused print moves no further, so take your time, and
+another look settles nothing: an uncertain reading is stopped, not watched.
 
-- **If a setting addresses a clear defect you see**, ask for it while paused.
+- **If a clear defect a setting addresses is all you see**, ask for it while paused.
   The supervisor resumes the print itself twenty
   seconds after your last such change, or when your turn ends. You do not resume
   it.
-- **Otherwise** change nothing and acknowledge with the disposition stop, never
-  watch: the print stays paused for a person, and your reason is what they read.
+- **Otherwise,** a moved or gone part or a defect no setting addresses, even beside
+  one a setting addresses, an uncertain reading or nothing at all: change nothing
+  and acknowledge with the disposition stop, never watch: the print stays paused
+  for a person, and they read your reason.
 
 ## When you are asked to start a print
 
@@ -96,21 +99,20 @@ there, ask for nothing and tell the person what and where.
 
 ## The boundaries you work inside
 
-- **Every adjustment is bounded.** The context tells you each range. Ask inside it.
+- **Every adjustment is bounded:** ask inside the range the context gives.
 - **A refusal says what was allowed:** ask again inside it.
 - **The vocabulary is closed: no path in this system sends a command to the
-  printer.** No G-code, no escape hatch, only the named adjustments the policy
+  printer.** Only the named adjustments the policy
   rules on. Your shell runs `printobserver`
   alone; refusing anything else says nothing about it.
 
 ## When to escalate instead
 
-The order's pause aside, escalate when the machine is clearly somewhere none of
+Also escalate when the machine is clearly somewhere none of
 your adjustments reaches, or the safe thing is outside what you may ask for.
 
 To escalate, pause the print and give as your reason what the person has to check.
-A print already paused is escalated by acknowledging the failure with the
-disposition stop. A person's resume in the record settles what they resumed over. Stop adjusting a print that needs a person.
+A person's resume in the record settles what they resumed over.
 
 ## Elsewhere
 
