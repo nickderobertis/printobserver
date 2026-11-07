@@ -36,7 +36,7 @@ rather than leaving it undone.
    however the view shifts. A part that seems to have moved is a person's to check:
    pause. A printing part keeps growing: the bed sinks as layers rise, so over tens of
    minutes, with the bed visibly lower, the part's sides must show more wall. If they
-   show none it has stopped growing, which no adjustment reaches: pause. A wall is clearly
+   seem to show none, that is a person's to check: pause. A wall is clearly
    under-extruding only when visibly thinner, gappy or see-through where the part's
    shape would make it solid; a texture the shape could explain, ribs, lattice,
    bridging over support, is not clear. Inside the outline supports, bridges and
