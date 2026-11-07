@@ -16,6 +16,7 @@ import shutil
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from datetime import timedelta
 from http.client import HTTPConnection
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
@@ -531,6 +532,19 @@ def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path)
     last = case.moments[-1]
     done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], scratch)
     equal(done.replayed.fetches[-3:], [last.looks[-1]] * 3)
+
+
+def test_the_job_keeps_moving_between_checks_while_frames_repeat_a_reading() -> None:
+    """A look's frame repeats the last check's progress, and the job does not stall for it."""
+    case = read_case("bubbler-guard-and-pad-pla-healthy")
+    first, second = case.moments[2], case.moments[3]
+    span = int((instant(second.at) - instant(first.at)).total_seconds())
+    moved = second.file_position_bytes - first.file_position_bytes
+    for seconds in range(0, span, 30):
+        when = instant(first.at) + timedelta(seconds=seconds)
+        steady = first.file_position_bytes + moved * seconds / span
+        off = abs(case.position_at(when) - steady)
+        truth(off < moved / 20, describing=f"{steady} at {seconds} s, off by {off}")
 
 
 def test_the_print_clock_never_goes_back_whatever_a_look_waited(scratch: Path) -> None:

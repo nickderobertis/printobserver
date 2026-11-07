@@ -293,14 +293,19 @@ class Case:
 
         Through each event's position and each frame's progress, in time order, so a
         position never goes back and the job moves at the rate the recording shows.
+        A frame's progress is the last reading the supervisor took, so a frame
+        repeating the one before it says when that reading was current, not that the
+        job stood still: only the first frame to carry a reading is a point of the line.
         """
+        read: set[float] = set()
+        readings = []
+        for at, frame in zip(self.frame_times(), self.frames, strict=True):
+            if frame.progress_pct is not None and frame.progress_pct not in read:
+                read.add(frame.progress_pct)
+                readings.append(PrintedAt(at, int(frame.progress_pct / 100 * self.gcode_size)))
         points = sorted(
             [PrintedAt(instant(moment.at), moment.file_position_bytes) for moment in self.moments]
-            + [
-                PrintedAt(at, int(frame.progress_pct / 100 * self.gcode_size))
-                for at, frame in zip(self.frame_times(), self.frames, strict=True)
-                if frame.progress_pct is not None
-            ]
+            + readings
         )
         highest = 0
         earlier, later = points[0], points[-1]
