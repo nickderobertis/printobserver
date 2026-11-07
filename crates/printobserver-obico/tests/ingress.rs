@@ -649,9 +649,11 @@ async fn assert_refused(
     );
 }
 
-/// A host that answers too late times out, and the event survives it.
+/// A host that answers too late times out, no earlier than the bound by a clock
+/// started before the fetch, and the event survives it.
 #[tokio::test]
 async fn a_snapshot_served_too_late_times_out() {
+    const FETCH_TIMEOUT: Duration = Duration::from_millis(250);
     let host = ImageHost::serving(Answer {
         delay: Duration::from_secs(30),
         ..Answer::image(snapshot())
@@ -659,13 +661,19 @@ async fn a_snapshot_served_too_late_times_out() {
     .await;
     let store = Arc::new(MemoryStore::new());
     let config = ObicoVisionConfig {
-        fetch_timeout: Duration::from_millis(250),
+        fetch_timeout: FETCH_TIMEOUT,
         ..ObicoVisionConfig::default()
     };
 
+    let started = std::time::Instant::now();
     let (receipt, body) = post_alert_for(&store, host.snapshot_url(), config).await;
+    let waited = started.elapsed();
 
     assert_refused(&receipt, &store, &body, &VisionError::TimedOut).await;
+    assert!(
+        waited >= FETCH_TIMEOUT,
+        "the fetch gave up after {waited:?}, inside its {FETCH_TIMEOUT:?} bound"
+    );
 }
 
 /// A snapshot over the maximum is refused, whether or not it declares itself.

@@ -21,9 +21,11 @@ use crate::checks::{FirstCheck, checking, checking_over, stored};
 use crate::held_events::HeldEvents;
 use crate::ingress::snapshot_bytes;
 
-/// How much later than the backoff a retry may be made and still be "near"
-/// it: the round trip of a refusal on loopback and a waiting thread waking,
-/// on a shared host.
+/// How far a moment the camera's host stamps may stand from the moment the
+/// client acted, on a shared host: the round trip of a request on loopback and a
+/// waiting thread waking. So a retry may be made this much later than the backoff
+/// and still be "near" it, and a request stamped this much after the client's
+/// timer started is still one abandoned at the timeout.
 const SLACK: Duration = Duration::from_millis(400);
 
 /// The exchanges one check made, given the moment it was seen stored: every
@@ -209,6 +211,12 @@ async fn a_refusal_no_retry_could_change_is_failed_at_once() {
 /// A camera that takes the request and never answers is abandoned near the
 /// default five-second per-fetch timeout after the request, asked once, and no
 /// retry is written down.
+///
+/// The client's timer starts before it connects and the host's stamp comes after
+/// it has read the request, so the time between that stamp and the check being
+/// seen can fall short of the timeout by the lag between them. That the adapter
+/// never gives up early is held on the client's own clock, by
+/// `a_snapshot_served_too_late_times_out` in the Obico crate's ingress tests.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_camera_that_never_answers_is_abandoned_near_the_timeout_and_not_retried() {
     assert_eq!(DEFAULT_FETCH_TIMEOUT, Duration::from_secs(5));
@@ -222,7 +230,7 @@ async fn a_camera_that_never_answers_is_abandoned_near_the_timeout_and_not_retri
     assert_eq!(exchanges.len(), 1, "{exchanges:?}");
     let abandoned = check.seen.duration_since(exchanges[0].received);
     assert!(
-        abandoned >= DEFAULT_FETCH_TIMEOUT
+        abandoned + SLACK >= DEFAULT_FETCH_TIMEOUT
             && abandoned <= DEFAULT_FETCH_TIMEOUT + Duration::from_secs(2),
         "the request was abandoned {abandoned:?} after it was made"
     );
