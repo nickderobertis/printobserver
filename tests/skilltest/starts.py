@@ -62,6 +62,11 @@ START_REPLAY_INTERVAL_S = 3600
 #: supervisor port grants a supervision turn's: `printobserver-oneharness`'s own.
 TOOLS = ("Read", "Grep", "Glob", "Bash")
 READ_TOOLS = ("Read", "Grep", "Glob")
+#: The one tool a conversation has beyond a supervision turn's, and the one rule for
+#: it: Claude Code offers an installed Agent Skill through its skill tool alone, so
+#: without it the skill installed for the operator's agent is one it never sees.
+SKILL_TOOL = "Skill"
+SKILL_RULE = "Skill(printobserver)"
 #: The actor an operator's agent acts as, which its credential authenticates.
 OPERATOR = "operator"
 #: A conversation's name, by the calendar day its requests were made on.
@@ -168,8 +173,14 @@ def agent_rules() -> list[str]:
 
 
 def harness_arguments() -> list[str]:
-    """What narrows the harness: its tools, and the rules allowing the read tools and commands."""
-    return ["--tools", *TOOLS, "--allowedTools", *READ_TOOLS, *agent_rules()]
+    """What narrows the harness: its tools, and the rules allowing the read tools and commands.
+
+    A supervision turn's, and the skill tool for the one skill installed.
+    """
+    return [
+        "--tools", *TOOLS, SKILL_TOOL, "--allowedTools", *READ_TOOLS, SKILL_RULE,
+        *agent_rules(),
+    ]  # fmt: skip
 
 
 class StartRecord(TypedDict):

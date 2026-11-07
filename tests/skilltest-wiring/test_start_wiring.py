@@ -180,7 +180,20 @@ def test_the_conversation_has_the_skill_and_a_supervision_turns_permissions(
     turn = mock_replay(
         dataclasses.replace(one_check, moments=one_check.moments[:1]), [{}], supervised
     ).turns[0]
-    equal(agent_rules(), [word for word in turn["arguments"] if word.startswith("Bash(")])
+    supervision = turn["arguments"]
+    equal(agent_rules(), [word for word in supervision if word.startswith("Bash(")])
+    # Beyond a supervision turn's, the skill tool, for the one skill installed.
+    granted = tail[tail.index("--allowedTools") + 1 : len(harness_arguments())]
+    supervision_granted = supervision[supervision.index("--allowedTools") + 1 :]
+    equal(
+        [rule for rule in granted if rule != "Skill(printobserver)"],
+        supervision_granted[: len(granted) - 1],
+    )
+    equal(
+        tail[1 : tail.index("--allowedTools")],
+        [*supervision[supervision.index("--tools") + 1 : supervision.index("--allowedTools")],
+         "Skill"],
+    )  # fmt: skip
 
 
 def test_a_start_is_judged_by_the_sheet_its_manifest_declares(scratch: Path) -> None:
