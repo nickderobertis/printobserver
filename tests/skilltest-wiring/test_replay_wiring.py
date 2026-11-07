@@ -994,7 +994,6 @@ def test_the_doubles_refuse_what_no_adapter_sends(scratch: Path) -> None:
         for server, path, body, status in (
             (octoprint, "/api/job", "not json", 400),
             (octoprint, "/api/job", "[]", 400),
-            (octoprint, "/api/job", "x" * (doubles.MAX_BODY_BYTES + 1), 413),
             (octoprint, "/api/printer/tool", '{"command": "x"}', 400),
             (octoprint, "/api/printer/tool", '{"command": "flowrate", "factor": "all"}', 400),
             (octoprint, "/api/printer/command", '{"commands": [3]}', 400),
@@ -1010,6 +1009,15 @@ def test_the_doubles_refuse_what_no_adapter_sends(scratch: Path) -> None:
             answered.read()
             connection.close()
             equal(answered.status, status, describing=f"{path} {body}")
+        # Declared and never sent: the double refuses without reading, and closes.
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        connection = HTTPConnection("127.0.0.1", octoprint.server_address[1], timeout=10)
+        declared = {"X-Api-Key": "key", "Content-Length": str(doubles.MAX_BODY_BYTES + 1)}
+        connection.request("POST", "/api/job", headers=declared)
+        answered = connection.getresponse()
+        answered.read()
+        connection.close()
+        equal(answered.status, 413, describing="a body past the limit")
     finally:
         for server in (octoprint, obico):
             server.shutdown()
