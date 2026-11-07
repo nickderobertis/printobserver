@@ -94,6 +94,7 @@ def _run_is_whole(run_of: object) -> bool:
         and isinstance(run_of.get("unreadable", False), bool)
         and isinstance(run_of.get("streamed_twice", False), bool)
         and isinstance(run_of.get("stall_s", 0), (int, float))
+        and 0 <= run_of.get("stall_s", 0) < float("inf")
         and isinstance(run_of.get("reads", []), list)
         and all(isinstance(path, str) for path in run_of.get("reads", []))
     )
