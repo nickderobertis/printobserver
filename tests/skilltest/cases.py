@@ -232,6 +232,9 @@ class Case:
     gcode: Path
     gcode_size: int
     history: tuple[RecordedEvent, ...]
+    #: Where every positioned scenario of the case puts the job, in time order: the
+    #: recording's own, whether or not this suite replays that scenario yet.
+    anchors: tuple[PrintedAt, ...] = ()
 
     @property
     def test_id(self) -> str:
@@ -265,11 +268,11 @@ class Case:
         ]
 
     def _instant_of(self, position: int) -> datetime:
-        first, last = self.moments[0], self.moments[-1]
-        span = elapsed_seconds(first.at, last.at)
-        moved = last.file_position_bytes - first.file_position_bytes
-        seconds = (position - first.file_position_bytes) * span / moved if moved > 0 else 0
-        return instant(first.at) + timedelta(seconds=seconds)
+        first, last = self.anchors[0], self.anchors[-1]
+        span = (last.at - first.at).total_seconds()
+        moved = last.position - first.position
+        seconds = (position - first.position) * span / moved if moved > 0 else 0
+        return first.at + timedelta(seconds=seconds)
 
     def job_started(self) -> datetime:
         """When the job started: its recorded running time where a recorded event gives one.
@@ -303,10 +306,7 @@ class Case:
             if frame.progress_pct is not None and frame.progress_pct not in read:
                 read.add(frame.progress_pct)
                 readings.append(PrintedAt(at, int(frame.progress_pct / 100 * self.gcode_size)))
-        points = sorted(
-            [PrintedAt(instant(moment.at), moment.file_position_bytes) for moment in self.moments]
-            + readings
-        )
+        points = sorted([*self.anchors, *readings])
         highest = 0
         earlier, later = points[0], points[-1]
         for point in points:
@@ -397,6 +397,11 @@ def read_case(name: str) -> Case:
         if history_path.is_file()
         else []
     )
+    anchors = sorted(
+        PrintedAt(instant(scenario["at"]), scenario["file_position_bytes"])
+        for scenario in document["assertions"]["scenarios"]
+        if "file_position_bytes" in scenario
+    )
     return Case(
         name=name,
         directory=directory,
@@ -405,6 +410,7 @@ def read_case(name: str) -> Case:
         gcode=gcode,
         gcode_size=stored_size(gcode),
         history=tuple(history),
+        anchors=tuple(anchors),
     )
 
 

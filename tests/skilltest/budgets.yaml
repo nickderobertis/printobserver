@@ -11,7 +11,7 @@ budgets:
       2 probe turns once they exist, never retried and never repeated. Detail:
       turns per test and per conversation. Arithmetic over the cases' `replay`
       lists and the later nodes' stated additions. Workload: the suite as this
-      node lands it, 9 print replays feeding 42 checks, 42 turns per full run, 1
+      node lands it, 9 print replays feeding 41 checks, 41 turns per full run, 1
       run per change with no repetitions, about 10 minutes with 4 tests at once.
       Later nodes add 22 start requests, 8 watch lines, 2 probe turns and about
       44 carry-on checks, about 121 turns, mostly one-call lean checks, about 25

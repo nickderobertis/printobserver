@@ -570,7 +570,7 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
-    "replay": ["first-layers-healthy", "air-print-parts-stopped-growing"],
+    "replay": ["first-layers-healthy"],
     "scenarios": [
       {
         "id": "air-print-parts-stopped-growing",

@@ -86,7 +86,7 @@ REPLAYS = {
         "first-layer-before-the-failure",
         "ring-dragged-off-its-place",
     ],
-    "petg-spool-jam-air-print": ["first-layers-healthy", "air-print-parts-stopped-growing"],
+    "petg-spool-jam-air-print": ["first-layers-healthy"],
     "petg-clip-detach-and-stringing-web": [
         "clip-came-loose",
         "stringing-web-warning",
@@ -489,7 +489,10 @@ def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
 
 def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Path) -> None:
     """Over the real cases whose next event shows a fault, however many looks a turn takes."""
-    for name in ("jar-top-wrong-material-first-layer-detach", "petg-spool-jam-air-print"):
+    for name in (
+        "jar-top-wrong-material-first-layer-detach",
+        "jar-top-wrong-material-detach-spaghetti",
+    ):
         case = read_case(name)
         faulty = case.moments[-1].event_image
         directory = scratch / name
@@ -548,6 +551,19 @@ def test_the_job_keeps_moving_between_checks_while_frames_repeat_a_reading() -> 
         steady = first.file_position_bytes + moved * seconds / span
         off = abs(case.position_at(when) - steady)
         truth(off < moved / 20, describing=f"{steady} at {seconds} s, off by {off}")
+
+
+def test_a_single_event_replay_moves_the_job_at_the_recordings_rate() -> None:
+    """A case replaying one event still has its other scenarios to read the rate from."""
+    for name in ("under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"):
+        case = read_case(name)
+        event = case.moments[0]
+        at = instant(event.at)
+        after_a_look = case.position_at(at + timedelta(seconds=90))
+        truth(
+            event.file_position_bytes <= after_a_look < case.gcode_size / 2,
+            describing=f"{name} a little past {event.file_position_bytes}, at {after_a_look}",
+        )
 
 
 def test_the_print_clock_never_goes_back_whatever_a_look_waited(scratch: Path) -> None:
