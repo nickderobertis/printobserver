@@ -118,14 +118,21 @@ class Secrets:
 
 
 def service_config(
-    state: Path, listen: str, octoprint: str, camera: str, obico: str, minted: Secrets
+    state: Path,
+    listen: str,
+    octoprint: str,
+    camera: str,
+    obico: str,
+    minted: Secrets,
+    *,
+    interval_s: int = OBSERVATION_INTERVAL_S,
 ) -> str:
     """The installer's configuration, with what an operator fills in filled in."""
     verifier = hashlib.sha256(minted.operator.encode()).hexdigest()
     text = (
         _installer_template()
         .replace("$RUNTIME_STATE", state.as_posix())
-        .replace("$INTERVAL_LINE", f"observation_interval_s = {OBSERVATION_INTERVAL_S}")
+        .replace("$INTERVAL_LINE", f"observation_interval_s = {interval_s}")
         .replace('listen = "127.0.0.1:8420"', f'listen = "{listen}"')
         .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
         .replace('api_key = ""', f'api_key = "{minted.octoprint_key}"')
@@ -203,6 +210,62 @@ def refuse_a_pointer(data: bytes, case: str, name: str) -> bytes:
         msg = f"{case}/{name} is an LFS pointer: run `just real-prints-fetch`"
         raise ReplayError(msg)
     return data
+
+
+#: Shell operators that make a line run more than one command, outside its quotes.
+OPERATORS = ("&&", "||", ";", "|", "&", "\n")
+
+
+def segments(command: str) -> list[str]:
+    """The commands one shell line runs, split at the operators outside its quotes."""
+    found, current, quote, index = [], "", "", 0
+    while index < len(command):
+        character = command[index]
+        if quote:
+            current += character
+            if character == quote:
+                quote = ""
+        elif character in {"'", '"'}:
+            quote = character
+            current += character
+        else:
+            joined = next((op for op in OPERATORS if command.startswith(op, index)), None)
+            if joined is not None:
+                found.append(current)
+                current = ""
+                index += len(joined)
+                continue
+            current += character
+        index += 1
+    found.append(current)
+    return [part.strip() for part in found if part.strip()]
+
+
+def is_compound(command: str) -> bool:
+    """Whether a shell line runs a `printobserver` command beside another command.
+
+    Chained to another in one line, or run after `cd`: a permission rule allowing the
+    program's commands alone refuses either, so a correct action written that way is
+    one the shell never takes.
+    """
+    parts = segments(command)
+    runs_the_program = any(
+        Path(part.split()[0]).name.removesuffix(".exe") == "printobserver" for part in parts
+    )
+    return runs_the_program and len(parts) > 1
+
+
+def keep_the_log(server: subprocess.Popen[str], log: Path) -> None:
+    """Keep what the server prints, so neither pipe fills and it is there to read."""
+
+    def kept(stream: TextIO | None) -> None:
+        with log.open("a", encoding="utf-8") as written:
+            for line in stream or ():
+                written.write(line)
+                written.flush()
+
+    for stream in (server.stdout, server.stderr):
+        threading.Thread(target=kept, args=(stream,), daemon=True).start()
 
 
 def _utc_instant(held: str) -> datetime:
@@ -377,6 +440,8 @@ class TestRecord(TypedDict):
     passed: bool
     turns: int
     sessions: list[str]
+    #: Each `printobserver` command a conversation ran beside another, by conversation.
+    compound_commands: dict[str, list[str]]
     decision_points: list[DecisionRecord]
 
 
@@ -484,6 +549,25 @@ class Replayed:
             if point.why_not
         )
 
+    def compound_commands(self) -> dict[str, list[str]]:
+        """Each `printobserver` command a conversation ran beside another, by conversation.
+
+        A turn is its ledger entry's session's; with no entry to read, the print's last.
+        """
+        sessions = [session["session_name"] for session in self.ledger["sessions"]]
+        found: dict[str, list[str]] = {session: [] for session in sessions}
+        turns = self.ledger["turns"]
+        for number, point in enumerate(self.points):
+            session = (
+                turns[number]["session_name"]
+                if len(turns) == len(self.points)
+                else (sessions[-1] if sessions else "")
+            )
+            found.setdefault(session, []).extend(
+                command for command in point.commands if is_compound(command)
+            )
+        return found
+
     def as_record(self) -> TestRecord:
         """The replay as `results/latest.json` carries it."""
         return {
@@ -491,6 +575,7 @@ class Replayed:
             "passed": self.passed,
             "turns": len(self.points),
             "sessions": [session["session_name"] for session in self.ledger["sessions"]],
+            "compound_commands": self.compound_commands(),
             "decision_points": [point.as_record() for point in self.points],
         }
 
@@ -857,16 +942,7 @@ class Replay:
         return ended
 
     def _keep_the_log(self, server: subprocess.Popen[str]) -> None:
-        """Keep what the server prints, so neither pipe fills and it is there to read."""
-
-        def kept(stream: TextIO | None) -> None:
-            with (self.root / "server.log").open("a", encoding="utf-8") as log:
-                for line in stream or ():
-                    log.write(line)
-                    log.flush()
-
-        for stream in (server.stdout, server.stderr):
-            threading.Thread(target=kept, args=(stream,), daemon=True).start()
+        keep_the_log(server, self.root / "server.log")
 
     def _log_tail(self) -> str:
         """What the server recorded of the failed turn."""

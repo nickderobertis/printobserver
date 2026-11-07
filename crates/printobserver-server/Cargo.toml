@@ -13,7 +13,7 @@ authors.workspace = true
 # own integration tier points a run at so `OneHarness` replaces the paid
 # provider process with its own published deterministic responder. Off by
 # default, so nothing an ordinary consumer installs carries it.
-test-responder = ["dep:oneharness"]
+test-responder = ["dep:oneharness", "dep:clap"]
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
@@ -49,6 +49,9 @@ toml = { version = "0.9", default-features = false, features = ["parse", "serde"
 # responder it publishes. A binary target cannot read a dev-dependency, so this
 # is an optional ordinary dependency gated behind `test-responder`.
 oneharness = { workspace = true, optional = true }
+# The command-line parser `oneharness`'s own entry point reads its arguments
+# with, for `printobserver-server-oneharness`, which is that entry point.
+clap = { version = "4.5", default-features = false, optional = true }
 
 [dev-dependencies]
 # `display` is a test-only need: the journeys build a configuration document as
@@ -71,6 +74,13 @@ printobserver-octoprint = { workspace = true, features = ["standin"] }
 [[bin]]
 name = "printobserver-server-responder"
 path = "src/bin/responder.rs"
+required-features = ["test-responder"]
+
+# The `oneharness` command line at this workspace's locked release, which the
+# real-print replay's operator conversation runs; see its source.
+[[bin]]
+name = "printobserver-server-oneharness"
+path = "src/bin/oneharness.rs"
 required-features = ["test-responder"]
 
 # The real-print replay's pass-through in front of the harness; see its source.

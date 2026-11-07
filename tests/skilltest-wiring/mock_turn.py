@@ -9,7 +9,15 @@ run request down is real, and only the paid model is not.
 Given the script file and then whatever the harness was asked. Each run in the
 script is `{"commands": [[word, ...], ...], "usage": {...}, "compact": bool}`, and
 `"unreadable": true` answers something the engine must re-prompt. In a command's
-words, `{print}`, `{actor}` and `{event}` stand for what the prompt named.
+words, `{print}`, `{actor}` and `{event}` stand for what the prompt named, and in an
+operator's message `{file}` and `{frame}` for the file it asks to start and the frame
+it hands over; `{new_print}` is an identifier no print holds. A command is a list of
+words, run as written, or one string, which is a shell line as the agent wrote it.
+
+The shell is the harness's to refuse, so a run started with permission rules takes
+the one way Claude Code's `dontAsk` mode does: a shell line runs only when every
+command it chains begins with a command a rule allows, and is otherwise refused and
+answered as refused. A run asked for no schema answers in words, its `reply`.
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -59,7 +68,9 @@ ASSESSMENT: Assessment = {
 class ScriptedRun(TypedDict):
     """One harness run of a script."""
 
-    commands: NotRequired[list[list[str]]]
+    commands: NotRequired[list[list[str] | str]]
+    #: What a run asked for no schema answers.
+    reply: NotRequired[str]
     usage: NotRequired[dict[str, int]]
     #: How long the turn takes beyond its commands, in seconds.
     stall_s: NotRequired[float]
@@ -86,8 +97,12 @@ def _run_is_whole(run_of: object) -> bool:
     commands = run_of.get("commands", [])
     return (
         isinstance(commands, list)
-        and all(isinstance(words, list) and words for words in commands)
-        and all(isinstance(word, str) for words in commands for word in words)
+        and all(
+            (isinstance(words, list) and words and all(isinstance(word, str) for word in words))
+            or (isinstance(words, str) and words)
+            for words in commands
+        )
+        and isinstance(run_of.get("reply", ""), str)
         and isinstance(run_of.get("usage", {}), dict)
         and all(isinstance(count, int) for count in run_of.get("usage", {}).values())
         and isinstance(run_of.get("compact", False), bool)
@@ -100,15 +115,59 @@ def _run_is_whole(run_of: object) -> bool:
     )
 
 
+#: An identifier in the shape the server mints a print's in, which no print holds.
+NEW_PRINT = "01900000-0000-7000-8000-000000000000"
+#: A Claude Code shell rule allowing every command that begins with its prefix.
+SHELL_RULE = re.compile(r"^Bash\((?P<prefix>[^:()*]+):\*\)$")
+#: What chains one shell command to the next, as Claude Code splits a line to judge it.
+CHAINS = re.compile(r"&&|\|\||;|\||&|\n")
+
+
 def _prompt(arguments: list[str]) -> str:
+    """What the run was asked: the word after `-p`, which is where Claude Code reads it."""
+    if "-p" in arguments and arguments.index("-p") + 1 < len(arguments):
+        return arguments[arguments.index("-p") + 1]
     return next((word for word in arguments if "printobserver context" in word), "")
+
+
+def _allowed_prefixes(arguments: list[str]) -> list[str] | None:
+    """The command prefixes the run's rules allow the shell, or none when no rule narrows it."""
+    if "--allowedTools" not in arguments:
+        return None
+    rules = []
+    for word in arguments[arguments.index("--allowedTools") + 1 :]:
+        if word.startswith("--"):
+            break
+        rules.append(word)
+    return [found["prefix"] for rule in rules if (found := SHELL_RULE.match(rule))]
+
+
+def _allowed(line: str, prefixes: list[str] | None) -> bool:
+    """Whether every command a shell line chains begins with a command a rule allows."""
+    if prefixes is None:
+        return True
+    commands = [part.strip() for part in CHAINS.split(line) if part.strip()]
+    return bool(commands) and all(
+        any(command == prefix or command.startswith(f"{prefix} ") for prefix in prefixes)
+        for command in commands
+    )
 
 
 def _filled(word: str, prompt: str) -> str:
     print_id = re.search(r"printobserver context --print-id (\S+)", prompt)
     actor = re.search(r"--actor '([^']+)'", prompt)
     event = re.search(r'"id": "([^"]+)"', prompt)
-    for placeholder, found in (("{print}", print_id), ("{actor}", actor), ("{event}", event)):
+    file = re.search(r"start the print (\S+),", prompt)
+    frame = re.search(r"as it is now is (\S+?)\. ", prompt)
+    if "{new_print}" in word:
+        word = word.replace("{new_print}", NEW_PRINT)
+    for placeholder, found in (
+        ("{print}", print_id),
+        ("{actor}", actor),
+        ("{event}", event),
+        ("{file}", file),
+        ("{frame}", frame),
+    ):
         if placeholder in word:
             if found is None:
                 msg = f"the prompt names nothing for {placeholder}"
@@ -139,10 +198,35 @@ class Seen(TypedDict):
     assessment: Assessment
 
 
-def _ran(words: list[str]) -> CommandResult:
-    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    done = run(words, timeout=TIMEOUT_S)
-    return {"words": words, "status": done.returncode, "out": done.stdout, "err": done.stderr}
+#: The status a refused shell line is written down with: it never ran.
+REFUSED = -1
+
+
+def _ran(command: list[str] | str, prompt: str, prefixes: list[str] | None) -> CommandResult:
+    """Run one scripted command, unless the run's rules refuse it as Claude Code would."""
+    if isinstance(command, str):
+        line = _filled(command, prompt)
+        words = shlex.split(line)
+    else:
+        words = [_filled(word, prompt) for word in command]
+        line = shlex.join(words)
+    if not _allowed(line, prefixes):
+        return {"words": words, "status": REFUSED, "out": "", "err": "permission denied"}
+    status, out, err = 0, "", ""
+    # A line every chained command of which a rule allows runs each in turn.
+    for part in CHAINS.split(line) if isinstance(command, str) else [None]:
+        argv = words if part is None else shlex.split(part)
+        if not argv:
+            continue
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        done = run(argv, timeout=TIMEOUT_S)
+        status, out, err = done.returncode, out + done.stdout, err + done.stderr
+    return {"words": words, "status": status, "out": out, "err": err}
+
+
+def _line(command: list[str] | str) -> str:
+    """A scripted command as the agent's shell call writes it."""
+    return command if isinstance(command, str) else " ".join(command)
 
 
 def main(script_path: str, arguments: list[str]) -> int:
@@ -166,9 +250,8 @@ def main(script_path: str, arguments: list[str]) -> int:
     counter.write_text(str(number + 1), encoding="utf-8")
     scripted = script["turns"][min(number, len(script["turns"]) - 1)]
     prompt = _prompt(arguments)
-    ran = [
-        _ran([_filled(word, prompt) for word in words]) for words in scripted.get("commands", [])
-    ]
+    prefixes = _allowed_prefixes(arguments)
+    ran = [_ran(command, prompt, prefixes) for command in scripted.get("commands", [])]
     assessment: Assessment = {**ASSESSMENT, "summary": f"scripted run {number}"}
     seen: Seen = {
         "turn": number,
@@ -183,7 +266,12 @@ def main(script_path: str, arguments: list[str]) -> int:
     with (directory / SEEN_FILE).open("a", encoding="utf-8") as log:
         log.write(json.dumps(seen) + "\n")
     time.sleep(scripted.get("stall_s", 0))
-    session = f"mock-session-{script['session']}"
+    # A run continuing a conversation is handed its id, and one opening it is given a new one.
+    session = (
+        arguments[arguments.index("--resume") + 1]
+        if "--resume" in arguments
+        else f"mock-session-{script['session']}-{number}"
+    )
     usage = scripted.get("usage", {"input_tokens": 10, "output_tokens": 5})
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
     transcript = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "workspace"
@@ -204,9 +292,9 @@ def main(script_path: str, arguments: list[str]) -> int:
                         "type": "tool_use",
                         "id": f"call-{number}-{index}",
                         "name": "Bash",
-                        "input": {"command": " ".join(words)},
+                        "input": {"command": _filled(_line(command), prompt)},
                     }
-                    for index, words in enumerate(scripted.get("commands", []))
+                    for index, command in enumerate(scripted.get("commands", []))
                 ),
                 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
                 *(
@@ -214,7 +302,7 @@ def main(script_path: str, arguments: list[str]) -> int:
                         "type": "tool_use",
                         "id": f"read-{number}-{index}",
                         "name": "Read",
-                        "input": {"file_path": path},
+                        "input": {"file_path": _filled(path, prompt)},
                     }
                     for index, path in enumerate(scripted.get("reads", []))
                 ),
@@ -228,6 +316,8 @@ def main(script_path: str, arguments: list[str]) -> int:
         {"result": "no answer in the shape asked for"}
         if scripted.get("unreadable")
         else {"result": json.dumps(assessment), "structured_output": assessment}
+        if "--json-schema" in arguments
+        else {"result": scripted.get("reply", "scripted reply")}
     )
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
     result = {

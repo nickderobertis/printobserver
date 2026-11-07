@@ -29,7 +29,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, NamedTuple, TypedDict
+from typing import Any, NamedTuple, Protocol, TypedDict
 from urllib.parse import unquote, urlsplit
 
 from cases import Case, MachineState, Moment, instant
@@ -590,7 +590,17 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
     return _serving(Handler)
 
 
-def camera(timeline: Timeline) -> ThreadingHTTPServer:
+class Scene(Protocol):
+    """What the loopback camera answers from: a replay's timeline, or a bench."""
+
+    stopped: threading.Event
+
+    def camera_answer(self) -> CameraFrame | None:
+        """The bytes this fetch answers and when they were captured, or nothing any more."""
+        ...
+
+
+def camera(timeline: Scene) -> ThreadingHTTPServer:
     """The loopback camera, answering each fetch with the frame the timeline stands at."""
 
     class Handler(_Quiet):
@@ -634,6 +644,24 @@ def obico(timeline: Timeline) -> ThreadingHTTPServer:
     return _serving(Handler)
 
 
+def health() -> ThreadingHTTPServer:
+    """An Obico that answers its health and delivers nothing, for a replay no alert is part of."""
+
+    class Handler(_Quiet):
+        def do_GET(self) -> None:
+            if urlsplit(self.path).path.startswith("/media/"):
+                self.answer_json(404, {"error": "no such image"})
+                return
+            self.answer_json(200, {"status": "ok"})
+
+        def do_POST(self) -> None:
+            if self.body() is None:
+                return
+            self.answer_json(404, {"error": "Not found"})
+
+    return _serving(Handler)
+
+
 def control(
     started: Callable[[], str], exited: Callable[[], None], failed: Callable[[str], None]
 ) -> ThreadingHTTPServer:
@@ -662,3 +690,237 @@ def control(
 def address(server: ThreadingHTTPServer) -> str:
     """The URL one double answers at."""
     return _url(server)
+
+
+#: The filament OctoPrint's analysis says a start request's file needs, in millimetres:
+#: a small part's worth, which a full spool holds many times over.
+BENCH_FILAMENT_MM = 2_000.0
+#: How a `Range` header asks for a file's last bytes.
+SUFFIX_RANGE = re.compile(r"^bytes=-(?P<count>\d+)$")
+
+
+@dataclass
+class Bench:
+    """The printer between prints: the files it holds, the bed the camera sees, its clock.
+
+    What a start request's replay doubles. The OctoPrint stand-in answers an idle,
+    operational printer until it is told to start a file it holds, and then that job
+    printing; the camera answers the request's own frame, captured at the request's
+    moment, to every fetch; the server's clock reads that moment, moving at real speed.
+    """
+
+    #: The bytes of one frame, by its file name.
+    picture: Callable[[str], bytes]
+    #: The file the server's clock is moved by.
+    clock: Path
+    #: Every file the printer holds, by its name.
+    files: dict[str, bytes] = field(default_factory=dict)
+    frame: str | None = None
+    captured: datetime | None = None
+    #: The file a start is of, once one was selected.
+    selected: str | None = None
+    #: The file the printer is printing, once something started it.
+    printing: str | None = None
+    #: Each file a start asked the printer for, in order.
+    started: list[str] = field(default_factory=list)
+    #: Each frame a fetch was answered with, in order.
+    fetches: list[str] = field(default_factory=list)
+    offset: timedelta = timedelta()
+    finished: bool = False
+    stopped: threading.Event = field(default_factory=threading.Event)
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def now(self) -> datetime:
+        """The bench's current time, which is what the server's clock answers."""
+        return datetime.now(UTC) + self.offset
+
+    def stand_at(self, when: datetime, frame: str, gcode: tuple[str, bytes]) -> None:
+        """A new request: the bed as its frame shows it, the file it asks for, at its moment.
+
+        Whatever the last request started has ended by then, and the printer is idle.
+        """
+        with self.lock:
+            self.offset = when - datetime.now(UTC)
+            written = self.clock.with_suffix(".new")
+            written.write_text(f"{int(self.offset.total_seconds() * 1000)}\n", "ascii")
+            written.replace(self.clock)
+            self.frame = frame
+            self.captured = when
+            self.printing = None
+            self.selected = None
+            self.files[gcode[0]] = gcode[1]
+
+    def camera_answer(self) -> CameraFrame | None:
+        """The request's frame, numbered for this fetch, and when it was captured."""
+        with self.lock:
+            if self.finished or self.frame is None or self.captured is None:
+                return None
+            self.fetches.append(self.frame)
+            number, frame, captured = len(self.fetches), self.frame, self.captured
+        return CameraFrame(numbered(self.picture(frame), number), captured)
+
+    def job_body(self) -> dict[str, Any]:
+        """What `GET /api/job` answers: nothing selected while idle, the job once started."""
+        with self.lock:
+            if self.printing is None:
+                return {
+                    "job": {"file": {"name": None, "origin": None, "size": None}},
+                    "progress": {
+                        "completion": None,
+                        "filepos": None,
+                        "printTime": None,
+                        "printTimeLeft": None,
+                    },
+                    "state": "Operational",
+                    "error": "",
+                }
+            size = len(self.files[self.printing])
+            return {
+                "job": {
+                    "file": {"name": self.printing, "origin": "local", "size": size},
+                    "estimatedPrintTime": None,
+                    "filament": None,
+                },
+                "progress": {
+                    "completion": 0.0,
+                    "filepos": 0,
+                    "printTime": 0,
+                    "printTimeLeft": None,
+                },
+                "state": "Printing",
+                "error": "",
+            }
+
+    def printer_body(self) -> PrinterDocument:
+        """What `GET /api/printer` answers: operational, and printing once started."""
+        with self.lock:
+            printing = self.printing is not None
+        return {
+            "state": {
+                "text": "Printing" if printing else "Operational",
+                "flags": {
+                    "operational": True,
+                    "printing": printing,
+                    "paused": False,
+                    "cancelling": False,
+                    "error": False,
+                    "closedOrError": False,
+                },
+            },
+            "temperature": {
+                "tool0": {"actual": 24.0, "target": 0.0, "offset": 0},
+                "bed": {"actual": 24.0, "target": 0.0, "offset": 0},
+            },
+        }
+
+    def holds(self, name: str) -> bool:
+        """Whether the printer holds a file of that name."""
+        with self.lock:
+            return name in self.files
+
+    def select(self, name: str) -> bool:
+        """Select a file the printer holds, which is what a start is then of."""
+        with self.lock:
+            if name not in self.files:
+                return False
+            self.selected = name
+            return True
+
+    def start(self) -> bool:
+        """Start the selected file, as OctoPrint does only from an operational printer."""
+        with self.lock:
+            if self.printing is not None or self.selected is None:
+                return False
+            self.printing = self.selected
+            self.started.append(self.selected)
+            return True
+
+
+def bench_octoprint(bench: Bench, api_key: str) -> ThreadingHTTPServer:
+    """The OctoPrint stand-in over a bench: what a start request reads, and the start itself."""
+
+    class Handler(_Quiet):
+        def do_GET(self) -> None:
+            path = urlsplit(self.path).path
+            if path.startswith("/downloads/files/local/"):
+                self._download(unquote(path.rsplit("/", 1)[1]))
+                return
+            if self.headers.get("X-Api-Key") != api_key:
+                self.answer_json(403, {"error": "Forbidden"})
+                return
+            match path:
+                case "/api/job":
+                    self.answer_json(200, bench.job_body())
+                case "/api/printer":
+                    self.answer_json(200, bench.printer_body())
+                case "/api/connection":
+                    state = bench.printer_body()["state"]["text"]
+                    self.answer_json(200, {"current": {"state": state, "port": "/dev/ttyACM0"}})
+                case "/api/files":
+                    self.answer_json(200, {"files": [self._facts(name) for name in bench.files]})
+                case _ if path.startswith("/api/files/local/"):
+                    name = unquote(path.rsplit("/", 1)[1])
+                    if not bench.holds(name):
+                        self.answer_json(404, {"error": "Not found"})
+                        return
+                    self.answer_json(200, self._facts(name))
+                case _:
+                    self.answer_json(404, {"error": "Not found"})
+
+        def _facts(self, name: str) -> dict[str, Any]:
+            host = self.headers.get("Host", "127.0.0.1")
+            return {
+                "name": name,
+                "origin": "local",
+                "type": "machinecode",
+                "size": len(bench.files[name]),
+                "gcodeAnalysis": {"filament": {"tool0": {"length": BENCH_FILAMENT_MM}}},
+                "refs": {"download": f"http://{host}/downloads/files/local/{name}"},
+            }
+
+        def _download(self, name: str) -> None:
+            """A file's bytes, or only its last ones when a suffix `Range` asks for them."""
+            held = bench.files.get(name)
+            if held is None:
+                self.answer(404)
+                return
+            asked = SUFFIX_RANGE.match(self.headers.get("Range", ""))
+            if asked is None or int(asked["count"]) >= len(held):
+                self.answer(200, held, "text/plain")
+                return
+            start = len(held) - int(asked["count"])
+            self.send_response(206)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Range", f"bytes {start}-{len(held) - 1}/{len(held)}")
+            self.send_header("Content-Length", str(len(held) - start))
+            self.end_headers()
+            self.wfile.write(held[start:])
+
+        def do_POST(self) -> None:
+            if self.headers.get("X-Api-Key") != api_key and self.path != "/api/login":
+                self.answer_json(403, {"error": "Forbidden"})
+                return
+            body = self.body()
+            if body is None:
+                return
+            path = urlsplit(self.path).path
+            match path, body:
+                case "/api/login", _:
+                    self.answer_json(200, {"name": "operator", "session": "replay"})
+                    return
+                case _, {"command": "select", "print": False} if path.startswith(
+                    "/api/files/local/"
+                ):
+                    if not bench.select(unquote(path.rsplit("/", 1)[1])):
+                        self.answer_json(404, {"error": "Not found"})
+                        return
+                case "/api/job", {"command": "start"}:
+                    if not bench.start():
+                        self.answer_json(409, {"error": "Printer is not operational"})
+                        return
+                case _:
+                    self.answer_json(400, {"error": "Not a command this printer takes now"})
+                    return
+            self.answer(204)
+
+    return _serving(Handler)
