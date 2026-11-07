@@ -318,7 +318,8 @@ def kept_harness(root: Path = REPO) -> str | None:
     if found is None:
         return None
     source = Path(found).resolve()
-    kept = root / "target" / "skilltest" / "harness" / f"{source.stat().st_size}-{source.name}"
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()[:16]
+    kept = root / "target" / "skilltest" / "harness" / f"{digest}-{source.name}"
     if not kept.is_file():
         kept.parent.mkdir(parents=True, exist_ok=True)
         partial = kept.with_suffix(f".{os.getpid()}")
@@ -909,6 +910,7 @@ class Replay:
             if self.timeline.finished and ended >= wanted:
                 return
             harness_exits = sum(1 for harness_run in self.runs if harness_run.ended_at)
+            # llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
             if ended > harness_exits:
                 said = self.bin / "launcher.log"
                 told = said.read_text("utf-8", "replace") if said.is_file() else "nothing"
@@ -1046,6 +1048,7 @@ class Replay:
             try:
                 self.server.wait(timeout=30)
             except subprocess.TimeoutExpired:
+                # llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
                 self.server.kill()
                 self.server.wait()
         for server in self.servers:

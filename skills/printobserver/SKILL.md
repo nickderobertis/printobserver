@@ -41,7 +41,8 @@ rather than leaving it undone.
    shape would make it solid; a texture the shape could explain, ribs, lattice,
    bridging over support, is not clear. Inside the outline supports, bridges and
    infill look open, in straight regular lines; curved or tangled strands are a
-   defect, never a continue, and no setting undoes what is laid.
+   defect, never a continue, and no setting undoes what is laid. A strand off the part,
+   on a rail, screw or the frame, is not the print's defect: note it and carry on.
 
    Change a setting only on a clear defect; unsure, watch.
 3. **Look again, and watch if you need to.** At least once: the event's frame is

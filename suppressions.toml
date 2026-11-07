@@ -4460,6 +4460,18 @@ reason = "Claude Code's tool-call blocks in its transcript has no published sche
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
+file = "tests/skilltest/replay.py"
+site = "if ended > harness_exits:"
+reason = "A guard against the real server recording a turn no harness process ran, which the server does not do and no double can make it do without faking the layer under test. It stops the replay and spends nothing further if a release of the server ever does."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tests/skilltest/replay.py"
+site = "self.server.kill()"
+reason = "A server ignoring termination for 30 s, which the real server does not do and which no test could cause on every platform the gate runs on: a Windows process cannot ignore it at all. `test_stopping_a_replay_stops_its_server_and_its_doubles` proves the ordinary path."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
 file = "tests/skilltest/cases.py"
 site = "return sorted(replays(CASES))"
 reason = "A case with no `replay` has no test here by this suite's design. `porous-walls` and `bridge-sagging-uncooled` are listed and proven by the node that makes the flow factor and fan speed observable; the bed cases and the other cases without a replay are outside this node's replay set. A `case.json` can carry no directive of its own, so this one stands where those cases are left out."

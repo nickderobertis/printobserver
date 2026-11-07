@@ -886,6 +886,13 @@ def test_the_kept_harness_is_a_copy_that_starts_and_outlives_its_install(
     shutil.copy2(built, source)
     equal(kept_harness(root), kept)
     equal(len(list(Path(str(kept)).parent.iterdir())), 1)
+    # The same size in other bytes is another release, and gets a copy of its own.
+    changed = bytearray(built.read_bytes())
+    changed[-1] ^= 0xFF
+    source.write_bytes(changed)
+    other = kept_harness(root)
+    truth(other != kept, describing="a changed harness to be copied afresh")
+    equal(Path(str(other)).read_bytes(), bytes(changed))
 
 
 def test_the_budgets_command_reports_the_turns_the_cases_count(scratch: Path) -> None:
@@ -1022,6 +1029,60 @@ def test_usage_a_later_run_adds_is_summed_or_kept() -> None:
         ]
     )
     equal(report.usage, {"input_tokens": 3, "service_tier": "standard", "output_tokens": 5})
+
+
+def test_a_harness_that_cannot_start_stops_the_replay_naming_why(scratch: Path) -> None:
+    """The launcher's own reason is what the replay reports, and everything stops."""
+    case = read_case("fan-cut-bridge")
+    replay = Replay(case, [str(scratch / "no-such-harness")], picture=stamped)
+    try:
+        with pytest.raises(ReplayError, match="the launcher said"):
+            replay.run()
+        truth(
+            replay.server is not None and replay.server.poll() is not None,
+            describing="the server to have stopped",
+        )
+    finally:
+        replay.clean_up()
+
+
+def test_a_turn_past_its_deadline_stops_the_replay_and_its_spending(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hung turn is reported by its count, and the server is stopped."""
+    monkeypatch.setattr(replay_module, "TURN_DEADLINE_S", 1)
+    with pytest.raises(ReplayError, match="turns ended in"):
+        mock_replay(read_case("fan-cut-bridge"), [{"commands": [], "stall_s": 4.0}], scratch)
+
+
+def test_stopping_a_replay_stops_its_server_and_its_doubles(scratch: Path) -> None:
+    """What a replay started does not outlive it."""
+    script = scratch / "script.json"
+    script.write_text(
+        json.dumps(
+            {
+                "session": "stopping",
+                "responder": str(program("printobserver-server-responder")),
+                "turns": [{"commands": [CONTEXT]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    replay = Replay(
+        read_case("fan-cut-bridge"),
+        [sys.executable, str(MOCK_TURN), str(script)],
+        picture=stamped,
+    )
+    try:
+        replay.run()
+        truth(
+            replay.server is not None and replay.server.poll() is not None,
+            describing="the server to have stopped",
+        )
+        for double in replay.servers:
+            equal(double.socket.fileno(), -1, describing="a double's socket to be closed")
+    finally:
+        replay.clean_up()
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:

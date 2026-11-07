@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict
 
@@ -60,6 +61,8 @@ class ScriptedRun(TypedDict):
 
     commands: NotRequired[list[list[str]]]
     usage: NotRequired[dict[str, int]]
+    #: How long the turn takes beyond its commands, in seconds.
+    stall_s: NotRequired[float]
     #: Files the turn opens with its file tool.
     reads: NotRequired[list[str]]
     #: Whether the transcript writes each call twice, as one streamed over two messages.
@@ -90,6 +93,7 @@ def _run_is_whole(run_of: object) -> bool:
         and isinstance(run_of.get("compact", False), bool)
         and isinstance(run_of.get("unreadable", False), bool)
         and isinstance(run_of.get("streamed_twice", False), bool)
+        and isinstance(run_of.get("stall_s", 0), (int, float))
         and isinstance(run_of.get("reads", []), list)
         and all(isinstance(path, str) for path in run_of.get("reads", []))
     )
@@ -177,6 +181,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     }
     with (directory / SEEN_FILE).open("a", encoding="utf-8") as log:
         log.write(json.dumps(seen) + "\n")
+    time.sleep(scripted.get("stall_s", 0))
     session = f"mock-session-{script['session']}"
     usage = scripted.get("usage", {"input_tokens": 10, "output_tokens": 5})
     transcript = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "workspace"
