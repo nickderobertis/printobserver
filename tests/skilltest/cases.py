@@ -410,4 +410,5 @@ def read_case(name: str) -> Case:
 
 def replayed_case_names() -> list[str]:
     """Every case on disk with a `replay`, so a case gaining one is one test with no edit here."""
+    # llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
     return sorted(replays(CASES))

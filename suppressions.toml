@@ -4460,6 +4460,12 @@ reason = "Claude Code's tool-call blocks in its transcript has no published sche
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
+file = "tests/skilltest/cases.py"
+site = "return sorted(replays(CASES))"
+reason = "A case with no `replay` has no test here by this suite's design. `porous-walls` and `bridge-sagging-uncooled` are listed and proven by the node that makes the flow factor and fan speed observable; the bed cases and the other cases without a replay are outside this node's replay set. A `case.json` can carry no directive of its own, so this one stands where those cases are left out."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-server/src/server.rs"
 site = "assigned.extend(sign_in.session_assignments().map_err(refused)?);"
 reason = "The end-to-end proof is `test_every_turn_runs_with_the_harness_kept_from_replacing_itself` in `tests/skilltest-wiring`: the real server launches a harness and that harness writes down the environment it was started with. Repeating it from this crate would need a second stand-in harness that reads its own environment."

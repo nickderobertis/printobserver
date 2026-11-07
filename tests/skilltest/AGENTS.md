@@ -1,7 +1,6 @@
 # skilltest
 
-The rules the real-print suite is held to, and why. The root `AGENTS.md` says when
-it runs.
+The rules the real-print suite is held to, and why.
 
 - **Doubled are only what no test host has:** OctoPrint, the camera and Obico. A
   frame or an event the replay gets wrong reads as a fault in the agent, so a

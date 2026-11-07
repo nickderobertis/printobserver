@@ -662,6 +662,20 @@ def test_the_pointers_a_clone_carries_are_read_from_the_index(tree: Callable[[],
     )
 
 
+def test_more_frames_than_a_command_line_holds_are_read_all_the_same(
+    tree: Callable[[], Tree],
+) -> None:
+    """Windows' command line ran out at this repository's own count of frames."""
+    copy = tree()
+    as_pointers(copy)
+    committed(copy)
+    absent = [f"{ROOT}/a-case/{number:06}-{'x' * 100}.jpg" for number in range(60_000)]
+
+    answered = committed_pointers(Repo(copy.root), [STALL_FRAME, *absent])
+
+    equal(list(answered), [STALL_FRAME], describing="the one of them the index holds")
+
+
 def test_a_copy_that_is_no_repository_is_read_as_its_files(
     check: Run, tree: Callable[[], Tree]
 ) -> None:

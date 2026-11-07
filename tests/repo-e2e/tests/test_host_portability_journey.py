@@ -54,11 +54,12 @@ def test_a_checkout_under_windows_line_ending_default_carries_no_carriage_return
     passing(listing, describing="`git ls-files --eol` in the clone")
     # One line per file: the index's own ending, the working tree's, the
     # attributes, and the path. What git reads as binary is `-text` in both and
-    # is left as the bytes it was committed as.
+    # is left as the bytes it was committed as, and so is a recording committed
+    # with CRLF: only an ending the checkout itself wrote is a conversion.
     carrying = [
         line.partition("\t")[2]
         for line in (listing.stdout or "").splitlines()
-        if line.split()[1:2] == ["w/crlf"]
+        if line.split()[0:2] == ["i/lf", "w/crlf"]
     ]
 
     truth(

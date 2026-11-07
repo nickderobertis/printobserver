@@ -388,6 +388,20 @@ export function classified(eventName, payload, where) {
 }
 
 /**
+ * Every classifier's outputs `ci.yml` reads for one classification. These
+ * scenarios change nothing the real-print suite is owed for.
+ *
+ * @param {object} classification
+ * @returns {Record<string, Record<string, string>>}
+ */
+export function ciOutputsOf(classification) {
+  return {
+    classify: outputsOf(classification),
+    "skilltest-classify": { owed: "false", reason: "no owed path changed" },
+  };
+}
+
+/**
  * The `name=value` lines `outputs` prints for a classification, as a map.
  *
  * @param {object} classification

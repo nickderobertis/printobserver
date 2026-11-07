@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { before, describe, test } from "node:test";
 import { condition, loadWorkflows, plan, Unresolved } from "../lib/graph.mjs";
 import { isObject } from "../lib/util.mjs";
-import { classified, fixture, history, outputsOf, ROOT } from "./support/histories.mjs";
+import { ciOutputsOf, classified, fixture, history, ROOT } from "./support/histories.mjs";
 import { dispatchRunner, pullRequestPayload, runsFor, WORKFLOWS } from "./support/lifecycle.mjs";
 
 const workflows = loadWorkflows(WORKFLOWS);
@@ -82,7 +82,7 @@ function pullRequest(diff, branch, results = {}) {
       file,
       run: plan(workflows, file, {
         event: { name: "pull_request", action: "opened", payload },
-        outputs: file === "ci.yml" ? { classify: outputsOf(classification) } : {},
+        outputs: file === "ci.yml" ? ciOutputsOf(classification) : {},
         results,
       }),
     });
@@ -344,7 +344,7 @@ describe("pushes and the release", () => {
       workflows,
       { name: "push", ref: payload.ref, payload },
       {
-        "ci.yml": { classify: outputsOf(classification) },
+        "ci.yml": ciOutputsOf(classification),
         "release-plz.yml": { release: { released } },
       },
     );

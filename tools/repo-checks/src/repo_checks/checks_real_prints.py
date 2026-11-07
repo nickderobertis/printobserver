@@ -246,15 +246,19 @@ def _committed(
     yet is not answered.
     """
     listing = run(
-        ["git", "ls-files", "-s", "-z", "--", *relatives],
+        # The whole index and not the paths asked for, because a case's many frames
+        # overrun a Windows command line.
+        ["git", "ls-files", "-s", "-z"],
         cwd=repo.root,
         env=environment,
         check=True,
     ).stdout
+    asked = set(relatives)
     blobs: dict[str, str] = {}
     for entry in filter(None, listing.split("\0")):
         stage, _, name = entry.partition("\t")
-        blobs[name] = stage.split()[1]
+        if name in asked:
+            blobs[name] = stage.split()[1]
     sizes = run(
         ["git", "cat-file", "--batch-check=%(objectname) %(objectsize)"],
         cwd=repo.root,

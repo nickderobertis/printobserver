@@ -28,7 +28,7 @@ import {
   fixture,
   GITHUB,
   history,
-  outputsOf,
+  ciOutputsOf,
   ROOT,
   workspaceVersion,
 } from "./histories.mjs";
@@ -269,7 +269,7 @@ export function scenarios() {
               workflows,
               { name: "pull_request", action, payload },
               {
-                "ci.yml": { classify: outputsOf(classification) },
+                "ci.yml": ciOutputsOf(classification),
               },
             ),
           );
@@ -320,7 +320,7 @@ export function scenarios() {
         action: "opened",
         payload: pullRequestPayload("opened", "ordinary", "same-repository", unreadable),
       },
-      { "ci.yml": { classify: outputsOf(unknown) } },
+      { "ci.yml": ciOutputsOf(unknown) },
     ),
   );
 
@@ -371,7 +371,7 @@ export function scenarios() {
         workflows,
         { name: "push", ref: payload.ref, payload },
         {
-          "ci.yml": { classify: outputsOf(classification) },
+          "ci.yml": ciOutputsOf(classification),
           "release-plz.yml": { release: { released: push.released } },
         },
       ),
