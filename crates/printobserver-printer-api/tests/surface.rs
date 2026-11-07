@@ -120,6 +120,11 @@ fn printer_port_declares_exactly_the_stated_methods() {
             "BoxFuture<'_,Result<Option<PrintedExtent>,PrinterError>>",
         ),
         method(
+            "read_gcode",
+            &[("file_name", "FileName"), ("sink", "&'amutdynGcodeSink")],
+            "BoxFuture<'a,Result<(),PrinterError>>",
+        ),
+        method(
             "read_position",
             &[],
             "BoxFuture<'_,Result<AxisPosition,PrinterError>>",
@@ -154,6 +159,9 @@ fn printer_error_carries_exactly_the_stated_variants() {
 }
 
 /// Every port method is asynchronous, in the one shape a trait object carries.
+///
+/// Its lifetime is the receiver's, written `'_`, or — for the one read that
+/// borrows a sink beside the receiver — the one lifetime both borrows share.
 #[test]
 fn every_port_method_answers_a_boxed_future() {
     let source = parse(&crate_source(CRATE));
@@ -161,7 +169,8 @@ fn every_port_method_answers_a_boxed_future() {
     assert!(!methods.is_empty(), "PrinterPort declares no method");
     for declared in methods {
         assert!(
-            declared.returns.starts_with("BoxFuture<'_,Result<"),
+            declared.returns.starts_with("BoxFuture<'_,Result<")
+                || declared.returns.starts_with("BoxFuture<'a,Result<"),
             "PrinterPort::{} answers {}, which is neither asynchronous nor a Result",
             declared.name,
             declared.returns
@@ -271,8 +280,8 @@ fn printer_port_closure_carries_no_bytes_and_one_string() {
     );
 }
 
-/// The printer-port methods that take a `FileName` are `start` and the three
-/// reads of one file, each taking exactly one.
+/// The printer-port methods that take a `FileName` are `start` and the reads
+/// of one file, each taking exactly one.
 #[test]
 fn only_start_and_the_file_reads_take_a_file_name() {
     let source = parse(&crate_source(CRATE));
@@ -296,6 +305,7 @@ fn only_start_and_the_file_reads_take_a_file_name() {
             ("filament_types".to_owned(), 1),
             ("extruded_to".to_owned(), 1),
             ("printed_extent".to_owned(), 1),
+            ("read_gcode".to_owned(), 1),
         ]
     );
 }

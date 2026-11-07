@@ -6,6 +6,8 @@
 //! up to a position in it — declared beside the port whose methods carry them.
 //! Every length is the filament fed in, in millimetres, per tool.
 
+use core::ops::ControlFlow;
+
 use printobserver_types::Timestamp;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
@@ -179,4 +181,15 @@ impl Sample for PrintedExtent {
             footprint: Footprint::sample_minimal(),
         }
     }
+}
+
+/// Where [`PrinterPort::read_gcode`](crate::PrinterPort::read_gcode) streams a
+/// file's G-code to, a piece at a time.
+///
+/// The bytes travel from the printer to the sink and never the other way, so a
+/// sink is no way for anything to reach a machine.
+pub trait GcodeSink: Send {
+    /// Take the next piece of the file, in order; `Break` stops the read, and
+    /// nothing more of the file is asked for.
+    fn take(&mut self, piece: &[u8]) -> ControlFlow<()>;
 }

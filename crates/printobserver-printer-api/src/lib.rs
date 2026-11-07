@@ -21,10 +21,15 @@
 //! contract rather than an omission: no method here admits a byte sequence at
 //! all, and the only string anywhere in the closure reachable from a method's
 //! parameters is the one [`FileName`] wraps, which only
-//! [`PrinterPort::start`] and the four reads of one file —
+//! [`PrinterPort::start`] and the five reads of one file —
 //! [`PrinterPort::file_facts`], [`PrinterPort::filament_types`],
-//! [`PrinterPort::extruded_to`] and [`PrinterPort::printed_extent`] — take. Every value a method takes is already
+//! [`PrinterPort::extruded_to`], [`PrinterPort::printed_extent`] and
+//! [`PrinterPort::read_gcode`] — take. Every value a method takes is already
 //! bounded by the time it arrives: policy has ruled on it before it gets here.
+//!
+//! [`PrinterPort::read_gcode`] takes a [`GcodeSink`] beside the file name, and
+//! that is no exception either: the sink is where the file's bytes go *from*
+//! the printer, a piece at a time, so nothing reaches a machine through it.
 //!
 //! [`PrinterPort::send_command`] is no exception to that: what it takes is a
 //! [`PrinterCommand`], a closed vocabulary each adapter renders to its own
@@ -61,7 +66,7 @@ use core::pin::Pin;
 use printobserver_types::FileName;
 
 pub use adjustable::{Adjustable, AdjustableError};
-pub use file::{FileFacts, FilePrint, Footprint, PrintedExtent, ToolFilament};
+pub use file::{FileFacts, FilePrint, Footprint, GcodeSink, PrintedExtent, ToolFilament};
 pub use push::{
     AxisPosition, BoxStream, HomeAxes, PrinterCommand, PrinterErrorReason, PrinterPush, Stream,
 };
@@ -254,6 +259,21 @@ pub trait PrinterPort: Send + Sync {
     ) -> BoxFuture<'_, Result<Option<PrintedExtent>, PrinterError>> {
         let _ = (file_name, position_bytes);
         Box::pin(async { Err(not_supported("printed_extent")) })
+    }
+
+    /// Stream one file's whole G-code into a sink, a piece at a time, from its
+    /// first byte to its last or until the sink says it has enough.
+    ///
+    /// The file is never held whole: each piece is handed on as it arrives.
+    /// A printer that cannot answer is refused with status 501, which is what
+    /// an implementation that does not override this answers.
+    fn read_gcode<'a>(
+        &'a self,
+        file_name: FileName,
+        sink: &'a mut dyn GcodeSink,
+    ) -> BoxFuture<'a, Result<(), PrinterError>> {
+        let _ = (file_name, sink);
+        Box::pin(async { Err(not_supported("read_gcode")) })
     }
 
     /// Read where the print head is now, as the printer reports it.
