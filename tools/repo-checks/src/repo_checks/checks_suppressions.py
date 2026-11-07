@@ -58,8 +58,20 @@ SCANNED_NAMES = frozenset({"justfile", "Justfile", ".justfile"})
 SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
 
 #: One file the directive scanners read: its path, that path from the tree's root,
-#: and its lines.
-type Scanned = tuple[Path, Path, list[str]]
+#: its lines, and those lines joined by newlines.
+type Scanned = tuple[Path, Path, list[str], str]
+
+
+def _anywhere(patterns: Sequence[re.Pattern[str]]) -> re.Pattern[str]:
+    """One pattern a file's joined lines match wherever any of `patterns` matches a line.
+
+    Read line by line, `^` and `$` stand at a line's ends, which under `MULTILINE`
+    they do in the joined text too; a match spanning two lines only makes this
+    say yes where no line matches, which costs the line-by-line read and nothing
+    else. So a file this does not match holds no line any of them match.
+    """
+    return re.compile("|".join(f"(?:{pattern.pattern})" for pattern in patterns), re.MULTILINE)
+
 
 # A block opening silences the region and needs its entry. ignore-end closes
 # that region without silencing anything else, so it needs no second entry.
@@ -76,6 +88,7 @@ DIRECTIVE_PATTERNS: tuple[tuple[re.Pattern[str], bool], ...] = (
     (re.compile(r"llmlint:\s*ignore(?:-block)?\[([^\]]+)\]"), True),
     (WHOLE_FILE_LLMLINT := re.compile(r"llmlint:\s*ignore-file\[([^\]]+)\]"), True),
 )
+ANY_DIRECTIVE = _anywhere([pattern for pattern, _ in DIRECTIVE_PATTERNS])
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,8 +151,9 @@ def scan(root: Path) -> list[Directive]:
 def _scan_of(files: Sequence[Scanned]) -> list[Directive]:
     """Every suppression directive in files already read."""
     found: list[Directive] = []
-    for _, relative, lines in files:
-        found.extend(_directives_in_lines(lines, relative.as_posix()))
+    for _, relative, lines, text in files:
+        if ANY_DIRECTIVE.search(text):
+            found.extend(_directives_in_lines(lines, relative.as_posix()))
     return found
 
 
@@ -281,19 +295,17 @@ FILE_LEVEL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"//\s*eslint-disable\s*$"), "eslint"),
     (re.compile(r"/\*\s*eslint-disable\s*\*/"), "eslint"),
 )
+ANY_FILE_LEVEL = _anywhere([pattern for pattern, _ in FILE_LEVEL_PATTERNS])
 
 
 def _scannable(root: Path) -> list[Scanned]:
     """Every file the directive scanners read, with its lines."""
-    return [
-        (
-            path,
-            path.relative_to(root),
-            path.read_text(encoding="utf-8", errors="replace").splitlines(),
-        )
-        for path in _walked(root)
-        if path.suffix in SCANNED_SUFFIXES or path.name in SCANNED_NAMES
-    ]
+    found: list[Scanned] = []
+    for path in _walked(root):
+        if path.suffix in SCANNED_SUFFIXES or path.name in SCANNED_NAMES:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            found.append((path, path.relative_to(root), lines, "\n".join(lines)))
+    return found
 
 
 def whole_file_directives(files: Sequence[Scanned], admitted: Sequence[str]) -> list[str]:
@@ -311,7 +323,9 @@ def whole_file_directives(files: Sequence[Scanned], admitted: Sequence[str]) -> 
     allowlist entry with a reason like any other.
     """
     findings: list[str] = []
-    for _, relative, lines in files:
+    for _, relative, lines, text in files:
+        if not WHOLE_FILE_LLMLINT.search(text):
+            continue
         for number, line in enumerate(lines, start=1):
             for match in WHOLE_FILE_LLMLINT.finditer(line):
                 findings.extend(
@@ -328,7 +342,9 @@ def whole_file_directives(files: Sequence[Scanned], admitted: Sequence[str]) -> 
 def file_level_directives(files: Sequence[Scanned]) -> list[str]:
     """Refuse every directive that silences a rule for a whole file."""
     findings: list[str] = []
-    for _, relative, lines in files:
+    for _, relative, lines, text in files:
+        if not ANY_FILE_LEVEL.search(text):
+            continue
         for number, line in enumerate(lines, start=1):
             findings.extend(
                 f"{relative.as_posix()}:{number} carries a file-level {tool} directive, which "
