@@ -8,6 +8,11 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+# The real-print replay's clock, moved by a file beside the program. Nothing but that
+# suite's own build enables it, so it reaches no binary a consumer installs.
+replay-clock = []
+
 [dependencies]
 base64.workspace = true
 chrono = "0.4"

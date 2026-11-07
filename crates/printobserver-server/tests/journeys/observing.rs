@@ -712,6 +712,10 @@ async fn an_observation_with_no_camera_runs_on_telemetry_alone() {
         .expect("the turn is on an observation")
         .expect("of its own type");
     assert!(
+        payload.frame_captured_at.is_none(),
+        "no capture time for a frame nobody took"
+    );
+    assert!(
         payload.printer.is_some(),
         "the printer's telemetry is carried"
     );
@@ -746,6 +750,15 @@ async fn a_frame_the_store_refuses_is_recorded_against_the_observation() {
         "a frame the store refused was carried"
     );
     assert!(turn.image_path.is_none());
+    assert!(
+        turn.event
+            .payload_as::<PeriodicObservationPayload>()
+            .expect("the turn is on an observation")
+            .expect("of its own type")
+            .frame_captured_at
+            .is_some(),
+        "the frame was captured, whatever became of it"
+    );
     let failures = failures_against(&world, print_id, turn.event.id).await;
     assert!(
         failures

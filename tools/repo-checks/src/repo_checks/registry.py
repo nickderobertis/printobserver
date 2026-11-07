@@ -88,6 +88,7 @@ CHECKS: dict[str, Check] = {
     "real-prints-scenarios": checks_real_prints.real_prints_scenarios,
     "real-prints-operations": checks_real_prints.real_prints_operations,
     "real-prints-service-config": checks_real_prints.real_prints_service_config,
+    "real-prints-replay": checks_real_prints.real_prints_replay,
     "ingress-answer-bound": checks_service.ingress_answer_bound,
     "service-install": checks_service.service_install,
     "merge-model": checks_ci.merge_model,

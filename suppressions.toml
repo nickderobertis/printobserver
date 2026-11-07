@@ -408,6 +408,12 @@ file = "tools/repo-checks/src/repo_checks/gate_time_budget.py"
 site = "llmlint: ignore[async_typed_clients_at_boundaries]"
 reason = "The one read the `gate-time` step makes, run by one blocking command at the end of a CI job: the current run's jobs, page after page, each page's `total_count` deciding whether the next is asked for, and then one figure handed to `onebudgetspec`. There is nothing to overlap, and no typed client for the jobs API this environment carries; the answer is narrowed field by field by `gate_jobs.platform_span`, which refuses whatever it cannot read. An event loop under a command whose whole contract is one reported number and one exit status would buy nothing. The boundary this rule is about is the product's, and the product makes no such request."
 
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/test_replay_wiring.py"
+site = "llmlint: ignore[async_typed_clients_at_boundaries]"
+reason = "A test's two sequential requests to the Obico double it started in the same process on the loopback address, proving what that double refuses. There is nothing to overlap and no typed client for a double's image route, which answers bytes; an event loop inside one synchronous test would prove nothing more. The boundary this rule is about is the product's, and the double is none of it."
+
 # --- the scheduled Obico tier's suite: two URL-opening sites ----------------
 
 [[suppression]]
@@ -936,49 +942,7 @@ reason = "`test` is the gate's tier name: `just test` fans it out over every pro
 rule = "new_projects_keep_the_graph_uniform"
 file = "tests/skilltest/project.json"
 site = "skilltest"
-reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells carry neither a signed-in harness nor a budget for model turns, so the live skill tests cannot sit behind it. This project keeps the standard names for everything the gate can run — `format`, `format-check`, `lint`, `typecheck`, and `test` for its deterministic half, which builds every scenario with no model — and puts the live tests under the tier's own name alone, as `tests/skill-install/project.json` does with `test-skill-install` and `tools/obico-env/project.json` with `test-obico`. `skilltest` is that name, the recipe `just skilltest` runs it by, and `repo-policy.toml`'s `[skilltest]` declares it."
-
-[[suppression]]
-rule = "least_privilege_grants"
-file = "tests/skilltest/surface.py"
-site = "allowed = _rust_list(TURN, \"CLAUDE_READ_TOOLS\") + ["
-reason = "This is the read grant a production Claude Code turn runs with, read from `turn.rs` itself, and the skill tier exists to put the agent in a production turn's position: a test that scoped reads more narrowly than production would prove a different agent's behaviour. `turn.rs`'s own grant carries the reason it is unscoped, a supervision turn reading the event's image from the state directory and the skill's reference documents across platform path forms. Here it is bounded further by where the run happens: a fresh temporary directory holding only the copied skill, the case's pictures and a client configuration naming no reachable server, with every `printobserver` command stubbed and every other shell command refused by the same rules."
-
-[[suppression]]
-rule = "async_typed_clients_at_boundaries"
-file = "tests/skilltest/test_real_prints_skilltest.py"
-site = "report = run_skill("
-reason = "`run_skill` is skilltest's typed client, returning a parsed `Report`; its only async form, `stream_skill`, reads the terminal report through asyncio's default 64 KiB stream line limit as a single line, and this tier's reports already reach about 70 KB indented, so the async client would fail on the very runs this test makes. A pytest test with one run to wait on gains nothing from an event loop."
-
-[[suppression]]
-rule = "async_typed_clients_at_boundaries"
-file = "tests/skilltest-wiring/test_skilltest_wiring.py"
-site = "run_skill("
-reason = "The same typed client as the live tier's, for the same reason: skilltest's async `stream_skill` reads its terminal report as one line through asyncio's 64 KiB stream limit, which this tier's reports approach. Here the call never reaches a harness at all: it hands a built case to skilltest's own loader with a provider that does not exist, so the run stops at the provider having read the whole definition, and there is nothing to await."
-
-[[suppression]]
-rule = "cli_output_contract"
-file = "tests/skilltest/scenario.py"
-site = "\"refused\", None, program_pattern(), (refusal,), Render.TEXT, exits[\"usage\"], False"
-reason = "This is a stub standing in for the program's refusal, not the program: a skilltest stub carries one output and an exit code, and oneharness hands it to the harness as a rewritten command printing that output, so there is no second stream to put the refusal on. The stub keeps the part of the contract an agent can tell apart, the program's own usage exit status. What the agent reads is unchanged by the stream: Claude Code returns a shell command's standard output and standard error together as one tool result. The real program writes its refusals to standard error, and the gate's corpus test holds the judge to that program's exit statuses."
-
-[[suppression]]
-rule = "cli_output_contract"
-file = "tests/skilltest/scenario.py"
-site = "StubSpec("
-reason = "The actor-option refusal stubs stand in for the program's refusal of an option a command does not take, and they have the same single output stream as the catch-all refusal stub suppressed below: a skilltest stub carries one output and an exit code, which oneharness prints from a rewritten command. Claude Code hands the agent standard output and standard error together as one tool result, so the agent reads the same text either way. The stub keeps the program's usage exit status. The gate runs the built program on the same invocation and requires the stub's text to equal that program's standard error and its exit to equal the program's."
-
-[[suppression]]
-rule = "async_typed_clients_at_boundaries"
-file = "tests/skilltest-wiring/test_skilltest_wiring.py"
-site = "answered = shell.run("
-reason = "`oneharness mock` is a hook responder: it reads one event on standard input, writes one verdict and exits, which is exactly how the harness runs it. AGENTS.md routes every subprocess in this repository through `repo_checks.shell.run`, so this call uses that one helper rather than an async client of its own. The verdict is validated before it is read: a deny carrying a string reason, the only answer the rules this test writes can produce."
-
-[[suppression]]
-rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/skilltest/test_real_prints_skilltest.py"
-site = "return sorted("
-reason = "The manager ruled that each live run records the model it actually ran on, and with no model pinned, which is what the shipped configuration leaves a turn, neither skilltest's report nor OneHarness carries it: the only record is Claude Code's own session log, so reading it means reading its location and shape, which the one statement under the directive does: the session directory, its JSON-lines files, and the `message.model` field. There is no authoritative source to derive them from, and the gate cannot reconcile them, because the gate's runners have no Claude Code to run. The drift gate is the live tier itself: every live run fails when the record yields no model (`expect.truth(models, ...)` in the test), so a moved or reshaped record stops the evidence rather than silently dropping it."
+reason = "`test` is the gate's tier name: `just test` fans it out over every project on every gate cell, and those cells carry neither a signed-in harness nor a budget for model turns, so the live skill tests cannot sit behind it. This project keeps the standard names for everything the gate can run — `format`, `format-check`, `lint` and `typecheck`, with its deterministic half under `skilltest-wiring`'s `test` — and puts the live tests under the tier's own name alone, as `tests/skill-install/project.json` does with `test-skill-install` and `tools/obico-env/project.json` with `test-obico`. `skilltest` is that name, the recipe `just skilltest` runs it by, and `repo-policy.toml`'s `[skilltest]` declares it."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
@@ -2337,58 +2301,64 @@ site = "let written = file"
 reason = "A write or sync failing into a file this call just created exclusively is a full or failing disk, which no journey can arrange on a runner without root. The cleanup after it is the one `remove_file` every refused and failed publication shares, which `credential_issue_that_cannot_write_leaves_what_was_there` and the racing-issue journeys drive through the real binary."
 
 [[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "held = sign_in.get(\"accessToken\") if isinstance(sign_in, dict) else None"
+reason = "Claude Code's sign-in file has no published schema to reconcile with. It is read only on a signed-in host with no `CLAUDE_CODE_OAUTH_TOKEN`, and a move of it answers no credential, which the live test fails naming."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/replay.py"
+site = "with socket.socket() as probe:"
+reason = "One TCP connect to a server this test just started on the loopback address, asking only whether its port answers yet, in a synchronous wait with a deadline. It exchanges no message for a typed client to model, and an event loop under one polling loop would buy nothing."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = "let mut from_child = child"
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = '''.map_err(|error| format!("{program}'s output could not be read: {error}"))?;'''
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = '''.map_err(|error| format!("the output could not be passed on: {error}"))?;'''
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = '''.map_err(|error| format!("{} could not be written: {error}", record.display()))?;'''
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/bin/turn_launcher.rs"
+site = '''.map_err(|error| format!("{program} could not be waited for: {error}"))?;'''
+reason = "These error arms answer an operating system refusing a read, a write or a wait on pipes and a file the launcher itself just opened, which no process test can cause on every platform the gate runs on. Each only turns that refusal into the launcher's named failure, and `tests/journeys/turn_launcher.rs` proves that a named failure reaches the record and the exit status."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "models = rest.get(\"modelUsage\")"
+reason = "Which model a turn answered with is read from both this field and the transcript's messages, and neither has a published schema. `tests/skilltest/test_replay.py` fails a live turn reporting no model at all; this field moving alone loses only a duplicate, and the record's `models` still names every message's model."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "\"modelUsage\": {MOCK_MODEL: usage},"
+reason = "Which model a turn answered with is read from both this field and the transcript's messages, and neither has a published schema. `tests/skilltest/test_replay.py` fails a live turn reporting no model at all; this field moving alone loses only a duplicate, and the record's `models` still names every message's model."
+
+[[suppression]]
 rule = "changed_behavior_has_e2e"
 file = "crates/printobserver-server/src/server.rs"
 site = "let written = file.write_all(contents).and_then(|()| file.sync_all());"
 reason = "A write or sync failing into the verifier file this start just created exclusively is a full or failing disk, which no journey can arrange on a runner without root. The conversion it serves, and the start after it, are driven by `a_legacy_installation_keeps_its_operators_credential_through_every_route` against the real server."
-
-[[suppression]]
-rule = "modern_domain_modeling"
-file = "tests/skilltest/scenario.py"
-site = "payload = {"
-reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."
-
-[[suppression]]
-rule = "modern_domain_modeling"
-file = "tests/skilltest/scenario.py"
-site = "return {"
-reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."
-
-[[suppression]]
-rule = "modern_domain_modeling"
-file = "tests/skilltest/scenario.py"
-site = "record: dict[str, Any] = {"
-reason = "This module composes every answer and event a stub hands the agent as the JSON document the server would serve, and holds each to the server's own generated JSON Schema with `conforming()` rather than to a Python model of it, as its docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the helpers this one reuses (`_job`, `_printer`) answer such documents. Typing this one document with the SDK's generated TypedDicts would need casts over those shared helpers and would type nothing the schema check does not already refuse."
-
-[[suppression]]
-rule = "modern_domain_modeling"
-file = "tests/skilltest/scenario.py"
-site = "def _recovery_answers("
-reason = "This function composes the recovery vocabulary's answers a stub hands the agent as the JSON documents the server would serve, and holds every answer, event payload and the recovery read to the server's own generated JSON Schema with `conforming()` rather than to a Python model of them, as the module's docstring states; every sibling composer here (`_spool_answers`, `_synthetic_alert`, `look`, `record`, `context`) is built the same way, and skilltest-wiring checks each answer against its operation's answer schema and the generated example's field names. A Python model would restate those schemas a second time beside the generated ones."
-
-[[suppression]]
-rule = "modern_domain_modeling"
-file = "tests/skilltest/scenario.py"
-site = "RECOVERY_ASKED: dict[str, dict[str, Any]] = {"
-reason = "The fields each recovery action's stub echoes as asked: the `action` member of the documents `_recovery_answers` composes, held there to the `RecoveryAction` schema through every payload and answer `conforming()` checks. That function's entry gives the reason a Python model is not written beside the generated schema."
-
-[[suppression]]
-rule = "modern_domain_modeling"
-file = "tests/skilltest/scenario.py"
-site = "Z_HOME = {"
-reason = "Where the case's printer homes Z, the `z_home` member of the recovery read `_recovery_answers` composes, held there to the `RecoveryStatus` schema by `conforming()`. That function's entry gives the reason a Python model is not written beside the generated schema."
-
-[[suppression]]
-rule = "modern_domain_modeling"
-file = "tests/skilltest/scenario.py"
-site = "def _spool_answers("
-reason = "This function composes the spool ledger's answers and events a stub hands the agent as the JSON documents the server would serve, and holds the spool, the preflight and every event payload to the server's own generated JSON Schema with `conforming()` rather than to a Python model of them, as the module's docstring states; every sibling composer here (`_synthetic_alert`, `look`, `record`, `context`) is built the same way, and the answer it returns is checked against each operation's answer schema by skilltest-wiring. A Python model would restate those schemas a second time beside the generated ones."
-
-[[suppression]]
-rule = "modern_domain_modeling"
-file = "tests/skilltest/scenario.py"
-site = "return ["
-reason = "This method composes the answer a stub gives a refused close as the JSON document the server would serve, the module's convention its docstring states: it takes each document from the sibling `record` composer and changes only what a rejection changes (no execution or outcome, and the rejection's own decision), and skilltest-wiring holds every one to the server's generated `ActionAnswer` schema and to the field names of the documented example. A Python model would restate that schema a second time beside the generated one."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"
@@ -4463,3 +4433,207 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-core/src/supervisor.rs"
 site = "pub(crate) async fn read_filament_types("
 reason = "The supervisor hands the printer port's answer on unchanged to the preflight, which builds the `MaterialName` it compares. The printer port answers the material each tool was sliced for as text, `None` for a tool the setting leaves blank: the adapter's parser trims each entry and maps a blank one to `None`, so no blank `Some` crosses the port, and the validated `MaterialName` is built in the preflight where the material is compared. `MaterialName` is core's own type and `printobserver-printer-api` may depend on `printobserver-types` alone, so typing the port's answer with it means moving the type into that crate, its schema and its records with it; that move is a recorded follow-up."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/replay.py"
+site = "connection = HTTPConnection(\"127.0.0.1\", self.port, timeout=ALERT_DEADLINE_S)"
+reason = "This is one test posting one alert to a loopback server whose answer it discards, as Obico's plugin posts one: the body is the recorded alert itself rather than a domain value a typed client would model, and the replay's control handler calling it is a blocking thread that waits for it by design, so an async client would add a runtime for nothing."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "sign_in = document.get(\"claudeAiOauth\") if isinstance(document, dict) else None"
+reason = "Claude Code's sign-in file has no published schema to reconcile with. It is read only on a signed-in host with no `CLAUDE_CODE_OAUTH_TOKEN`, and a move of it answers no credential, which the live test fails naming."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case {\"type\": \"system\", \"subtype\": \"compact_boundary\"}:"
+reason = "Claude Code's transcript and result document has no published schema to reconcile with. `test_replay.py` is the drift gate: it fails any live turn whose usage, models or commands come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "match block:"
+reason = "Claude Code's tool-call blocks in its transcript has no published schema to reconcile with. `test_replay.py` is the drift gate: it fails any live turn whose usage, models or commands come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tests/skilltest/replay.py"
+site = "if ended > harness_exits:"
+reason = "A guard against the real server recording a turn no harness process ran, which the server does not do and no double can make it do without faking the layer under test. It stops the replay and spends nothing further if a release of the server ever does."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tests/skilltest/replay.py"
+site = "self.server.kill()"
+reason = "A server ignoring termination for 30 s, which the real server does not do and which no test could cause on every platform the gate runs on: a Windows process cannot ignore it at all. `test_stopping_a_replay_stops_its_server_and_its_doubles` proves the ordinary path."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case {\"type\": \"result\", \"usage\": dict(usage), **rest}:"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case {\"message\": {\"model\": str(model), \"content\": list(content)}}:"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case {\"type\": \"tool_use\", \"id\": str(called), \"name\": str(name), \"input\": dict(given)}:"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "transcript = Path(os.environ[\"CLAUDE_CONFIG_DIR\"]) / \"projects\" / \"workspace\""
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "message = {"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "result = {"
+reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "tests/skilltest/cases.py"
+site = "return sorted(replays(CASES))"
+reason = "A case with no `replay` has no test here by this suite's design. `porous-walls` and `bridge-sagging-uncooled` are listed and proven by the node that makes the flow factor and fan speed observable; the bed cases and the other cases without a replay are outside this node's replay set. A `case.json` can carry no directive of its own, so this one stands where those cases are left out."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-server/src/server.rs"
+site = "assigned.extend(sign_in.session_assignments().map_err(refused)?);"
+reason = "The end-to-end proof is `test_every_turn_runs_with_the_harness_kept_from_replacing_itself` in `tests/skilltest-wiring`: the real server launches a harness and that harness writes down the environment it was started with. Repeating it from this crate would need a second stand-in harness that reads its own environment."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "lines.append({\"type\": \"system\", \"subtype\": \"compact_boundary\"})"
+reason = "The mock writes what the replay reads of Claude Code's transcript, which has no published schema to reconcile with. `tests/skilltest/test_replay.py` is the drift gate over the real harness for commands, usage, models and opened files; a compaction appears only once a real conversation is long enough, and the adoption node's run is where that record is first read live."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "*("
+reason = "The mock writes what the replay reads of Claude Code's transcript, which has no published schema to reconcile with. `tests/skilltest/test_replay.py` is the drift gate over the real harness for commands, usage, models and opened files; a compaction appears only once a real conversation is long enough, and the adoption node's run is where that record is first read live."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "lines: list[dict[str, Any]] = []"
+reason = "The mock writes what the replay reads of Claude Code's transcript and result, which have no published schema to reconcile with. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models or commands come back empty, so a format the mock alone still spoke is caught at the next live run."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "for line in lines:"
+reason = "Claude Code's result document and transcript have no published schema to reconcile with. `test_replay.py` is the drift gate: it fails any live turn whose usage, models or commands come back empty, which is what a moved field reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "return sorted(self.state.glob(\"harness/claude-code/projects/*/*.jsonl\"))"
+reason = "Where Claude Code keeps its transcripts has no published contract. `test_replay.py` is the drift gate: it fails any live turn whose commands come back empty, which is what a moved directory reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "if not self.moment.printer_state.answers:"
+reason = "These are a stand-in's copies of OctoPrint's answers, read by the real adapter: `printobserver-octoprint` parses them as it parses a real instance's, and its integration tier holds that parser to a real OctoPrint on every change. A shape the real one does not have fails there, and a shape the adapter cannot read fails the wiring tests here."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "if name != timeline.case.gcode.name:"
+reason = "The same stand-in answer, for the file facts the real adapter reads, held the same way: to a real OctoPrint by that adapter's integration tier."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "`just skilltest` replays each real print with a `replay` through the real server"
+reason = "The task that made the suite required states, as an acceptance criterion, that the root `AGENTS.md` says when the suite runs and states the flaky-test rule, because a change anywhere on its list has to know it owes the suite before opening anything under `tests/skilltest`. The suite's mechanics are in `tests/skilltest/AGENTS.md`."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "`just skilltest` replays each real print with a `replay` through the real server"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site has the reason."
+
+[[suppression]]
+rule = "code_lands_in_the_domain_that_owns_it"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "#[cfg(feature = \"replay-clock\")]"
+reason = "`Timestamp::now` is the one wall-clock reading every crate stamps through, the adapters' and the store's included, so moving time for the whole server for a replay can only be done there. The feature keeps it out of every build but the suite's."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "#[cfg(feature = \"replay-clock\")]"
+reason = "The clock's own tests are the suite's: `tests/skilltest-wiring` runs the real server built with this feature and asserts the times the agent reads are the recording's. A file it cannot read leaves the real clock, which that same assertion would catch."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "session_env: &'static [&'static str],"
+reason = "`SIGN_INS` is a const table and `EnvAssignment` owns a `String`, so it cannot be built in one, as the identity above it cannot. The field is private, the table is its only writer, and the launch test holds what it reads to `EnvAssignment`."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-oneharness/src/sign_in.rs"
+site = "session_env: &[\"DISABLE_AUTOUPDATER=1\"],"
+reason = "Claude Code's documented setting has no machine-readable source, and a gate check would have to install and run the provider's CLI, as for its sign-in command above. The live suite is what shows it: a harness that replaced itself fails a replay naming the program it could not start."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/replay.py"
+site = "done = run("
+reason = "These go through the installed `printobserver` program on purpose: the operator's real surface is what the replay reads the server's record by, and the replay's control handler that calls it is a blocking thread that waits for it by design."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/classify.py"
+site = "done = run([\"git\", *arguments], cwd=root)"
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/classify.py"
+site = "return run(harness_install(Path(POLICY)), capture=False).returncode"
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/record.py"
+site = "return run([\"git\", \"rev-parse\", \"HEAD\"], cwd=REPO, check=True).stdout.strip()"
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/record.py"
+site = "status = run("
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "done = run(words, timeout=TIMEOUT_S)"
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "return run("
+reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."

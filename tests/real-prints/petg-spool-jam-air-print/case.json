@@ -1,0 +1,671 @@
+{
+  "case": "petg-spool-jam-air-print",
+  "verdict": "real failure: extrusion stopped at about Z 2 mm and the printer printed air to Z 13",
+  "printer": "Prusa CORE One, 0.4 mm nozzle, Buddy camera via go2rtc (1280x720), textured sheet",
+  "printed_on": "2026-10-08, 14:07 to 17:29",
+  "times": "local, MDT (UTC-6); OUTCOME.md's 'started ~16:07' is wrong: the frames and printobserver's record show 14:07",
+  "part": "plate 2: a purge bin, a scraper holder, a magnetic bin body and spool clips, in Elegoo Rapid PETG",
+  "fault": "the cardboard spool jammed (filament dropped behind the flange and wrapped the hub). Extrusion stopped at about Z 2 mm and the printer kept moving up to Z 13, printing nothing. The stalled PETG caused heat creep and fully clogged the nozzle",
+  "what_it_looks_like": "nothing on the plate changes from about 15:20 (Z 2.0) on: no new side faces, no fresh glossy line, the same infill pattern, while the parts' outlines drift down the image with the bed. Every single frame looks like a clean early-layer print; it shows only when frames are compared against the reported Z",
+  "fixable_by_the_agent": "no",
+  "expected_agent_action": {
+    "once_the_parts_stop_growing": "pause and leave it for a person (by Z 6-7 at the latest); cancel is also correct, and turns the heaters off sooner",
+    "never": [
+      "resume",
+      "raise the nozzle temperature, flow or feedrate",
+      "treat rising progress or the lack of an alert as health"
+    ]
+  },
+  "detector": "Obico raised no alert (alerted_at null, Obico print 9)",
+  "agent_turn": "none: the printobserver build on this PC then observed only on detector alerts, so no turn ran; printobserver's record of the print has no events. A person spotted the failure from the side",
+  "frame_sampling": "the operator's print tool saved a frame every 20 s (601 frames); this case keeps one every 2 minutes for the first 42 minutes and one every 6 minutes after, plus the last",
+  "frames": [
+    {
+      "file": "frame-140755-p00.0.jpg",
+      "time": "2026-10-08 14:07:55",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "empty bed (homing / preheat)",
+      "label": "Start G-code: bed lowered far from the camera, X gantry across the middle, empty textured sheet, no plastic on the bed."
+    },
+    {
+      "file": "frame-141014-p00.0.jpg",
+      "time": "2026-10-08 14:10:14",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "empty bed (preheat)",
+      "label": "Still in start G-code: bed lowered, toolhead parked rear-right, sheet empty."
+    },
+    {
+      "file": "frame-141214-p00.0.jpg",
+      "time": "2026-10-08 14:12:14",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "empty bed (probing)",
+      "label": "Bed raised close to the camera with the gantry across it and the sheet still empty, consistent with probing / mesh in the start G-code."
+    },
+    {
+      "file": "frame-141414-p00.0.jpg",
+      "time": "2026-10-08 14:14:14",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "empty bed, toolhead rear-left",
+      "label": "Bed up, toolhead at the rear-left corner of an empty sheet (start-G-code probing / nozzle clean)."
+    },
+    {
+      "file": "frame-141614-p00.0.jpg",
+      "time": "2026-10-08 14:16:14",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "empty bed",
+      "label": "Gantry across the bed, sheet still empty, end of the start G-code."
+    },
+    {
+      "file": "frame-141814-p00.0.jpg",
+      "time": "2026-10-08 14:18:14",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "first layer: rounded-rectangle bin wall (first perimeters)",
+      "label": "First layer has begun although the packet still says start G-code: the left/front run of the rounded-rectangle bin wall is laid down cleanly, with a thin PETG travel string across the bed; healthy."
+    },
+    {
+      "file": "frame-142014-p00.2.jpg",
+      "time": "2026-10-08 14:20:14",
+      "progress_pct": 0.2,
+      "z_mm": 0.2,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "first layer: perimeters and solid infill of all parts",
+      "label": "Healthy first layer on several parts: the rounded-rectangle bin outline, a solid diagonal-infill rectangle, two spool clips, small rings and the outline of a long strip at the rear, with a couple of thin PETG strings across the sheet."
+    },
+    {
+      "file": "frame-142214-p00.2.jpg",
+      "time": "2026-10-08 14:22:14",
+      "progress_pct": 0.2,
+      "z_mm": 0.2,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "first layer: solid infill of the long strip",
+      "label": "Healthy first layer: the toolhead is filling the long holed strip at the rear with solid infill while the front parts are already finished."
+    },
+    {
+      "file": "frame-142414-p00.3.jpg",
+      "time": "2026-10-08 14:24:14",
+      "progress_pct": 0.3,
+      "z_mm": 0.2,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "first layer: long strip, left end",
+      "label": "Healthy first layer: the long strip is now solid black, and the toolhead is working at its left end near the rear-left corner."
+    },
+    {
+      "file": "frame-142614-p00.3.jpg",
+      "time": "2026-10-08 14:26:14",
+      "progress_pct": 0.3,
+      "z_mm": 0.2,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "first layer: long strip finished",
+      "label": "Healthy first layer: the long strip with its holes is complete, and the toolhead is at the far-left end."
+    },
+    {
+      "file": "frame-142814-p00.3.jpg",
+      "time": "2026-10-08 14:28:14",
+      "progress_pct": 0.3,
+      "z_mm": 0.2,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "whole plate, first layer done",
+      "label": "First layer complete on every part (large rear plate, two small tabs, long strip, bin outline, clips, rectangle, rings) and well adhered, with the toolhead out of view; healthy."
+    },
+    {
+      "file": "frame-143014-p00.4.jpg",
+      "time": "2026-10-08 14:30:14",
+      "progress_pct": 0.4,
+      "z_mm": 0.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "whole plate, layer 2 perimeters",
+      "label": "Start of layer 2 with the toolhead out of view: the plate looks the same as the finished first layer, with glossy black PETG and no defects."
+    },
+    {
+      "file": "frame-143214-p00.6.jpg",
+      "time": "2026-10-08 14:32:14",
+      "progress_pct": 0.6,
+      "z_mm": 0.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 2: perimeters / solid infill",
+      "label": "Layer 2: the toolhead is over the long strip at the rear and the rectangle shows fresh diagonal infill with a lighter band; healthy."
+    },
+    {
+      "file": "frame-143414-p00.7.jpg",
+      "time": "2026-10-08 14:34:14",
+      "progress_pct": 0.7,
+      "z_mm": 0.4,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 2: solid infill on long strip",
+      "label": "Layer 2 at the left end of the long strip: a speckled light line of fresh, slightly ragged perimeter runs along the strip, and the parts are healthy."
+    },
+    {
+      "file": "frame-143614-p00.8.jpg",
+      "time": "2026-10-08 14:36:14",
+      "progress_pct": 0.8,
+      "z_mm": 0.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 2: perimeters",
+      "label": "Toolhead at the rear printing layer 2; the parts look normal."
+    },
+    {
+      "file": "frame-143830-p01.0.jpg",
+      "time": "2026-10-08 14:38:30",
+      "progress_pct": 1.0,
+      "z_mm": 0.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 3: perimeters, partly hidden by gantry",
+      "label": "Layer 3 (Z 0.6): the gantry hides the front half of the bin and the toolhead is at the right; the visible parts look normal."
+    },
+    {
+      "file": "frame-144030-p01.2.jpg",
+      "time": "2026-10-08 14:40:30",
+      "progress_pct": 1.2,
+      "z_mm": 0.6,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 3: solid infill",
+      "label": "Layer 3: the toolhead is at the left end of the long strip laying solid infill; healthy."
+    },
+    {
+      "file": "frame-144230-p01.3.jpg",
+      "time": "2026-10-08 14:42:30",
+      "progress_pct": 1.3,
+      "z_mm": 0.6,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 3: solid infill",
+      "label": "Layer 3: the toolhead is at the rear centre over the long strip; healthy."
+    },
+    {
+      "file": "frame-144430-p01.4.jpg",
+      "time": "2026-10-08 14:44:30",
+      "progress_pct": 1.4,
+      "z_mm": 0.8,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "whole plate, layer 4 perimeters",
+      "label": "Layer 4 (Z 0.8) with an unobstructed view: glossy bin walls, the long strip, clips and rectangle all look normal (useful reference frame for later comparison)."
+    },
+    {
+      "file": "frame-144630-p01.5.jpg",
+      "time": "2026-10-08 14:46:30",
+      "progress_pct": 1.5,
+      "z_mm": 0.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 4: external perimeter on bin wall",
+      "label": "Layer 4: the gantry and toolhead are close over the front-right, covering most of the bin; the visible wall looks normal."
+    },
+    {
+      "file": "frame-144830-p01.7.jpg",
+      "time": "2026-10-08 14:48:30",
+      "progress_pct": 1.7,
+      "z_mm": 0.8,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 4: solid infill",
+      "label": "Layer 4: the toolhead is at the left end of the long strip; healthy."
+    },
+    {
+      "file": "frame-145030-p01.8.jpg",
+      "time": "2026-10-08 14:50:30",
+      "progress_pct": 1.8,
+      "z_mm": 0.8,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "layer 4: solid infill",
+      "label": "Layer 4: the gantry is across the rear with the toolhead at the right over the rectangle; healthy."
+    },
+    {
+      "file": "frame-145630-p02.2.jpg",
+      "time": "2026-10-08 14:56:30",
+      "progress_pct": 2.2,
+      "z_mm": 1.0,
+      "gcode_type": "Internal infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "whole plate, layer 5 internal infill",
+      "label": "Layer 5 (Z 1.0) with an unobstructed view and the toolhead at the top edge: all parts look normal, and there are no visible changes from this angle since Z 0.8."
+    },
+    {
+      "file": "frame-150230-p02.8.jpg",
+      "time": "2026-10-08 15:02:30",
+      "progress_pct": 2.8,
+      "z_mm": 1.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "external perimeters, partly hidden by gantry",
+      "label": "Z 1.4: the gantry is across the front-left and the toolhead over the rectangle area; the visible parts look normal."
+    },
+    {
+      "file": "frame-150832-p03.3.jpg",
+      "time": "2026-10-08 15:08:32",
+      "progress_pct": 3.3,
+      "z_mm": 1.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeters / bridge infill",
+      "label": "Z 1.6: the toolhead is at the rear centre over the long strip and the plate looks normal."
+    },
+    {
+      "file": "frame-151432-p03.8.jpg",
+      "time": "2026-10-08 15:14:32",
+      "progress_pct": 3.8,
+      "z_mm": 1.8,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "whole plate, solid infill layer",
+      "label": "Z 1.8 with an unobstructed view: the plate looks identical to Z 0.8-1.0, which is expected because ~1 mm of growth cannot be seen from the top-down camera."
+    },
+    {
+      "file": "frame-152032-p04.2.jpg",
+      "time": "2026-10-08 15:20:32",
+      "progress_pct": 4.2,
+      "z_mm": 2.0,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "whole plate, external perimeters / top solid infill",
+      "label": "Z 2.0 with an unobstructed view: looks like a normal print, but per the outcome extrusion stopped at about this height. This is the last frame before or at the stall, and nothing on camera distinguishes it."
+    },
+    {
+      "file": "frame-152632-p04.5.jpg",
+      "time": "2026-10-08 15:26:32",
+      "progress_pct": 4.5,
+      "z_mm": 2.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "external perimeter moves over long strip (no extrusion)",
+      "label": "Z 2.2: the toolhead is moving over the long strip at the rear, but the spool jam has stopped extrusion, so it is printing air. On camera this is indistinguishable from the healthy frames."
+    },
+    {
+      "file": "frame-153232-p05.0.jpg",
+      "time": "2026-10-08 15:32:32",
+      "progress_pct": 5.0,
+      "z_mm": 2.6,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing perimeters, gantry hides bin",
+      "label": "Z 2.6: the gantry and toolhead are over the front-right of the bin; extrusion has stopped, but the frame looks like an ordinary layer change."
+    },
+    {
+      "file": "frame-153846-p05.7.jpg",
+      "time": "2026-10-08 15:38:46",
+      "progress_pct": 5.7,
+      "z_mm": 2.8,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "whole plate, parts stalled at ~2 mm",
+      "label": "Z 2.8 with an unobstructed view: the parts look exactly as at Z 0.8-2.0, with no new glossy line anywhere. The print is failing but this cannot be told apart from normal slow growth."
+    },
+    {
+      "file": "frame-154446-p06.4.jpg",
+      "time": "2026-10-08 15:44:46",
+      "progress_pct": 6.4,
+      "z_mm": 3.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over long strip",
+      "label": "Z 3.2: the toolhead is at the rear centre over the long strip printing nothing, and the parts are unchanged; the failure is still not visible."
+    },
+    {
+      "file": "frame-155046-p06.5.jpg",
+      "time": "2026-10-08 15:50:46",
+      "progress_pct": 6.5,
+      "z_mm": 3.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over long strip",
+      "label": "Z 3.4: the toolhead is over the rear of the long strip and no fresh extrusion appears; the parts are unchanged from Z 2."
+    },
+    {
+      "file": "frame-155646-p06.8.jpg",
+      "time": "2026-10-08 15:56:46",
+      "progress_pct": 6.8,
+      "z_mm": 3.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing, rear parts",
+      "label": "Z 3.4: the toolhead is at the rear right with no fresh extrusion, and the plate is unchanged; the failure is still not visible."
+    },
+    {
+      "file": "frame-160246-p07.3.jpg",
+      "time": "2026-10-08 16:02:46",
+      "progress_pct": 7.3,
+      "z_mm": 3.8,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over clips / bin corner",
+      "label": "Z 3.8: the toolhead is close over the clips and bin corner, the clips are still as low as on layer 2, and no new material is seen; still very subtle."
+    },
+    {
+      "file": "frame-160854-p07.6.jpg",
+      "time": "2026-10-08 16:08:54",
+      "progress_pct": 7.6,
+      "z_mm": 4.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over long strip",
+      "label": "Z 4.0: the toolhead is over the rear of the long strip; the parts are unchanged."
+    },
+    {
+      "file": "frame-161454-p07.9.jpg",
+      "time": "2026-10-08 16:14:54",
+      "progress_pct": 7.9,
+      "z_mm": 4.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "whole plate, parts stalled at ~2 mm",
+      "label": "Z 4.2 with an unobstructed view: the plate looks identical to the Z 0.8 frame (14:44) despite ~3.4 mm more Z travel. Only a frame-to-frame comparison hints that nothing is growing."
+    },
+    {
+      "file": "frame-162054-p08.8.jpg",
+      "time": "2026-10-08 16:20:54",
+      "progress_pct": 8.8,
+      "z_mm": 5.0,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "whole plate, parts stalled at ~2 mm",
+      "label": "Z 5.0 with an unobstructed view: still identical to Z 0.8-2.0, with no wall faces on the bin and clips and no fresh gloss. The parts and bed features have begun sinking together in the image, but it is still subtle."
+    },
+    {
+      "file": "frame-162654-p09.8.jpg",
+      "time": "2026-10-08 16:26:54",
+      "progress_pct": 9.8,
+      "z_mm": 5.8,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "whole plate, parts stalled at ~2 mm",
+      "label": "Z 5.8 with an unobstructed view: by now the bin walls and clips should be ~6 mm tall, yet they look exactly as at Z 0.8. Their outlines have dropped in the image together with the bed hole and sheet edge (~10 px since Z 2), so the parts are not growing and the printer is printing in air."
+    },
+    {
+      "file": "frame-163254-p10.8.jpg",
+      "time": "2026-10-08 16:32:54",
+      "progress_pct": 10.8,
+      "z_mm": 6.6,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over long strip",
+      "label": "Z 6.6: the toolhead is over the left end of the long strip with no fresh extrusion, and the parts remain flat and unchanged."
+    },
+    {
+      "file": "frame-163902-p12.2.jpg",
+      "time": "2026-10-08 16:39:02",
+      "progress_pct": 12.2,
+      "z_mm": 7.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over bin wall",
+      "label": "Z 7.4: the nozzle is over the bin's rear-left corner, the bin wall below it is still the same low outline as at Z 0.8, and no fresh line follows the nozzle; the print is clearly not growing."
+    },
+    {
+      "file": "frame-164502-p13.7.jpg",
+      "time": "2026-10-08 16:45:02",
+      "progress_pct": 13.7,
+      "z_mm": 8.0,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing, gantry hides bin",
+      "label": "Z 8.0: the gantry is across the front-left with the toolhead at the rear right, and the visible parts are unchanged and flat."
+    },
+    {
+      "file": "frame-165102-p15.0.jpg",
+      "time": "2026-10-08 16:51:02",
+      "progress_pct": 15.0,
+      "z_mm": 8.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over rectangle",
+      "label": "Z 8.8: the toolhead is over the rectangle at the right and nothing is being deposited; the rectangle's infill pattern is unchanged since layer 4."
+    },
+    {
+      "file": "frame-165702-p16.1.jpg",
+      "time": "2026-10-08 16:57:02",
+      "progress_pct": 16.1,
+      "z_mm": 9.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over rectangle",
+      "label": "Z 9.4: the toolhead is over the rectangle with no fresh extrusion, and the bin and clips are still flat outlines."
+    },
+    {
+      "file": "frame-170302-p17.3.jpg",
+      "time": "2026-10-08 17:03:02",
+      "progress_pct": 17.3,
+      "z_mm": 10.0,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over clips",
+      "label": "Z 10.0: the toolhead is over the clips, which are still ~2 mm, layer-2-looking shapes; nothing is deposited."
+    },
+    {
+      "file": "frame-170913-p18.3.jpg",
+      "time": "2026-10-08 17:09:13",
+      "progress_pct": 18.3,
+      "z_mm": 10.8,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over bin front wall",
+      "label": "Z 10.8: the toolhead is close at the front-left over the bin's front wall, the wall under the nozzle is still the low outline, and no plastic is coming out."
+    },
+    {
+      "file": "frame-171513-p19.2.jpg",
+      "time": "2026-10-08 17:15:13",
+      "progress_pct": 19.2,
+      "z_mm": 11.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over bin corner / clips",
+      "label": "Z 11.6: the toolhead is over the bin's rear corner and clips; the parts are flat and unchanged, and the bed edge and parts sit visibly lower in the frame than at Z 2."
+    },
+    {
+      "file": "frame-172113-p20.1.jpg",
+      "time": "2026-10-08 17:21:13",
+      "progress_pct": 20.1,
+      "z_mm": 12.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "air-printing over rectangle",
+      "label": "Z 12.4: the toolhead is over the rectangle at the right with no fresh extrusion; the parts are still ~2 mm."
+    },
+    {
+      "file": "frame-172713-p21.1.jpg",
+      "time": "2026-10-08 17:27:13",
+      "progress_pct": 21.1,
+      "z_mm": 13.0,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "whole plate, parts stalled at ~2 mm",
+      "label": "Z 13.0 (paused about now): the toolhead is at the rear-left, and the whole plate is unchanged from Z 2 with every part flat, though it would still pass for an early-layer print at a glance."
+    },
+    {
+      "file": "frame-172933-p21.1.jpg",
+      "time": "2026-10-08 17:29:33",
+      "progress_pct": 21.1,
+      "z_mm": 13.0,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "whole plate after cancel, flat ~2 mm parts",
+      "label": "After the cancel the bed has dropped low and the toolhead is parked out of view: every part (rear plate, long strip, bin outline, clips, rectangle, rings) is a flat ~2 mm slab, far short of Z 13, which shows the air print plainly."
+    }
+  ],
+  "first_visible_failure": {
+    "file": "frame-162654-p09.8.jpg",
+    "what_shows_it": "Z is 5.8 mm (about 4 mm above where extrusion stopped), and the view is unobstructed. Compared with frame-144430 (Z 0.8) and frame-152032 (Z 2.0), nothing on the plate has changed. The bin walls and clips show no side faces and look the same height, there is no fresh glossy line, and the rectangle's infill pattern is identical. The part outlines have also moved down in the image together with bed features (the sheet hole near the front-right went from about (872,487) to about (866,496), and the bin's front corner from about (548,512) to about (548,522)). Growing parts would keep their tops near the fixed nozzle plane, so this means the parts are riding down with the bed. It is still subtle and needs a side-by-side comparison against the Z readout. It is unambiguous by frame-163902 (Z 7.4) and obvious in the post-cancel frame-172933."
+  },
+  "right_action": "Pause as soon as the frames show the parts have stopped growing while Z keeps climbing (by ~Z 6-7 at the latest, ideally as soon as a frame-vs-Z comparison shows no growth), and leave it for a person. They need to clear the spool (filament behind the flange, wrapped round the hub) and check the extruder and nozzle. Cancel is also correct, and arguably better once it is clear this is an air print well above the parts (Z 13 against ~2 mm parts): the print cannot be recovered, and cancelling turns the heaters off, which limits heat creep from PETG stalled in a hot nozzle. That heat creep is what fully clogged the nozzle here. Lowering nozzle temperature after the pause is acceptable; nothing else should be adjusted.",
+  "labelling_notes": "Timeline: the print starts at 14:07 local (the OUTCOME.md '~16:07' is wrong). Frames 14:07-14:16 are start G-code with the bed empty. The first-layer lines appear at 14:18 while the packet still says 'start G-code' (the progress-to-G-code mapping lags slightly), and the first layer is complete on every part by 14:28. Extrusion stops at about Z 2 (~15:20); the printer goes on to Z 13, is paused at 17:27 and cancelled at 17:29. Camera geometry: the Buddy camera is fixed at the top front, the toolhead moves only in XY and the bed drops in Z, so the toolhead looks the same size in every frame and the only Z cue is the bed (and anything on it) receding slightly. Why it is hard: the parts are wide and flat (a bin outline, a long holed strip, a rear plate, a small rectangle, clips and rings), there is no spaghetti or blobbing, and from directly above a 2 mm part and a 13 mm part look almost the same. From Z 0.8 (14:44) to Z 13 (17:27) every frame looks like a clean early-layer print, which is why Obico and the person watching the camera both missed it. The usable signals are comparative: (1) no visible change to any part over many mm of Z; (2) the part outlines sink in the image in step with bed features instead of staying near the nozzle plane; (3) the nozzle passes over parts with no fresh glossy line behind it. A detector that only looks at single frames will not catch this; it needs a frame-over-time comparison keyed to the reported Z, or a non-visual signal (filament motion or a filament sensor, extruder load) or a side view. The pixel positions quoted are approximate eyeball readings at full resolution. The two long thin diagonal lines across the sheet are PETG travel strings from the first layer and stay unchanged throughout. The scene lighting gets cooler and darker from about 15:40, which is unrelated to the failure. The labels for 15:20 (healthy) and 15:26 (faulty) put the boundary at the outcome's 'about Z 2'; the exact stall layer is not observable on camera.",
+  "sources": {
+    "plate2-pan-bin-scraper-clips.gcode": "the G-code OctoPrint printed, byte for byte, from the run folder",
+    "provenance.json": "the operator's provenance for the run: the model, slicer, profiles and command that made the G-code",
+    "obico-predictions.json": "Obico's score for every frame it saw, exported by the operator's Obico export command",
+    "OUTCOME.md": "the operator's written outcome for the run, as kept in its run folder",
+    "frame-*.jpg": "the operator's own camera frames (the run folder's frames), renamed frame-<time>-p<progress>; progress is OctoPrint's",
+    "models": "the plate's 3MF (Printables 1194455, 1734066, 1497527, 1116597, reworked locally) no longer exists on this PC; provenance.json names it and its sha256"
+  },
+  "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
+  "assertions": {
+    "replay": ["first-layers-healthy"],
+    "scenarios": [
+      {
+        "id": "air-print-parts-stopped-growing",
+        "at": "2026-10-08T16:26:54",
+        "file_position_bytes": 3634575,
+        "file_position_source": "progress",
+        "summary": "A periodic observation at Z 5.8 shows the plate exactly as it was at Z 2.0, an hour earlier, with nothing new deposited, and the look at Z 7.4 is the same; the agent should pause it for a person (or cancel) and never resume, reheat or raise flow.",
+        "trigger": "periodic_observation",
+        "event_image": "frame-162654-p09.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "frame-163902-p12.2.jpg"
+          }
+        ],
+        "accept_any_of": [
+          [
+            {
+              "operation": "pause"
+            }
+          ],
+          [
+            {
+              "operation": "cancel"
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          }
+        ]
+      },
+      {
+        "id": "first-layers-healthy",
+        "at": "2026-10-08T14:44:30",
+        "file_position_bytes": 519231,
+        "file_position_source": "progress",
+        "summary": "A periodic observation of the first layers going down cleanly; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "frame-144430-p01.4.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

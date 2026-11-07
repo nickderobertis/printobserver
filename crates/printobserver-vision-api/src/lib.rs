@@ -292,6 +292,9 @@ pub struct FetchedImage {
     pub bytes: RawBytes,
     /// The content type it was served as.
     pub content_type: String,
+    /// When its source says it was taken, when its source says: a frame a camera
+    /// held over from earlier is not a frame of now.
+    pub captured_at: Option<Timestamp>,
 }
 
 /// Why a retrieved frame is not one to hand anybody as a picture of the

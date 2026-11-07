@@ -22,6 +22,9 @@ use printobserver_vision_api::Detection;
 /// One event waiting for a running turn, with what the detector did about it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Arrival {
+    /// When the frame an alert brought was captured; the event's own payload says
+    /// it for a check or a look, whose frame it was written down with.
+    pub frame_captured_at: Option<printobserver_types::Timestamp>,
     /// The event, as it was written down, carrying its image.
     pub event: EventRecord,
     /// What the detector did, when the event is one of its detections.
@@ -169,6 +172,7 @@ mod tests {
     /// One arrival, of no kind in particular.
     fn arrival() -> Arrival {
         Arrival {
+            frame_captured_at: None,
             event: EventRecord {
                 id: EventId::new(),
                 print_id: None,

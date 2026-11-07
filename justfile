@@ -485,23 +485,45 @@ test-skill-install:
     just node-modules
     bunx nx run-many -t test-skill-install --output-style=stream
 
-# With every `printobserver` command stubbed, each scenario under
-# `tests/real-prints` is judged by its case's own `assertions`. Extra arguments
-# go to pytest, so `just skilltest -k fan-cut-bridge` runs one scenario. The
-# cases' frames and G-code are Git LFS objects, fetched first.
+# Each real print with a `replay` under `tests/real-prints`, fed in order through
+# the real server and the shipped harness as one continued conversation, and
+# judged by that case's own `assertions`. Extra arguments go to pytest, so `just
+# skilltest -k fan-cut-bridge` runs one test. The cases' frames and G-code are Git
+# LFS objects, fetched first.
 #
-# Deliberately not one of `just check`'s tiers: every scenario spends real model
-# turns and needs a signed-in harness, so `skilltest` is a target name no gate
-# tier fans out over. Its deterministic half, which builds every scenario with
-# no model, is the `skilltest-wiring` project's `test` target and runs in the
-# gate.
+# Deliberately not one of `just check`'s tiers: every turn spends real model
+# quota, so `skilltest` is a target name no gate tier fans out over. Its
+# deterministic half is the `skilltest-wiring` project's `test` target. A change
+# to anything `repo-policy.toml`'s `[skilltest] owed_paths` names runs this before
+# it lands, and the `skilltest` job runs it again.
 #
-# Run the skill on every real-print scenario through a real harness.
+# Replay every real print through the real server and harness.
 [positional-arguments]
 skilltest *ARGS:
     just real-prints-fetch
     just node-modules
     bunx nx run skilltest:skilltest --output-style=stream "$@"
+
+# Run the suite and write its record to `tests/skilltest/results/latest.json`.
+#
+# Given the directory of a finished run, folds that instead of running anything.
+[positional-arguments]
+skilltest-record *ARGS:
+    uv run -q python tests/skilltest/record.py "$@"
+
+# Refuse a run of the suite in CI with no credential, before it costs anything.
+skilltest-credential:
+    @: "${CLAUDE_CODE_OAUTH_TOKEN:?the repository secret CLAUDE_CODE_OAUTH_TOKEN is not set: configure it, as gh-secrets.json names it}"
+
+# Install the Claude Code release the `skilltest` job runs on, `repo-policy.toml`'s
+# `[skilltest] claude_code`.
+skilltest-install-harness:
+    uv run -q python tests/skilltest/classify.py --install-harness
+
+# Whether a diff owes the real-print suite, as the lines a workflow step appends
+# to `GITHUB_OUTPUT`. BASE and HEAD are the two commits it is diffed between.
+skilltest-classify BASE HEAD:
+    @uv run -q python tests/skilltest/classify.py {{quote(BASE)}} {{quote(HEAD)}}
 
 # Download the real-print cases' Git LFS objects and write them into the tree.
 #

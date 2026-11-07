@@ -45,6 +45,9 @@ impl Timestamp {
     /// The instant now.
     #[must_use]
     pub fn now() -> Self {
+        #[cfg(feature = "replay-clock")]
+        return Self(replay_clock::now(Utc::now()));
+        #[cfg(not(feature = "replay-clock"))]
         Self(Utc::now())
     }
 
@@ -167,5 +170,52 @@ impl JsonSchema for Timestamp {
             "title": "Timestamp",
             "description": "An instant in UTC, as an RFC 3339 string with a zero offset."
         })
+    }
+}
+
+/// The clock of the real-print replay: this program's wall clock moved by a file
+/// beside it. Compiled only under the `replay-clock` feature, which the suite's own
+/// build alone enables: a print replayed in minutes has to read as the hours it
+/// took, or every time the agent reads contradicts every position it reads.
+// llmlint: ignore[code_lands_in_the_domain_that_owns_it, changed_behavior_has_e2e] See suppressions.toml.
+#[cfg(feature = "replay-clock")]
+mod replay_clock {
+    use chrono::{DateTime, TimeDelta, Utc};
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
+
+    /// The file beside the program: the milliseconds to add, and the latest instant
+    /// to answer in milliseconds since the epoch, or nothing past that for none.
+    const CLOCK_FILE: &str = "clock";
+
+    fn path() -> Option<&'static PathBuf> {
+        static PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+        PATH.get_or_init(|| {
+            std::env::current_exe()
+                .ok()
+                .map(|program| program.with_file_name(CLOCK_FILE))
+        })
+        .as_ref()
+    }
+
+    pub(super) fn now(real: DateTime<Utc>) -> DateTime<Utc> {
+        let Some(text) = path().and_then(|file| std::fs::read_to_string(file).ok()) else {
+            return real;
+        };
+        let mut numbers = text.split_whitespace().map(str::parse::<i64>);
+        let Some(Ok(offset)) = numbers.next() else {
+            return real;
+        };
+        let Some(moved) =
+            TimeDelta::try_milliseconds(offset).and_then(|by| real.checked_add_signed(by))
+        else {
+            return real;
+        };
+        match numbers.next() {
+            Some(Ok(ceiling)) => {
+                DateTime::from_timestamp_millis(ceiling).map_or(moved, |held| moved.min(held))
+            }
+            _ => moved,
+        }
     }
 }

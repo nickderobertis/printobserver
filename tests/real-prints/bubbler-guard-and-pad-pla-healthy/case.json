@@ -1,0 +1,2545 @@
+{
+  "case": "bubbler-guard-and-pad-pla-healthy",
+  "verdict": "healthy: no fault in any frame",
+  "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), smooth PEI sheet",
+  "printed_on": "2026-10-31, 16:46 to 19:20",
+  "times": "local, MDT (UTC-6)",
+  "part": "two parts on one plate, in Prusament PLA black with a 5 mm brim. The bubbler guard: a round cylinder to Z 142 whose base (Z 0-12) is a C-shaped wall with a saddle cut-out over build-plate-only support (Z 0.2-6.8), a grooved double wall (Z 13-40), a thin wall (Z 40-51), an unsupported internal ledge (Z 51.8-54), a side slot from about Z 54 to the rim, an outward flare to a wider upper section (Z 100-108) and a flared top lip (Z 136-142). The saddle pad: an arc-shaped strip whose arch rises to Z 11.4 over a comb of support",
+  "fault": "none; a loose strand on the bed, later hanging by the right Z leadscrew, never touched the parts",
+  "expected_agent_action": {
+    "on_every_observation": "carry on; no request",
+    "never": [
+      "pause",
+      "cancel",
+      "any adjustment"
+    ]
+  },
+  "detector": "Obico raised no alert",
+  "agent_turn": "the agent carried on at every observation. It called the support under the guard's cut-out 'teeth' and 'designed slots', the pad's arch top a 'hook' or 'raised end', the side slot a 'notch' or 'new step', the internal ledge 'internal ridges', the flare a 'second opening' and the top collar a 'lip'. Three periodic observations had no image because the camera answered 500, so the agent took a look instead",
+  "earlier_start": "a first start of this G-code at 16:24 was cancelled at once because the textured sheet was on; see ../bed-and-sheet-check",
+  "frames": [
+    {
+      "file": "agent-001-obs-164721-p00.0.jpg",
+      "time": "2026-10-31 16:47:21",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "empty bed (start sequence)",
+      "label": "Start G-code preheat: the bed is lowered and the smooth PEI sheet is empty; nothing has been extruded yet."
+    },
+    {
+      "file": "agent-002-obs-164923-p00.0.jpg",
+      "time": "2026-10-31 16:49:23",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "empty bed (start sequence)",
+      "label": "Start G-code probing step: the bed is raised to the nozzle and the sheet is still empty and clean; no plastic yet."
+    },
+    {
+      "file": "agent-003-obs-165123-p00.1.jpg",
+      "time": "2026-10-31 16:51:23",
+      "progress_pct": 0.1,
+      "z_mm": 0.2,
+      "gcode_type": "Skirt/Brim",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "first layer and brim of guard and pad; stray strand on bed",
+      "label": "First layer at Z 0.2 (brim): the guard's brim/ring and the pad outline are going down dense and stuck at back centre; a loose wavy strand of filament lies on the bed to the right, clear of the parts.",
+      "agent_concern": {
+        "concern": "I think the wavy line in the event frame was the intro line or glare",
+        "verdict": "other",
+        "explanation": "It is a loose strand of filament lying on the bed beside the first layer (not the intro line, not glare), clear of the parts and harmless; it is the strand that later hangs by the leadscrew."
+      }
+    },
+    {
+      "file": "agent-004-look-165229.jpg",
+      "time": "2026-10-31 16:52:29",
+      "progress_pct": 0.1,
+      "z_mm": 0.2,
+      "gcode_type": "Skirt/Brim",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "first layer and brim of guard and pad",
+      "label": "First layer at Z 0.2 (brim): the guard's brim ring and the pad's first layer are solid and well adhered; the stray strand has been pushed off to the right bed edge.",
+      "agent_concern": {
+        "concern": "I think the wavy line in the event frame was the intro line or glare",
+        "verdict": "other",
+        "explanation": "The wavy line was a loose stray strand on the bed; by this frame it has been pushed to the right bed edge and never touches the parts."
+      }
+    },
+    {
+      "file": "agent-005-obs-165325-p01.7.jpg",
+      "time": "2026-10-31 16:53:25",
+      "progress_pct": 1.7,
+      "z_mm": 1.0,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard base wall and support under the saddle opening; pad first layers",
+      "label": "Z 1.0 early layers: the guard's C-shaped base wall sits on its brim with a comb of build-plate support lines filling the saddle opening at its front-left, and the pad starts at back right; all clean and stuck.",
+      "agent_concern": {
+        "concern": "That reads as the bubbler guard's designed slots, not under-extrusion",
+        "verdict": "support",
+        "explanation": "The evenly spaced ribs at the guard's front-left are build-plate support lines (Support material is in this layer's G-code) filling the saddle opening, not designed slots or under-extrusion."
+      }
+    },
+    {
+      "file": "agent-006-look-165446.jpg",
+      "time": "2026-10-31 16:54:46",
+      "progress_pct": 1.7,
+      "z_mm": 1.0,
+      "gcode_type": "Perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard base and support teeth (partly hidden); pad",
+      "label": "Z 1.0 follow-up look with the toolhead over the guard: the visible base wall, support teeth and pad are clean and attached.",
+      "agent_concern": {
+        "concern": "That reads as the bubbler guard's designed slots, not under-extrusion",
+        "verdict": "support",
+        "explanation": "The ribbed section is build-plate support under the guard's saddle opening; the agent was right that it is not under-extrusion but wrong that it is designed geometry."
+      }
+    },
+    {
+      "file": "agent-007-obs-165526-p03.0.jpg",
+      "time": "2026-10-31 16:55:26",
+      "progress_pct": 3.0,
+      "z_mm": 2.4,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard base wall and support teeth (partly hidden); stray strand at right edge",
+      "label": "Z 2.4 perimeters/infill with the toolhead over the guard: the visible base wall and support teeth are clean; a loose strand hangs off the right bed edge near the Z leadscrew.",
+      "agent_concern": {
+        "concern": "The round guard's teeth are crisp and evenly spaced, so they are designed geometry",
+        "verdict": "support",
+        "explanation": "The guard's teeth are support columns under its saddle opening, not designed geometry; the strand off the right bed edge it also noted is harmless."
+      }
+    },
+    {
+      "file": "agent-008-look-165625.jpg",
+      "time": "2026-10-31 16:56:25",
+      "progress_pct": 3.0,
+      "z_mm": 2.4,
+      "gcode_type": "Internal infill",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard base wall and support teeth; pad on support",
+      "label": "Z 2.4 clear view: the guard's base wall rises with crisp, evenly spaced support teeth under its saddle opening, and the pad shows its comb of support under the arch at back right; healthy.",
+      "agent_concern": {
+        "concern": "The round guard's teeth are crisp and evenly spaced, so they are designed geometry",
+        "verdict": "support",
+        "explanation": "The clear frame shows the teeth filling the open side of the guard's C-shaped base under the sloping overhang: build-plate support, not model geometry."
+      }
+    },
+    {
+      "file": "agent-009-obs-165727-p04.4.jpg",
+      "time": "2026-10-31 16:57:27",
+      "progress_pct": 4.4,
+      "z_mm": 3.8,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard base and support teeth (partly hidden); pad",
+      "label": "Z 3.8 with the toolhead over the guard: visible walls and support teeth are clean; the stray strand still hangs by the right leadscrew, away from the parts.",
+      "agent_concern": {
+        "concern": "The loose strand at the bed edge hasn't changed",
+        "verdict": "other",
+        "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+      }
+    },
+    {
+      "file": "agent-010-look-165837.jpg",
+      "time": "2026-10-31 16:58:37",
+      "progress_pct": 4.4,
+      "z_mm": 3.8,
+      "gcode_type": "Internal infill",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard base wall and support; pad on support",
+      "label": "Z 3.8 clear view: guard base wall and support teeth growing cleanly, pad's support comb and sloped arch end at back right; healthy.",
+      "agent_concern": {
+        "concern": "The loose strand at the bed edge hasn't changed",
+        "verdict": "other",
+        "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+      }
+    },
+    {
+      "file": "agent-011-obs-165928-p05.8.jpg",
+      "time": "2026-10-31 16:59:28",
+      "progress_pct": 5.8,
+      "z_mm": 5.38143,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard base and support teeth; pad on support",
+      "label": "Z 5.4 support-only layer: the guard base with taller support teeth under its saddle opening and the pad's support comb are clean and stuck.",
+      "agent_concern": {
+        "concern": "the stray strand off the right edge of the bed hasn't changed",
+        "verdict": "other",
+        "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+      }
+    },
+    {
+      "file": "agent-012-obs-170128-p07.6.jpg",
+      "time": "2026-10-31 17:01:28",
+      "progress_pct": 7.6,
+      "z_mm": 6.78,
+      "gcode_type": "Support material",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard base and support teeth; pad on support",
+      "label": "Z 6.8 support layer: guard wall and support teeth crisp, pad's arch rising over its support comb; the stray strand hangs beside the right Z leadscrew.",
+      "agent_concern": {
+        "concern": "The loose strand beside the right Z leadscrew is still there",
+        "verdict": "other",
+        "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+      }
+    },
+    {
+      "file": "agent-013-obs-170329-p09.6.jpg",
+      "time": "2026-10-31 17:03:29",
+      "progress_pct": 9.6,
+      "z_mm": 8.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard saddle-opening overhang on support; pad arch",
+      "label": "Z 8.0 perimeters and infill: the sloped top of the guard's saddle opening is building over its support teeth and the pad's arch is rising; clean.",
+      "agent_concern": {
+        "concern": "The loose strand by the right Z leadscrew hasn't changed",
+        "verdict": "other",
+        "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+      }
+    },
+    {
+      "file": "agent-014-obs-170530-p11.6.jpg",
+      "time": "2026-10-31 17:05:30",
+      "progress_pct": 11.6,
+      "z_mm": 9.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard overhang over support; pad arch apex",
+      "label": "Z 9.4 overhang/bridge layer: the guard's sloped overhang over the support teeth is clean and the pad's arch apex stands up at its back end; toolhead partly over the guard; healthy.",
+      "agent_concern": {
+        "concern": "I couldn't resolve the small hook on the pad",
+        "verdict": "design feature",
+        "explanation": "The 'hook' is the upturned apex of the saddle pad's arch standing above its support, which persists unchanged in later frames; it is not a curl or lift."
+      }
+    },
+    {
+      "file": "agent-015-look-170633.jpg",
+      "time": "2026-10-31 17:06:33",
+      "progress_pct": 11.6,
+      "z_mm": 9.4,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "pad on support; guard mostly hidden",
+      "label": "Z 9.4 follow-up look: the toolhead hides most of the guard; the pad's support comb and arch end are visible and clean, no curl or lift.",
+      "agent_concern": {
+        "concern": "I couldn't resolve the small hook on the pad",
+        "verdict": "design feature",
+        "explanation": "The 'hook' is the raised end of the pad's arch; the follow-up frame is mostly toolhead but nothing on the pad is lifting."
+      }
+    },
+    {
+      "file": "agent-016-obs-170731-p13.8.jpg",
+      "time": "2026-10-31 17:07:31",
+      "progress_pct": 13.8,
+      "z_mm": 10.8,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard base over support; pad arch top",
+      "label": "Z 10.8: the guard's saddle opening is closed over its support teeth and the pad is near its top with the raised arch end; walls clean and stuck.",
+      "agent_concern": {
+        "concern": "the small hook I couldn't make out on the pad last turn isn't showing as a curl",
+        "verdict": "design feature",
+        "explanation": "The hook is the pad's arched end (its apex at Z ~11.4), present unchanged across frames, so it is designed geometry."
+      }
+    },
+    {
+      "file": "agent-017-obs-170932-p15.9.jpg",
+      "time": "2026-10-31 17:09:32",
+      "progress_pct": 15.9,
+      "z_mm": 12.2,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard base and support (partly hidden); pad",
+      "label": "Z 12.2 solid infill with the toolhead over the guard: the visible base, support teeth and pad are clean."
+    },
+    {
+      "file": "agent-018-look-171031.jpg",
+      "time": "2026-10-31 17:10:31",
+      "progress_pct": 15.9,
+      "z_mm": 12.2,
+      "gcode_type": "Solid infill",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard base and support (partly hidden); pad",
+      "label": "Z 12.2 follow-up look, toolhead again over the guard: visible guard wall, support teeth and the pad are clean and attached."
+    },
+    {
+      "file": "agent-019-obs-171133-p18.7.jpg",
+      "time": "2026-10-31 17:11:33",
+      "progress_pct": 18.7,
+      "z_mm": 13.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (groove section); finished pad",
+      "label": "Z 13.6 perimeter walls: the guard is now a full round wall rising smoothly above the closed saddle opening, with the finished pad clean behind it."
+    },
+    {
+      "file": "agent-020-obs-171334-p20.7.jpg",
+      "time": "2026-10-31 17:13:34",
+      "progress_pct": 20.7,
+      "z_mm": 15.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (groove section); finished pad",
+      "label": "Z 15.2 perimeter walls: the guard cylinder is smooth and solid, the finished pad is clean; healthy."
+    },
+    {
+      "file": "agent-021-obs-171535-p22.8.jpg",
+      "time": "2026-10-31 17:15:35",
+      "progress_pct": 22.8,
+      "z_mm": 16.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (groove section)",
+      "label": "Z 16.8 perimeter walls: the guard's wall is smooth; the toolhead hides most of the finished pad."
+    },
+    {
+      "file": "agent-022-obs-171737-p24.9.jpg",
+      "time": "2026-10-31 17:17:37",
+      "progress_pct": 24.9,
+      "z_mm": 18.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (partly hidden)",
+      "label": "Z 18.4 with the toolhead over the guard: the visible guard wall, support teeth and pad edge are clean.",
+      "agent_concern": {
+        "concern": "its raised end feature has stayed the same across frames, so it is part of the design, not a curl",
+        "verdict": "design feature",
+        "explanation": "The raised end is the apex of the saddle pad's arch, finished at Z 11.4 and unchanged since; designed geometry."
+      }
+    },
+    {
+      "file": "agent-023-look-171835.jpg",
+      "time": "2026-10-31 17:18:35",
+      "progress_pct": 24.9,
+      "z_mm": 18.4,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; finished pad",
+      "label": "Z 18.4 follow-up look: the guard wall is clean and the finished pad shows its support comb and upturned arch end unchanged.",
+      "agent_concern": {
+        "concern": "its raised end feature has stayed the same across frames, so it is part of the design, not a curl",
+        "verdict": "design feature",
+        "explanation": "The pad's upturned arch end is visible and unchanged in this look; it is model geometry, not a curl."
+      }
+    },
+    {
+      "file": "agent-024-obs-171937-p27.0.jpg",
+      "time": "2026-10-31 17:19:37",
+      "progress_pct": 27.0,
+      "z_mm": 20.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (groove section)",
+      "label": "Z 20.0 perimeter walls: the guard cylinder rises smooth and solid; the pad behind is clean."
+    },
+    {
+      "file": "agent-025-look-172155.jpg",
+      "time": "2026-10-31 17:21:55",
+      "progress_pct": 28.8,
+      "z_mm": 21.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; finished pad",
+      "label": "Z 21.6 fresh look taken after the periodic image failed: guard wall smooth, support teeth and finished pad clean.",
+      "agent_concern": {
+        "concern": "This observation came with no image because the camera returned one error",
+        "verdict": "camera or lighting",
+        "explanation": "The periodic image was missing because of a one-off camera/frame-server error; the fresh look shows a healthy print."
+      }
+    },
+    {
+      "file": "agent-026-obs-172338-p30.6.jpg",
+      "time": "2026-10-31 17:23:38",
+      "progress_pct": 30.6,
+      "z_mm": 23.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (groove section); finished pad",
+      "label": "Z 23.2 perimeter walls: the guard cylinder is smooth and solid and the finished pad is clean; healthy."
+    },
+    {
+      "file": "agent-027-look-172555.jpg",
+      "time": "2026-10-31 17:25:55",
+      "progress_pct": 32.4,
+      "z_mm": 24.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; finished pad",
+      "label": "Z 24.6 fresh look taken after another failed periodic image: the guard cylinder and the finished pad are clean and stuck.",
+      "agent_concern": {
+        "concern": "The camera is failing intermittently, with the periodic frame missing in 2 of the last 3 observations",
+        "verdict": "camera or lighting",
+        "explanation": "Intermittent frame-server errors dropped two periodic images; this fresh look is healthy and the print was never at risk."
+      }
+    },
+    {
+      "file": "agent-028-obs-172738-p34.1.jpg",
+      "time": "2026-10-31 17:27:38",
+      "progress_pct": 34.1,
+      "z_mm": 26.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (lighting glare on wall)",
+      "label": "Z 26.2 with the toolhead over the guard: a bright, jagged-edged patch of glare on the speckled front wall below the nozzle; the wall itself is intact.",
+      "agent_concern": {
+        "concern": "the light patch I saw on it was lighting on the filament's speckled texture, not a defect",
+        "verdict": "camera or lighting",
+        "explanation": "The bright jagged patch on the front wall is glare on the speckled PLA; the next frame shows the same wall uniform and intact."
+      }
+    },
+    {
+      "file": "agent-029-look-172843.jpg",
+      "time": "2026-10-31 17:28:43",
+      "progress_pct": 34.1,
+      "z_mm": 26.2,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard perimeter walls",
+      "label": "Z 26.2 follow-up look: the guard's front wall is uniform and solid, confirming the earlier patch was glare.",
+      "agent_concern": {
+        "concern": "the light patch I saw on it was lighting on the filament's speckled texture, not a defect",
+        "verdict": "camera or lighting",
+        "explanation": "The follow-up frame shows a uniform wall, confirming the patch was glare rather than a gap or blob."
+      }
+    },
+    {
+      "file": "agent-030-obs-172940-p35.8.jpg",
+      "time": "2026-10-31 17:29:40",
+      "progress_pct": 35.8,
+      "z_mm": 27.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; small wisp at rim",
+      "label": "Z 27.8 perimeter walls: the guard wall is smooth with one thin wisp of string at the rim near the nozzle; otherwise clean.",
+      "agent_concern": {
+        "concern": "There is one small, harmless wisp of filament on the guard's upper edge",
+        "verdict": "other",
+        "explanation": "A single thin wisp of string/ooze at the rim, gone by the next frame; ordinary and not a print fault."
+      }
+    },
+    {
+      "file": "agent-031-obs-173143-p37.6.jpg",
+      "time": "2026-10-31 17:31:43",
+      "progress_pct": 37.6,
+      "z_mm": 29.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls",
+      "label": "Z 29.4 perimeter walls: the guard cylinder rises smooth and solid, wisp gone; pad clean."
+    },
+    {
+      "file": "agent-032-obs-173345-p39.3.jpg",
+      "time": "2026-10-31 17:33:45",
+      "progress_pct": 39.3,
+      "z_mm": 31.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (partly hidden)",
+      "label": "Z 31.0 with the toolhead over the guard: visible walls and the pad are clean."
+    },
+    {
+      "file": "agent-033-look-173451.jpg",
+      "time": "2026-10-31 17:34:51",
+      "progress_pct": 39.3,
+      "z_mm": 31.0,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (partly hidden)",
+      "label": "Z 31.0 follow-up look, toolhead still over the guard: what is visible is clean."
+    },
+    {
+      "file": "agent-034-obs-173547-p41.0.jpg",
+      "time": "2026-10-31 17:35:47",
+      "progress_pct": 41.0,
+      "z_mm": 32.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls",
+      "label": "Z 32.6 perimeter walls: guard cylinder smooth with a tiny wisp at the rim; finished pad clean."
+    },
+    {
+      "file": "agent-035-obs-173749-p43.0.jpg",
+      "time": "2026-10-31 17:37:49",
+      "progress_pct": 43.0,
+      "z_mm": 34.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls",
+      "label": "Z 34.2 perimeter walls: guard cylinder smooth with a clean rim, finished pad clean; healthy."
+    },
+    {
+      "file": "agent-036-obs-173951-p45.0.jpg",
+      "time": "2026-10-31 17:39:51",
+      "progress_pct": 45.0,
+      "z_mm": 35.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls",
+      "label": "Z 35.8 perimeter walls: guard cylinder smooth and solid, rim clean."
+    },
+    {
+      "file": "agent-037-obs-174153-p47.0.jpg",
+      "time": "2026-10-31 17:41:53",
+      "progress_pct": 47.0,
+      "z_mm": 37.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (partly hidden)",
+      "label": "Z 37.4 with the toolhead over the back of the guard: the visible wall is smooth; the pad is mostly hidden."
+    },
+    {
+      "file": "agent-038-obs-174355-p48.8.jpg",
+      "time": "2026-10-31 17:43:55",
+      "progress_pct": 48.8,
+      "z_mm": 39.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls",
+      "label": "Z 39.0 perimeter walls: guard cylinder smooth and solid, pad clean."
+    },
+    {
+      "file": "agent-039-obs-174558-p50.4.jpg",
+      "time": "2026-10-31 17:45:58",
+      "progress_pct": 50.4,
+      "z_mm": 40.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (thin-wall section)",
+      "label": "Z 40.8 perimeter walls: the guard has moved into its thin-wall section and is rising cleanly."
+    },
+    {
+      "file": "agent-040-obs-174800-p52.0.jpg",
+      "time": "2026-10-31 17:48:00",
+      "progress_pct": 52.0,
+      "z_mm": 42.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (thin-wall section)",
+      "label": "Z 42.8 perimeter walls: guard cylinder smooth with a tiny wisp at the rim; healthy."
+    },
+    {
+      "file": "agent-041-obs-175001-p53.7.jpg",
+      "time": "2026-10-31 17:50:01",
+      "progress_pct": 53.7,
+      "z_mm": 45.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (partly hidden)",
+      "label": "Z 45.0 with the toolhead over the guard's top: the visible wall is smooth and solid."
+    },
+    {
+      "file": "agent-042-obs-175203-p55.4.jpg",
+      "time": "2026-10-31 17:52:03",
+      "progress_pct": 55.4,
+      "z_mm": 47.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (thin-wall section)",
+      "label": "Z 47.2 perimeter walls: guard cylinder smooth and clean at the rim."
+    },
+    {
+      "file": "agent-043-obs-175404-p57.1.jpg",
+      "time": "2026-10-31 17:54:04",
+      "progress_pct": 57.1,
+      "z_mm": 49.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls (thin-wall section)",
+      "label": "Z 49.4 perimeter walls: guard cylinder smooth and solid."
+    },
+    {
+      "file": "agent-044-obs-175606-p58.8.jpg",
+      "time": "2026-10-31 17:56:06",
+      "progress_pct": 58.8,
+      "z_mm": 51.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls below the ledge",
+      "label": "Z 51.4 perimeter walls just below the internal ledge: guard cylinder smooth with a clean rim."
+    },
+    {
+      "file": "agent-045-obs-175808-p60.6.jpg",
+      "time": "2026-10-31 17:58:08",
+      "progress_pct": 60.6,
+      "z_mm": 53.0,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard internal ledge",
+      "label": "Z 53.0 internal ledge layers (perimeters plus internal infill): the ledge is printing inside the bore, mostly hidden by the toolhead and rim; the outer wall is smooth and nothing looks wrong."
+    },
+    {
+      "file": "agent-046-obs-180010-p62.3.jpg",
+      "time": "2026-10-31 18:00:10",
+      "progress_pct": 62.3,
+      "z_mm": 54.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls above the ledge",
+      "label": "Z 54.2 perimeter walls just above the ledge: guard wall smooth and aligned."
+    },
+    {
+      "file": "agent-047-obs-180210-p64.0.jpg",
+      "time": "2026-10-31 18:02:10",
+      "progress_pct": 64.0,
+      "z_mm": 56.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls above the ledge",
+      "label": "Z 56.4 perimeter walls just above the ledge: the guard wall is smooth and aligned; clean."
+    },
+    {
+      "file": "agent-048-obs-180412-p65.7.jpg",
+      "time": "2026-10-31 18:04:12",
+      "progress_pct": 65.7,
+      "z_mm": 58.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 58.8 perimeter walls: a crisp, square-edged notch at the front-right of the rim is the start of the guard's designed side slot; the wall is aligned with no shift.",
+      "agent_concern": {
+        "concern": "a new step has appeared at the front of the guard's rim",
+        "verdict": "design feature",
+        "explanation": "The square-edged notch is the start of the guard's designed side slot (open from Z ~54 to the rim); the wall is aligned, so it is not a layer shift."
+      }
+    },
+    {
+      "file": "agent-049-look-180528.jpg",
+      "time": "2026-10-31 18:05:28",
+      "progress_pct": 65.7,
+      "z_mm": 58.8,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard side slot",
+      "label": "Z 58.8 follow-up look: the slot keeps clean square edges and the wall around it is aligned; healthy.",
+      "agent_concern": {
+        "concern": "a new step has appeared at the front of the guard's rim",
+        "verdict": "design feature",
+        "explanation": "The follow-up shows the slot's clean square edges with an aligned wall around it: designed slot, not a shift."
+      }
+    },
+    {
+      "file": "agent-050-obs-180613-p67.5.jpg",
+      "time": "2026-10-31 18:06:13",
+      "progress_pct": 67.5,
+      "z_mm": 61.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 61.4 perimeter walls: the side slot is growing cleanly, wall aligned.",
+      "agent_concern": {
+        "concern": "the notch in the guard's rim is still crisp and growing cleanly, which fits a designed slot",
+        "verdict": "design feature",
+        "explanation": "The notch is the guard's designed side slot; nothing is offset."
+      }
+    },
+    {
+      "file": "agent-051-obs-180815-p69.2.jpg",
+      "time": "2026-10-31 18:08:15",
+      "progress_pct": 69.2,
+      "z_mm": 63.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot (partly hidden)",
+      "label": "Z 63.8 with the toolhead over the guard: the visible wall and slot edge are clean and aligned."
+    },
+    {
+      "file": "agent-052-obs-181017-p70.9.jpg",
+      "time": "2026-10-31 18:10:17",
+      "progress_pct": 70.9,
+      "z_mm": 66.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot; internal ledge",
+      "label": "Z 66.2 perimeter walls: guard cylinder smooth with a crisp side slot, clean rim, ledge visible inside the bore."
+    },
+    {
+      "file": "agent-053-obs-181218-p72.5.jpg",
+      "time": "2026-10-31 18:12:18",
+      "progress_pct": 72.5,
+      "z_mm": 68.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 68.8 perimeter walls: guard wall smooth and aligned with its side slot crisp."
+    },
+    {
+      "file": "agent-054-obs-181420-p74.1.jpg",
+      "time": "2026-10-31 18:14:20",
+      "progress_pct": 74.1,
+      "z_mm": 71.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot; internal ledge",
+      "label": "Z 71.2 perimeter walls: guard wall smooth with a crisp side slot; looking into the bore the internal ledge and groove show as regular ridges.",
+      "agent_concern": {
+        "concern": "regular internal ridges",
+        "verdict": "design feature",
+        "explanation": "Looking down the bore, the ridges are the guard's internal ledge (Z ~51.8) and annular groove section below, i.e. modelled geometry."
+      }
+    },
+    {
+      "file": "agent-055-obs-181621-p75.7.jpg",
+      "time": "2026-10-31 18:16:21",
+      "progress_pct": 75.7,
+      "z_mm": 73.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 73.6 perimeter walls: guard cylinder smooth and aligned, side slot crisp."
+    },
+    {
+      "file": "agent-056-obs-181823-p77.1.jpg",
+      "time": "2026-10-31 18:18:23",
+      "progress_pct": 77.1,
+      "z_mm": 76.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 76.2 perimeter walls: guard cylinder smooth, slot crisp, small wisp at the nozzle only."
+    },
+    {
+      "file": "agent-057-obs-182025-p78.3.jpg",
+      "time": "2026-10-31 18:20:25",
+      "progress_pct": 78.3,
+      "z_mm": 78.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 78.6 perimeter walls: the tall guard cylinder is smooth and aligned with its side slot."
+    },
+    {
+      "file": "agent-058-obs-182226-p79.6.jpg",
+      "time": "2026-10-31 18:22:26",
+      "progress_pct": 79.6,
+      "z_mm": 81.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 81.0 perimeter walls: guard cylinder smooth and aligned with its side slot."
+    },
+    {
+      "file": "agent-059-obs-182428-p81.0.jpg",
+      "time": "2026-10-31 18:24:28",
+      "progress_pct": 81.0,
+      "z_mm": 83.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 83.6 perimeter walls: tall guard cylinder smooth, slot crisp, rim clean."
+    },
+    {
+      "file": "agent-060-obs-182629-p82.3.jpg",
+      "time": "2026-10-31 18:26:29",
+      "progress_pct": 82.3,
+      "z_mm": 86.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 86.0 perimeter walls: guard cylinder smooth and aligned, slot crisp."
+    },
+    {
+      "file": "agent-061-obs-182831-p83.6.jpg",
+      "time": "2026-10-31 18:28:31",
+      "progress_pct": 83.6,
+      "z_mm": 88.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 88.6 perimeter walls: tall guard cylinder smooth with a crisp slot and clean rim."
+    },
+    {
+      "file": "agent-062-obs-183033-p84.7.jpg",
+      "time": "2026-10-31 18:30:33",
+      "progress_pct": 84.7,
+      "z_mm": 91.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 91.0 perimeter walls: guard cylinder smooth and aligned with its slot."
+    },
+    {
+      "file": "agent-063-obs-183234-p85.8.jpg",
+      "time": "2026-10-31 18:32:34",
+      "progress_pct": 85.8,
+      "z_mm": 93.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 93.6 perimeter walls: tall guard cylinder smooth with a crisp slot and clean rim."
+    },
+    {
+      "file": "agent-064-obs-183436-p86.7.jpg",
+      "time": "2026-10-31 18:34:36",
+      "progress_pct": 86.7,
+      "z_mm": 96.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 96.2 perimeter walls: guard cylinder smooth and aligned, slot crisp."
+    },
+    {
+      "file": "agent-065-obs-183638-p87.4.jpg",
+      "time": "2026-10-31 18:36:38",
+      "progress_pct": 87.4,
+      "z_mm": 99.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard perimeter walls; side slot",
+      "label": "Z 99.0 perimeter walls: guard cylinder smooth with a crisp slot; toolhead partly over the rim."
+    },
+    {
+      "file": "agent-066-obs-183840-p88.1.jpg",
+      "time": "2026-10-31 18:38:40",
+      "progress_pct": 88.1,
+      "z_mm": 100.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard flare to wider upper section; side slot",
+      "label": "Z 100.8 perimeter walls at the start of the outward flare to the wider upper section: wall smooth and aligned, slot crisp."
+    },
+    {
+      "file": "agent-067-obs-184042-p89.2.jpg",
+      "time": "2026-10-31 18:40:42",
+      "progress_pct": 89.2,
+      "z_mm": 103.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard flare to wider upper section; side slot",
+      "label": "Z 103.4 perimeter walls: the wider upper section of the guard starts as a crisp step at the rim above the slot, with the wall below aligned and no shift.",
+      "agent_concern": {
+        "concern": "a second clean-edged opening starting at the rim",
+        "verdict": "design feature",
+        "explanation": "The new step is where the guard flares out to its wider upper section (radius 18.5 to 21.7 mm from Z ~100 to ~108) beside the slot; the lower wall is aligned, so no layer shift."
+      }
+    },
+    {
+      "file": "agent-068-obs-184243-p90.2.jpg",
+      "time": "2026-10-31 18:42:43",
+      "progress_pct": 90.2,
+      "z_mm": 105.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 105.4 perimeter walls: the wider upper section keeps growing cleanly over the aligned lower wall.",
+      "agent_concern": {
+        "concern": "the new opening is growing cleanly with no offset in the wall",
+        "verdict": "design feature",
+        "explanation": "It is the start of the guard's wider upper section beside the slot, growing cleanly; designed geometry, not a shift."
+      }
+    },
+    {
+      "file": "agent-069-obs-184445-p90.9.jpg",
+      "time": "2026-10-31 18:44:45",
+      "progress_pct": 90.9,
+      "z_mm": 108.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 108.8 perimeter walls: tall guard cylinder smooth with the step to the wider upper section and a crisp slot."
+    },
+    {
+      "file": "agent-070-obs-184647-p91.3.jpg",
+      "time": "2026-10-31 18:46:47",
+      "progress_pct": 91.3,
+      "z_mm": 111.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 111.0 perimeter walls: guard's upper section smooth and aligned, openings crisp."
+    },
+    {
+      "file": "agent-071-obs-184849-p91.7.jpg",
+      "time": "2026-10-31 18:48:49",
+      "progress_pct": 91.7,
+      "z_mm": 113.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 113.2 perimeter walls: tall guard smooth with a clean rim and crisp slot."
+    },
+    {
+      "file": "agent-072-obs-185051-p92.0.jpg",
+      "time": "2026-10-31 18:50:51",
+      "progress_pct": 92.0,
+      "z_mm": 115.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 115.4 perimeter walls: tall guard smooth with a clean rim and crisp slot."
+    },
+    {
+      "file": "agent-073-obs-185253-p92.4.jpg",
+      "time": "2026-10-31 18:52:53",
+      "progress_pct": 92.4,
+      "z_mm": 117.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 117.8 perimeter walls: guard cylinder smooth and aligned with crisp openings."
+    },
+    {
+      "file": "agent-074-obs-185454-p92.7.jpg",
+      "time": "2026-10-31 18:54:54",
+      "progress_pct": 92.7,
+      "z_mm": 123.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 123.0 perimeter walls: guard cylinder smooth with a clean rim and crisp openings."
+    },
+    {
+      "file": "agent-075-obs-185656-p92.8.jpg",
+      "time": "2026-10-31 18:56:56",
+      "progress_pct": 92.8,
+      "z_mm": 126.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section (partly hidden)",
+      "label": "Z 126.0 perimeter walls with the toolhead over the rim: visible wall smooth and aligned.",
+      "agent_concern": {
+        "concern": "Progress through the file has slowed but is still advancing",
+        "verdict": "other",
+        "explanation": "Not a visual issue: progress per interval slowed on the small single-part upper layers (minimum layer time) while the part kept growing normally."
+      }
+    },
+    {
+      "file": "agent-076-obs-185859-p93.0.jpg",
+      "time": "2026-10-31 18:58:59",
+      "progress_pct": 93.0,
+      "z_mm": 127.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 127.8 perimeter walls: tall guard rising smooth and aligned.",
+      "agent_concern": {
+        "concern": "Progress per interval keeps slowing",
+        "verdict": "other",
+        "explanation": "Slower file progress on small upper layers is expected and the frame shows normal growth; no fault."
+      }
+    },
+    {
+      "file": "agent-077-look-190124.jpg",
+      "time": "2026-10-31 19:01:24",
+      "progress_pct": 93.1,
+      "z_mm": 129.6,
+      "gcode_type": "External perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 129.6 fresh look taken after a failed periodic image: the guard is rising smooth and aligned, pad clean.",
+      "agent_concern": {
+        "concern": "The camera's periodic frame failed for the third time this print",
+        "verdict": "camera or lighting",
+        "explanation": "A one-off frame-server error dropped the periodic image; this fresh look shows the print healthy."
+      }
+    },
+    {
+      "file": "agent-078-obs-190301-p93.2.jpg",
+      "time": "2026-10-31 19:03:01",
+      "progress_pct": 93.2,
+      "z_mm": 130.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 130.6 perimeter walls: tall guard smooth and aligned with crisp openings."
+    },
+    {
+      "file": "agent-079-obs-190503-p93.4.jpg",
+      "time": "2026-10-31 19:05:03",
+      "progress_pct": 93.4,
+      "z_mm": 131.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 131.6 perimeter walls: guard smooth with a clean rim and crisp openings."
+    },
+    {
+      "file": "agent-080-obs-190705-p93.6.jpg",
+      "time": "2026-10-31 19:07:05",
+      "progress_pct": 93.6,
+      "z_mm": 132.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 132.4 perimeter walls: tall guard smooth and aligned."
+    },
+    {
+      "file": "agent-081-obs-190906-p93.9.jpg",
+      "time": "2026-10-31 19:09:06",
+      "progress_pct": 93.9,
+      "z_mm": 134.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wider upper section; side slot",
+      "label": "Z 134.6 perimeter walls: tall guard smooth and aligned with crisp openings."
+    },
+    {
+      "file": "agent-082-obs-191108-p94.3.jpg",
+      "time": "2026-10-31 19:11:08",
+      "progress_pct": 94.3,
+      "z_mm": 136.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard wall below the lip",
+      "label": "Z 136.4 perimeter walls just below the top lip: guard smooth and aligned."
+    },
+    {
+      "file": "agent-083-obs-191308-p94.7.jpg",
+      "time": "2026-10-31 19:13:08",
+      "progress_pct": 94.7,
+      "z_mm": 137.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard top lip/collar",
+      "label": "Z 137.2 perimeters: printing the start of the outward-stepping top lip (barely distinct at this angle); wall clean and aligned."
+    },
+    {
+      "file": "agent-084-obs-191509-p95.8.jpg",
+      "time": "2026-10-31 19:15:09",
+      "progress_pct": 95.8,
+      "z_mm": 138.4,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard top lip/collar",
+      "label": "Z 138.4 perimeters: the top lip is widening outward at the rim; no droop or stringing visible."
+    },
+    {
+      "file": "agent-085-obs-191709-p97.4.jpg",
+      "time": "2026-10-31 19:17:09",
+      "progress_pct": 97.4,
+      "z_mm": 140.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard top lip/collar",
+      "label": "Z 140.2 perimeters and infill: the outward-stepping top lip is clean; the rest of the guard and the pad are intact."
+    },
+    {
+      "file": "agent-086-obs-191910-p98.6.jpg",
+      "time": "2026-10-31 19:19:10",
+      "progress_pct": 98.6,
+      "z_mm": 141.6,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "guard top lip/collar",
+      "label": "Z 141.6 solid infill near the top: the wider lip/collar at the rim is formed with clean edges on an aligned wall; print nearly finished.",
+      "agent_concern": {
+        "concern": "a clean-edged lip is forming at the rim",
+        "verdict": "design feature",
+        "explanation": "The wider lip is the guard's designed top collar (radius 20.2 to 24.7 mm over Z 136-142), printed cleanly with no droop."
+      }
+    }
+  ],
+  "agent_images": [
+    {
+      "file": "agent-001-obs-164721-p00.0.jpg",
+      "event_id": "01a19425-6529-7332-ba58-a18538005cab"
+    },
+    {
+      "file": "agent-002-obs-164923-p00.0.jpg",
+      "event_id": "01a19427-4305-7142-92dc-0eaec523aa90"
+    },
+    {
+      "file": "agent-003-obs-165123-p00.1.jpg",
+      "event_id": "01a19429-1958-7341-8983-df8e1c16b529"
+    },
+    {
+      "file": "agent-004-look-165229.jpg",
+      "event_id": "01a1942a-1aec-7701-9cd5-fe5e60cde167"
+    },
+    {
+      "file": "agent-005-obs-165325-p01.7.jpg",
+      "event_id": "01a1942a-f488-75d0-b720-6e65ae7d8dd5"
+    },
+    {
+      "file": "agent-006-look-165446.jpg",
+      "event_id": "01a1942c-2f93-7b61-831e-e55c6846d108"
+    },
+    {
+      "file": "agent-007-obs-165526-p03.0.jpg",
+      "event_id": "01a1942c-cbb9-76a3-b22b-2019e6069007"
+    },
+    {
+      "file": "agent-008-look-165625.jpg",
+      "event_id": "01a1942d-b372-7512-b107-2d8e09ceb374"
+    },
+    {
+      "file": "agent-009-obs-165727-p04.4.jpg",
+      "event_id": "01a1942e-a4e4-7e80-b8ec-c2f0305b8177"
+    },
+    {
+      "file": "agent-010-look-165837.jpg",
+      "event_id": "01a1942f-b54c-7791-b6cc-02a8b380bd55"
+    },
+    {
+      "file": "agent-011-obs-165928-p05.8.jpg",
+      "event_id": "01a19430-7d11-7243-a4c4-5756bddf9f33"
+    },
+    {
+      "file": "agent-012-obs-170128-p07.6.jpg",
+      "event_id": "01a19432-54dd-72c1-b6f5-4da403d7bea2"
+    },
+    {
+      "file": "agent-013-obs-170329-p09.6.jpg",
+      "event_id": "01a19434-2c32-7150-8b59-8377243458a2"
+    },
+    {
+      "file": "agent-014-obs-170530-p11.6.jpg",
+      "event_id": "01a19436-05e8-7300-8be7-284b07fc89e2"
+    },
+    {
+      "file": "agent-015-look-170633.jpg",
+      "event_id": "01a19436-fb7f-7a23-9747-39f367101bba"
+    },
+    {
+      "file": "agent-016-obs-170731-p13.8.jpg",
+      "event_id": "01a19437-dbfe-79b1-b8bb-f9adbfc09f4b"
+    },
+    {
+      "file": "agent-017-obs-170932-p15.9.jpg",
+      "event_id": "01a19439-b42b-76f2-a318-d98e4e4dc346"
+    },
+    {
+      "file": "agent-018-look-171031.jpg",
+      "event_id": "01a1943a-9ccc-7232-b85d-c166e1eb376e"
+    },
+    {
+      "file": "agent-019-obs-171133-p18.7.jpg",
+      "event_id": "01a1943b-8cb2-7f33-81c9-28092fcf0a7e"
+    },
+    {
+      "file": "agent-020-obs-171334-p20.7.jpg",
+      "event_id": "01a1943d-6549-7352-9155-aaf3517b87ff"
+    },
+    {
+      "file": "agent-021-obs-171535-p22.8.jpg",
+      "event_id": "01a1943f-3f01-7932-93db-64ef332b1627"
+    },
+    {
+      "file": "agent-022-obs-171737-p24.9.jpg",
+      "event_id": "01a19441-1b47-7901-a17b-b5b53ccc8239"
+    },
+    {
+      "file": "agent-023-look-171835.jpg",
+      "event_id": "01a19441-ffdd-7722-bd2d-a95611e4ea3a"
+    },
+    {
+      "file": "agent-024-obs-171937-p27.0.jpg",
+      "event_id": "01a19442-f269-7a01-bc2d-3dadc36799de"
+    },
+    {
+      "file": "agent-025-look-172155.jpg",
+      "event_id": "01a19445-0d09-7c81-8a23-65196b2f6a1e"
+    },
+    {
+      "file": "agent-026-obs-172338-p30.6.jpg",
+      "event_id": "01a19446-9e9d-70e1-8397-dd6bfc6c309e"
+    },
+    {
+      "file": "agent-027-look-172555.jpg",
+      "event_id": "01a19448-b76c-7021-b1cd-f503b5611981"
+    },
+    {
+      "file": "agent-028-obs-172738-p34.1.jpg",
+      "event_id": "01a1944a-496e-7b81-82d6-1ec8f2760d6a"
+    },
+    {
+      "file": "agent-029-look-172843.jpg",
+      "event_id": "01a1944b-4403-7bf3-a196-58d3e5ff1b94"
+    },
+    {
+      "file": "agent-030-obs-172940-p35.8.jpg",
+      "event_id": "01a1944c-2674-7793-9e20-546186ccbbcc"
+    },
+    {
+      "file": "agent-031-obs-173143-p37.6.jpg",
+      "event_id": "01a1944e-0319-7071-a132-8b19b583c1ae"
+    },
+    {
+      "file": "agent-032-obs-173345-p39.3.jpg",
+      "event_id": "01a1944f-e091-7ab3-a96d-1a759757be9a"
+    },
+    {
+      "file": "agent-033-look-173451.jpg",
+      "event_id": "01a19450-e320-7c52-8d91-b6ed96206799"
+    },
+    {
+      "file": "agent-034-obs-173547-p41.0.jpg",
+      "event_id": "01a19451-bd72-7b83-b426-fac68d3db773"
+    },
+    {
+      "file": "agent-035-obs-173749-p43.0.jpg",
+      "event_id": "01a19453-98fd-7212-8551-f169e7f38fc6"
+    },
+    {
+      "file": "agent-036-obs-173951-p45.0.jpg",
+      "event_id": "01a19455-7655-7412-b71f-949ff90f1fc7"
+    },
+    {
+      "file": "agent-037-obs-174153-p47.0.jpg",
+      "event_id": "01a19457-53ef-7321-bb0a-f5cc24034dc4"
+    },
+    {
+      "file": "agent-038-obs-174355-p48.8.jpg",
+      "event_id": "01a19459-323b-7fc0-93a1-96fcaa80302d"
+    },
+    {
+      "file": "agent-039-obs-174558-p50.4.jpg",
+      "event_id": "01a1945b-0f81-76a0-bb90-dde166414d35"
+    },
+    {
+      "file": "agent-040-obs-174800-p52.0.jpg",
+      "event_id": "01a1945c-ed9f-7ff1-8d24-f6b4a7d0d551"
+    },
+    {
+      "file": "agent-041-obs-175001-p53.7.jpg",
+      "event_id": "01a1945e-c7dd-7fe2-b9c8-2a8ae0ead542"
+    },
+    {
+      "file": "agent-042-obs-175203-p55.4.jpg",
+      "event_id": "01a19460-a1ee-7d70-86af-bc23e1e83cf7"
+    },
+    {
+      "file": "agent-043-obs-175404-p57.1.jpg",
+      "event_id": "01a19462-7c7e-7753-a3ef-80abc6adb0df"
+    },
+    {
+      "file": "agent-044-obs-175606-p58.8.jpg",
+      "event_id": "01a19464-577f-7711-a0a7-c305845858aa"
+    },
+    {
+      "file": "agent-045-obs-175808-p60.6.jpg",
+      "event_id": "01a19466-32b6-75d0-b818-b3f1318c7d0b"
+    },
+    {
+      "file": "agent-046-obs-180010-p62.3.jpg",
+      "event_id": "01a19468-0feb-7a83-b2e8-05cc6b855aab"
+    },
+    {
+      "file": "agent-047-obs-180210-p64.0.jpg",
+      "event_id": "01a19469-e685-7b03-ae23-624acb372416"
+    },
+    {
+      "file": "agent-048-obs-180412-p65.7.jpg",
+      "event_id": "01a1946b-c23e-7c20-a377-f3dcfb0872bc"
+    },
+    {
+      "file": "agent-049-look-180528.jpg",
+      "event_id": "01a1946c-eade-7d73-9a73-0e801d5ed396"
+    },
+    {
+      "file": "agent-050-obs-180613-p67.5.jpg",
+      "event_id": "01a1946d-9cac-7cd1-be95-74ffb6e40ad2"
+    },
+    {
+      "file": "agent-051-obs-180815-p69.2.jpg",
+      "event_id": "01a1946f-7734-7821-81f7-1bbca151b9c2"
+    },
+    {
+      "file": "agent-052-obs-181017-p70.9.jpg",
+      "event_id": "01a19471-5249-7950-b9b5-c551965f2b0e"
+    },
+    {
+      "file": "agent-053-obs-181218-p72.5.jpg",
+      "event_id": "01a19473-2d2e-7932-9559-53d7fea679bf"
+    },
+    {
+      "file": "agent-054-obs-181420-p74.1.jpg",
+      "event_id": "01a19475-07f6-7261-985f-58d4df7fb81a"
+    },
+    {
+      "file": "agent-055-obs-181621-p75.7.jpg",
+      "event_id": "01a19476-e2da-7202-be7b-1a262556a20d"
+    },
+    {
+      "file": "agent-056-obs-181823-p77.1.jpg",
+      "event_id": "01a19478-beb6-7ab1-a2c8-8e8b4bd1ebe7"
+    },
+    {
+      "file": "agent-057-obs-182025-p78.3.jpg",
+      "event_id": "01a1947a-9933-7c10-89ca-532ceac844f0"
+    },
+    {
+      "file": "agent-058-obs-182226-p79.6.jpg",
+      "event_id": "01a1947c-73de-7832-9034-788b51f7c36d"
+    },
+    {
+      "file": "agent-059-obs-182428-p81.0.jpg",
+      "event_id": "01a1947e-501f-77a2-ae58-24a495e0457e"
+    },
+    {
+      "file": "agent-060-obs-182629-p82.3.jpg",
+      "event_id": "01a19480-2acd-70e1-8394-fb50d8fae992"
+    },
+    {
+      "file": "agent-061-obs-182831-p83.6.jpg",
+      "event_id": "01a19482-0675-7261-8bf3-3a35c5fcc966"
+    },
+    {
+      "file": "agent-062-obs-183033-p84.7.jpg",
+      "event_id": "01a19483-e212-79c0-8548-02486f37235d"
+    },
+    {
+      "file": "agent-063-obs-183234-p85.8.jpg",
+      "event_id": "01a19485-bcb3-79a2-807c-e162692cd220"
+    },
+    {
+      "file": "agent-064-obs-183436-p86.7.jpg",
+      "event_id": "01a19487-98e5-7f20-98b5-25d4dbee786d"
+    },
+    {
+      "file": "agent-065-obs-183638-p87.4.jpg",
+      "event_id": "01a19489-7405-7922-89aa-8f25d53d969b"
+    },
+    {
+      "file": "agent-066-obs-183840-p88.1.jpg",
+      "event_id": "01a1948b-4fb7-76c3-9f1b-8ab97a8c53eb"
+    },
+    {
+      "file": "agent-067-obs-184042-p89.2.jpg",
+      "event_id": "01a1948d-2b38-7e23-94fc-cda627cdc704"
+    },
+    {
+      "file": "agent-068-obs-184243-p90.2.jpg",
+      "event_id": "01a1948f-0652-78c3-89d1-56190db8f645"
+    },
+    {
+      "file": "agent-069-obs-184445-p90.9.jpg",
+      "event_id": "01a19490-e283-7c50-9bc0-01bcafb0321b"
+    },
+    {
+      "file": "agent-070-obs-184647-p91.3.jpg",
+      "event_id": "01a19492-be60-7c23-80bf-386958921316"
+    },
+    {
+      "file": "agent-071-obs-184849-p91.7.jpg",
+      "event_id": "01a19494-9ab5-78a3-bb05-0fc2b10c80db"
+    },
+    {
+      "file": "agent-072-obs-185051-p92.0.jpg",
+      "event_id": "01a19496-7713-79c3-8096-f4c95678fc6c"
+    },
+    {
+      "file": "agent-073-obs-185253-p92.4.jpg",
+      "event_id": "01a19498-52ea-7740-bc77-c0f9b2ca69f2"
+    },
+    {
+      "file": "agent-074-obs-185454-p92.7.jpg",
+      "event_id": "01a1949a-2ebc-7fd2-830a-2ac7d397568d"
+    },
+    {
+      "file": "agent-075-obs-185656-p92.8.jpg",
+      "event_id": "01a1949c-0ba6-7ec1-84c2-4cbc4f0e9fde"
+    },
+    {
+      "file": "agent-076-obs-185859-p93.0.jpg",
+      "event_id": "01a1949d-e87f-7cd0-95e4-33494428c8b2"
+    },
+    {
+      "file": "agent-077-look-190124.jpg",
+      "event_id": "01a194a0-21f9-7353-8293-03a82bd3631b"
+    },
+    {
+      "file": "agent-078-obs-190301-p93.2.jpg",
+      "event_id": "01a194a1-9aa6-72f0-ab48-6857c49b1d19"
+    },
+    {
+      "file": "agent-079-obs-190503-p93.4.jpg",
+      "event_id": "01a194a3-787d-78f0-8ae9-d50bb8284dda"
+    },
+    {
+      "file": "agent-080-obs-190705-p93.6.jpg",
+      "event_id": "01a194a5-55b3-7442-a98f-7973333fb26a"
+    },
+    {
+      "file": "agent-081-obs-190906-p93.9.jpg",
+      "event_id": "01a194a7-2b97-7271-85f3-a14aacdad38e"
+    },
+    {
+      "file": "agent-082-obs-191108-p94.3.jpg",
+      "event_id": "01a194a9-092c-7690-ae7a-f23bf7d32d70"
+    },
+    {
+      "file": "agent-083-obs-191308-p94.7.jpg",
+      "event_id": "01a194aa-deea-79d0-8c27-a2b77b8030a8"
+    },
+    {
+      "file": "agent-084-obs-191509-p95.8.jpg",
+      "event_id": "01a194ac-b5aa-7fa1-8ebf-709eee73f9fe"
+    },
+    {
+      "file": "agent-085-obs-191709-p97.4.jpg",
+      "event_id": "01a194ae-8c8a-74d0-b9ae-eb7b40e8bd67"
+    },
+    {
+      "file": "agent-086-obs-191910-p98.6.jpg",
+      "event_id": "01a194b0-646c-7f92-961b-768e7fff8f69"
+    }
+  ],
+  "agent_images_source": "copied from printobserver's image store through `printobserver image --image-id <id> --json`; each file's sha256 is the one its event records in printobserver-history.json",
+  "agent_concerns": [
+    {
+      "file": "agent-003-obs-165123-p00.1.jpg",
+      "time": "2026-10-31 16:51:23",
+      "concern": "I think the wavy line in the event frame was the intro line or glare",
+      "verdict": "other",
+      "explanation": "It is a loose strand of filament lying on the bed beside the first layer (not the intro line, not glare), clear of the parts and harmless; it is the strand that later hangs by the leadscrew."
+    },
+    {
+      "file": "agent-004-look-165229.jpg",
+      "time": "2026-10-31 16:52:29",
+      "concern": "I think the wavy line in the event frame was the intro line or glare",
+      "verdict": "other",
+      "explanation": "The wavy line was a loose stray strand on the bed; by this frame it has been pushed to the right bed edge and never touches the parts."
+    },
+    {
+      "file": "agent-005-obs-165325-p01.7.jpg",
+      "time": "2026-10-31 16:53:25",
+      "concern": "That reads as the bubbler guard's designed slots, not under-extrusion",
+      "verdict": "support",
+      "explanation": "The evenly spaced ribs at the guard's front-left are build-plate support lines (Support material is in this layer's G-code) filling the saddle opening, not designed slots or under-extrusion."
+    },
+    {
+      "file": "agent-006-look-165446.jpg",
+      "time": "2026-10-31 16:54:46",
+      "concern": "That reads as the bubbler guard's designed slots, not under-extrusion",
+      "verdict": "support",
+      "explanation": "The ribbed section is build-plate support under the guard's saddle opening; the agent was right that it is not under-extrusion but wrong that it is designed geometry."
+    },
+    {
+      "file": "agent-007-obs-165526-p03.0.jpg",
+      "time": "2026-10-31 16:55:26",
+      "concern": "The round guard's teeth are crisp and evenly spaced, so they are designed geometry",
+      "verdict": "support",
+      "explanation": "The guard's teeth are support columns under its saddle opening, not designed geometry; the strand off the right bed edge it also noted is harmless."
+    },
+    {
+      "file": "agent-008-look-165625.jpg",
+      "time": "2026-10-31 16:56:25",
+      "concern": "The round guard's teeth are crisp and evenly spaced, so they are designed geometry",
+      "verdict": "support",
+      "explanation": "The clear frame shows the teeth filling the open side of the guard's C-shaped base under the sloping overhang: build-plate support, not model geometry."
+    },
+    {
+      "file": "agent-009-obs-165727-p04.4.jpg",
+      "time": "2026-10-31 16:57:27",
+      "concern": "The loose strand at the bed edge hasn't changed",
+      "verdict": "other",
+      "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+    },
+    {
+      "file": "agent-010-look-165837.jpg",
+      "time": "2026-10-31 16:58:37",
+      "concern": "The loose strand at the bed edge hasn't changed",
+      "verdict": "other",
+      "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+    },
+    {
+      "file": "agent-011-obs-165928-p05.8.jpg",
+      "time": "2026-10-31 16:59:28",
+      "concern": "the stray strand off the right edge of the bed hasn't changed",
+      "verdict": "other",
+      "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+    },
+    {
+      "file": "agent-012-obs-170128-p07.6.jpg",
+      "time": "2026-10-31 17:01:28",
+      "concern": "The loose strand beside the right Z leadscrew is still there",
+      "verdict": "other",
+      "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+    },
+    {
+      "file": "agent-013-obs-170329-p09.6.jpg",
+      "time": "2026-10-31 17:03:29",
+      "concern": "The loose strand by the right Z leadscrew hasn't changed",
+      "verdict": "other",
+      "explanation": "A real but harmless loose filament strand left from the start sequence hangs by the right Z leadscrew, never touching the parts; nothing to do with print quality."
+    },
+    {
+      "file": "agent-014-obs-170530-p11.6.jpg",
+      "time": "2026-10-31 17:05:30",
+      "concern": "I couldn't resolve the small hook on the pad",
+      "verdict": "design feature",
+      "explanation": "The 'hook' is the upturned apex of the saddle pad's arch standing above its support, which persists unchanged in later frames; it is not a curl or lift."
+    },
+    {
+      "file": "agent-015-look-170633.jpg",
+      "time": "2026-10-31 17:06:33",
+      "concern": "I couldn't resolve the small hook on the pad",
+      "verdict": "design feature",
+      "explanation": "The 'hook' is the raised end of the pad's arch; the follow-up frame is mostly toolhead but nothing on the pad is lifting."
+    },
+    {
+      "file": "agent-016-obs-170731-p13.8.jpg",
+      "time": "2026-10-31 17:07:31",
+      "concern": "the small hook I couldn't make out on the pad last turn isn't showing as a curl",
+      "verdict": "design feature",
+      "explanation": "The hook is the pad's arched end (its apex at Z ~11.4), present unchanged across frames, so it is designed geometry."
+    },
+    {
+      "file": "agent-022-obs-171737-p24.9.jpg",
+      "time": "2026-10-31 17:17:37",
+      "concern": "its raised end feature has stayed the same across frames, so it is part of the design, not a curl",
+      "verdict": "design feature",
+      "explanation": "The raised end is the apex of the saddle pad's arch, finished at Z 11.4 and unchanged since; designed geometry."
+    },
+    {
+      "file": "agent-023-look-171835.jpg",
+      "time": "2026-10-31 17:18:35",
+      "concern": "its raised end feature has stayed the same across frames, so it is part of the design, not a curl",
+      "verdict": "design feature",
+      "explanation": "The pad's upturned arch end is visible and unchanged in this look; it is model geometry, not a curl."
+    },
+    {
+      "file": "agent-025-look-172155.jpg",
+      "time": "2026-10-31 17:21:55",
+      "concern": "This observation came with no image because the camera returned one error",
+      "verdict": "camera or lighting",
+      "explanation": "The periodic image was missing because of a one-off camera/frame-server error; the fresh look shows a healthy print."
+    },
+    {
+      "file": "agent-027-look-172555.jpg",
+      "time": "2026-10-31 17:25:55",
+      "concern": "The camera is failing intermittently, with the periodic frame missing in 2 of the last 3 observations",
+      "verdict": "camera or lighting",
+      "explanation": "Intermittent frame-server errors dropped two periodic images; this fresh look is healthy and the print was never at risk."
+    },
+    {
+      "file": "agent-028-obs-172738-p34.1.jpg",
+      "time": "2026-10-31 17:27:38",
+      "concern": "the light patch I saw on it was lighting on the filament's speckled texture, not a defect",
+      "verdict": "camera or lighting",
+      "explanation": "The bright jagged patch on the front wall is glare on the speckled PLA; the next frame shows the same wall uniform and intact."
+    },
+    {
+      "file": "agent-029-look-172843.jpg",
+      "time": "2026-10-31 17:28:43",
+      "concern": "the light patch I saw on it was lighting on the filament's speckled texture, not a defect",
+      "verdict": "camera or lighting",
+      "explanation": "The follow-up frame shows a uniform wall, confirming the patch was glare rather than a gap or blob."
+    },
+    {
+      "file": "agent-030-obs-172940-p35.8.jpg",
+      "time": "2026-10-31 17:29:40",
+      "concern": "There is one small, harmless wisp of filament on the guard's upper edge",
+      "verdict": "other",
+      "explanation": "A single thin wisp of string/ooze at the rim, gone by the next frame; ordinary and not a print fault."
+    },
+    {
+      "file": "agent-048-obs-180412-p65.7.jpg",
+      "time": "2026-10-31 18:04:12",
+      "concern": "a new step has appeared at the front of the guard's rim",
+      "verdict": "design feature",
+      "explanation": "The square-edged notch is the start of the guard's designed side slot (open from Z ~54 to the rim); the wall is aligned, so it is not a layer shift."
+    },
+    {
+      "file": "agent-049-look-180528.jpg",
+      "time": "2026-10-31 18:05:28",
+      "concern": "a new step has appeared at the front of the guard's rim",
+      "verdict": "design feature",
+      "explanation": "The follow-up shows the slot's clean square edges with an aligned wall around it: designed slot, not a shift."
+    },
+    {
+      "file": "agent-050-obs-180613-p67.5.jpg",
+      "time": "2026-10-31 18:06:13",
+      "concern": "the notch in the guard's rim is still crisp and growing cleanly, which fits a designed slot",
+      "verdict": "design feature",
+      "explanation": "The notch is the guard's designed side slot; nothing is offset."
+    },
+    {
+      "file": "agent-054-obs-181420-p74.1.jpg",
+      "time": "2026-10-31 18:14:20",
+      "concern": "regular internal ridges",
+      "verdict": "design feature",
+      "explanation": "Looking down the bore, the ridges are the guard's internal ledge (Z ~51.8) and annular groove section below, i.e. modelled geometry."
+    },
+    {
+      "file": "agent-067-obs-184042-p89.2.jpg",
+      "time": "2026-10-31 18:40:42",
+      "concern": "a second clean-edged opening starting at the rim",
+      "verdict": "design feature",
+      "explanation": "The new step is where the guard flares out to its wider upper section (radius 18.5 to 21.7 mm from Z ~100 to ~108) beside the slot; the lower wall is aligned, so no layer shift."
+    },
+    {
+      "file": "agent-068-obs-184243-p90.2.jpg",
+      "time": "2026-10-31 18:42:43",
+      "concern": "the new opening is growing cleanly with no offset in the wall",
+      "verdict": "design feature",
+      "explanation": "It is the start of the guard's wider upper section beside the slot, growing cleanly; designed geometry, not a shift."
+    },
+    {
+      "file": "agent-075-obs-185656-p92.8.jpg",
+      "time": "2026-10-31 18:56:56",
+      "concern": "Progress through the file has slowed but is still advancing",
+      "verdict": "other",
+      "explanation": "Not a visual issue: progress per interval slowed on the small single-part upper layers (minimum layer time) while the part kept growing normally."
+    },
+    {
+      "file": "agent-076-obs-185859-p93.0.jpg",
+      "time": "2026-10-31 18:58:59",
+      "concern": "Progress per interval keeps slowing",
+      "verdict": "other",
+      "explanation": "Slower file progress on small upper layers is expected and the frame shows normal growth; no fault."
+    },
+    {
+      "file": "agent-077-look-190124.jpg",
+      "time": "2026-10-31 19:01:24",
+      "concern": "The camera's periodic frame failed for the third time this print",
+      "verdict": "camera or lighting",
+      "explanation": "A one-off frame-server error dropped the periodic image; this fresh look shows the print healthy."
+    },
+    {
+      "file": "agent-086-obs-191910-p98.6.jpg",
+      "time": "2026-10-31 19:19:10",
+      "concern": "a clean-edged lip is forming at the rim",
+      "verdict": "design feature",
+      "explanation": "The wider lip is the guard's designed top collar (radius 20.2 to 24.7 mm over Z 136-142), printed cleanly with no droop."
+    }
+  ],
+  "labelling_notes": "Healthy, completed print; no frame shows a real print fault. Geometry from the STLs: the guard's base (Z 0-~12) is a C-shaped wall with a saddle cut-out on one side that closes as Z rises; the 'teeth' under it are build-plate support (Support material in the G-code types for Z 0.2-6.8). The saddle pad is an arc-shaped strip whose arch rises to Z 11.4 at its middle; it is printed over a comb of support, and its upturned apex is what the agent called the 'hook'/'raised end'. The pad is finished after Z ~11.4 and just sits on the bed. Guard features by Z: double-wall/annular-groove section ~Z 13-40, thin wall ~40-51, internal ledge ~51.8-54 (frame 045), side slot open from ~Z 54 to the rim (frames 047-049 onward), outward flare to a wider upper section ~Z 100-108 (frames 066-068, the agent's 'second opening'), top lip/collar flaring out ~Z 136-142 (frames 083-086). The agent's concern verdicts: teeth = support (it wrongly called them designed geometry, but correctly said not under-extrusion); hook/raised end, notch/slot, internal ridges, second opening and lip = design features; light patch and missing periodic images = camera; wavy line on the first layer = a real but harmless stray strand (the one that later hangs by the right Z leadscrew). Repeated strand mentions are recorded as concerns (verdict other) only on turns where the agent re-assessed it as a watch item (frames 003-004, 009-013); later passing mentions ('stays noted') and passing 'tiny wisp is ordinary' remarks (e.g. frames 034, 040, 045, 051, 055, 056) are left null. Rows 025, 027 and 077 are follow-up looks taken because the periodic image was missing (camera 500); there is no periodic frame for those observations. types_in_layer is empty for most of Z 13.6-51.4 and Z 56.4-136.4 in the packet even though perimeters were clearly printing; treat that as a packet annotation gap, not missing extrusion. The Prusament PLA has a sparkly speckled finish, so walls show glittery highlights that are not defects.",
+  "sources": {
+    "bubbler_guard_and_pad.gcode": "the G-code OctoPrint printed, byte for byte, from the run folder",
+    "provenance.json": "the operator's provenance for the run: the model, slicer, profiles and command that made the G-code",
+    "obico-predictions.json": "Obico's score for every frame it saw, exported by the operator's Obico export command",
+    "printobserver-history.json": "every event printobserver recorded for the print, from `printobserver history --print-id <id> --limit 1000 --json`",
+    "bubbler_guard_and_pad.stl": "the model provenance.json names: both parts merged onto one plate",
+    "bubbler_guard.stl": "the guard as published in the operator's gist",
+    "bubbler_saddle_pad.stl": "the saddle pad as published at the same gist"
+  },
+  "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
+  "assertions": {
+    "replay": ["carry-on-003-other", "carry-on-005-support", "carry-on-007-support", "carry-on-009-other", "carry-on-011-other", "carry-on-012-other", "carry-on-013-other", "carry-on-014-design-feature", "carry-on-016-design-feature", "carry-on-022-design-feature", "carry-on-028-camera-or-lighting", "carry-on-030-other", "carry-on-048-design-feature", "carry-on-050-design-feature", "carry-on-054-design-feature", "carry-on-067-design-feature", "carry-on-068-design-feature", "carry-on-086-design-feature"],
+    "scenarios": [
+      {
+        "id": "carry-on-003-other",
+        "at": "2026-10-31T16:51:23",
+        "file_position_bytes": 6639,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 0.1% shows what the agent called 'I think the wavy line in the event frame was the intro line or glare', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-003-obs-165123-p00.1.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-004-look-165229.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-005-support",
+        "at": "2026-10-31T16:53:25",
+        "file_position_bytes": 81152,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 1.7% shows what the agent called 'That reads as the bubbler guard's designed slots, not under-extrusion', which is support; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-005-obs-165325-p01.7.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-006-look-165446.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-007-support",
+        "at": "2026-10-31T16:55:26",
+        "file_position_bytes": 144382,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 3.0% shows what the agent called 'The round guard's teeth are crisp and evenly spaced, so they are designed geometry', which is support; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-007-obs-165526-p03.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-008-look-165625.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-009-other",
+        "at": "2026-10-31T16:57:27",
+        "file_position_bytes": 212880,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 4.4% shows what the agent called 'The loose strand at the bed edge hasn't changed', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-009-obs-165727-p04.4.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-010-look-165837.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-011-other",
+        "at": "2026-10-31T16:59:28",
+        "file_position_bytes": 280736,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 5.8% shows what the agent called 'the stray strand off the right edge of the bed hasn't changed', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-011-obs-165928-p05.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-012-other",
+        "at": "2026-10-31T17:01:28",
+        "file_position_bytes": 367263,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 7.6% shows what the agent called 'The loose strand beside the right Z leadscrew is still there', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-012-obs-170128-p07.6.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-013-other",
+        "at": "2026-10-31T17:03:29",
+        "file_position_bytes": 461282,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 9.6% shows what the agent called 'The loose strand by the right Z leadscrew hasn't changed', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-013-obs-170329-p09.6.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-014-design-feature",
+        "at": "2026-10-31T17:05:30",
+        "file_position_bytes": 557570,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 11.6% shows what the agent called 'I couldn't resolve the small hook on the pad', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-014-obs-170530-p11.6.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-015-look-170633.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-016-design-feature",
+        "at": "2026-10-31T17:07:31",
+        "file_position_bytes": 663077,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 13.8% shows what the agent called 'the small hook I couldn't make out on the pad last turn isn't showing as a curl', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-016-obs-170731-p13.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-022-design-feature",
+        "at": "2026-10-31T17:17:37",
+        "file_position_bytes": 1199738,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 24.9% shows what the agent called 'its raised end feature has stayed the same across frames, so it is part of the design, not a curl', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-022-obs-171737-p24.9.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-023-look-171835.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-028-camera-or-lighting",
+        "at": "2026-10-31T17:27:38",
+        "file_position_bytes": 1641398,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 34.1% shows what the agent called 'the light patch I saw on it was lighting on the filament's speckled texture, not a defect', which is a camera or lighting effect; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-028-obs-172738-p34.1.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-029-look-172843.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-030-other",
+        "at": "2026-10-31T17:29:40",
+        "file_position_bytes": 1726180,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 35.8% shows what the agent called 'There is one small, harmless wisp of filament on the guard's upper edge', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-030-obs-172940-p35.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-048-design-feature",
+        "at": "2026-10-31T18:04:12",
+        "file_position_bytes": 3165482,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 65.7% shows what the agent called 'a new step has appeared at the front of the guard's rim', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-048-obs-180412-p65.7.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-049-look-180528.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-050-design-feature",
+        "at": "2026-10-31T18:06:13",
+        "file_position_bytes": 3248644,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 67.5% shows what the agent called 'the notch in the guard's rim is still crisp and growing cleanly, which fits a designed slot', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-050-obs-180613-p67.5.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-054-design-feature",
+        "at": "2026-10-31T18:14:20",
+        "file_position_bytes": 3567540,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 74.1% shows what the agent called 'regular internal ridges', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-054-obs-181420-p74.1.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-067-design-feature",
+        "at": "2026-10-31T18:40:42",
+        "file_position_bytes": 4295514,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 89.2% shows what the agent called 'a second clean-edged opening starting at the rim', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-067-obs-184042-p89.2.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-068-design-feature",
+        "at": "2026-10-31T18:42:43",
+        "file_position_bytes": 4342510,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 90.2% shows what the agent called 'the new opening is growing cleanly with no offset in the wall', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-068-obs-184243-p90.2.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-086-design-feature",
+        "at": "2026-10-31T19:19:10",
+        "file_position_bytes": 4748846,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 98.6% shows what the agent called 'a clean-edged lip is forming at the rim', which is a designed feature; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-086-obs-191910-p98.6.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

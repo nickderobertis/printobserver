@@ -58,6 +58,9 @@
     "scenarios": [
       {
         "id": "warning-then-detector-pause",
+        "at": "2026-09-27T21:03:17",
+        "file_position_bytes": 200833,
+        "file_position_source": "progress",
         "summary": "Obico warns of a spaghetti nest while the print runs and its second look delivers the alert with which Obico paused the print; there is no single right action, since acknowledging with stop and pausing then acknowledging with stop are both acceptable.",
         "trigger": "recorded_alert",
         "event_id": "01a0e5f7-7e0d-7bd0-b2a9-6cfdfbdf9ce0",

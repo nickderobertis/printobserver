@@ -97,6 +97,7 @@ CHECKS: dict[str, Closure] = {
     "real-prints-scenarios": Closure(REAL_PRINTS),
     "real-prints-operations": Closure(REAL_PRINTS),
     "real-prints-service-config": Closure(REAL_PRINTS),
+    "real-prints-replay": Closure(REAL_PRINTS),
     "ingress-answer-bound": Closure((AGENTS, POLICY, "crates/printobserver-server/src/config.rs")),
     "service-install": Closure(
         (AGENTS, POLICY, "scripts/", SCHEMAS, "crates/printobserver/src/windows_service.rs")

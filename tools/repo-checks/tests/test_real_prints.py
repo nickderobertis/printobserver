@@ -38,6 +38,7 @@ CLOSURE = closure(
     "real-prints-scenarios",
     "real-prints-operations",
     "real-prints-service-config",
+    "real-prints-replay",
 )
 
 CHECKS = (
@@ -48,6 +49,7 @@ CHECKS = (
     "real-prints-scenarios",
     "real-prints-operations",
     "real-prints-service-config",
+    "real-prints-replay",
 )
 
 ROOT = "tests/real-prints"
@@ -63,8 +65,8 @@ SCENARIOS = {
     "spaghetti-small-nest": ["warning-then-detector-pause"],
     "spaghetti-debris-warning": ["static-debris-warning"],
     "filament-stall-air-print": ["stalled-while-reported-printing"],
-    "fan-cut-bridge": ["bridge-sagging-uncooled"],
-    "under-extrusion-lace": ["porous-walls"],
+    "fan-cut-bridge": ["bridge-sagging-uncooled", "carry-on-healthy-before-fault"],
+    "under-extrusion-lace": ["porous-walls", "carry-on-healthy-before-fault"],
     "healthy-printing": ["toolhead-false-positive"],
     "bed-clear-check": [
         "clear-01-bed-lowered-1727",
@@ -658,6 +660,20 @@ def test_the_pointers_a_clone_carries_are_read_from_the_index(tree: Callable[[],
         {},
         describing="a directory inside a work tree, which is no work tree of its own",
     )
+
+
+def test_more_frames_than_a_command_line_holds_are_read_all_the_same(
+    tree: Callable[[], Tree],
+) -> None:
+    """Windows' command line ran out at this repository's own count of frames."""
+    copy = tree()
+    as_pointers(copy)
+    committed(copy)
+    absent = [f"{ROOT}/a-case/{number:06}-{'x' * 100}.jpg" for number in range(60_000)]
+
+    answered = committed_pointers(Repo(copy.root), [STALL_FRAME, *absent])
+
+    equal(list(answered), [STALL_FRAME], describing="the one of them the index holds")
 
 
 def test_a_copy_that_is_no_repository_is_read_as_its_files(

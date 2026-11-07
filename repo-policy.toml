@@ -448,16 +448,37 @@ migration = "scripts/migrate-service-to-per-user.ps1"
 tier = "test-skill-install"
 
 [skilltest]
-# The skill tier: the `printobserver` skill run through a real harness on every
-# scenario of every `tests/real-prints/*/case.json`, with every `printobserver`
-# command stubbed, and judged by that case's `assertions`. Like the tiers above
-# it declares a `tier` recipe, which is how the documentation check inventories
-# it. It is deliberately NOT one of `gate.tiers`: each scenario spends real
-# model turns and needs a signed-in harness, so nothing runs it on a change and
-# a person runs it by hand. Its deterministic half — every scenario built with
-# no model and held to the cases, the turn template and the generated examples
-# — is the `skilltest-wiring` project's `test` target, which the gate runs.
+# The skill tier: each real print with a `replay` replayed through the real
+# server and the shipped harness as one continued conversation, and judged from
+# the server's own record by that case's `assertions`. Like the tiers above it
+# declares a `tier` recipe, which is how the documentation check inventories it.
+# It is deliberately NOT one of `gate.tiers`: each turn spends real model quota,
+# so it is the `skilltest` job of its own, on the changes `owed_paths` names. Its
+# deterministic half, the replay machinery under oneharness's published mock
+# harness, is the `skilltest-wiring` project's `test` target, which the gate runs.
 tier = "skilltest"
+# The one list of what can move the agent's judgement; `just skilltest-classify`
+# reads it. `install_templates` owe it only where their `[supervisor]` table moves,
+# and an `oneharness` package's release in `Cargo.lock` and `claude_code` below are
+# read the same way. A change adding a module the agent's context or the
+# expected-slice render is built from adds it here.
+owed_paths = [
+    "skills/printobserver/**",
+    "crates/printobserver-oneharness/**",
+    "crates/printobserver-core/src/context.rs",
+    "crates/printobserver-core/src/events.rs",
+    "tests/skilltest/**",
+    "tests/real-prints/**",
+]
+install_templates = [
+    "scripts/install.sh",
+    "scripts/install.ps1",
+    "scripts/install-service.sh",
+    "scripts/install-service.ps1",
+]
+# The Claude Code release the `skilltest` job installs, which is the harness
+# production's installer leaves a host free to choose.
+claude_code = "2.1.318"
 
 [smoke]
 # The real-printer smoke test: the one thing here that drives a machine capable

@@ -1,0 +1,1869 @@
+{
+  "case": "jar-top-petg-healthy",
+  "verdict": "healthy: no fault in any frame",
+  "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), textured sheet",
+  "printed_on": "2026-10-30, 11:59 to 14:23",
+  "times": "local, MDT (UTC-6)",
+  "part": "3423-TOP-REV F, the top (lid) of the jar, in Elegoo Rapid PETG black, printed opening-down: only the threaded skirt ring (r about 40-42 mm) and its brim touch the sheet, with automatic support filling its inside. In order the camera sees the skirt with support inside (Z 0-9.4), the support interface (Z 9.2), the shoulder's underside bridged over it (Z 9.6-10), the shoulder with grid infill (Z 10-13.4), a conical neck with a centre support column and a toothed ring of support columns around it (Z 17-30), the knurled cap rim (Z 30-42), and the closed top disc last (Z 42-44.6)",
+  "fault": "none; the only flaw is cosmetic PETG stringing",
+  "expected_agent_action": {
+    "on_every_observation": "carry on; no request",
+    "never": [
+      "pause",
+      "cancel",
+      "any adjustment"
+    ]
+  },
+  "detector": "Obico raised no alert",
+  "agent_turn": "the agent carried on at every observation. Its 18 remarks were about the support interface and the ring of support columns (twice called part of the design), cosmetic stringing, planned grid infill and the time estimate",
+  "history": "the third attempt at this part, after jar-top-wrong-material-first-layer-detach and jar-top-wrong-material-detach-spaghetti; this time with the PETG profile and supports",
+  "frames": [
+    {
+      "file": "agent-001-obs-120024-p00.0.jpg",
+      "time": "2026-10-30 12:00:24",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "empty bed (start G-code)",
+      "label": "Empty textured sheet seen past the X gantry during the start sequence (bed heating, nozzle soaking); nothing extruded yet."
+    },
+    {
+      "file": "agent-002-look-120218.jpg",
+      "time": "2026-10-30 12:02:18",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "not printing",
+      "in_view": "empty bed (start G-code)",
+      "label": "Empty, clean textured sheet with the bed lowered; still in the start sequence, nothing printed yet."
+    },
+    {
+      "file": "agent-003-obs-120426-p00.0.jpg",
+      "time": "2026-10-30 12:04:26",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "empty bed (start G-code)",
+      "label": "Bed raised and clean, toolhead parked at the back; still heating/probing, no extrusion yet."
+    },
+    {
+      "file": "agent-004-obs-120627-p00.0.jpg",
+      "time": "2026-10-30 12:06:27",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "periodic_observation",
+      "health": "not printing",
+      "in_view": "empty bed (start G-code)",
+      "label": "X gantry crossing the empty sheet during probing; no material on the bed in this frame."
+    },
+    {
+      "file": "agent-005-look-120816.jpg",
+      "time": "2026-10-30 12:08:16",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "first layer: brim and outer skirt ring",
+      "label": "First layer underway: a black brim ring and the outer skirt ring are going down flat and well stuck on the sheet, with a faint wisp at the brim seam; healthy.",
+      "agent_concern": {
+        "concern": "A thin wisp of stringing is normal for PETG",
+        "verdict": "other",
+        "explanation": "A single hair-thin PETG wisp near the brim seam is cosmetic stringing; the first layer is otherwise flat and well adhered."
+      }
+    },
+    {
+      "file": "agent-006-obs-121028-p00.4.jpg",
+      "time": "2026-10-30 12:10:28",
+      "progress_pct": 0.4,
+      "z_mm": 0.2,
+      "gcode_type": "Support material",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "first layer: brim, outer skirt ring and support base",
+      "label": "First layer complete and healthy: wide brim, the part's outer skirt ring, and the support base/interface filling the inside are all flat and adhered."
+    },
+    {
+      "file": "agent-007-obs-121230-p01.3.jpg",
+      "time": "2026-10-30 12:12:30",
+      "progress_pct": 1.3,
+      "z_mm": 0.6,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls of the outer skirt with support inside",
+      "label": "Early layers healthy: the outer skirt wall is rising cleanly and sparse straight support lines fill the interior; toolhead hides the back of the part."
+    },
+    {
+      "file": "agent-008-look-121447.jpg",
+      "time": "2026-10-30 12:14:47",
+      "progress_pct": 3.0,
+      "z_mm": 1.2,
+      "gcode_type": "Perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "perimeter walls of the skirt and interior support",
+      "label": "Healthy early build: clean skirt wall ring on its brim, with straight evenly spaced support lines in the annulus and a central support column."
+    },
+    {
+      "file": "agent-009-look-121648.jpg",
+      "time": "2026-10-30 12:16:48",
+      "progress_pct": 4.8,
+      "z_mm": 1.78,
+      "gcode_type": "Support material interface",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "support inside the skirt, perimeter walls",
+      "label": "Healthy: skirt wall rising cleanly on its brim while the interior support (annulus and centre column) grows in even straight lines.",
+      "agent_concern": {
+        "concern": "The remaining-time estimate jumped",
+        "verdict": "other",
+        "explanation": "A telemetry time-estimate glitch, not anything visible; the frame shows a clean build."
+      }
+    },
+    {
+      "file": "agent-010-obs-121832-p07.3.jpg",
+      "time": "2026-10-30 12:18:32",
+      "progress_pct": 7.3,
+      "z_mm": 2.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls of the threaded skirt and interior support",
+      "label": "Healthy: smooth skirt wall with even support lines inside it; no lifting or defects.",
+      "agent_concern": {
+        "concern": "The remaining-time estimate is still too high",
+        "verdict": "other",
+        "explanation": "Time-estimate telemetry only; the print in the frame is clean."
+      }
+    },
+    {
+      "file": "agent-011-look-122048.jpg",
+      "time": "2026-10-30 12:20:48",
+      "progress_pct": 10.0,
+      "z_mm": 2.78,
+      "gcode_type": "Support material",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "support material inside the skirt",
+      "label": "Healthy: interior support lines and the skirt wall building evenly, toolhead over the back of the part.",
+      "agent_concern": {
+        "concern": "The remaining-time estimate is still too high",
+        "verdict": "other",
+        "explanation": "Time-estimate telemetry only; nothing wrong is visible."
+      }
+    },
+    {
+      "file": "agent-012-obs-122235-p12.3.jpg",
+      "time": "2026-10-30 12:22:35",
+      "progress_pct": 12.3,
+      "z_mm": 3.18,
+      "gcode_type": "Support material interface",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support material and support interface",
+      "label": "Healthy: the support annulus and centre support column inside the skirt wall are building in clean straight lines."
+    },
+    {
+      "file": "agent-013-obs-122437-p14.8.jpg",
+      "time": "2026-10-30 12:24:37",
+      "progress_pct": 14.8,
+      "z_mm": 3.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls of the skirt and interior support",
+      "label": "Healthy: clean skirt wall and interior support; a couple of hair-thin PETG wisps over the support at the right are cosmetic only.",
+      "agent_concern": {
+        "concern": "The thin wisps are ordinary PETG stringing",
+        "verdict": "other",
+        "explanation": "Faint cosmetic PETG strings over the support; no blobs or failed extrusion."
+      }
+    },
+    {
+      "file": "agent-014-obs-122639-p17.4.jpg",
+      "time": "2026-10-30 12:26:39",
+      "progress_pct": 17.4,
+      "z_mm": 4.0,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "solid infill/walls of the skirt and support",
+      "label": "Healthy, mostly hidden by the toolhead: the visible skirt wall and support lines are clean."
+    },
+    {
+      "file": "agent-015-obs-122841-p19.9.jpg",
+      "time": "2026-10-30 12:28:41",
+      "progress_pct": 19.9,
+      "z_mm": 4.58,
+      "gcode_type": "Support material interface",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support interface inside the skirt (mostly occluded)",
+      "label": "Toolhead blocks most of the part; the visible skirt wall and support edge look clean."
+    },
+    {
+      "file": "agent-016-look-122925.jpg",
+      "time": "2026-10-30 12:29:25",
+      "progress_pct": 19.9,
+      "z_mm": 4.58,
+      "gcode_type": "Support material interface",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "support material and support interface",
+      "label": "Healthy clear view: skirt wall on its brim with the support annulus and raised centre support column, all even."
+    },
+    {
+      "file": "agent-017-obs-123043-p22.1.jpg",
+      "time": "2026-10-30 12:30:43",
+      "progress_pct": 22.1,
+      "z_mm": 5.0,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls of the skirt and interior support",
+      "label": "Healthy: skirt wall and interior support building evenly with no defects."
+    },
+    {
+      "file": "agent-018-obs-123246-p24.5.jpg",
+      "time": "2026-10-30 12:32:46",
+      "progress_pct": 24.5,
+      "z_mm": 5.4,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls / internal infill of the skirt with interior support",
+      "label": "Healthy part; one hair-thin PETG string trails from the part across the sheet to the right, cosmetic only.",
+      "agent_concern": {
+        "concern": "One hair-thin PETG string trails across the sheet",
+        "verdict": "other",
+        "explanation": "A single travel string, faintly visible on the sheet; cosmetic PETG stringing, not a print fault."
+      }
+    },
+    {
+      "file": "agent-019-obs-123447-p26.6.jpg",
+      "time": "2026-10-30 12:34:47",
+      "progress_pct": 26.6,
+      "z_mm": 5.98,
+      "gcode_type": "Support material",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support material inside the skirt",
+      "label": "Healthy: skirt wall and the stepped interior support (annulus and centre column) are clean; no stringing visible now."
+    },
+    {
+      "file": "agent-020-obs-123648-p28.5.jpg",
+      "time": "2026-10-30 12:36:48",
+      "progress_pct": 28.5,
+      "z_mm": 6.4,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls of the skirt (partly occluded)",
+      "label": "Toolhead hides the left half; the visible skirt wall and support lines are clean."
+    },
+    {
+      "file": "agent-021-obs-123850-p30.5.jpg",
+      "time": "2026-10-30 12:38:50",
+      "progress_pct": 30.5,
+      "z_mm": 6.8,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "solid infill/walls of the skirt and interior support",
+      "label": "Healthy: skirt wall rising cleanly on the brim, support annulus and centre support column even."
+    },
+    {
+      "file": "agent-022-obs-124052-p32.8.jpg",
+      "time": "2026-10-30 12:40:52",
+      "progress_pct": 32.8,
+      "z_mm": 7.4,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls of the skirt and interior support",
+      "label": "Healthy: skirt wall and interior support building evenly, toolhead at the back-left."
+    },
+    {
+      "file": "agent-023-obs-124254-p34.6.jpg",
+      "time": "2026-10-30 12:42:54",
+      "progress_pct": 34.6,
+      "z_mm": 8.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "external perimeter of the skirt and interior support",
+      "label": "Healthy clear view of the skirt wall around the support annulus and centre support column."
+    },
+    {
+      "file": "agent-024-obs-124456-p36.3.jpg",
+      "time": "2026-10-30 12:44:56",
+      "progress_pct": 36.3,
+      "z_mm": 8.6,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls of the skirt (partly occluded)",
+      "label": "Toolhead blocks the right side; the visible skirt and support are clean."
+    },
+    {
+      "file": "agent-025-look-124720.jpg",
+      "time": "2026-10-30 12:47:20",
+      "progress_pct": 37.6,
+      "z_mm": 9.18,
+      "gcode_type": "Support material interface",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "support interface under the shoulder overhang",
+      "label": "Healthy: a dense, finer-textured support interface ring is being laid on top of the support annulus to carry the shoulder overhang.",
+      "agent_concern": {
+        "concern": "The surface of the outer band has changed to a finer, denser texture",
+        "verdict": "support",
+        "explanation": "The denser band is the planned support interface layer (G-code: Support material interface at z 9.2) that the shoulder will bridge onto."
+      }
+    },
+    {
+      "file": "agent-026-look-124827.jpg",
+      "time": "2026-10-30 12:48:27",
+      "progress_pct": 37.6,
+      "z_mm": 9.18,
+      "gcode_type": "Support material interface",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "support interface under the shoulder overhang",
+      "label": "Healthy: the dense support interface ring around the centre support column, partly hidden by the toolhead.",
+      "agent_concern": {
+        "concern": "The surface of the outer band has changed to a finer, denser texture",
+        "verdict": "support",
+        "explanation": "Same planned support interface layer as the previous look; even and clean."
+      }
+    },
+    {
+      "file": "agent-027-obs-124858-p38.9.jpg",
+      "time": "2026-10-30 12:48:58",
+      "progress_pct": 38.9,
+      "z_mm": 9.58,
+      "gcode_type": "Support material interface",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support interface under the shoulder overhang",
+      "label": "Healthy: the textured support-interface ring is complete around the centre support column, ready for the shoulder to bridge over it.",
+      "agent_concern": {
+        "concern": "Last turn's textured outer band is a ring of evenly spaced radial ribs",
+        "verdict": "support",
+        "explanation": "The band is support interface (G-code type at z 9.58), not radial ribs in the design; it is regular and healthy."
+      }
+    },
+    {
+      "file": "agent-028-obs-125100-p39.7.jpg",
+      "time": "2026-10-30 12:51:00",
+      "progress_pct": 39.7,
+      "z_mm": 9.8,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "bridge / overhang (shoulder underside over support)",
+      "label": "Healthy: the shoulder's underside is closing inward with bridge infill and overhang perimeters laid over the support interface ring."
+    },
+    {
+      "file": "agent-029-obs-125301-p40.8.jpg",
+      "time": "2026-10-30 12:53:01",
+      "progress_pct": 40.8,
+      "z_mm": 10.0,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "overhang perimeters of the shoulder (mostly occluded)",
+      "label": "Toolhead hides most of the part; the visible shoulder band and skirt wall are clean."
+    },
+    {
+      "file": "agent-030-obs-125502-p42.0.jpg",
+      "time": "2026-10-30 12:55:02",
+      "progress_pct": 42.0,
+      "z_mm": 10.2,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "solid infill of the shoulder over support",
+      "label": "Healthy: shoulder layer closed over the support ring, skirt wall clean, centre support column visible."
+    },
+    {
+      "file": "agent-031-obs-125703-p43.2.jpg",
+      "time": "2026-10-30 12:57:03",
+      "progress_pct": 43.2,
+      "z_mm": 10.6,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "internal infill of the shoulder",
+      "label": "Healthy: the thick shoulder ring is filled with an even diagonal grid of sparse infill inside its walls.",
+      "agent_concern": {
+        "concern": "The outer band shows an even diagonal lattice",
+        "verdict": "other",
+        "explanation": "The lattice is the planned grid internal infill of the thick shoulder, not a defect."
+      }
+    },
+    {
+      "file": "agent-032-obs-125905-p44.3.jpg",
+      "time": "2026-10-30 12:59:05",
+      "progress_pct": 44.3,
+      "z_mm": 11.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "internal infill of the shoulder",
+      "label": "Healthy: grid infill in the shoulder ring between clean walls, centre support column visible."
+    },
+    {
+      "file": "agent-033-obs-130107-p45.3.jpg",
+      "time": "2026-10-30 13:01:07",
+      "progress_pct": 45.3,
+      "z_mm": 11.6,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "internal infill of the shoulder",
+      "label": "Healthy: shoulder grid infill and walls even, partly hidden by the toolhead."
+    },
+    {
+      "file": "agent-034-obs-130308-p46.5.jpg",
+      "time": "2026-10-30 13:03:08",
+      "progress_pct": 46.5,
+      "z_mm": 12.2,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "internal infill / walls of the shoulder",
+      "label": "Healthy: shoulder walls with even grid infill around the centre support column."
+    },
+    {
+      "file": "agent-035-obs-130511-p47.3.jpg",
+      "time": "2026-10-30 13:05:11",
+      "progress_pct": 47.3,
+      "z_mm": 12.6,
+      "gcode_type": "Bridge infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "bridge/internal infill of the shoulder (mostly occluded)",
+      "label": "Toolhead hides most of the part; the visible grid infill of the shoulder is clean."
+    },
+    {
+      "file": "agent-036-obs-130712-p48.4.jpg",
+      "time": "2026-10-30 13:07:12",
+      "progress_pct": 48.4,
+      "z_mm": 13.0,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "solid infill / top of the shoulder (mostly occluded)",
+      "label": "Toolhead blocks most of the top; the visible shoulder wall is clean and the solid top of the shoulder is starting."
+    },
+    {
+      "file": "agent-037-look-130802.jpg",
+      "time": "2026-10-30 13:08:02",
+      "progress_pct": 48.4,
+      "z_mm": 13.0,
+      "gcode_type": "Perimeter",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "solid infill / top of the shoulder",
+      "label": "Partly occluded: the shoulder's solid top surface and walls are clean; centre support visible."
+    },
+    {
+      "file": "agent-038-obs-130914-p49.8.jpg",
+      "time": "2026-10-30 13:09:14",
+      "progress_pct": 49.8,
+      "z_mm": 13.4,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "top solid infill of the shoulder, neck walls starting",
+      "label": "Healthy: shoulder top closed and the conical neck starting inward; left half hidden by the toolhead."
+    },
+    {
+      "file": "agent-039-look-131140.jpg",
+      "time": "2026-10-30 13:11:40",
+      "progress_pct": 51.2,
+      "z_mm": 13.8,
+      "gcode_type": "Internal infill",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "perimeter walls / internal infill of the conical neck",
+      "label": "Healthy: the conical neck rises inward from the closed shoulder, with the centre support column inside."
+    },
+    {
+      "file": "agent-040-obs-131317-p52.0.jpg",
+      "time": "2026-10-30 13:13:17",
+      "progress_pct": 52.0,
+      "z_mm": 14.6,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls / internal infill of the conical neck",
+      "label": "Healthy: conical neck walls clean, centre support inside; a few fine PETG strings on the shoulder surface are cosmetic.",
+      "agent_concern": {
+        "concern": "a few fine strings on the outer wall",
+        "verdict": "other",
+        "explanation": "Faint cosmetic PETG strings on the shoulder; the remaining-time remark is telemetry only. Nothing structural."
+      }
+    },
+    {
+      "file": "agent-041-obs-131518-p52.7.jpg",
+      "time": "2026-10-30 13:15:18",
+      "progress_pct": 52.7,
+      "z_mm": 15.4636,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "conical neck walls with centre support",
+      "label": "Healthy: conical neck around the centre support column, same faint cosmetic strings on the shoulder.",
+      "agent_concern": {
+        "concern": "fine strings on the outer wall that affect its look",
+        "verdict": "other",
+        "explanation": "The same cosmetic PETG wisps, not growing; the flat time estimate is telemetry only."
+      }
+    },
+    {
+      "file": "agent-042-obs-131720-p53.5.jpg",
+      "time": "2026-10-30 13:17:20",
+      "progress_pct": 53.5,
+      "z_mm": 16.4,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "conical neck walls (mostly occluded)",
+      "label": "Toolhead hides the top; the visible neck and shoulder are clean with faint cosmetic strings.",
+      "agent_concern": {
+        "concern": "only the same fine strings that affect its look",
+        "verdict": "other",
+        "explanation": "Unchanged cosmetic PETG stringing on the shoulder."
+      }
+    },
+    {
+      "file": "agent-043-obs-131922-p54.2.jpg",
+      "time": "2026-10-30 13:19:22",
+      "progress_pct": 54.2,
+      "z_mm": 17.4,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "internal infill / walls of the conical neck",
+      "label": "Healthy: conical neck narrowing around the centre support column, no defects."
+    },
+    {
+      "file": "agent-044-obs-132124-p55.0.jpg",
+      "time": "2026-10-30 13:21:24",
+      "progress_pct": 55.0,
+      "z_mm": 18.2,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "internal infill / walls of the conical neck",
+      "label": "Healthy: neck walls and centre support clean, toolhead over the part."
+    },
+    {
+      "file": "agent-045-obs-132325-p55.8.jpg",
+      "time": "2026-10-30 13:23:25",
+      "progress_pct": 55.8,
+      "z_mm": 19.0,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "walls / internal infill of the conical neck",
+      "label": "Healthy: neck rising evenly, partly hidden by the toolhead."
+    },
+    {
+      "file": "agent-046-obs-132527-p56.7.jpg",
+      "time": "2026-10-30 13:25:27",
+      "progress_pct": 56.7,
+      "z_mm": 20.0,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "conical neck with centre support and outer support ring",
+      "label": "Healthy: centre support column inside the narrowing neck, with a ring of support starting outside the neck."
+    },
+    {
+      "file": "agent-047-obs-132728-p57.4.jpg",
+      "time": "2026-10-30 13:27:28",
+      "progress_pct": 57.4,
+      "z_mm": 21.2,
+      "gcode_type": "Support material",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support material around and inside the neck",
+      "label": "Healthy: centre support column inside the neck and a toothed ring of support columns around it."
+    },
+    {
+      "file": "agent-048-obs-132930-p58.2.jpg",
+      "time": "2026-10-30 13:29:30",
+      "progress_pct": 58.2,
+      "z_mm": 22.4,
+      "gcode_type": "Support material",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support ring around the neck",
+      "label": "Healthy: toothed outer support ring and centre support around the neck, building evenly."
+    },
+    {
+      "file": "agent-049-obs-133131-p59.0.jpg",
+      "time": "2026-10-30 13:31:31",
+      "progress_pct": 59.0,
+      "z_mm": 23.4,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support ring around the neck",
+      "label": "Healthy: a regular toothed ring of support columns stands around the neck (it carries the knurled rim above) with the centre support column inside.",
+      "agent_concern": {
+        "concern": "A regular toothed ring of ribs is rising around the inner boss as part of the design",
+        "verdict": "support",
+        "explanation": "G-code puts Support material at r ~27-30 mm on these layers; the teeth are support under the knurled rim overhang, not part of the design."
+      }
+    },
+    {
+      "file": "agent-050-obs-133333-p60.2.jpg",
+      "time": "2026-10-30 13:33:33",
+      "progress_pct": 60.2,
+      "z_mm": 24.4,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support ring around the neck, neck walls",
+      "label": "Healthy: toothed support ring and neck wall rising cleanly."
+    },
+    {
+      "file": "agent-051-obs-133534-p61.9.jpg",
+      "time": "2026-10-30 13:35:34",
+      "progress_pct": 61.9,
+      "z_mm": 25.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support ring around the neck, neck walls",
+      "label": "Healthy: toothed support ring around the neck and centre support, even."
+    },
+    {
+      "file": "agent-052-obs-133736-p63.2.jpg",
+      "time": "2026-10-30 13:37:36",
+      "progress_pct": 63.2,
+      "z_mm": 26.8,
+      "gcode_type": "Support material",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support ring around the neck",
+      "label": "Partly occluded: the visible toothed support ring and neck are clean."
+    },
+    {
+      "file": "agent-053-obs-133938-p64.3.jpg",
+      "time": "2026-10-30 13:39:38",
+      "progress_pct": 64.3,
+      "z_mm": 27.8,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support ring and neck walls",
+      "label": "Healthy: toothed support ring and neck wall rising evenly around the centre support."
+    },
+    {
+      "file": "agent-054-obs-134139-p65.4.jpg",
+      "time": "2026-10-30 13:41:39",
+      "progress_pct": 65.4,
+      "z_mm": 28.8,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "support ring and neck walls",
+      "label": "Healthy: toothed support ring, neck and centre support all even."
+    },
+    {
+      "file": "agent-055-obs-134340-p66.7.jpg",
+      "time": "2026-10-30 13:43:40",
+      "progress_pct": 66.7,
+      "z_mm": 29.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "neck walls with surrounding support ring",
+      "label": "Healthy: neck and toothed support ring rising cleanly."
+    },
+    {
+      "file": "agent-056-obs-134542-p68.0.jpg",
+      "time": "2026-10-30 13:45:42",
+      "progress_pct": 68.0,
+      "z_mm": 30.8,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "neck walls starting to flare over support",
+      "label": "Healthy: neck starting to flare outward over the toothed support ring, centre support visible."
+    },
+    {
+      "file": "agent-057-obs-134743-p69.6.jpg",
+      "time": "2026-10-30 13:47:43",
+      "progress_pct": 69.6,
+      "z_mm": 31.6,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "neck walls / flare over support",
+      "label": "Healthy: the cap rim is starting to flare out over the toothed support ring."
+    },
+    {
+      "file": "agent-058-obs-134945-p71.9.jpg",
+      "time": "2026-10-30 13:49:45",
+      "progress_pct": 71.9,
+      "z_mm": 32.6,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "perimeter walls of the flared cap rim",
+      "label": "Healthy: flared cap rim building over the support ring with grid infill appearing."
+    },
+    {
+      "file": "agent-059-obs-135146-p74.2.jpg",
+      "time": "2026-10-30 13:51:46",
+      "progress_pct": 74.2,
+      "z_mm": 33.4467,
+      "gcode_type": "Support material",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "internal infill of the knurled cap rim",
+      "label": "Healthy: the knurled (scalloped) cap rim now covers the toothed support ring, filled with an even grid infill around the centre support.",
+      "agent_concern": {
+        "concern": "An even grid infill layer now covers the rib ring",
+        "verdict": "other",
+        "explanation": "The grid is the planned sparse infill of the knurled cap rim, which has bridged over the support teeth; regular and healthy."
+      }
+    },
+    {
+      "file": "agent-060-obs-135347-p76.3.jpg",
+      "time": "2026-10-30 13:53:47",
+      "progress_pct": 76.3,
+      "z_mm": 34.6,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "knurled cap rim walls and infill",
+      "label": "Healthy: knurled cap rim with grid infill, partly hidden by the toolhead."
+    },
+    {
+      "file": "agent-061-obs-135549-p77.7.jpg",
+      "time": "2026-10-30 13:55:49",
+      "progress_pct": 77.7,
+      "z_mm": 35.6,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "knurled cap rim (design feature) with internal infill",
+      "label": "Healthy: scalloped knurled rim walls with even grid infill around the centre support."
+    },
+    {
+      "file": "agent-062-obs-135751-p79.2.jpg",
+      "time": "2026-10-30 13:57:51",
+      "progress_pct": 79.2,
+      "z_mm": 36.6,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "knurled cap rim with internal infill",
+      "label": "Healthy: knurled rim and grid infill building evenly."
+    },
+    {
+      "file": "agent-063-obs-135952-p80.7.jpg",
+      "time": "2026-10-30 13:59:52",
+      "progress_pct": 80.7,
+      "z_mm": 37.8,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "knurled cap rim with internal infill",
+      "label": "Healthy: knurled rim walls clean, grid infill even, centre support visible."
+    },
+    {
+      "file": "agent-064-obs-140154-p82.3.jpg",
+      "time": "2026-10-30 14:01:54",
+      "progress_pct": 82.3,
+      "z_mm": 38.6,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "knurled cap rim walls and solid infill",
+      "label": "Healthy: knurled rim and infill rising evenly above the support ring."
+    },
+    {
+      "file": "agent-065-obs-140355-p84.0.jpg",
+      "time": "2026-10-30 14:03:55",
+      "progress_pct": 84.0,
+      "z_mm": 39.4,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "knurled cap rim (partly occluded)",
+      "label": "Partly occluded: the visible knurled rim and grid infill are clean."
+    },
+    {
+      "file": "agent-066-obs-140557-p85.5.jpg",
+      "time": "2026-10-30 14:05:57",
+      "progress_pct": 85.5,
+      "z_mm": 40.0,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "knurled cap rim (partly occluded)",
+      "label": "Partly occluded: knurled rim and grid infill clean."
+    },
+    {
+      "file": "agent-067-obs-140758-p86.7.jpg",
+      "time": "2026-10-30 14:07:58",
+      "progress_pct": 86.7,
+      "z_mm": 40.6,
+      "gcode_type": "Solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "bridge / overhang closing the centre over support",
+      "label": "Healthy: the centre is being closed with dense bridging over the top of the centre support, inside the gridded knurled rim."
+    },
+    {
+      "file": "agent-068-obs-140959-p87.4.jpg",
+      "time": "2026-10-30 14:09:59",
+      "progress_pct": 87.4,
+      "z_mm": 41.2,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "solid infill closing the centre, knurled rim infill",
+      "label": "Healthy: centre disc closed solid inside the knurled rim's grid infill."
+    },
+    {
+      "file": "agent-069-obs-141200-p88.4.jpg",
+      "time": "2026-10-30 14:12:00",
+      "progress_pct": 88.4,
+      "z_mm": 42.0,
+      "gcode_type": "Perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "internal infill of the cap top",
+      "label": "Healthy: the whole top is an even square grid of sparse infill inside the knurled rim walls.",
+      "agent_concern": {
+        "concern": "The whole top of the part is now an even square grid infill",
+        "verdict": "other",
+        "explanation": "Planned grid infill before the top solid layers; regular and fully supported."
+      }
+    },
+    {
+      "file": "agent-070-obs-141401-p88.6.jpg",
+      "time": "2026-10-30 14:14:01",
+      "progress_pct": 88.6,
+      "z_mm": 42.0,
+      "gcode_type": "Internal infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "solid infill (first top layers) over grid",
+      "label": "Healthy: the first solid layer is going down over the grid, with infill faintly showing through as normal and no sagging.",
+      "agent_concern": {
+        "concern": "Infill showing faintly through the first top layer is normal",
+        "verdict": "other",
+        "explanation": "Normal show-through on the first solid layer over sparse infill; the 'brief slowdown in file position' is telemetry only."
+      }
+    },
+    {
+      "file": "agent-071-look-141558.jpg",
+      "time": "2026-10-30 14:15:58",
+      "progress_pct": 88.6,
+      "z_mm": 42.0,
+      "gcode_type": "Internal infill",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "solid / top solid infill (mostly occluded)",
+      "label": "Toolhead blocks most of the top; the visible rim and closing top surface are clean.",
+      "agent_concern": {
+        "concern": "Infill showing faintly through the first top layer is normal",
+        "verdict": "other",
+        "explanation": "Same turn as the previous frame; nothing faulty is visible, and the slowdown remark is telemetry."
+      }
+    },
+    {
+      "file": "agent-072-obs-141803-p91.6.jpg",
+      "time": "2026-10-30 14:18:03",
+      "progress_pct": 91.6,
+      "z_mm": 42.6,
+      "gcode_type": "Top solid infill",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "top solid infill and raised rim (design feature)",
+      "label": "Healthy: top surface closed solid and a raised rim is starting on it."
+    },
+    {
+      "file": "agent-073-obs-142004-p93.8.jpg",
+      "time": "2026-10-30 14:20:04",
+      "progress_pct": 93.8,
+      "z_mm": 43.2,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "raised rim on the cap top (design feature)",
+      "label": "Healthy, partly occluded: raised rim walls building on the closed top."
+    },
+    {
+      "file": "agent-074-obs-142205-p97.0.jpg",
+      "time": "2026-10-30 14:22:05",
+      "progress_pct": 97.0,
+      "z_mm": 44.0,
+      "gcode_type": "External perimeter",
+      "kind": "periodic_observation",
+      "health": "healthy",
+      "in_view": "final layers: raised rim and inner ring (design feature)",
+      "label": "Healthy: smooth closed top with the raised outer rim and inner ring features nearly finished."
+    }
+  ],
+  "agent_images": [
+    {
+      "file": "agent-001-obs-120024-p00.0.jpg",
+      "event_id": "01a18df8-5580-7a03-a193-44e7496b407d"
+    },
+    {
+      "file": "agent-002-look-120218.jpg",
+      "event_id": "01a18dfa-106d-79c1-9d1a-143f025ceb4e"
+    },
+    {
+      "file": "agent-003-obs-120426-p00.0.jpg",
+      "event_id": "01a18dfc-05ec-7ca1-8463-f09b004b7424"
+    },
+    {
+      "file": "agent-004-obs-120627-p00.0.jpg",
+      "event_id": "01a18dfd-e097-7be2-aa9d-87bd52029588"
+    },
+    {
+      "file": "agent-005-look-120816.jpg",
+      "event_id": "01a18dff-88c3-7b42-878c-10a17ab96404"
+    },
+    {
+      "file": "agent-006-obs-121028-p00.4.jpg",
+      "event_id": "01a18e01-8d1a-7471-b733-df99a914991d"
+    },
+    {
+      "file": "agent-007-obs-121230-p01.3.jpg",
+      "event_id": "01a18e03-6887-7562-a269-1629c5badff8"
+    },
+    {
+      "file": "agent-008-look-121447.jpg",
+      "event_id": "01a18e05-8102-7933-b501-9f3a49c2e01f"
+    },
+    {
+      "file": "agent-009-look-121648.jpg",
+      "event_id": "01a18e07-5702-7e51-80e5-9e983d0a151a"
+    },
+    {
+      "file": "agent-010-obs-121832-p07.3.jpg",
+      "event_id": "01a18e08-ef7d-75c1-9861-d79dfe8fb33c"
+    },
+    {
+      "file": "agent-011-look-122048.jpg",
+      "event_id": "01a18e0b-01ac-7663-adbb-b8c8fc29efe2"
+    },
+    {
+      "file": "agent-012-obs-122235-p12.3.jpg",
+      "event_id": "01a18e0c-a36f-7663-8aef-f7923bcb7d58"
+    },
+    {
+      "file": "agent-013-obs-122437-p14.8.jpg",
+      "event_id": "01a18e0e-81d4-7d63-9757-06a8e72a078c"
+    },
+    {
+      "file": "agent-014-obs-122639-p17.4.jpg",
+      "event_id": "01a18e10-5c8f-7310-97a7-ee2ce64a3b40"
+    },
+    {
+      "file": "agent-015-obs-122841-p19.9.jpg",
+      "event_id": "01a18e12-3a26-75c0-9486-54ca32d933fe"
+    },
+    {
+      "file": "agent-016-look-122925.jpg",
+      "event_id": "01a18e12-e4a7-7b61-b3ab-238fdb83a58a"
+    },
+    {
+      "file": "agent-017-obs-123043-p22.1.jpg",
+      "event_id": "01a18e14-171b-7920-8d3d-0f4baaa03006"
+    },
+    {
+      "file": "agent-018-obs-123246-p24.5.jpg",
+      "event_id": "01a18e15-f515-7c40-8d7c-dc2037ce8530"
+    },
+    {
+      "file": "agent-019-obs-123447-p26.6.jpg",
+      "event_id": "01a18e17-ce86-74a0-830a-044da42cfc72"
+    },
+    {
+      "file": "agent-020-obs-123648-p28.5.jpg",
+      "event_id": "01a18e19-a853-7592-9729-b645aae65053"
+    },
+    {
+      "file": "agent-021-obs-123850-p30.5.jpg",
+      "event_id": "01a18e1b-83ca-7b00-b056-43f6dbfa5181"
+    },
+    {
+      "file": "agent-022-obs-124052-p32.8.jpg",
+      "event_id": "01a18e1d-60ae-7471-9cb2-1744607239f6"
+    },
+    {
+      "file": "agent-023-obs-124254-p34.6.jpg",
+      "event_id": "01a18e1f-3d88-7610-a2e7-bff155306baf"
+    },
+    {
+      "file": "agent-024-obs-124456-p36.3.jpg",
+      "event_id": "01a18e21-1928-7360-b976-1f818590748b"
+    },
+    {
+      "file": "agent-025-look-124720.jpg",
+      "event_id": "01a18e23-4b29-7741-823e-3f7315b2686e"
+    },
+    {
+      "file": "agent-026-look-124827.jpg",
+      "event_id": "01a18e24-52a8-7e70-911d-fff44a693fef"
+    },
+    {
+      "file": "agent-027-obs-124858-p38.9.jpg",
+      "event_id": "01a18e24-caad-7bd1-b930-1e5ba621f412"
+    },
+    {
+      "file": "agent-028-obs-125100-p39.7.jpg",
+      "event_id": "01a18e26-a7f1-70f0-9276-2dd90ca35620"
+    },
+    {
+      "file": "agent-029-obs-125301-p40.8.jpg",
+      "event_id": "01a18e28-801a-70d1-93f5-01d7b2d11516"
+    },
+    {
+      "file": "agent-030-obs-125502-p42.0.jpg",
+      "event_id": "01a18e2a-589a-75b3-8599-db07986b0b33"
+    },
+    {
+      "file": "agent-031-obs-125703-p43.2.jpg",
+      "event_id": "01a18e2c-33e2-7890-9dcf-fab56d22c46e"
+    },
+    {
+      "file": "agent-032-obs-125905-p44.3.jpg",
+      "event_id": "01a18e2e-0f0d-7b40-bfeb-27181a6bc4c1"
+    },
+    {
+      "file": "agent-033-obs-130107-p45.3.jpg",
+      "event_id": "01a18e2f-eaa5-7031-ac96-875a06f22e7d"
+    },
+    {
+      "file": "agent-034-obs-130308-p46.5.jpg",
+      "event_id": "01a18e31-c594-72c3-a619-f318e5c8533c"
+    },
+    {
+      "file": "agent-035-obs-130511-p47.3.jpg",
+      "event_id": "01a18e33-a34c-7372-9540-fbc9fda43f0f"
+    },
+    {
+      "file": "agent-036-obs-130712-p48.4.jpg",
+      "event_id": "01a18e35-7be8-7cd1-940d-6cf3d73d5b32"
+    },
+    {
+      "file": "agent-037-look-130802.jpg",
+      "event_id": "01a18e36-40da-7413-9b42-aa963fa38fc8"
+    },
+    {
+      "file": "agent-038-obs-130914-p49.8.jpg",
+      "event_id": "01a18e37-59c9-7d12-97cb-22af2da2c3b2"
+    },
+    {
+      "file": "agent-039-look-131140.jpg",
+      "event_id": "01a18e39-9433-7332-b7a8-e85dda1b9437"
+    },
+    {
+      "file": "agent-040-obs-131317-p52.0.jpg",
+      "event_id": "01a18e3b-0d25-76f0-b0d0-d24cecb8c8f2"
+    },
+    {
+      "file": "agent-041-obs-131518-p52.7.jpg",
+      "event_id": "01a18e3c-e756-74c1-82ec-05e98911ef20"
+    },
+    {
+      "file": "agent-042-obs-131720-p53.5.jpg",
+      "event_id": "01a18e3e-c4db-7480-b879-09393396f112"
+    },
+    {
+      "file": "agent-043-obs-131922-p54.2.jpg",
+      "event_id": "01a18e40-a153-7ba1-a88a-2581656fc181"
+    },
+    {
+      "file": "agent-044-obs-132124-p55.0.jpg",
+      "event_id": "01a18e42-7c2f-79d0-bfa4-34d48c23e0da"
+    },
+    {
+      "file": "agent-045-obs-132325-p55.8.jpg",
+      "event_id": "01a18e44-572e-7ee2-bee8-350a6ff2dacf"
+    },
+    {
+      "file": "agent-046-obs-132527-p56.7.jpg",
+      "event_id": "01a18e46-313a-7922-b4d7-082e8e0d9a4a"
+    },
+    {
+      "file": "agent-047-obs-132728-p57.4.jpg",
+      "event_id": "01a18e48-0c2c-78f3-b88f-a32d5fa9d5c9"
+    },
+    {
+      "file": "agent-048-obs-132930-p58.2.jpg",
+      "event_id": "01a18e49-e6c2-7e50-b680-9f4c1d03b731"
+    },
+    {
+      "file": "agent-049-obs-133131-p59.0.jpg",
+      "event_id": "01a18e4b-c1da-77c0-86f4-2a10a38f73f7"
+    },
+    {
+      "file": "agent-050-obs-133333-p60.2.jpg",
+      "event_id": "01a18e4d-9c06-70f2-9a59-8e86d3fa567c"
+    },
+    {
+      "file": "agent-051-obs-133534-p61.9.jpg",
+      "event_id": "01a18e4f-762c-7781-9dc8-1f9c276a601d"
+    },
+    {
+      "file": "agent-052-obs-133736-p63.2.jpg",
+      "event_id": "01a18e51-511a-7d51-b852-1d16dfad962d"
+    },
+    {
+      "file": "agent-053-obs-133938-p64.3.jpg",
+      "event_id": "01a18e53-2d19-79e2-8a8c-10123900fbec"
+    },
+    {
+      "file": "agent-054-obs-134139-p65.4.jpg",
+      "event_id": "01a18e55-06ee-72a0-8931-2f1019783385"
+    },
+    {
+      "file": "agent-055-obs-134340-p66.7.jpg",
+      "event_id": "01a18e56-e166-74a1-91b2-a97a8d44e0f4"
+    },
+    {
+      "file": "agent-056-obs-134542-p68.0.jpg",
+      "event_id": "01a18e58-bb03-74e2-9112-9d6625624652"
+    },
+    {
+      "file": "agent-057-obs-134743-p69.6.jpg",
+      "event_id": "01a18e5a-952a-7d61-bb27-6d73281b2cbd"
+    },
+    {
+      "file": "agent-058-obs-134945-p71.9.jpg",
+      "event_id": "01a18e5c-6fd1-75c1-8b26-0cb6a3b7ac4b"
+    },
+    {
+      "file": "agent-059-obs-135146-p74.2.jpg",
+      "event_id": "01a18e5e-4963-7f23-b9e2-03cd796cfe67"
+    },
+    {
+      "file": "agent-060-obs-135347-p76.3.jpg",
+      "event_id": "01a18e60-24b9-75d3-835c-4cf319d59bde"
+    },
+    {
+      "file": "agent-061-obs-135549-p77.7.jpg",
+      "event_id": "01a18e61-fed1-7f12-8848-3a479b81819a"
+    },
+    {
+      "file": "agent-062-obs-135751-p79.2.jpg",
+      "event_id": "01a18e63-dacf-72e0-97d0-391e3d297db1"
+    },
+    {
+      "file": "agent-063-obs-135952-p80.7.jpg",
+      "event_id": "01a18e65-b4f4-7043-8b2b-171444bc2712"
+    },
+    {
+      "file": "agent-064-obs-140154-p82.3.jpg",
+      "event_id": "01a18e67-9135-7162-9db9-d149dd68fcc3"
+    },
+    {
+      "file": "agent-065-obs-140355-p84.0.jpg",
+      "event_id": "01a18e69-6a68-7c71-b314-18a57a1c6d17"
+    },
+    {
+      "file": "agent-066-obs-140557-p85.5.jpg",
+      "event_id": "01a18e6b-44b5-7b70-98d9-9d6a386c5350"
+    },
+    {
+      "file": "agent-067-obs-140758-p86.7.jpg",
+      "event_id": "01a18e6d-1d6a-76a0-ae15-512b21e62af0"
+    },
+    {
+      "file": "agent-068-obs-140959-p87.4.jpg",
+      "event_id": "01a18e6e-f854-7610-a2d1-2d5c0bdd6952"
+    },
+    {
+      "file": "agent-069-obs-141200-p88.4.jpg",
+      "event_id": "01a18e70-cfa1-7ef2-b9bb-65a7976b5c8e"
+    },
+    {
+      "file": "agent-070-obs-141401-p88.6.jpg",
+      "event_id": "01a18e72-aa78-7100-a64c-3021833459d1"
+    },
+    {
+      "file": "agent-071-look-141558.jpg",
+      "event_id": "01a18e74-729b-7672-9bb7-42ff10ce591a"
+    },
+    {
+      "file": "agent-072-obs-141803-p91.6.jpg",
+      "event_id": "01a18e76-5b08-79e1-9f81-52c526948892"
+    },
+    {
+      "file": "agent-073-obs-142004-p93.8.jpg",
+      "event_id": "01a18e78-32b2-7cf3-ab1a-b6f27775c973"
+    },
+    {
+      "file": "agent-074-obs-142205-p97.0.jpg",
+      "event_id": "01a18e7a-0d8b-7803-bed4-4ec40b20e540"
+    }
+  ],
+  "agent_images_source": "copied from printobserver's image store through `printobserver image --image-id <id> --json`; each file's sha256 is the one its event records in printobserver-history.json",
+  "agent_concerns": [
+    {
+      "file": "agent-005-look-120816.jpg",
+      "time": "2026-10-30 12:08:16",
+      "concern": "A thin wisp of stringing is normal for PETG",
+      "verdict": "other",
+      "explanation": "A single hair-thin PETG wisp near the brim seam is cosmetic stringing; the first layer is otherwise flat and well adhered."
+    },
+    {
+      "file": "agent-009-look-121648.jpg",
+      "time": "2026-10-30 12:16:48",
+      "concern": "The remaining-time estimate jumped",
+      "verdict": "other",
+      "explanation": "A telemetry time-estimate glitch, not anything visible; the frame shows a clean build."
+    },
+    {
+      "file": "agent-010-obs-121832-p07.3.jpg",
+      "time": "2026-10-30 12:18:32",
+      "concern": "The remaining-time estimate is still too high",
+      "verdict": "other",
+      "explanation": "Time-estimate telemetry only; the print in the frame is clean."
+    },
+    {
+      "file": "agent-011-look-122048.jpg",
+      "time": "2026-10-30 12:20:48",
+      "concern": "The remaining-time estimate is still too high",
+      "verdict": "other",
+      "explanation": "Time-estimate telemetry only; nothing wrong is visible."
+    },
+    {
+      "file": "agent-013-obs-122437-p14.8.jpg",
+      "time": "2026-10-30 12:24:37",
+      "concern": "The thin wisps are ordinary PETG stringing",
+      "verdict": "other",
+      "explanation": "Faint cosmetic PETG strings over the support; no blobs or failed extrusion."
+    },
+    {
+      "file": "agent-018-obs-123246-p24.5.jpg",
+      "time": "2026-10-30 12:32:46",
+      "concern": "One hair-thin PETG string trails across the sheet",
+      "verdict": "other",
+      "explanation": "A single travel string, faintly visible on the sheet; cosmetic PETG stringing, not a print fault."
+    },
+    {
+      "file": "agent-025-look-124720.jpg",
+      "time": "2026-10-30 12:47:20",
+      "concern": "The surface of the outer band has changed to a finer, denser texture",
+      "verdict": "support",
+      "explanation": "The denser band is the planned support interface layer (G-code: Support material interface at z 9.2) that the shoulder will bridge onto."
+    },
+    {
+      "file": "agent-026-look-124827.jpg",
+      "time": "2026-10-30 12:48:27",
+      "concern": "The surface of the outer band has changed to a finer, denser texture",
+      "verdict": "support",
+      "explanation": "Same planned support interface layer as the previous look; even and clean."
+    },
+    {
+      "file": "agent-027-obs-124858-p38.9.jpg",
+      "time": "2026-10-30 12:48:58",
+      "concern": "Last turn's textured outer band is a ring of evenly spaced radial ribs",
+      "verdict": "support",
+      "explanation": "The band is support interface (G-code type at z 9.58), not radial ribs in the design; it is regular and healthy."
+    },
+    {
+      "file": "agent-031-obs-125703-p43.2.jpg",
+      "time": "2026-10-30 12:57:03",
+      "concern": "The outer band shows an even diagonal lattice",
+      "verdict": "other",
+      "explanation": "The lattice is the planned grid internal infill of the thick shoulder, not a defect."
+    },
+    {
+      "file": "agent-040-obs-131317-p52.0.jpg",
+      "time": "2026-10-30 13:13:17",
+      "concern": "a few fine strings on the outer wall",
+      "verdict": "other",
+      "explanation": "Faint cosmetic PETG strings on the shoulder; the remaining-time remark is telemetry only. Nothing structural."
+    },
+    {
+      "file": "agent-041-obs-131518-p52.7.jpg",
+      "time": "2026-10-30 13:15:18",
+      "concern": "fine strings on the outer wall that affect its look",
+      "verdict": "other",
+      "explanation": "The same cosmetic PETG wisps, not growing; the flat time estimate is telemetry only."
+    },
+    {
+      "file": "agent-042-obs-131720-p53.5.jpg",
+      "time": "2026-10-30 13:17:20",
+      "concern": "only the same fine strings that affect its look",
+      "verdict": "other",
+      "explanation": "Unchanged cosmetic PETG stringing on the shoulder."
+    },
+    {
+      "file": "agent-049-obs-133131-p59.0.jpg",
+      "time": "2026-10-30 13:31:31",
+      "concern": "A regular toothed ring of ribs is rising around the inner boss as part of the design",
+      "verdict": "support",
+      "explanation": "G-code puts Support material at r ~27-30 mm on these layers; the teeth are support under the knurled rim overhang, not part of the design."
+    },
+    {
+      "file": "agent-059-obs-135146-p74.2.jpg",
+      "time": "2026-10-30 13:51:46",
+      "concern": "An even grid infill layer now covers the rib ring",
+      "verdict": "other",
+      "explanation": "The grid is the planned sparse infill of the knurled cap rim, which has bridged over the support teeth; regular and healthy."
+    },
+    {
+      "file": "agent-069-obs-141200-p88.4.jpg",
+      "time": "2026-10-30 14:12:00",
+      "concern": "The whole top of the part is now an even square grid infill",
+      "verdict": "other",
+      "explanation": "Planned grid infill before the top solid layers; regular and fully supported."
+    },
+    {
+      "file": "agent-070-obs-141401-p88.6.jpg",
+      "time": "2026-10-30 14:14:01",
+      "concern": "Infill showing faintly through the first top layer is normal",
+      "verdict": "other",
+      "explanation": "Normal show-through on the first solid layer over sparse infill; the 'brief slowdown in file position' is telemetry only."
+    },
+    {
+      "file": "agent-071-look-141558.jpg",
+      "time": "2026-10-30 14:15:58",
+      "concern": "Infill showing faintly through the first top layer is normal",
+      "verdict": "other",
+      "explanation": "Same turn as the previous frame; nothing faulty is visible, and the slowdown remark is telemetry."
+    }
+  ],
+  "labelling_notes": "Whole print is healthy; no frame shows a real fault. Only cosmetic PETG stringing (hair-thin wisps at frames 005, 013, 018, 040-042). Geometry, from the G-code and STL: only a thin ring (the threaded skirt, r ~40-42 mm) touches the sheet, with a brim, and the skirt interior is filled with support from the bed; the closed top disc is printed LAST (z 42-44.6), so despite the brief ('top face on the sheet') the camera sees: the threaded skirt wall on its brim with support inside (z 0-9.4); a dense support-interface ring (z ~9.2) that the shoulder bridges over (bridge/overhang at z 9.6-10); the thick shoulder with grid infill (z 10-13.4); a conical neck narrowing to r ~22-25 mm with a centre support column (z 13.6-29); a toothed ring of support columns at r ~27-30 mm around the neck (z ~17-30) carrying the overhanging knurled cap rim; the knurled/scalloped cap rim with grid infill (z 30-42); the centre closed by bridging over the support (z 40.6-41); then top solid layers and a raised rim/inner ring (z 42.6-44.6). Agent misreadings worth testing: frames 027 and 049 call support 'part of the design' (the support-interface band at z 9.2-9.6 and the toothed support ring around the neck). The agent never treated them as faults, so they were harmless but wrongly attributed. Packet G-code fields lag the camera slightly at the start: frame 005 is tagged 'start G-code', progress 0, but already shows the first layer/brim printing. Rows 001/002, 004/005, 015/016, 025/026, 036/037 and 070/071 share one agent turn (the summary was written after the follow-up look), so frame 004 shows an empty bed while its text describes the first layer seen in 005. Progress stalled at 88.4-88.6% at z 42.0 from 14:12 to 14:16 (dense solid/top layers); nothing abnormal is visible. Several frames (015, 020, 024, 029, 035-037, 042, 052, 065-066, 071) are heavily occluded by the toolhead; a test should not expect a confident verdict from those alone.",
+  "sources": {
+    "3423-TOP-REV F petg.gcode": "the G-code OctoPrint printed, byte for byte, from the run folder",
+    "provenance.json": "the operator's provenance for the run: the model, slicer, profiles and command that made the G-code",
+    "obico-predictions.json": "Obico's score for every frame it saw, exported by the operator's Obico export command",
+    "printobserver-history.json": "every event printobserver recorded for the print, from `printobserver history --print-id <id> --limit 1000 --json`",
+    "3423-TOP-REV F petg.stl": "the model provenance.json names (the same mesh as the 2026-10-29 attempts)",
+    "3423-TOP-REV F.3mf": "the original model, as supplied (units: inch)"
+  },
+  "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
+  "assertions": {
+    "replay": ["carry-on-004-other", "carry-on-013-other", "carry-on-024-support", "carry-on-028-bridge", "carry-on-031-other", "carry-on-042-other", "carry-on-049-support", "carry-on-059-other"],
+    "scenarios": [
+      {
+        "id": "carry-on-004-other",
+        "at": "2026-10-30T12:06:27",
+        "file_position_bytes": 1827,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 0.0% shows what the agent called 'A thin wisp of stringing is normal for PETG', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-004-obs-120627-p00.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-005-look-120816.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-013-other",
+        "at": "2026-10-30T12:24:37",
+        "file_position_bytes": 834565,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 14.8% shows what the agent called 'The thin wisps are ordinary PETG stringing', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-013-obs-122437-p14.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-018-other",
+        "at": "2026-10-30T12:32:46",
+        "file_position_bytes": 1385571,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 24.5% shows what the agent called 'One hair-thin PETG string trails across the sheet', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-018-obs-123246-p24.5.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-024-support",
+        "at": "2026-10-30T12:44:56",
+        "file_position_bytes": 2048301,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 36.3% shows what the agent called 'The surface of the outer band has changed to a finer, denser texture', which is support; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-024-obs-124456-p36.3.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-025-look-124720.jpg"
+          },
+          {
+            "image": "agent-026-look-124827.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-027-support",
+        "at": "2026-10-30T12:48:58",
+        "file_position_bytes": 2198070,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 38.9% shows what the agent called 'Last turn's textured outer band is a ring of evenly spaced radial ribs', which is support; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-027-obs-124858-p38.9.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-031-other",
+        "at": "2026-10-30T12:57:03",
+        "file_position_bytes": 2439105,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 43.2% shows what the agent called 'The outer band shows an even diagonal lattice', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-031-obs-125703-p43.2.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-042-other",
+        "at": "2026-10-30T13:17:20",
+        "file_position_bytes": 3021933,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 53.5% shows what the agent called 'only the same fine strings that affect its look', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-042-obs-131720-p53.5.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-049-support",
+        "at": "2026-10-30T13:31:31",
+        "file_position_bytes": 3330051,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 59.0% shows what the agent called 'A regular toothed ring of ribs is rising around the inner boss as part of the design', which is support; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-049-obs-133131-p59.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-059-other",
+        "at": "2026-10-30T13:51:46",
+        "file_position_bytes": 4189291,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 74.2% shows what the agent called 'An even grid infill layer now covers the rib ring', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-059-obs-135146-p74.2.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-069-other",
+        "at": "2026-10-30T14:12:00",
+        "file_position_bytes": 4995731,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 88.4% shows what the agent called 'The whole top of the part is now an even square grid infill', which is harmless; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-069-obs-141200-p88.4.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-028-bridge",
+        "at": "2026-10-30T12:51:00",
+        "file_position_bytes": 2244987,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy jar top at 39.7% shows the shoulder's underside closing inward with bridge infill and overhang perimeters over the support, which is bridging; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-028-obs-125100-p39.7.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

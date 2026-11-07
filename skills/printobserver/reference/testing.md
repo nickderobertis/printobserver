@@ -250,30 +250,27 @@ layout it depends on is checked on every platform inside the gate.
 
 ### skilltest
 
-**What it proves.** That the supervising agent, given this skill, takes the
-action each real-print case under `tests/real-prints` accepts. It runs one test
-per scenario of every case's `assertions` through a real harness: the case's own
-camera frames handed as files, the committed turn template filled with a
-recorded or synthetic event (or, for a start request, the operator's request),
-and every `printobserver` command stubbed. Successive looks answer the
-scenario's frames in order. A run passes when the commands the agent ran meet
-one acceptable outcome and none of its never-take steps. The expected actions
-are read from each `case.json` at run time, so a case added later is covered
-with no test edited. Its deterministic half builds every scenario with no
-model. It holds what it builds to the cases, to the turn template's slots, and
-to each operation's generated example and answer schema. It is the
-`skilltest-wiring` project's `test` target, and the gate runs it.
+**What it proves.** That the supervising agent, given this skill, takes an action
+each real print under `tests/real-prints` accepts, at every decision point. Each
+case with a `replay` is one test that feeds its events in time order through the
+real server and supervisor port, on the harness and model production runs, as one
+continued conversation. OctoPrint, the camera and Obico are doubled, and nothing
+else; the judging reads the server's own record of what the agent requested. Its
+deterministic half, the replay machinery with OneHarness's published mock harness
+answering in place of the model, is the `skilltest-wiring` project's `test` target,
+and the gate runs it.
 
-**Why it is outside the gate.** Every scenario spends real model turns and needs
-a harness signed in on the host, and a model's judgment is not deterministic.
+**Why it is outside the gate.** Every turn spends real model quota, and a model's
+judgment is not deterministic. A test that fails is fixed at its cause; nothing
+retries one.
 
-**When it runs.** By hand, with `just skilltest` (`-k <scenario>` for one), on
-whichever host has Claude Code and OneHarness installed. No workflow runs it,
-so it carries no platform matrix. Its model is the one the shipped
-configuration pins for supervision turns. That configuration pins none, so the
-harness picks its own default, as a production turn's does. The cases' frames
-are Git LFS objects that a checkout leaves as pointers, so it first downloads
-them with `just real-prints-fetch`.
+**When it runs.** By hand with `just skilltest` (`-k <case>` for one) before any
+change to what `repo-policy.toml`'s `[skilltest] owed_paths` names lands, and on
+the same list as the `skilltest` job of `.github/workflows/ci.yml`, whose classifier
+passes every other change saying why. The cases' frames are Git LFS objects that a
+checkout leaves as pointers, so it first downloads them with `just
+real-prints-fetch`. `just skilltest-record` writes
+`tests/skilltest/results/latest.json`, the run's record.
 
 ### test-obico
 

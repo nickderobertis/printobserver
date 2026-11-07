@@ -40,9 +40,13 @@
   },
   "obico_scores": "obico-predictions.json",
   "assertions": {
+    "replay": ["carry-on-healthy-before-fault"],
     "scenarios": [
       {
         "id": "bridge-sagging-uncooled",
+        "at": "2026-09-27T18:43:12",
+        "file_position_bytes": 219391,
+        "file_position_source": "progress",
         "summary": "A periodic observation, with no detector alert, shows bridge strands tangling with the part-cooling fan off, and the look shows the bridge sagging; the agent should set the fan to 100 percent.",
         "trigger": "periodic_observation",
         "event_image": "02-bridge-strands-tangled-p49.jpg",
@@ -56,6 +60,51 @@
           [{"operation": "set-fan-percent", "args": {"percent": 100}}]
         ],
         "never": [{"operation": "cancel"}, {"operation": "resume"}]
+      },
+      {
+        "id": "carry-on-healthy-before-fault",
+        "at": "2026-09-27T18:40:05",
+        "file_position_bytes": 184716,
+        "file_position_source": "progress",
+        "summary": "A periodic observation of the healthy pillars at 41.0%, before the part fan is cut; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "01-healthy-before-fault-p41.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
       }
     ]
   }

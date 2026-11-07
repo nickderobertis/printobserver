@@ -607,6 +607,7 @@ event.image.id: ID
 event.image.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 event.kind: camera_look
 event.payload.delivered: []
+event.payload.frame_captured_at: TIMESTAMP
 event.payload.waited_s: 1
 event.print_id: PRINT_ID
 event.received_at: TIMESTAMP
@@ -652,6 +653,7 @@ event.image.id: ID
 event.image.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 event.kind: camera_look
 event.payload.delivered: []
+event.payload.frame_captured_at: TIMESTAMP
 event.payload.waited_s: 0
 event.received_at: TIMESTAMP
 event.source: system

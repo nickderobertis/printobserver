@@ -205,6 +205,17 @@
         "null"
       ]
     },
+    "frame_captured_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "When the frame an alert brought was captured, which its source says or the\nmoment it answered; absent when the event says so itself or has no frame."
+    },
     "noticed": {
       "default": null,
       "description": "What the printer watch noticed that prompted this turn — how the print\nended, what the printer did on its own after it, that the camera gave\nno usable frame, that the failure detector stopped answering — in\nwords beginning with the event's kind; null when the turn was prompted\nby anything else.",

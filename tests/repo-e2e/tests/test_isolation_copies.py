@@ -7,9 +7,12 @@ state a file of a change can be in.
 
 from __future__ import annotations
 
+import subprocess
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from journey import COMMIT_IDENTITY, copy_tracked, listed
+from journey import COMMIT_IDENTITY, GateCopy, copy_tracked, listed
 from repo_checks.expect import equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
@@ -64,4 +67,25 @@ def test_every_copy_carries_what_a_clone_of_the_change_would(tmp_path: Path) -> 
         (after.misses - before.misses, after.hits - before.hits),
         (1, 1),
         describing="git asked for the listing once, and the second copy taking it as it stood",
+    )
+
+
+def test_copies_running_the_locked_install_at_once_all_succeed(
+    gate_copy: Callable[..., GateCopy],
+) -> None:
+    """Each keeps its own `.bin`, which a frozen install relinks, over shared packages."""
+    copies = [gate_copy() for _ in range(3)]
+    for copy in copies:
+        truth(not (copy.root / "node_modules" / ".bin").is_symlink(), describing="its own `.bin`")
+
+    def installed(copy: GateCopy) -> subprocess.CompletedProcess[str]:
+        return run(["bun", "install", "--frozen-lockfile"], cwd=copy.root, timeout=120)
+
+    with ThreadPoolExecutor(max_workers=len(copies)) as pool:
+        answers = list(pool.map(installed, copies * 20))
+
+    equal(
+        [answer.stderr for answer in answers if answer.returncode != 0],
+        [],
+        describing="what a locked install beside another refused",
     )

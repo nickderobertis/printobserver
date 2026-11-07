@@ -366,6 +366,12 @@ class CameraLookPayload(TypedDict):
     # The events for the print that arrived while it waited, and that it
     # handed to whoever looked, oldest first.
     delivered: NotRequired[list[EventId]]
+    # When the frame this look answered was captured, which its source says
+    # or
+    # the moment it answered; absent when there is no frame. Two looks
+    # naming one
+    # instant saw one frame: no newer one had been taken.
+    frame_captured_at: NotRequired[Timestamp | None]
     # How long the look waited for something to happen before it was taken,
     # in whole seconds.
     waited_s: int
@@ -1506,6 +1512,10 @@ class PeriodicObservationPayload(TypedDict):
     at the same moment, untagged by any detector, is this event's image.
     """
 
+    # When the observation's frame was captured, which its source says or
+    # the
+    # moment it answered; absent when there is no frame.
+    frame_captured_at: NotRequired[Timestamp | None]
     # How often these are taken, in whole seconds.
     interval_s: int
     # The job the printer reported as the observation was taken, absent when
@@ -4815,6 +4825,15 @@ SHAPES: dict[str, object] = json.loads(
       "non_empty": false
      }
     },
+    "frame_captured_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
     "waited_s": {
      "paired_with": "",
      "required": true,
@@ -6797,6 +6816,15 @@ SHAPES: dict[str, object] = json.loads(
  "PeriodicObservationPayload": {
   "struct": {
    "fields": {
+    "frame_captured_at": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Timestamp"
+      }
+     }
+    },
     "interval_s": {
      "paired_with": "",
      "required": true,

@@ -1,0 +1,2721 @@
+{
+  "figures": {
+    "turns": 41
+  },
+  "detail": {
+    "commit": "195c674317cd228944b75a3d2a03727b796bb04f",
+    "harness": "claude-code",
+    "models": [
+      "claude-sonnet-5-5"
+    ],
+    "turns_the_cases_count": 41,
+    "compactions": 0,
+    "passed": true,
+    "tests": [
+      {
+        "test": "bubbler-guard-and-pad-pla-healthy",
+        "passed": true,
+        "turns": 18,
+        "sessions": [
+          "print-01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2"
+        ],
+        "decision_points": [
+          {
+            "scenario": "carry-on-003-other",
+            "at": "2026-10-31T16:51:23",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2",
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 30"
+            ],
+            "opened": [
+              "48952eff1d6e4dcb2a5adac76e9592e9bb6e5ec2f4b4e0ecbc102462086ad8cc",
+              "command-surface.md",
+              "0b1920126851e9e11a5f8fa331db87b892db88eda0d7ef92809e05e896516a5d"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the event frame (22:51:23). Ran `printobserver look --wait-s 30` and opened the new frame (22:52:29). I made no adjustment and acknowledged nothing, because no failure event exists.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 1% done, early first layers, and looks healthy.",
+              "why": "In both frames the dark part is laid in solid, well-formed concentric walls that grew between frames, so I saw no under-extrusion or tangling. The thin white lines on the sheet are in the same place in both frames, so I read them as sheet marks, not strands. A wavy white strand near the right edge in the first frame was nearly gone in the second. It was off the part and at the sheet edge, so I noted it and carried on. Temperatures are on target (bed 60, nozzle 220 after a 230 start), which looks like the G-code's own change. The frames are 66 s apart. The camera gave a new frame each time. Confidence is only medium because the print is very early and the part is small."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 35809,
+              "cache_read_input_tokens": 90862,
+              "output_tokens": 1290,
+              "output_tokens_details": {
+                "thinking_tokens": 323
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 35809,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 653,
+                  "cache_read_input_tokens": 38089,
+                  "cache_creation_input_tokens": 2819,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2819
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-005-support",
+            "at": "2026-10-31T16:53:25",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2",
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 45"
+            ],
+            "opened": [
+              "b67189a562c94f44ac2ccecb44baf07b06a02b0e163b95a054d67338bec2ff49",
+              "cbb19ae99f1848ff95d551742ca0feb893319bc8342abea9ab204e0bfa24b704"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the event frame (22:53:25). Ran `printobserver look --print-id ... --wait-s 45` and opened the new frame (22:54:46). I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 2.6% done and still looks healthy; I made no change.",
+              "why": "The ring-shaped part sits in the same place relative to the sheet's marks across all frames, so it has not moved. It is growing: the dark walls are laid in solid, with short regular infill-like strokes inside the ring. I saw no loose or tangled strands on the part, and no see-through walls. The white lines on the sheet are unchanged from earlier frames, so I read them as sheet marks. Bed is 60 and nozzle 220, both on target. The camera gave a new frame each time. Confidence is only medium because the part is small and low, so the camera view can't show wall growth or sag yet."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 13161,
+              "cache_read_input_tokens": 185566,
+              "output_tokens": 947,
+              "output_tokens_details": {
+                "thinking_tokens": 80
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 13161,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 506,
+                  "cache_read_input_tokens": 51249,
+                  "cache_creation_input_tokens": 2820,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2820
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-007-support",
+            "at": "2026-10-31T16:55:26",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --json",
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "ef604bc55b83c3a3e01c10f880bfe9b0038bdca92e24f4bb610dd5929da3324f",
+              "f7e7595a7e88fbfa75660e006c129ab804e84cd3444e3ab74c27ae6e3041b80e"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context --json` and opened the event frame (22:55:26). Ran `printobserver look --print-id ... --wait-s 60` and opened the new frame (22:56:25). I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 3.8% done and looks healthy; I made no change.",
+              "why": "The C-shaped ring part sits in the same place against the sheet's marks and is getting taller, with solid walls and regular toothed or ribbed features. I read those as the part's shape, not defects. The camera view shifted between frames, but the part kept its position relative to the sheet. In the 22:55 frame a small strand hung near the nozzle tip, and it was gone by 22:56. A thin dark strand lies on the right rail and screw. It is off the part, so I noted it and carried on. Bed is 60 and nozzle 220, both on target. The camera gave a new frame each time. Confidence is only medium because the part is still small and low."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 13859,
+              "cache_read_input_tokens": 239392,
+              "output_tokens": 1029,
+              "output_tokens_details": {
+                "thinking_tokens": 138
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 13859,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 536,
+                  "cache_read_input_tokens": 65105,
+                  "cache_creation_input_tokens": 2823,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2823
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-009-other",
+            "at": "2026-10-31T16:57:27",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2",
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "453aff4e9d02308a792957e7baab1f69421474bd3cc798824cef6fb2d020b45e",
+              "e2453065b1d788d57c143e8d3c1a23bca8c8e9c496526f2b8292a677562fdc3a"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the event frame (22:57:27). Ran `printobserver look --print-id ... --wait-s 60` and opened the new frame (22:58:37). I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 5% done and still looks healthy; I made no change.",
+              "why": "The C-shaped ring with regular teeth sits in the same place against the sheet's marks and has built up more wall since earlier frames. The walls are solid and the teeth are even, so I read them as the design. A small bit of filament showed at the nozzle tip in the 22:57 frame, and it was gone in the 22:58 frame. The head hid part of the part in the first frame, so my read of that frame is partial. The strand on the right rail is off the part, so I noted it and carried on. Bed is 60 and nozzle 220, both on target. The camera gave a new frame each time. Confidence is only medium because the part is still small, so the camera view can't show wall growth or sag yet."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 16864,
+              "cache_read_input_tokens": 300912,
+              "output_tokens": 987,
+              "output_tokens_details": {
+                "thinking_tokens": 96
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 16864,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 549,
+                  "cache_read_input_tokens": 81970,
+                  "cache_creation_input_tokens": 2822,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2822
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-011-other",
+            "at": "2026-10-31T16:59:28",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver history --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --limit 3",
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "f777d3228671cf523d2608ef0f2445437c5d85f8668555bce81b27b0bab480fa",
+              "cc8bc4c9394ab666a080201cd1cc7ad07ce0edc82115e87bb1b05067e03fc97c"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver history --limit 3` and opened the event frame (22:59:28). Ran `printobserver look --print-id ... --wait-s 60`. It returned a frame stamped 22:59:28, the same capture time as the event frame, and it looks identical. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 6.9% done and looks healthy, but the camera gave no newer frame, so this look added nothing.",
+              "why": "The event frame shows the toothed C-ring part where it has been in earlier frames, against the sheet's marks. Its walls are solid and its teeth are regular. A second small toothed piece sits near the head, and I read it as part of the job. I saw no loose or tangled strands on the part and no see-through walls. The thin strand on the right rail is off the part, so I noted it and carried on. The camera had nothing newer than 22:59:28, so I am keeping the print running and watching. The job position moved from 280736 to 328570 bytes over that look, so the print is advancing. Bed is 60 and nozzle 220, both on target. Confidence is only medium because the part is still low and the camera view can't show wall growth or sag yet."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 10523,
+              "cache_read_input_tokens": 355534,
+              "output_tokens": 1071,
+              "output_tokens_details": {
+                "thinking_tokens": 113
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 10523,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 547,
+                  "cache_read_input_tokens": 92408,
+                  "cache_creation_input_tokens": 2907,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2907
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-012-other",
+            "at": "2026-10-31T17:01:28",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver history --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --limit 2",
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "43bb56fa89db492e5ba113e55cb3cb34b02fe279f55829fbd17e3b617a83c2d9"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver history --limit 2` and opened the event frame (23:01:28). Ran `printobserver look --print-id ... --wait-s 60`. It returned a frame stamped 23:01:28, the same capture time as the event frame, so I did not open it again. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 8.7% done and looks healthy, but the camera again gave no newer frame, so the look added nothing.",
+              "why": "In the event frame the toothed C-ring part sits in the same place against the sheet's marks. It is taller than in the 22:59 frame, with solid walls and regular teeth, and I saw no loose or tangled strands on it. The second small toothed piece near the head is unchanged. The thin strand on the right rail is off the part, so I noted it and carried on. The job position went from 367263 to 418738 bytes during the look, so the print is advancing. Bed is 60 and nozzle 220, both on target. The camera had nothing newer, so I am keeping the print running and watching. Confidence is only medium because I have one fresh frame and the part is still low."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 7404,
+              "cache_read_input_tokens": 294487,
+              "output_tokens": 883,
+              "output_tokens_details": {
+                "thinking_tokens": 26
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 7404,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 557,
+                  "cache_read_input_tokens": 101789,
+                  "cache_creation_input_tokens": 930,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 930
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-013-other",
+            "at": "2026-10-31T17:03:29",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "6e1a5b752f43e069054d006b748b1d2aaa742cd14e0fd718df484e1eab042c35"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Opened the event frame (23:03:29). Ran `printobserver look --print-id ... --wait-s 60`. It returned a frame stamped 23:03:29, the same capture time as the event frame, so I did not open it separately. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 10.7% done and looks healthy; the camera gave no newer frame, so I am watching and made no change.",
+              "why": "In the event frame the toothed C-ring part sits where it has been, against the sheet's marks. It is taller than earlier, with solid walls, regular teeth and no loose or tangled strands. The head had moved off the part, so I could see the part clearly. The strands on the right rail and screw are off the part, so I noted them and carried on. The job position went from 461282 to 510760 bytes during the look, so the print is advancing. Bed is 60 and nozzle 220, both on target. The camera had nothing newer than the event frame, so I am keeping the print running and watching. Confidence is only medium because I have just one frame and the part is still low."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 6,
+              "cache_creation_input_tokens": 5818,
+              "cache_read_input_tokens": 207511,
+              "output_tokens": 743,
+              "output_tokens_details": {
+                "thinking_tokens": 34
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 5818,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 540,
+                  "cache_read_input_tokens": 104792,
+                  "cache_creation_input_tokens": 3745,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 3745
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-014-design-feature",
+            "at": "2026-10-31T17:05:30",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "5092470c5b72c7fb911b5c292222ee00ea3e563a29f4166c3a22543a960d6d43",
+              "6fdedfcd01e0b2555b43de188a81b1fe5040969fd64a7cfdf3ee2fe93cc2007d"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Opened the event frame (23:05:30). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (23:06:33), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 12.8% done and looks healthy; the head hides much of the main part, so my read is partial, and I made no change.",
+              "why": "Both frames show the toothed C-ring part and the second small toothed piece in the same places against the sheet's marks. The visible walls and teeth are solid and regular. The print head covers most of the ring in both frames, so I could not check its top layers closely. I saw no loose or tangled strands on either part. A thin strand on the right screw and rail is off the part. It has been there across many frames, so I noted it and carried on. The job position went from 557570 to 615046 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Confidence is only medium because the head hid the part."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8646,
+              "cache_read_input_tokens": 333490,
+              "output_tokens": 839,
+              "output_tokens_details": {
+                "thinking_tokens": 40
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8646,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 521,
+                  "cache_read_input_tokens": 114357,
+                  "cache_creation_input_tokens": 2826,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2826
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-016-design-feature",
+            "at": "2026-10-31T17:07:31",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "2e4b7413df9f80dfce604e7aa0e3d7225356a7df133b30a6d7cfb1941db3edd7",
+              "0f7b47e6700617784bc7715194cd0e9fd353c50ed68db7b6c3452635b1aa478d"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Opened the event frame (23:07:31). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (23:09:32), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 15.9% done and looks healthy; the head hides part of the ring, and I made no change.",
+              "why": "Both frames show the toothed C-ring part and the second small toothed piece in the same places against the sheet's marks. The ring has built up more wall, and the teeth are regular and solid. In the second frame the head sits over the ring, so I could not check its top layers closely. I saw no loose or tangled strands on either part. The thin strand on the right screw and rail is off the part. It has been there across many frames, so I noted it and carried on. The job position went from 663077 to 762316 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Confidence is only medium because the head hid part of the ring."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8616,
+              "cache_read_input_tokens": 359388,
+              "output_tokens": 830,
+              "output_tokens_details": {
+                "thinking_tokens": 30
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8616,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 512,
+                  "cache_read_input_tokens": 122978,
+                  "cache_creation_input_tokens": 2821,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2821
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-022-design-feature",
+            "at": "2026-10-31T17:17:37",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "7589b9c134394717b833988f41b206b91dc316e287d5dc5c5e4b825dab32386a",
+              "19fe26d7fff64c2b438aeae77cfcbf488ec205ddf245d9a0101b07cddcf33e3d"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Opened the event frame (23:17:37). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (23:18:35), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 26% done and looks healthy; the head hides part of the ring, and I made no change.",
+              "why": "Both frames show the toothed ring and the second small toothed piece in the same places against the sheet's marks. The ring's wall is visibly taller than in the 23:09 frame, and the camera's view of the sheet has shifted down as the bed lowered. That fits a growing part. The teeth are regular and the wall is solid. I saw no loose or tangled strands on either part. The head covers the top of the ring in both frames, so I could not check its upper layers closely. The thin strand on the right screw and rail is off the part, so I noted it and carried on. The job position went from 1199738 to 1249919 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Confidence is only medium because the head hid the part."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8601,
+              "cache_read_input_tokens": 385198,
+              "output_tokens": 875,
+              "output_tokens_details": {
+                "thinking_tokens": 46
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8601,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 563,
+                  "cache_read_input_tokens": 131577,
+                  "cache_creation_input_tokens": 2823,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2823
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-028-camera-or-lighting",
+            "at": "2026-10-31T17:27:38",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "9e18d56fc22e494a293c94a872341bb1cd9368485220aeb9de331b610afbcf23",
+              "138a94fe9f036cfa228bb7a1a18f3b9d9c58326fcc32ac20b25743a88774578c"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Opened the event frame (23:27:38). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (23:28:43), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 35% done and looks healthy; the head covers most of the ring, and I made no change.",
+              "why": "Both frames show the ring and the second small toothed piece in the same places against the sheet's marks. The ring's wall is taller than in the 23:18 frame, so the part is still growing. The visible wall and teeth look solid and regular. The head covers most of the ring in both frames, so I could not check its upper layers or any top surface closely. I saw no loose or tangled strands on either part. The job position went from 1641398 to 1683125 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Confidence is only medium because the head hid most of the ring."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8645,
+              "cache_read_input_tokens": 411098,
+              "output_tokens": 851,
+              "output_tokens_details": {
+                "thinking_tokens": 72
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8645,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 539,
+                  "cache_read_input_tokens": 140224,
+                  "cache_creation_input_tokens": 2821,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2821
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-030-other",
+            "at": "2026-10-31T17:29:40",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "dcee0d6a343533e8dd5d4d413c5b67e8423150619467fbdf8ed9aa3e56c45b62",
+              "fd22cb3da47579471c7d538069de65453f9e6eef6df1717bb2291e7de439ee7c"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Opened the event frame (23:29:40). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (23:31:43), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 37.6% done and looks healthy: the cylinder is growing taller with solid, smooth walls. I made no change.",
+              "why": "Against the sheet's marks, the part stays at the same spot, and its wall is visibly taller than in the 23:28 frame. The walls look solid and evenly textured, with no gaps or see-through areas. The toothed base and the second small toothed piece are unchanged. In the 23:29 frame a few small wisps sat on the ring's outer wall near the nozzle. They were gone in the 23:31 frame, so I saw no sign of tangling or stringing building up. The thin strand on the right screw and rail is off the part, so I noted it and carried on. The job position went from 1726180 to 1802360 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Confidence is only medium because the head partly hides the top of the cylinder."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8637,
+              "cache_read_input_tokens": 437021,
+              "output_tokens": 908,
+              "output_tokens_details": {
+                "thinking_tokens": 52
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8637,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 592,
+                  "cache_read_input_tokens": 148863,
+                  "cache_creation_input_tokens": 2819,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2819
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-048-design-feature",
+            "at": "2026-10-31T18:04:12",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "c5240c6a0fa54a2ace60b1188d0c6d30a70d7478c2f128cfbd2b5485e4a07733",
+              "02391d80af8f18fef71447934e938e5cb30420aca6bb6d689e69aaffc5ac5989"
+            ],
+            "assessment": {
+              "confidence": "high",
+              "did": "Opened the event frame (00:04:12). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (00:05:28), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 67% done and looks healthy: the cylinder is tall, with solid walls and good adhesion. I made no change.",
+              "why": "Both frames show a clearly taller cylinder than in the 23:31 frame, so the part is growing as the bed lowers. It sits on the same spot against the sheet's marks and has not moved. Its walls are solid and evenly textured, with no gaps, see-through areas, sagging or tangled strands. The toothed base and the second small toothed piece are unchanged. The wall looks the same in both frames, so I saw no defect growing. The job position went from 3165482 to 3209505 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Both frames were fresh."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8678,
+              "cache_read_input_tokens": 463018,
+              "output_tokens": 844,
+              "output_tokens_details": {
+                "thinking_tokens": 44
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8678,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 528,
+                  "cache_read_input_tokens": 157542,
+                  "cache_creation_input_tokens": 2818,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2818
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-050-design-feature",
+            "at": "2026-10-31T18:06:13",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "9a3bae1dc3aa02ec9d6875cddd7f0f7224c02d21e5108fd094eb8fb6a538cd09",
+              "57d5c7b2ca3f63915c49d4699d92133874e68240e668387c156f198f0440b990"
+            ],
+            "assessment": {
+              "confidence": "high",
+              "did": "Opened the event frame (00:06:13). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (00:08:15), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 69% done and looks healthy: the cylinder is still growing with solid walls. I made no change.",
+              "why": "Both frames show the cylinder in the same place against the sheet's marks, and the camera view of the sheet shifts down as the bed lowers. Its walls are solid and evenly textured, with no gaps, sagging or loose or tangled strands. The toothed base and the second small toothed piece are unchanged. The head sits over the cylinder's rim in both frames, so I could not check the top edge closely, but I saw nothing wrong around it. The job position went from 3248644 to 3317020 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Both frames were fresh."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8613,
+              "cache_read_input_tokens": 488935,
+              "output_tokens": 815,
+              "output_tokens_details": {
+                "thinking_tokens": 21
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8613,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 500,
+                  "cache_read_input_tokens": 166158,
+                  "cache_creation_input_tokens": 2815,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2815
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-054-design-feature",
+            "at": "2026-10-31T18:14:20",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "c49a94b1d49efff9d41f39aa0c0e82cf96583ca0ab0038b28f31fb11f0cc967d",
+              "d663f8ad7dbeafde859204f10be1388c3c3d7c8ded4e18077a5a0217d0ae99bb"
+            ],
+            "assessment": {
+              "confidence": "high",
+              "did": "Opened the event frame (00:14:20). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (00:16:21), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 76% done and looks healthy: the cylinder is tall with solid walls. I made no change.",
+              "why": "Both frames show the cylinder in the same place against the sheet's marks. Its walls are solid and evenly textured, with no gaps, see-through areas, sagging or tangled strands. The first frame shows the inside of the rim, which has regular layered rings. The toothed base and the second small toothed piece are unchanged. The sheet appears lower in the camera view than in the earlier frames, which fits the bed sinking as layers rise. The job position went from 3567540 to 3628570 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Both frames were fresh."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8615,
+              "cache_read_input_tokens": 514732,
+              "output_tokens": 797,
+              "output_tokens_details": {
+                "thinking_tokens": 0
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8615,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 475,
+                  "cache_read_input_tokens": 174764,
+                  "cache_creation_input_tokens": 2824,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2824
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-067-design-feature",
+            "at": "2026-10-31T18:40:42",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "8dfda08fa5cc133349d472d79f723d11cab5913cd9e141feb152349e159ef26d"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Opened the event frame (00:40:42). Ran `printobserver look --print-id ... --wait-s 60`. It returned a frame stamped 00:40:42, the same capture time as the event frame, so I did not open it separately. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 90% done and looks healthy: the cylinder is tall with solid walls. The camera gave no newer frame on the look, and I made no change.",
+              "why": "The event frame shows the tall cylinder in the same place against the sheet's marks. The sheet sits much lower in the camera view than in the early frames, which fits the bed sinking as layers rise. The walls are solid and evenly textured, with no gaps, see-through areas, sagging or tangled strands. The notch low in the wall and the toothed base were there in earlier frames, so I read them as the design. The second small toothed piece is unchanged. The camera had nothing newer than the event frame, so I am keeping the print running and watching. The job position went from 4295514 to 4310398 bytes during the look, so the print is advancing. Bed is 60 and nozzle 220, both on target. Confidence is only medium because I had a single fresh frame."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 6,
+              "cache_creation_input_tokens": 5726,
+              "cache_read_input_tokens": 357168,
+              "output_tokens": 802,
+              "output_tokens_details": {
+                "thinking_tokens": 49
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 5726,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 601,
+                  "cache_read_input_tokens": 179580,
+                  "cache_creation_input_tokens": 3734,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 3734
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-068-design-feature",
+            "at": "2026-10-31T18:42:43",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "f8f856af2e77a74503f9450e80ab5a6a84083a12866b1a51b180b89fbcc523ba",
+              "c0056633d7b68d3d1cce1fa3a6dfb028694b82e3066626f0e5048b33811a4a56"
+            ],
+            "assessment": {
+              "confidence": "high",
+              "did": "Opened the event frame (00:42:43). Ran `printobserver look --print-id ... --wait-s 60`, which returned a newer frame (00:44:45), and opened it. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 91% done and looks healthy: the tall cylinder has solid, even walls. I made no change.",
+              "why": "Both frames show the tall cylinder in the same place against the sheet's marks. The head has moved off the cylinder in the second frame, so I could see the full wall and the inside of the rim. The walls are solid and evenly textured, with no gaps, see-through areas, sagging or tangled strands. The side notch and toothed base were in earlier frames, so I read them as the design. The second small toothed piece is unchanged. The job position went from 4342510 to 4357080 bytes, so the print is advancing. Bed is 60 and nozzle 220, both on target. Both frames were fresh."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 8694,
+              "cache_read_input_tokens": 557936,
+              "output_tokens": 786,
+              "output_tokens_details": {
+                "thinking_tokens": 0
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 8694,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 470,
+                  "cache_read_input_tokens": 189186,
+                  "cache_creation_input_tokens": 2822,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2822
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-086-design-feature",
+            "at": "2026-10-31T19:19:10",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver look --print-id 01a1b4b8-f9b1-7ca3-9b97-e2a44b2f16e2 --wait-s 60"
+            ],
+            "opened": [
+              "17472014686c6a73c71d13728a346e991f72df8bb603322dbd5c0acf40209ec7"
+            ],
+            "assessment": {
+              "confidence": "high",
+              "did": "Opened the event frame (01:19:10). Ran `printobserver look --print-id ... --wait-s 60`. It returned a frame stamped 01:19:10, the same capture time as the event frame, so I did not open it separately. The printer readings in that look were newer. I asked for no adjustment and acknowledged nothing, because there is no failure event.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 99.8% done and looks healthy. The heater targets dropped to 0, which fits the end of the G-code. I made no change.",
+              "why": "The event frame shows the tall cylinder in the same place against the sheet's marks. Its walls are solid and even, with a visible step in the outline near the top that I read as the design. I saw no gaps, sagging or tangled strands, and the toothed base and the second small toothed piece are unchanged. In the look's printer readings, bed and nozzle targets and actuals are all 0, while the job is at 4782176 of 4793241 bytes and still marked printing. Heaters going off in the last fraction of a percent is what the end of a G-code does, so I did not read it as a fault. It was not a cooling I asked for, since no intervention of mine is standing. The camera had nothing newer than the event frame, so my picture rests on one frame."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 6,
+              "cache_creation_input_tokens": 5728,
+              "cache_read_input_tokens": 385992,
+              "output_tokens": 796,
+              "output_tokens_details": {
+                "thinking_tokens": 42
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 5728,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 597,
+                  "cache_read_input_tokens": 193984,
+                  "cache_creation_input_tokens": 3752,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 3752
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      },
+      {
+        "test": "fan-cut-bridge",
+        "passed": true,
+        "turns": 1,
+        "sessions": [
+          "print-01a1b4cc-477f-78d0-a6e2-aeb76d6b1d06"
+        ],
+        "decision_points": [
+          {
+            "scenario": "carry-on-healthy-before-fault",
+            "at": "2026-09-27T18:40:05",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4cc-477f-78d0-a6e2-aeb76d6b1d06",
+              "printobserver look --print-id 01a1b4cc-477f-78d0-a6e2-aeb76d6b1d06 --wait-s 60"
+            ],
+            "opened": [
+              "1632b795af9e12a4903d6f9ebe7c76ce3e3d840fe4b3135b8707c2360d77149f",
+              "command-surface.md",
+              "1c7a66a9fae5639c14b0eb89504a65cd8682cda0dda47a44447343f2043306a2"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the event frame. Ran `printobserver look --wait-s 60` and opened that frame. Changed nothing and acknowledged no failure, because no failure event exists.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is running normally at about 44%. The small lattice-walled part looks intact and no defect is visible.",
+              "why": "The part has solid walls with regular lattice infill. It sits on the bed next to the nozzle, and there are no loose or tangled strands. The white lines on the sheet are its printed marks. Temperatures are on target (230 \u00b0C nozzle, 60 \u00b0C bed). Job progress went from 41% to 44% between the two reads. The camera gave the same frame (captured 00:40:04Z) both times, so I have no newer picture and could not compare growth over time. My confidence is medium for that reason. The print stays on watch through the next events."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 32688,
+              "cache_read_input_tokens": 87636,
+              "output_tokens": 1080,
+              "output_tokens_details": {
+                "thinking_tokens": 166
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 32688,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 508,
+                  "cache_read_input_tokens": 36461,
+                  "cache_creation_input_tokens": 1326,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 1326
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      },
+      {
+        "test": "jar-top-petg-healthy",
+        "passed": true,
+        "turns": 8,
+        "sessions": [
+          "print-01a1b4b9-0dfe-77f0-af1b-8737ed623b9d"
+        ],
+        "decision_points": [
+          {
+            "scenario": "carry-on-004-other",
+            "at": "2026-10-30T12:06:27",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 60"
+            ],
+            "opened": [
+              "bfda387996c945619e51f0b215b15fd10bc09ca4c1b1102246d2379f56239a01",
+              "command-surface.md",
+              "f2b4fb3d1809df5b24dfe4abebb6f5e334052f177b9a79a5292ed56408824d2d"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "I ran `printobserver context` and opened the event frame (18:06:27). It showed the bed sheet with the gantry rail across it and no part laid yet, which fits the very start of the job (file position 1.8 KB). I then ran `printobserver look --wait-s 60`, which gave a frame captured at 18:08:16. That frame shows a circular ring of strands being laid at the top of the bed, with the nozzle beside it. I changed no settings and sent no pause. I did not call acknowledge-failure, because the event was a routine periodic observation, not a failure.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is in its first layers, and a clean black ring is sticking to the bed. I see no defect.",
+              "why": "The ring is a continuous circle with consistent walls, and it is adhering to the sheet. I saw no loose strands, spaghetti, lifted edges or off-bed material. One faint thin wisp lies near the ring's lower edge. It looks minor, and I'm not sure what it is. Temperatures sit on target (nozzle 250 \u00b0C, bed 85 \u00b0C) and progress is advancing (file position 1.8 KB to 11 KB). With no clear defect, I'm not changing anything. The part is too small and too early for me to judge wall thickness or growth. I will keep watching."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 35656,
+              "cache_read_input_tokens": 90595,
+              "output_tokens": 1198,
+              "output_tokens_details": {
+                "thinking_tokens": 154
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 35656,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 659,
+                  "cache_read_input_tokens": 37931,
+                  "cache_creation_input_tokens": 2824,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2824
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-013-other",
+            "at": "2026-10-30T12:24:37",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 60"
+            ],
+            "opened": [
+              "45fff5ed9a8dbdb6db7d72ac7d1884bfdc54985a80243b252677322829a8f931",
+              "79595d7e553542424d2e3f1772c5a06ad766187053128dc84fd33e8505af9c1e"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "I ran `printobserver context` and opened the event frame (18:24:37). I then ran `printobserver look --wait-s 60`, which returned a frame captured at 18:26:39. I changed no settings, did not pause, and did not call acknowledge-failure, because the event was routine and nothing was wrong.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "The print is progressing normally (about 17% done). A ring-shaped part with straight, regular infill lines is growing in place on the bed.",
+              "why": "The ring from the earlier frame (18:08) is still in the same place on the bed, and it has grown since. It now has an inner raised section with straight, regular infill lines and no curved or tangled strands. Completion went from 14.8% to 17.4%, and the nozzle (250 \u00b0C) and bed (85 \u00b0C) are on target. In the 18:24 frame I saw a few fine loose wisps at the ring's right edge and one at its lower edge, as in the earlier frame. They are thin and minor, and I can't tell what they are. The nozzle head blocks part of the part in the latest frame, so I could not judge the walls well. I saw no clear under-extrusion, no spaghetti, and no lifting or shifting. I'm not changing anything and will keep watching those wisps."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 13211,
+              "cache_read_input_tokens": 185045,
+              "output_tokens": 992,
+              "output_tokens_details": {
+                "thinking_tokens": 44
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 13211,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 554,
+                  "cache_read_input_tokens": 51148,
+                  "cache_creation_input_tokens": 2818,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2818
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-024-support",
+            "at": "2026-10-30T12:44:56",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 45",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 90"
+            ],
+            "opened": [
+              "c70b362e9a3c023494eff8e42e3badcb18a2398c1e0a1427614f3a80f75139d4",
+              "41ab323fe7a1c8893fd09d78256968646f49d5329e15d9b128f61e7b8d596708",
+              "b6e64a8d930bfef19917d2317065126ba7d152c6af0cfbf33d23a54660a7b9c8"
+            ],
+            "assessment": {
+              "confidence": "low",
+              "did": "I ran `printobserver context` and opened the event frame (18:44:56). I then ran `printobserver look --wait-s 45`, which returned a frame at 18:47:20, and `printobserver look --wait-s 90`, which returned a frame at 18:48:27. I opened each frame. I changed no settings, sent no pause, and did not call acknowledge-failure. All three looks showed no new events (`delivered` empty) and `detector_paused: false`.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "The print is about 39% done and looks healthy. I can't confirm the walls are getting taller, so I'm watching, not pausing.",
+              "why": "The ring stays at the same spot and footprint as in the 18:08 and 18:24 frames. Completion rose from 36.3% to 39.0% and the heaters held at 250 \u00b0C nozzle and 85 \u00b0C bed. The inner area shows straight, regular infill and rib lines. I saw no spaghetti, no lifting and no strands off the part. The 18:44 frame showed some wavy, uneven strands on the right inner edge, but later frames showed it as regular line work, so I don't count it as a defect. What I can't settle is wall growth. The outer wall at the front looks about as tall as it did at 15% done. Byte progress does not map to height, the part may be low-profile, and the toolhead covers much of it. That is why my confidence is low. If later frames show the sides still not gaining wall while the bed visibly lowers, a person should check it and I would pause. For now I see no clear defect and have no setting that would help."
+            },
+            "looks": 2,
+            "usage": {
+              "input_tokens": 14,
+              "cache_creation_input_tokens": 19363,
+              "cache_read_input_tokens": 381085,
+              "output_tokens": 2240,
+              "output_tokens_details": {
+                "thinking_tokens": 989
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 19363,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 1085,
+                  "cache_read_input_tokens": 70475,
+                  "cache_creation_input_tokens": 2854,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2854
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-028-bridge",
+            "at": "2026-10-30T12:51:00",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --json",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 60"
+            ],
+            "opened": [
+              "d3f22a23c445005b4f8058345fcf2c75738423a24cf202f6d52db013193b5038",
+              "574ede0c736df952661c51827b3c17cb8be18e2ac9709c474da13cfdc00ff26f"
+            ],
+            "assessment": {
+              "confidence": "low",
+              "did": "I ran `printobserver context --json` and opened the event frame (18:51:00). I then ran `printobserver look --wait-s 60`, which gave a frame at 18:53:01, and opened it. I changed no settings, sent no pause, and did not call acknowledge-failure. The look showed `detector_paused: false` and no new events.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 41% done and still running. The part stays in place, but the toolhead hides it, so I could not judge it well.",
+              "why": "The 18:51 frame had a clear view. The ring is in the same place as in earlier frames. The inner oval has straight, regular ribs and is clearly raised above the outer ring, so the part is growing. Between them is a band of curved, wavy strands. I can't tell if that is part of the design or a defect, because it sits inside the outline and curved strands would be a defect. The 18:53 frame has the toolhead over most of the part. In that frame I could see a few fine wisps at the upper right and a pale grey texture near the nozzle, and I can't read either. Completion rose from 39.8% to 40.8%, and temperatures are on target at 250 \u00b0C and 85 \u00b0C. I have no clear defect and no adjustment that would help, so I'm leaving the print running. If a clear frame shows the wavy band is loose or tangled, or the walls are not gaining height, a person should check it and I would pause."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 16512,
+              "cache_read_input_tokens": 322265,
+              "output_tokens": 1229,
+              "output_tokens_details": {
+                "thinking_tokens": 238
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 16512,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 680,
+                  "cache_read_input_tokens": 87022,
+                  "cache_creation_input_tokens": 2819,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2819
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-031-other",
+            "at": "2026-10-30T12:57:03",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 60"
+            ],
+            "opened": [
+              "02943e55ead17cb87b5fc2e181ace56700b74a822d9eca290e53937566143051",
+              "004b07906f321a5ca2b0572ac5a8af54b9ff1715b534280c10114d14d8847935"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "I ran `printobserver context` and opened the event frame (18:57:03). I then ran `printobserver look --wait-s 60`, which gave a frame at 18:59:05, and opened it. I changed no settings, sent no pause, and did not call acknowledge-failure. The look showed `detector_paused: false` and no new events.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 44% done and looks healthy. The wavy band I was unsure about is a regular lattice, so I see no defect.",
+              "why": "Both frames had a clear view of the part. The band between the outer ring and the inner raised oval is a regular diamond lattice, with straight, repeating lines. That fits ribs, lattice or infill, so it explains the wavy look I flagged earlier. It is not a defect. The inner oval has straight, regular ribs and stands above the outer ring, so the part is growing. The ring has stayed in the same place on the sheet since 18:08. I saw no spaghetti, no lifting, no strands off the part, and no thin or see-through walls. Completion went from 43.3% to 44.3%, and the heaters held at 250 \u00b0C nozzle and 85 \u00b0C bed. A few fine wisps near the ring's lower edge have been there since 18:08 and have not grown. My confidence is medium and not high because the toolhead hides part of the part in each frame. I am changing nothing."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 19650,
+              "cache_read_input_tokens": 394251,
+              "output_tokens": 1057,
+              "output_tokens_details": {
+                "thinking_tokens": 78
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 19650,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 591,
+                  "cache_read_input_tokens": 106673,
+                  "cache_creation_input_tokens": 2818,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2818
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-042-other",
+            "at": "2026-10-30T13:17:20",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver history --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --limit 4",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 60"
+            ],
+            "opened": [
+              "10f5f3fd289ef9fa792a24c5206401485e7ea242f0e2cddb0da6ec41e4f85421",
+              "a17fde09ba5767ed38a0d922920bfd7b9038393d90af4b2caff11c538313a3ab"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "I ran `printobserver history --limit 4` and opened the event frame (19:17:20). I then ran `printobserver look --wait-s 60`, which gave a frame at 19:19:22, and opened it. I changed no settings, sent no pause, and did not call acknowledge-failure. The look showed `detector_paused: false` and no new events.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 54% done and looks healthy. The part is taller with solid walls, and I see no defect.",
+              "why": "This settles the wall-growth question I left open earlier. At 44% (18:59) the outer ring was only a few layers tall. At 53\u201354% the part is a visibly taller, solid-walled body, and the sides show far more wall. The bed has lowered as layers rose. The part has stayed in the same place on the sheet since 18:08. Its walls look solid, with no thin, gappy or see-through areas and no sagging. The visible infill lines are straight and regular. I saw no spaghetti, no lifting, and no strands off the part. A few fine wisps beside the base have been there since 18:08 and have not grown, so I treat them as cosmetic stringing. Completion went from 53.6% to 54.2%, and the heaters held at 250 \u00b0C nozzle and 85 \u00b0C bed. Confidence is medium because the toolhead covers the top of the part in both frames. I'm changing nothing."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 11349,
+              "cache_read_input_tokens": 456191,
+              "output_tokens": 1076,
+              "output_tokens_details": {
+                "thinking_tokens": 76
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 11349,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 630,
+                  "cache_read_input_tokens": 118019,
+                  "cache_creation_input_tokens": 2821,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2821
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-049-support",
+            "at": "2026-10-30T13:31:31",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver history --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --limit 3",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 60"
+            ],
+            "opened": [
+              "d287fa94a7ae86e34e7f73caca6b600f4e7ce70d42d86c53f7412c0de42945ef",
+              "70e470bcd879136004671a5e7f4349a9dfe0cf200ca977e9986c6271a78e18c0"
+            ],
+            "assessment": {
+              "confidence": "high",
+              "did": "I ran `printobserver history --limit 3` and opened the event frame (19:31:31). I then ran `printobserver look --wait-s 60`, which gave a frame at 19:33:33, and opened it. I changed no settings, sent no pause, and did not call acknowledge-failure. The look showed `detector_paused: false` and no new events.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 60% done and looks healthy. The part keeps growing taller with solid walls and regular infill, and I see no defect.",
+              "why": "Both frames show the part clearly, with the toolhead off to the side. The part stands in the same place on the sheet as in every earlier frame. It is a taller bowl-shaped body that is visibly taller than at 54%, so layers are being added and the bed has lowered. The outer walls are solid, with no thin, gappy or see-through areas. The top surface shows straight, evenly spaced infill lines inside a ribbed rim. I saw no spaghetti, no lifting, no sagging, and no debris on the bed. A few fine hairs lie beside the base. They have been there since 18:08 and have not grown, so I count them as cosmetic stringing. Completion rose from 59.1% to 60.2%, and the heaters held at 250 \u00b0C nozzle and 85 \u00b0C bed. Nothing needs adjusting, so I changed nothing."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 10619,
+              "cache_read_input_tokens": 500162,
+              "output_tokens": 1044,
+              "output_tokens_details": {
+                "thinking_tokens": 53
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 10619,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 587,
+                  "cache_read_input_tokens": 128639,
+                  "cache_creation_input_tokens": 2820,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2820
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "carry-on-059-other",
+            "at": "2026-10-30T13:51:46",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver history --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --limit 3",
+              "printobserver look --print-id 01a1b4b9-0dfe-77f0-af1b-8737ed623b9d --wait-s 60"
+            ],
+            "opened": [
+              "7e09e95aa2e2c99b4c4bdd43f1290a5b7060f8009ef8790719cdec6b18fd4849",
+              "0913b446c8160ad063cf7bab37c6dba55bc69ada23bdbc02f9e39b79afa5e1ee"
+            ],
+            "assessment": {
+              "confidence": "high",
+              "did": "I ran `printobserver history --limit 3` and opened the event frame (19:51:46). I then ran `printobserver look --wait-s 60`. It returned a frame stamped 19:51:46, the same capture time as the event frame, so the camera had nothing newer. I opened that frame too. It looks the same as the event frame. The look also showed fresh job data: completion 75.4%, 250 \u00b0C nozzle and 85 \u00b0C bed, `detector_paused: false`, and no new events. I changed no settings, sent no pause, and did not call acknowledge-failure.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is about 75% done and looks healthy. The part keeps growing taller with solid walls and a regular lattice and infill, and I see no defect.",
+              "why": "The part sits in the same place on the sheet as in every earlier frame, and it has grown taller since the 19:33 frame. The walls are solid and the bed has lowered as layers rose. The top shows a regular diamond lattice around a ring of straight, evenly spaced infill lines. I saw no spaghetti, no lifting, no sagging, and no debris on the bed. The few fine hairs beside the base have been there since 18:08 and have not grown. Completion rose from 74.3% to 75.4%, and the heaters held at 250 \u00b0C and 85 \u00b0C. The two frames are the same image, so I could not watch a change over time in this turn. The history across turns shows steady growth with no sign of trouble. Nothing needs adjusting, so I changed nothing."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 10642,
+              "cache_read_input_tokens": 542524,
+              "output_tokens": 1132,
+              "output_tokens_details": {
+                "thinking_tokens": 84
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 10642,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 637,
+                  "cache_read_input_tokens": 139209,
+                  "cache_creation_input_tokens": 2892,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2892
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      },
+      {
+        "test": "jar-top-wrong-material-detach-spaghetti",
+        "passed": true,
+        "turns": 3,
+        "sessions": [
+          "print-01a1b4c3-b271-7001-a57f-b3fc36f08eba"
+        ],
+        "decision_points": [
+          {
+            "scenario": "wall-building-cleanly",
+            "at": "2026-10-29T19:31:10",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba",
+              "printobserver look --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba --wait-s 60"
+            ],
+            "opened": [
+              "a285215a23d491518718c78c8fa1e177ed90c1743c81731b184ddd57798796bf",
+              "command-surface.md",
+              "dd2fbc440fd07fe2117b2d4993280d1a91d02e2b9d919f43c3c9c2e336c5ceef"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "I ran `printobserver context` and opened the event frame from 01:31:10. I ran `printobserver look --wait-s 60` and opened the new frame from 01:33:00. I made no adjustment and no acknowledgement, because this event is a periodic observation and not a failure.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Ring part with brim is printing normally at about 36%, with no visible defect.",
+              "why": "Both frames show the same ring and brim in the same place on the sheet. The walls are continuous and solid, with no stringing, spaghetti, lifting or sagging. Nothing has moved relative to the sheet's markings. Temperatures are on target (nozzle 220, bed 60). Completion rose from 34.3% to 36.1% and the detector had not paused the print. The two frames are only about 110 s apart, so growth in wall height is hard to judge, and the ring is a thin shape seen from a wide-angle camera. That is why confidence is medium and not high."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 35621,
+              "cache_read_input_tokens": 90526,
+              "output_tokens": 1043,
+              "output_tokens_details": {
+                "thinking_tokens": 112
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 35621,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 528,
+                  "cache_read_input_tokens": 37894,
+                  "cache_creation_input_tokens": 2826,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2826
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "wall-top-porous-and-stringing",
+            "at": "2026-10-29T19:33:12",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "pause"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba",
+              "printobserver look --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba --wait-s 60",
+              "printobserver look --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba --wait-s 45",
+              "printobserver pause --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba --actor '{\"agent\":{\"session_name\":\"print-01a1b4c3-b271-7001-a57f-b3fc36f08eba\"}}' --reason \"Stringing/loose strands are growing across the ring's interior: one thin hair at 01:35:00, many crossing strands and a ragged, blobby wall top at 01:36:24. Frames at 01:31-01:33 were clean. Strands already laid cannot be undone by any setting, and it is not clear a temperature or flow change would stop this. Please check the part, the nozzle and the filament before resuming.\""
+            ],
+            "opened": [
+              "c2ea04c3f52c225a59b9b2bf90c4d899ff88d76737edc88c796ed87c66d57960",
+              "af8d2d4e45acabbe46fd45268a699bf17c563784a9bd07fbad680347f0dafd69",
+              "3a5989ea989cc34f7a68eb3ce38c205e82da38b458a1c82041f6e8137f697d36"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "I ran `printobserver context` and opened the 01:33:12 frame, which looked clean. I ran `printobserver look --wait-s 60`, which gave a frame at 01:35:00 with a thin hair across the ring. I ran `printobserver look --wait-s 45`, which gave a frame at 01:36:24 with many crossing strands and a ragged wall top. I then ran `printobserver pause` and it was accepted and succeeded (record 01a1b4c6-c86e-72c2-8aa0-f3b3c199c96e). I made no temperature, flow or fan change. I did not acknowledge a failure because the event log holds no failure event to acknowledge.",
+              "escalating": true,
+              "should_continue": false,
+              "summary": "Loose strands are growing across the ring's interior and the wall top looks ragged, so I paused the print for a person to check.",
+              "why": "The ring was clean at 01:31 to 01:33. By 01:36 several strands cross the ring's open interior, where nothing should be, and the wall top looks blobby. The defect grew across three frames and the detector had not flagged it. Strands already laid cannot be fixed by any setting, and I could not tell that cooling or a flow change would stop it. Both are within my bounds, but it was unclear whether either would help. A growing tangle risks nozzle collisions and a ruined part, so a person should look. I am only medium confident: the camera is a wide angle, the strands are thin, and this could be cosmetic travel stringing. The person should check the ring, the nozzle and the filament, and resume if it is only stringing."
+            },
+            "looks": 2,
+            "usage": {
+              "input_tokens": 16,
+              "cache_creation_input_tokens": 18027,
+              "cache_read_input_tokens": 350653,
+              "output_tokens": 2242,
+              "output_tokens_details": {
+                "thinking_tokens": 676
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 18027,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 690,
+                  "cache_read_input_tokens": 57786,
+                  "cache_creation_input_tokens": 961,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 961
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "part-detached-and-moved",
+            "at": "2026-10-29T19:39:13",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "pause"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba",
+              "printobserver look --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba --wait-s 20",
+              "printobserver pause --print-id 01a1b4c3-b271-7001-a57f-b3fc36f08eba --actor '{\"agent\":{\"session_name\":\"print-01a1b4c3-b271-7001-a57f-b3fc36f08eba\"}}' --reason \"Print was resumed by the operator at 01:36:36 but the defect has persisted and worsened: at 01:39:13 and 01:40:01 the ring's interior holds tangled, curved strands and blobs, and the wall top is ragged. No setting I can change undoes laid material, and a tangle near the nozzle risks a collision. Please inspect and clear the part, and check nozzle and filament before resuming or cancelling.\""
+            ],
+            "opened": [
+              "e091507426fc337ced20a5bd46a3ad176839520be7acc7c914ca49dc2bc60993",
+              "83080aee43e4f2dcbcf15c464af50f773ca5841c74da18a969b0b48ae8f4eeb9"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "I ran `printobserver context` and opened the 01:39:13 frame. I ran `printobserver look --wait-s 20`, which gave a frame at 01:40:01. I ran `printobserver pause` and it was accepted and succeeded (record 01a1b4c7-6409-7dc2-832a-8fdf831a3dfd). I changed no settings.",
+              "escalating": true,
+              "should_continue": false,
+              "summary": "The operator resumed the print at 01:36:36, but tangled strands and blobs now fill the ring's interior, so I paused it again for a person.",
+              "why": "The operator's resume at 01:36:36 said they had looked and cleared what was wrong. The defect is still there and worse. Both frames show curved, tangled strands and blobs inside the ring, and the wall top is ragged. The ring has not moved relative to the sheet's markings. Strands already laid cannot be undone by any setting, and a tangle near the nozzle risks a collision, so the print needs a person. I am only medium confident of the cause. The camera is wide angle, and I do not know what the operator cleared."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 12,
+              "cache_creation_input_tokens": 17755,
+              "cache_read_input_tokens": 339800,
+              "output_tokens": 1617,
+              "output_tokens_details": {
+                "thinking_tokens": 458
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 17755,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 492,
+                  "cache_read_input_tokens": 75643,
+                  "cache_creation_input_tokens": 859,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 859
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      },
+      {
+        "test": "jar-top-wrong-material-first-layer-detach",
+        "passed": true,
+        "turns": 2,
+        "sessions": [
+          "print-01a1b4b9-03be-7f31-a645-4cff0c68c7ed"
+        ],
+        "decision_points": [
+          {
+            "scenario": "first-layer-before-the-failure",
+            "at": "2026-10-29T18:22:48",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "acknowledge-failure disposition=continue"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4b9-03be-7f31-a645-4cff0c68c7ed",
+              "printobserver look --print-id 01a1b4b9-03be-7f31-a645-4cff0c68c7ed --wait-s 60",
+              "printobserver acknowledge-failure --print-id 01a1b4b9-03be-7f31-a645-4cff0c68c7ed --actor '{\"agent\":{\"session_name\":\"print-01a1b4b9-03be-7f31-a645-4cff0c68c7ed\"}}' --disposition continue --event-id 01a1b4b9-17e3-7563-99ca-dbe02f1b6c9f --reason \"Early print (~2% done). Two frames 90s apart show a single dark ring being laid cleanly on the bed with the nozzle at its top; no strands, blobs or detachment. Temperatures at target. Nothing wrong.\""
+            ],
+            "opened": [
+              "83dc8d33b2663f5d68e931527f1da02a9c9d4553dadb124a05dd6ff8d5aab8d7",
+              "command-surface.md",
+              "eb18ca1ec0ff22644d01106884557937cd4650ccc081c4d9356fab4e977bef56"
+            ],
+            "assessment": {
+              "confidence": "high",
+              "did": "Ran `printobserver context` and opened the event frame. Ran `printobserver look --wait-s 60` and opened the new frame, captured 00:24:19, about 90 s after the first. Ran `printobserver acknowledge-failure` with disposition continue. It was accepted and succeeded. Changed no settings.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is in its early stage (~2%). A clean ring is being laid on the bed and nothing looks wrong.",
+              "why": "Both frames show one dark ring on the bed with the nozzle at its top. The ring is more complete in the second frame, so the part is growing. I saw no stray strands, blobs, detachment or sagging. Nozzle (220 \u00b0C) and bed (60 \u00b0C) are at target. File position advanced from 13 KB to 111 KB. No defect was clear, so no adjustment was warranted."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 36472,
+              "cache_read_input_tokens": 131507,
+              "output_tokens": 1390,
+              "output_tokens_details": {
+                "thinking_tokens": 227
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 36472,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 425,
+                  "cache_read_input_tokens": 40816,
+                  "cache_creation_input_tokens": 755,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 755
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "ring-dragged-off-its-place",
+            "at": "2026-10-29T18:24:50",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "pause",
+              "acknowledge-failure disposition=stop"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4b9-03be-7f31-a645-4cff0c68c7ed",
+              "printobserver look --print-id 01a1b4b9-03be-7f31-a645-4cff0c68c7ed --wait-s 30",
+              "printobserver pause --print-id 01a1b4b9-03be-7f31-a645-4cff0c68c7ed --actor '{\"agent\":{\"session_name\":\"print-01a1b4b9-03be-7f31-a645-4cff0c68c7ed\"}}' --reason \"Please check the bed. In the 00:22:48 and 00:24:19 frames a dark ring was centred near the top of the bed, at about x 840-1235 px. By 00:24:50 that ring is gone and a ring sits further right (about x 1190-1510 px). By 00:25:32 the area around the old position is bare, and a ring or strand is partly hidden under the toolhead. The bed's hole and edge are fixed in every frame, so the camera did not move. Either the printed ring was dragged or knocked off, or the frames disagree. Cannot tell which, and no adjustment I may make fixes it.\"",
+              "printobserver acknowledge-failure --print-id 01a1b4b9-03be-7f31-a645-4cff0c68c7ed --actor '{\"agent\":{\"session_name\":\"print-01a1b4b9-03be-7f31-a645-4cff0c68c7ed\"}}' --disposition stop --event-id 01a1b4ba-3dee-7721-b518-fff93464b3a2 --reason \"Paused for a person. The first-layer ring seen at 00:22:48 and 00:24:19 is no longer where it was laid, and a ring appears at a different spot in the later frames. Bed marks are fixed, so the part appears to have moved or come off. Please inspect the bed and adhesion.\""
+            ],
+            "opened": [
+              "a90e660e8e6f07a694d4b6b94748217c35b6c3f6105b56a058e8ad134c6d8897",
+              "d0df84157548949576577b566d4c0da79d5244b9331252c608220ff15c806e48"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the event frame (00:24:50). Ran `printobserver look --wait-s 30` and opened the new frame (00:25:32). Ran `printobserver pause`, which was accepted and succeeded. Ran `printobserver acknowledge-failure` with disposition stop, which was accepted and succeeded. Changed no settings.",
+              "escalating": true,
+              "should_continue": false,
+              "summary": "I paused the print for a person to check the bed. The ring printed earlier seems to have moved or come off.",
+              "why": "The ring seen at 00:22:48 and 00:24:19 had left its spot by 00:24:50. A ring was then at a different position, further right. In the 00:25:32 frame the old position is bare, and a ring or strand is partly hidden under the toolhead. The bed's hole and edge stay fixed in every frame, so the camera did not move, and a printed part should stay where it was laid. I can't tell whether the part was dragged off, came loose, or the frames are misleading. None of my bounded adjustments would fix that, so a person has to check."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 14,
+              "cache_creation_input_tokens": 15813,
+              "cache_read_input_tokens": 301105,
+              "output_tokens": 2365,
+              "output_tokens_details": {
+                "thinking_tokens": 868
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 15813,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 490,
+                  "cache_read_input_tokens": 56661,
+                  "cache_creation_input_tokens": 723,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 723
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      },
+      {
+        "test": "petg-clip-detach-and-stringing-web",
+        "passed": true,
+        "turns": 4,
+        "sessions": [
+          "print-01a1b4bb-1292-7300-b09b-338e0ceef12f"
+        ],
+        "decision_points": [
+          {
+            "scenario": "clip-came-loose",
+            "at": "2026-10-09T09:52:19",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f",
+              "printobserver look --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --wait-s 60"
+            ],
+            "opened": [
+              "09daf1badf4011d90b0cfcbec1500fc548ea9ebb0d5cf2aaa7c96aa526a8657b",
+              "command-surface.md",
+              "ec2c34bf23a4b1984650c84feca63922aaf72e26fbf230b1f09581df722c1b51"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the event frame. Ran `printobserver look --wait-s 60` and opened the new frame, captured 15 s after the first. I made no adjustments and no acknowledgement.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is early (about 9%) and looks healthy: frame, two small clips and a lattice-infill bin are all in place on the sheet.",
+              "why": "The parts sit in the same places in both frames, and their walls are solid. The bin's infill is regular and straight, as it should be. Bed and nozzle are at their targets (85 \u00b0C and 250 \u00b0C), and the detector has not paused the print. Some stray strands and blobs sit at the right edge of the sheet and on the frame or rail; they are not on the parts, so I noted them and carried on. The two frames are only 15 s apart and early in the print, so there is little growth to judge. I have not seen the part grow or the bed lower yet, which is why confidence is medium."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 35739,
+              "cache_read_input_tokens": 90756,
+              "output_tokens": 1085,
+              "output_tokens_details": {
+                "thinking_tokens": 156
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 35739,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 512,
+                  "cache_read_input_tokens": 38018,
+                  "cache_creation_input_tokens": 2820,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 2820
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "stringing-web-warning",
+            "at": "2026-10-09T14:20:35",
+            "trigger": "recorded_alert",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "pause",
+              "acknowledge-failure disposition=stop"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f",
+              "printobserver look --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --wait-s 45",
+              "printobserver pause --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --actor '{\"agent\":{\"session_name\":\"print-01a1b4bb-1292-7300-b09b-338e0ceef12f\"}}' --reason \"Obico warned; two frames 80 s apart (20:20:35, 20:21:54) show thin tangled, curved strands webbed across the open interior of the pan/bin and around the nozzle. Curved or tangled strands are a defect, not infill or bridging. No bounded adjustment (temp, flow, fan, feed) undoes laid strands. A person should check the part and the stringing before resuming.\"",
+              "printobserver acknowledge-failure --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --actor '{\"agent\":{\"session_name\":\"print-01a1b4bb-1292-7300-b09b-338e0ceef12f\"}}' --event-id 01a1b4bc-4c64-74c0-80ad-1c568e6f359a --disposition stop --reason \"Confirmed Obico warning: tangled curved strands span the open interior of the pan and hang around the nozzle in both frames (20:20:35 and 20:21:54), at about 73% of the job. Paused it; no adjustment reaches laid strands. A person should check the part and decide whether to resume or cancel.\""
+            ],
+            "opened": [
+              "69953994f8e59260e6194d576616ebbe7284f28055e48498bcb1ff07e313b3ce",
+              "005a61ad8e73dc9058c8b45843ca1bf7072bbb3532554b8676d41370457068f3"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the alert frame. Ran `printobserver look --wait-s 45` and opened the new frame, captured at 20:21:54. Ran `printobserver pause`, which was accepted and succeeded. Ran `printobserver acknowledge-failure` with disposition stop on event 01a1b4bc-4c64-74c0-80ad-1c568e6f359a, which was also accepted. I changed no temperature, flow, fan or feed setting.",
+              "escalating": true,
+              "should_continue": false,
+              "summary": "The Obico warning is confirmed: tangled, curved strands web across the open interior of the pan and hang around the nozzle at about 73%. I paused the print for a person to check.",
+              "why": "Both frames, 80 s apart, show thin curved strands tangled across the pan's open interior and around the nozzle. A part is meant to show straight, regular lines there, so this is a defect. The strands are already laid, and none of my bounded adjustments can undo them. The detector only warned and had not paused the print, so I paused it myself. Confidence is medium because the camera angle differs from the early frames and the strands are wispy. I can't tell whether the walls underneath are damaged. The bed (85 \u00b0C) and nozzle (250 \u00b0C) are at target, and the part stayed in place on the sheet."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 16,
+              "cache_creation_input_tokens": 13838,
+              "cache_read_input_tokens": 341315,
+              "output_tokens": 2500,
+              "output_tokens_details": {
+                "thinking_tokens": 422
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 13838,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 568,
+                  "cache_read_input_tokens": 54004,
+                  "cache_creation_input_tokens": 672,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 672
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "detector-paused-for-nest",
+            "at": "2026-10-09T14:29:54",
+            "trigger": "recorded_alert",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "acknowledge-failure disposition=stop"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f",
+              "printobserver look --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --wait-s 5",
+              "printobserver acknowledge-failure --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --actor '{\"agent\":{\"session_name\":\"print-01a1b4bb-1292-7300-b09b-338e0ceef12f\"}}' --event-id 01a1b4bd-75c8-7e41-b4c4-bcb32e2f88b5 --disposition stop --reason \"Detector paused the print (about 76%). Frame at 20:29:54 shows a dense tangle of curved strands inside the pan wall, worse than the 20:21:54 frame. Laid strands are not reachable by any bounded adjustment (temp, flow, fan, feed), so I changed nothing. A person should inspect the part and decide whether to clear it and resume or cancel.\""
+            ],
+            "opened": [
+              "212701bc64528b4f484fc437cbbb59ee02a72851c8ae866acc7a7818091c9348"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context`, which showed the printer paused and the detector's pause in the record. Opened the alert frame from 20:29:54. Ran `printobserver look --wait-s 5`, which confirmed the print is still paused, with a frame captured at 20:30:20. I did not open that last frame. Ran `printobserver acknowledge-failure` with disposition stop on event 01a1b4bd-75c8-7e41-b4c4-bcb32e2f88b5, which was accepted. I made no adjustments and did not resume.",
+              "escalating": true,
+              "should_continue": false,
+              "summary": "The detector paused the print at about 76%. A dense tangle of curved strands fills the pan interior and is worse than the earlier frame. I left the print paused for a person.",
+              "why": "The alert frame shows many curved, tangled strands inside the pan wall, and the tangle is denser than at 20:21:54. Laid strands cannot be undone by temperature, flow, fan or feed changes, so none of my adjustments reaches the cause. The right outcome is to leave the print paused and let a person decide whether to clear the strands and resume, or cancel. Confidence is medium because I judged from the alert frame and its earlier counterpart, not the newest one. I also can't tell how much the walls under the strands are damaged."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 12736,
+              "cache_read_input_tokens": 243893,
+              "output_tokens": 1216,
+              "output_tokens_details": {
+                "thinking_tokens": 69
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 12736,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 563,
+                  "cache_read_input_tokens": 66660,
+                  "cache_creation_input_tokens": 752,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 752
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "warning-after-resume",
+            "at": "2026-10-09T15:09:04",
+            "trigger": "recorded_alert",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "acknowledge-failure disposition=watch"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f",
+              "printobserver look --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --wait-s 30",
+              "printobserver look --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --wait-s 90",
+              "printobserver acknowledge-failure --print-id 01a1b4bb-1292-7300-b09b-338e0ceef12f --actor '{\"agent\":{\"session_name\":\"print-01a1b4bb-1292-7300-b09b-338e0ceef12f\"}}' --event-id 01a1b4bd-c922-7182-a2b0-6276ac913d59 --disposition watch --reason \"Obico warned at 21:09:04. The operator had cleared the earlier tangle and resumed at 20:30. Three frames (21:09:04, 21:09:20, 21:10:20) show the pan wall intact and the print advancing (file position 28.26 MB to 28.52 MB). A few thin curved strands remain inside the pan, no more than before and not growing. No bounded adjustment reaches laid strands, so I changed nothing. Watching; a person should check if strands build up again.\""
+            ],
+            "opened": [
+              "9227d5929c04c94d9abf1d59d06d37d6df9867f7f183f0bf8a7fddca47369d66",
+              "a392782c6cd97d9074b14e0df04dcd776912ddaa54eda9252bbc57c35b0e77ec",
+              "7558c643ccbed12f816f53926d25fd0b6872008a40b9a12e2ee23a88d48f9d0d"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the alert frame from 21:09:04. Ran `printobserver look --wait-s 30` (frame 21:09:20) and `printobserver look --wait-s 90` (frame 21:10:20), and opened both. Ran `printobserver acknowledge-failure` with disposition watch on event 01a1b4bd-c922-7182-a2b0-6276ac913d59, which was accepted. I made no adjustments and did not pause.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "The print is running again after the operator cleared the earlier tangle. A few thin curved strands remain inside the pan, and I'm watching without changing anything.",
+              "why": "The operator resumed at 20:30 after clearing what was wrong. The pan's walls are intact and the print is advancing: the file position went from 28.26 MB to 28.52 MB, and the job is about 77% done. The frames show a few thin curved strands left inside the pan. They are fewer and sparser than in the 20:29:54 frame, and they did not grow across the three frames. Because the print has moved on since the operator's resume, I treated this as a watch rather than a new failure. Curved strands are a defect, but none of my bounded adjustments can remove laid strands, so I changed nothing. Confidence is medium because the strands are wispy and the camera angle shifts between frames. Another build-up would need a person. One thing looked odd: the file position barely moved between 20:30 and 21:09 even though print time advanced, which I can't explain from the record. It was moving normally in the later frames."
+            },
+            "looks": 2,
+            "usage": {
+              "input_tokens": 18,
+              "cache_creation_input_tokens": 23574,
+              "cache_read_input_tokens": 652609,
+              "output_tokens": 2774,
+              "output_tokens_details": {
+                "thinking_tokens": 509
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 23574,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 652,
+                  "cache_read_input_tokens": 90310,
+                  "cache_creation_input_tokens": 676,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 676
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      },
+      {
+        "test": "petg-printer-reset-nozzle-on-part",
+        "passed": true,
+        "turns": 3,
+        "sessions": [
+          "print-01a1b4b8-f138-74d3-8c94-723dcdaf7b8c"
+        ],
+        "decision_points": [
+          {
+            "scenario": "infill-floor-warning-false-alarm",
+            "at": "2026-10-10T10:39:18",
+            "trigger": "recorded_alert",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "acknowledge-failure disposition=continue"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c",
+              "printobserver look --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c --wait-s 60",
+              "printobserver acknowledge-failure --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c --actor '{\"agent\":{\"session_name\":\"print-01a1b4b8-f138-74d3-8c94-723dcdaf7b8c\"}}' --event-id 01a1b4b8-f13d-75b0-af60-72f7fdc67770 --disposition continue --reason \"Detector warning only. Alert frame and a fresh frame (16:39:37Z) show all three bins attached, walls solid, infill in regular diamond lattice. The flagged box is a rough patch of infill between bins, with no spaghetti and no part off the bed. Parts are taller in the later frame and progress rose from 28.6% to 28.7%. No change made.\""
+            ],
+            "opened": [
+              "1ed6bdcc9aad12b877f81d3f1968d5c94c5ebd11f410e483c29c60774b9631d4",
+              "common-operations.md",
+              "978c3482f771700de3406eb3904aea10b6793fb6188a220cd862ddfd1443ee25"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the alert frame. Ran `printobserver look --wait-s 60` and opened the new frame, captured 16:39:37Z. That is only about 20 seconds after the alert frame, so it shows little growth; it is the newest the camera had. Ran `printobserver acknowledge-failure` with disposition continue; it was accepted. I changed no settings and did not pause.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Detector warning looks like a false alarm. The bins are attached and printing normally.",
+              "why": "In both frames all three bins are attached to the bed. Walls are solid, and the infill is a regular diamond lattice with no curved or tangled strands. The detector's box covers a rough patch of infill between bins. Progress went from 28.6% to 28.7%, and temperatures are steady at 250 \u00b0C nozzle and 85 \u00b0C bed. I saw no clear defect, so no adjustment was warranted. I'm not fully certain because the rough patch is small and the two frames are close together in time."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 12,
+              "cache_creation_input_tokens": 36303,
+              "cache_read_input_tokens": 144803,
+              "output_tokens": 1514,
+              "output_tokens_details": {
+                "thinking_tokens": 251
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 36303,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 478,
+                  "cache_read_input_tokens": 40432,
+                  "cache_creation_input_tokens": 970,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 970
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "nozzle-left-on-part-after-reset",
+            "at": "2026-10-10T16:15:00",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "pause"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c",
+              "printobserver look --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c --wait-s 30",
+              "printobserver pause --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c --actor '{\"agent\":{\"session_name\":\"print-01a1b4b8-f138-74d3-8c94-723dcdaf7b8c\"}}' --reason \"Printer's serial port is gone (503 on job and snapshot reads) and the frames at 22:15 and 22:45 are identical: head and part have not moved in 30 min. Print is not progressing or controllable; a person must check the printer's USB/serial link and the part.\""
+            ],
+            "opened": [
+              "e59ec104840ab68a900995e611bdcb662234d217be995fb825980b90e7dd3042",
+              "b8b31aa2b3abcad877eac2294836c641f10db9ca2b31720cdb4afdaa68b66edd"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context`. It showed four `port_failure` events: the printer answered 503 \"the printer's serial port is gone\" on both job and snapshot reads. Opened the 22:15:00Z frame, then ran `printobserver look --wait-s 30`. That look returned a frame at 22:45:00Z but no printer or job readings. Opened that frame as well. Ran `printobserver pause` with a reason naming the lost serial link and the unchanged frames. It was accepted and reported succeeded. I did not confirm that the printer actually paused, because I could not read its state.",
+              "escalating": true,
+              "should_continue": false,
+              "summary": "The printer's serial port is gone and the print looks frozen. I paused it for a person to check.",
+              "why": "The two frames, taken 30 minutes apart, look identical: same head position and same part height. The earlier frame at 16:39 showed the bins much shorter, so the print had progressed before this. The printer's state cannot be read, so I cannot confirm it is printing, and none of my adjustments reaches a lost serial link. A person needs to check the USB/serial connection and the part. The part itself looked intact in both frames, with no spaghetti, and a few fine strands near the right-hand bin. I'm not fully certain the print is frozen, since the camera could be repeating a stale frame, but either case needs a person."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 12,
+              "cache_creation_input_tokens": 10453,
+              "cache_read_input_tokens": 234667,
+              "output_tokens": 1373,
+              "output_tokens_details": {
+                "thinking_tokens": 175
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 10453,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 575,
+                  "cache_read_input_tokens": 51186,
+                  "cache_creation_input_tokens": 669,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 669
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          },
+          {
+            "scenario": "gantry-low-over-remaining-bin",
+            "at": "2026-10-10T17:49:00",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [
+              "acknowledge-failure disposition=stop"
+            ],
+            "commands": [
+              "printobserver context --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c",
+              "printobserver look --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c --wait-s 20",
+              "printobserver acknowledge-failure --print-id 01a1b4b8-f138-74d3-8c94-723dcdaf7b8c --actor '{\"agent\":{\"session_name\":\"print-01a1b4b8-f138-74d3-8c94-723dcdaf7b8c\"}}' --event-id 01a1b4ba-da89-7541-92de-cae649475cbc --disposition stop --reason \"Printer serial port still gone (503 on job and snapshot reads) and printer state unreadable since 22:15Z. The 23:49Z frame shows a very different scene from 22:45Z: the gantry is across the front of the bed, only one bin is visible at upper left and the rest of the bed looks empty, with loose strands near that bin. I cannot tell whether the print finished, was removed, shifted, or the camera/printer moved. Evidence contradicts itself and no adjustment reaches this. A person needs to check the printer, its USB/serial link and the parts. I paused it earlier at 22:45Z.\""
+            ],
+            "opened": [
+              "3848ba54b74f7173cb061fea632c8b67c0cdb7c27eee555e81b745eacfdf7d07"
+            ],
+            "assessment": {
+              "confidence": "low",
+              "did": "Ran `printobserver context`. It showed new `port_failure` 503 events (\"serial port is gone\") on both job and snapshot reads, and the print still listed as printing. Opened the 23:49:00Z frame. Ran `printobserver look --wait-s 20`; it returned the same 23:49:00Z frame, so the camera has nothing newer, and no printer readings. Ran `printobserver acknowledge-failure --disposition stop` against the periodic-observation event; it was accepted. I did not run a second pause: my 22:45Z pause was accepted, but I could not confirm the printer's state.",
+              "escalating": true,
+              "should_continue": false,
+              "summary": "The printer is still unreachable, and the 23:49Z frame shows a very different scene from earlier. A person needs to check the printer.",
+              "why": "The 23:49 frame looks nothing like the 22:45 frame. The gantry now sits across the front of the bed, and only one bin is visible at the upper left. The rest of the bed looks empty, and loose strands lie near that bin. Earlier frames showed three bins on the bed with the head over them. That could mean the parts were removed, the print was cancelled or ended, the parts shifted, or the camera or view changed. I cannot tell which, and I cannot read the printer to settle it. A part seeming to have moved is a person's to check, and no adjustment of mine reaches a lost serial link. I'm not sure what happened, so confidence is low. The one thing I'm sure of is that a person needs to look at the printer."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 10,
+              "cache_creation_input_tokens": 12473,
+              "cache_read_input_tokens": 231314,
+              "output_tokens": 1595,
+              "output_tokens_details": {
+                "thinking_tokens": 295
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 12473,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 632,
+                  "cache_read_input_tokens": 63298,
+                  "cache_creation_input_tokens": 1030,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 1030
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      },
+      {
+        "test": "petg-spool-jam-air-print",
+        "passed": true,
+        "turns": 1,
+        "sessions": [
+          "print-01a1b4bb-682c-75d3-983c-511992f30a3b"
+        ],
+        "decision_points": [
+          {
+            "scenario": "first-layers-healthy",
+            "at": "2026-10-08T14:44:30",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4bb-682c-75d3-983c-511992f30a3b",
+              "printobserver look --print-id 01a1b4bb-682c-75d3-983c-511992f30a3b --wait-s 60"
+            ],
+            "opened": [
+              "a3e669d55950fd044ae5a7ff75a479cc20edf7c2ec6e8a5b708809da1bae93b5",
+              "command-surface.md",
+              "129405cf5d633fd8e231fc410c8a13e04c7a1ce0851de3f7b382d3b324c1dd99"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "Ran `printobserver context` and opened the event frame. Ran `printobserver look --wait-s 60` and opened that frame. The look's frame was captured at 20:44:30Z, the same time as the event's frame, and the image is identical, so the camera had nothing newer. Made no adjustments and acknowledged no failure.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Early print (~1.5%) looks healthy: parts are stuck down and solid, with no spaghetti or lifting.",
+              "why": "The long strip, the frame outline, the small clips and the flat rectangle are all laid cleanly and stay in the same place on the sheet. There are no loose strands, see-through walls or parts off the bed. The tiny white specks along the strip's edge look like reflections or texture, not a clear defect. Temperatures are on target (nozzle 250, bed 85) and there are no active interventions. Progress moved from 1.40% to 1.46% between the two reads, so the print is advancing. I have only one distinct frame, so I could not check for growth over time, and my confidence is medium. The next periodic observations should confirm the parts are growing as expected."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 32804,
+              "cache_read_input_tokens": 87761,
+              "output_tokens": 1199,
+              "output_tokens_details": {
+                "thinking_tokens": 207
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 32804,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 562,
+                  "cache_read_input_tokens": 36539,
+                  "cache_creation_input_tokens": 1364,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 1364
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      },
+      {
+        "test": "under-extrusion-lace",
+        "passed": true,
+        "turns": 1,
+        "sessions": [
+          "print-01a1b4c0-3060-7160-b9b0-8060bd236036"
+        ],
+        "decision_points": [
+          {
+            "scenario": "carry-on-healthy-before-fault",
+            "at": "2026-09-27T19:30:13",
+            "trigger": "periodic_observation",
+            "passed": true,
+            "why_not": null,
+            "requests": [],
+            "commands": [
+              "printobserver context --print-id 01a1b4c0-3060-7160-b9b0-8060bd236036",
+              "printobserver look --print-id 01a1b4c0-3060-7160-b9b0-8060bd236036 --wait-s 60"
+            ],
+            "opened": [
+              "3df27f44a28c996a37f01990c16edb7348fb32a21e085ad7e46d52786def7a0f",
+              "command-surface.md",
+              "919c0ac9d1aa57a338cbb54a84b2879fa94cbcecd6223d4f7823fba1673df255"
+            ],
+            "assessment": {
+              "confidence": "medium",
+              "did": "I ran `printobserver context` and opened the event frame. I then ran `printobserver look --wait-s 60` and opened that frame. I made no adjustments and did not pause. I did not acknowledge anything, because no failure event exists.",
+              "escalating": false,
+              "should_continue": true,
+              "summary": "Print is progressing normally (about 33%); I see no defect, but the camera frame is stale.",
+              "why": "The part under the nozzle shows regular, straight lattice infill, with no tangled strands, see-through walls or detachment. The thin white lines on the sheet are the same in both frames, so they are sheet marks or scratches and not print debris. Temperatures are on target (nozzle 230, bed 60). Job progress went from 29.9% to 33.4%, and no detector warning or pause was reported. The look's frame has the same capture time as the event's (01:30:12Z), so the camera had nothing newer. I am not stopping for that, but it limits what I can confirm. The part is small and partly hidden by the toolhead, so I could not judge growth or wall thickness well."
+            },
+            "looks": 1,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 32646,
+              "cache_read_input_tokens": 87502,
+              "output_tokens": 1195,
+              "output_tokens_details": {
+                "thinking_tokens": 242
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 32646,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "global",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 591,
+                  "cache_read_input_tokens": 36418,
+                  "cache_creation_input_tokens": 1327,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 1327
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard",
+              "fallback_credit": null
+            },
+            "models": [
+              "claude-sonnet-5-5"
+            ],
+            "compacted": false
+          }
+        ]
+      }
+    ]
+  }
+}

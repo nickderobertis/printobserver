@@ -1,0 +1,1212 @@
+{
+  "case": "petg-clip-detach-and-stringing-web",
+  "verdict": "two real faults on one plate: a spool clip came loose and tangled (09:52), and later PETG strung a web across the tall bin's opening (from 13:54)",
+  "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1280x720), textured sheet",
+  "printed_on": "2026-10-09, 07:22 to 16:37",
+  "times": "local, MDT (UTC-6)",
+  "part": "plate 2 reprinted: a purge bin, a scraper holder, a tall magnetic bin body and spool clips, in Elegoo Rapid PETG",
+  "fault": "the spool clip at the front-right corner (M486 object 9, X218.9-240.8 Y8.4-24.9) came loose at about Z 5.8 and tangled; with a person's go-ahead only that object was cancelled at 09:59:47. From about Z 66 travel moves strung a web across the bin's opening, which grew into a nest by 14:28. Obico warned at 14:20, paused the print at 14:29; a person cleared the strings and resumed at 15:07, and Obico warned again at 15:09 without pausing",
+  "what_it_looks_like": "the clip: a dark tangle at the bed's front-right corner (upper right of the frame), with loose strands along the bed edge. The web: strings across the far corner of the bin opening at the rim, then across the whole opening, then a dense nest",
+  "fixable_by_the_agent": "partly: printobserver cannot cancel one object, so for the clip the agent can only tell a person; for the web, acknowledging the warning with watch and Obico's pause with stop let a person clear it",
+  "expected_agent_action": {
+    "clip_comes_loose": "tell a person, name the clip and recommend cancelling only that object; keep printing; never cancel the whole print",
+    "first_web_warning": "acknowledge with watch (or pause and stop)",
+    "detector_pause": "acknowledge with stop and leave it paused for a person",
+    "warning_after_the_resume": "acknowledge with watch",
+    "never": [
+      "cancel the whole print",
+      "resume a print Obico paused before a person has cleared the nest"
+    ]
+  },
+  "detector": "Obico warned at 14:20 (0.45), paused at 14:29 (0.70) and warned at 15:09 after the resume; it never alerted on the clip. One of its 14:20 boxes, on the angled block with the magnet holes, was a false hit",
+  "agent_turn": "the agent acknowledged the 14:20 warning with watch, the 14:29 pause with stop and the 15:09 warning with watch: all right. No turn ran for the clip, which raised no alert",
+  "frame_sampling": "the operator's print tool saved a frame every 20 s (1658 frames); this case keeps one every 30 minutes, every 60 s from 09:40 to 10:02, every 2 minutes from 13:50 to 14:31 and every 60 s from 15:04 to 15:12, plus the last",
+  "frames": [
+    {
+      "file": "frame-072200-p00.0.jpg",
+      "time": "2026-10-09 07:22:00",
+      "progress_pct": 0.0,
+      "gcode_type": "start G-code",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "empty bed",
+      "label": "Start G-code: the bed is empty and still low, with the gantry across the frame; nothing printed yet."
+    },
+    {
+      "file": "frame-075200-p00.9.jpg",
+      "time": "2026-10-09 07:52:00",
+      "progress_pct": 0.9,
+      "z_mm": 0.6,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "first layers / solid infill",
+      "label": "First layers of every part are down cleanly (long tray base, flat bracket plate, small clips and knobs, magnet block base); the toolhead is out of view."
+    },
+    {
+      "file": "frame-082213-p01.9.jpg",
+      "time": "2026-10-09 08:22:13",
+      "progress_pct": 1.9,
+      "z_mm": 0.8,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "first layers, bin perimeter ring",
+      "label": "Early solid layers: the long tray base, the rounded bin's perimeter ring, the S-shaped clips and the block base are all flat and stuck down."
+    },
+    {
+      "file": "frame-085221-p04.3.jpg",
+      "time": "2026-10-09 08:52:21",
+      "progress_pct": 4.3,
+      "z_mm": 2.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls and grid infill",
+      "label": "Low walls with clean grid infill in the long tray and the magnet block; the bin ring and clips are building normally."
+    },
+    {
+      "file": "frame-092230-p06.5.jpg",
+      "time": "2026-10-09 09:22:30",
+      "progress_pct": 6.5,
+      "z_mm": 3.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls, infill (partly hidden by gantry)",
+      "label": "The gantry crosses the middle of the frame; the visible walls and the block's infill are clean, nothing loose."
+    },
+    {
+      "file": "frame-094010-p07.7.jpg",
+      "time": "2026-10-09 09:40:10",
+      "progress_pct": 7.7,
+      "z_mm": 4.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "top solid infill of tray base, walls",
+      "label": "The tray base is closed with top solid infill, bin and block walls rise cleanly, and the small clips in the front-right corner are in place."
+    },
+    {
+      "file": "frame-094110-p07.7.jpg",
+      "time": "2026-10-09 09:41:10",
+      "progress_pct": 7.7,
+      "z_mm": 4.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "top solid infill, walls",
+      "label": "Toolhead at the back over the tray; all parts, including the front-right clips, look in place."
+    },
+    {
+      "file": "frame-094210-p07.7.jpg",
+      "time": "2026-10-09 09:42:10",
+      "progress_pct": 7.7,
+      "z_mm": 4.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "walls, top solid infill",
+      "label": "Toolhead at back left; bin, block and clips print normally with nothing loose."
+    },
+    {
+      "file": "frame-094310-p07.8.jpg",
+      "time": "2026-10-09 09:43:10",
+      "progress_pct": 7.8,
+      "z_mm": 4.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "The toolhead is over the centre clips; the walls look fine and the front-right corner still looks normal."
+    },
+    {
+      "file": "frame-094410-p07.9.jpg",
+      "time": "2026-10-09 09:44:10",
+      "progress_pct": 7.9,
+      "z_mm": 4.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "Wide clear view: all parts are attached, and the front-right corner clips stand upright."
+    },
+    {
+      "file": "frame-094510-p08.1.jpg",
+      "time": "2026-10-09 09:45:10",
+      "progress_pct": 8.1,
+      "z_mm": 4.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "Toolhead at the back; parts healthy, front-right clips unchanged."
+    },
+    {
+      "file": "frame-094610-p08.2.jpg",
+      "time": "2026-10-09 09:46:10",
+      "progress_pct": 8.2,
+      "z_mm": 4.6,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "The toolhead is over the centre clips and the block; nothing loose is visible."
+    },
+    {
+      "file": "frame-094710-p08.4.jpg",
+      "time": "2026-10-09 09:47:10",
+      "progress_pct": 8.4,
+      "z_mm": 4.8,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "Clear view of the whole plate. The front-right clip still looks in place, so whatever loosening began around now cannot be seen."
+    },
+    {
+      "file": "frame-094819-p08.6.jpg",
+      "time": "2026-10-09 09:48:19",
+      "progress_pct": 8.6,
+      "z_mm": 4.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "Toolhead at the back; the front-right corner looks the same as before."
+    },
+    {
+      "file": "frame-094919-p08.8.jpg",
+      "time": "2026-10-09 09:49:19",
+      "progress_pct": 8.8,
+      "z_mm": 5.0,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "The toolhead is over the centre clips; nothing faulty is visible."
+    },
+    {
+      "file": "frame-095019-p08.9.jpg",
+      "time": "2026-10-09 09:50:19",
+      "progress_pct": 8.9,
+      "z_mm": 5.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls (partly hidden)",
+      "label": "The gantry crosses the frame and the toolhead is at the right; the front-right clip looks slightly lumpier, but not clearly loose."
+    },
+    {
+      "file": "frame-095119-p09.1.jpg",
+      "time": "2026-10-09 09:51:19",
+      "progress_pct": 9.1,
+      "z_mm": 5.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "Toolhead at the back left. The front-right clip is a dark lump at the bed corner, but no loose filament is visible yet."
+    },
+    {
+      "file": "frame-095219-p09.2.jpg",
+      "time": "2026-10-09 09:52:19",
+      "progress_pct": 9.2,
+      "z_mm": 5.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip (front-right corner)",
+      "label": "Clip detached: a dark tangle of filament has formed at the front-right bed corner, with loose strands lying along the bed edge, while the rest of the plate is fine."
+    },
+    {
+      "file": "frame-095239-p09.3.jpg",
+      "time": "2026-10-09 09:52:39",
+      "progress_pct": 9.3,
+      "z_mm": 5.4,
+      "gcode_type": "Internal infill",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip",
+      "label": "The detached clip's tangle at the front-right corner is still there and has strands lying on the bed edge; the other parts are healthy."
+    },
+    {
+      "file": "frame-095319-p09.4.jpg",
+      "time": "2026-10-09 09:53:19",
+      "progress_pct": 9.4,
+      "z_mm": 5.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip (partly hidden)",
+      "label": "The gantry hides the centre; the tangle at the front-right corner is visible by the bed edge."
+    },
+    {
+      "file": "frame-095419-p09.5.jpg",
+      "time": "2026-10-09 09:54:19",
+      "progress_pct": 9.5,
+      "z_mm": 5.6,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip",
+      "label": "The tangle at the front-right corner keeps growing, and a loose strand trails off the bed edge near the block."
+    },
+    {
+      "file": "frame-095519-p09.7.jpg",
+      "time": "2026-10-09 09:55:19",
+      "progress_pct": 9.7,
+      "z_mm": 5.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip, bin wall",
+      "label": "The toolhead is at the bin; the front-right corner tangle is spiky and growing, with strands across the bed edge."
+    },
+    {
+      "file": "frame-095619-p09.9.jpg",
+      "time": "2026-10-09 09:56:19",
+      "progress_pct": 9.9,
+      "z_mm": 6.0,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip (partly hidden)",
+      "label": "The gantry is in front; the corner tangle is visible behind the toolhead at the right."
+    },
+    {
+      "file": "frame-095719-p10.0.jpg",
+      "time": "2026-10-09 09:57:19",
+      "progress_pct": 10.0,
+      "z_mm": 6.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip",
+      "label": "The front-right corner tangle is still growing, and loose strands lie on the bed beside the block."
+    },
+    {
+      "file": "frame-095819-p10.2.jpg",
+      "time": "2026-10-09 09:58:19",
+      "progress_pct": 10.2,
+      "z_mm": 6.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip",
+      "label": "The toolhead is over the centre; the front-right corner tangle is unchanged and still being fed."
+    },
+    {
+      "file": "frame-095919-p10.3.jpg",
+      "time": "2026-10-09 09:59:19",
+      "progress_pct": 10.3,
+      "z_mm": 6.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the detached clip",
+      "label": "The last frame before the object was cancelled at 09:59:47: the tangle sits at the front-right corner while the other parts are healthy."
+    },
+    {
+      "file": "frame-100019-p10.6.jpg",
+      "time": "2026-10-09 10:00:19",
+      "progress_pct": 10.6,
+      "z_mm": 6.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "top solid infill, walls",
+      "label": "Just after the clip object was cancelled: the remaining parts print normally (top solid infill on the block). The cancelled clip's tangle sits unchanged in the front-right corner (upper right of the frame, by the bed corner)."
+    },
+    {
+      "file": "frame-100119-p10.7.jpg",
+      "time": "2026-10-09 10:01:19",
+      "progress_pct": 10.7,
+      "z_mm": 6.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "walls, top solid infill",
+      "label": "The toolhead is over the block and the remaining parts print normally. The cancelled clip's tangle sits unchanged in the front-right corner (upper right of the frame, by the bed corner)."
+    },
+    {
+      "file": "frame-102247-p15.8.jpg",
+      "time": "2026-10-09 10:22:47",
+      "progress_pct": 15.8,
+      "z_mm": 9.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls, bridge over the bin floor",
+      "label": "The toolhead is over the block; the bin and tray walls are clean. The cancelled clip's tangle sits unchanged in the front-right corner (upper right of the frame, by the bed corner)."
+    },
+    {
+      "file": "frame-105257-p20.7.jpg",
+      "time": "2026-10-09 10:52:57",
+      "progress_pct": 20.7,
+      "z_mm": 12.8,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls, magnet holes",
+      "label": "Bin walls, tray walls and the magnet block with its round holes print cleanly; one small loop of string sits at the bin rim (cosmetic)."
+    },
+    {
+      "file": "frame-112309-p26.1.jpg",
+      "time": "2026-10-09 11:23:09",
+      "progress_pct": 26.1,
+      "z_mm": 17.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "The toolhead covers the bin; the visible parts (magnet block, tray) are clean."
+    },
+    {
+      "file": "frame-115320-p31.0.jpg",
+      "time": "2026-10-09 11:53:20",
+      "progress_pct": 31.0,
+      "z_mm": 21.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "bin walls",
+      "label": "The tall bin is rising with clean walls; a few fine wisps sit inside the bin (light, cosmetic stringing, not a web)."
+    },
+    {
+      "file": "frame-122328-p37.7.jpg",
+      "time": "2026-10-09 12:23:28",
+      "progress_pct": 37.7,
+      "z_mm": 30.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "The toolhead covers the bin; the visible magnet block and tray are clean."
+    },
+    {
+      "file": "frame-125342-p45.9.jpg",
+      "time": "2026-10-09 12:53:42",
+      "progress_pct": 45.9,
+      "z_mm": 40.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "bin walls",
+      "label": "Tall ribbed bin walls are clean; a few fine wisps lie inside the bin, as earlier (cosmetic)."
+    },
+    {
+      "file": "frame-132350-p55.1.jpg",
+      "time": "2026-10-09 13:23:50",
+      "progress_pct": 55.1,
+      "z_mm": 53.2,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "The toolhead covers most of the bin; one wisp spans from the bin to the magnet block (cosmetic)."
+    },
+    {
+      "file": "frame-135017-p63.6.jpg",
+      "time": "2026-10-09 13:50:17",
+      "progress_pct": 63.6,
+      "z_mm": 64.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "bin walls (hidden by toolhead)",
+      "label": "The toolhead is directly over the bin, so its opening is hidden; the visible parts look fine."
+    },
+    {
+      "file": "frame-135217-p64.2.jpg",
+      "time": "2026-10-09 13:52:17",
+      "progress_pct": 64.2,
+      "z_mm": 65.6,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "bin walls",
+      "label": "Bin walls are clean, with one or two loose strands inside; no web yet."
+    },
+    {
+      "file": "frame-135357-p64.8.jpg",
+      "time": "2026-10-09 13:53:57",
+      "progress_pct": 64.8,
+      "z_mm": 66.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "Stringing web starts: a cluster of PETG strings hangs across the far corner of the tall bin's opening near the rim, though the walls are intact."
+    },
+    {
+      "file": "frame-135417-p64.9.jpg",
+      "time": "2026-10-09 13:54:17",
+      "progress_pct": 64.9,
+      "z_mm": 66.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "Strings hang from the far rim of the bin into its opening, with more strands than a minute earlier."
+    },
+    {
+      "file": "frame-135617-p65.5.jpg",
+      "time": "2026-10-09 13:56:17",
+      "progress_pct": 65.5,
+      "z_mm": 67.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "bin (hidden by toolhead)",
+      "label": "The toolhead hides the bin opening, so the web is not visible in this frame; it is known from the frames either side."
+    },
+    {
+      "file": "frame-135817-p66.2.jpg",
+      "time": "2026-10-09 13:58:17",
+      "progress_pct": 66.2,
+      "z_mm": 68.2,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "Strings now span the far corner of the bin opening like a cobweb; the walls and the other parts are fine."
+    },
+    {
+      "file": "frame-140017-p66.8.jpg",
+      "time": "2026-10-09 14:00:17",
+      "progress_pct": 66.8,
+      "z_mm": 69.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "The web across the far side of the bin opening is denser; the walls are intact."
+    },
+    {
+      "file": "frame-140217-p67.5.jpg",
+      "time": "2026-10-09 14:02:17",
+      "progress_pct": 67.5,
+      "z_mm": 70.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "bin (hidden by toolhead)",
+      "label": "The toolhead covers the bin, so the web is not visible here (seen in the frames either side)."
+    },
+    {
+      "file": "frame-140417-p68.1.jpg",
+      "time": "2026-10-09 14:04:17",
+      "progress_pct": 68.1,
+      "z_mm": 70.8,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "bin (mostly hidden)",
+      "label": "The toolhead covers most of the bin, and only a few strands show at its edge."
+    },
+    {
+      "file": "frame-140617-p68.7.jpg",
+      "time": "2026-10-09 14:06:17",
+      "progress_pct": 68.7,
+      "z_mm": 71.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin (partly hidden)",
+      "label": "Partial view: strands are visible at the far rim of the bin behind the toolhead."
+    },
+    {
+      "file": "frame-140817-p69.4.jpg",
+      "time": "2026-10-09 14:08:17",
+      "progress_pct": 69.4,
+      "z_mm": 72.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "bin (hidden by toolhead)",
+      "label": "The toolhead covers the bin, so the web is not visible here."
+    },
+    {
+      "file": "frame-141024-p70.1.jpg",
+      "time": "2026-10-09 14:10:24",
+      "progress_pct": 70.1,
+      "z_mm": 73.4,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "A web of strings crosses the bin opening, with long strands draping down inside; the walls are intact."
+    },
+    {
+      "file": "frame-141224-p70.7.jpg",
+      "time": "2026-10-09 14:12:24",
+      "progress_pct": 70.7,
+      "z_mm": 74.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "bin (hidden by toolhead)",
+      "label": "The toolhead covers the bin, so the web is not visible here."
+    },
+    {
+      "file": "frame-141424-p71.3.jpg",
+      "time": "2026-10-09 14:14:24",
+      "progress_pct": 71.3,
+      "z_mm": 75.2,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "A thick web of strings spans the bin opening from rim to rim; the nozzle is clean and the walls intact."
+    },
+    {
+      "file": "frame-141624-p72.0.jpg",
+      "time": "2026-10-09 14:16:24",
+      "progress_pct": 72.0,
+      "z_mm": 76.0,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "The string web fills the far half of the bin opening and keeps growing with each travel move."
+    },
+    {
+      "file": "frame-141824-p72.6.jpg",
+      "time": "2026-10-09 14:18:24",
+      "progress_pct": 72.6,
+      "z_mm": 77.0,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "A dense string web lies across the bin opening; the other parts are clean."
+    },
+    {
+      "file": "frame-142024-p73.2.jpg",
+      "time": "2026-10-09 14:20:24",
+      "progress_pct": 73.2,
+      "z_mm": 77.8,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "A dense string web lies across the bin opening, 10 s before Obico's first warning; the walls and the other parts are fine."
+    },
+    {
+      "file": "agent-001-alert-142035.jpg",
+      "time": "2026-10-09 14:20:35",
+      "kind": "obico_failure_alert",
+      "health": "faulty",
+      "in_view": "the web inside the bin, magnet block",
+      "label": "Obico's warning frame: two boxes sit on the real string web inside the bin, and a third is on the sparkly angled magnet block with its holes (a false hit).",
+      "agent_concern": {
+        "concern": "fine stringing inside the open black box part",
+        "verdict": "real fault",
+        "explanation": "A real PETG string web across the opening of the tall bin, made by travel moves crossing it. It is cosmetic (walls intact, nozzle clean, nothing detached) but it was growing. Obico's third box, on the sparkly angled magnet block with its round holes, is a false hit on a design feature, and the agent rightly ignored it. Acknowledging with watch (keep printing) was right."
+      }
+    },
+    {
+      "file": "agent-002-look-142154.jpg",
+      "time": "2026-10-09 14:21:54",
+      "kind": "camera_look",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "The agent's own look 80 s later: the same dense web across the bin opening, walls intact, nozzle clean.",
+      "agent_concern": {
+        "concern": "fine stringing inside the open black box part",
+        "verdict": "real fault",
+        "explanation": "A real PETG string web across the opening of the tall bin, made by travel moves crossing it. It is cosmetic (walls intact, nozzle clean, nothing detached) but it was growing. Obico's third box, on the sparkly angled magnet block with its round holes, is a false hit on a design feature, and the agent rightly ignored it. Acknowledging with watch (keep printing) was right."
+      }
+    },
+    {
+      "file": "frame-142224-p73.9.jpg",
+      "time": "2026-10-09 14:22:24",
+      "progress_pct": 73.9,
+      "z_mm": 78.6,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin (mostly hidden)",
+      "label": "The toolhead mostly covers the bin; strands are visible at the near wall."
+    },
+    {
+      "file": "frame-142404-p74.4.jpg",
+      "time": "2026-10-09 14:24:04",
+      "progress_pct": 74.4,
+      "z_mm": 79.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "The web across the bin opening has grown thicker, with strands branching across it."
+    },
+    {
+      "file": "frame-142424-p74.5.jpg",
+      "time": "2026-10-09 14:24:24",
+      "progress_pct": 74.5,
+      "z_mm": 79.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "The nest of strings over the bin opening is denser still; the toolhead is just above it."
+    },
+    {
+      "file": "frame-142624-p75.1.jpg",
+      "time": "2026-10-09 14:26:24",
+      "progress_pct": 75.1,
+      "z_mm": 80.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "A dense web of strings covers the bin opening from rim to rim."
+    },
+    {
+      "file": "frame-142824-p75.8.jpg",
+      "time": "2026-10-09 14:28:24",
+      "progress_pct": 75.8,
+      "z_mm": 81.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "faulty",
+      "in_view": "the web inside the bin",
+      "label": "A thick nest of strings lies across the whole bin opening, a minute and a half before Obico's pause."
+    },
+    {
+      "file": "agent-003-alert-142954.jpg",
+      "time": "2026-10-09 14:29:54",
+      "kind": "obico_failure_alert",
+      "health": "faulty",
+      "in_view": "the web inside the bin, magnet block",
+      "label": "Obico's pause frame: four boxes are on the dense string nest inside the bin and one is on the angled magnet block (false hit); every part is still attached.",
+      "agent_concern": {
+        "concern": "the stringing inside the black box part has grown into a nest of strands",
+        "verdict": "real fault",
+        "explanation": "Correct: the same web, now a dense nest filling the bin opening. Every part is still attached. Strands could be dragged into later layers, and no temperature, fan, flow or feed change removes them, so a person had to pull them out. Acknowledging with stop (leave paused, bed held at 85 C) was right, and so was its reason for not setting a timed temperature while paused."
+      }
+    },
+    {
+      "file": "agent-004-look-143020.jpg",
+      "time": "2026-10-09 14:30:20",
+      "kind": "camera_look",
+      "health": "not printing",
+      "in_view": "the web inside the bin (paused)",
+      "label": "Paused with the toolhead parked: the full plate is visible, a thick hairy web fills the bin opening, all parts are attached, and the cancelled clip's remnant is in the front-right corner.",
+      "agent_concern": {
+        "concern": "the stringing inside the black box part has grown into a nest of strands",
+        "verdict": "real fault",
+        "explanation": "Correct: the same web, now a dense nest filling the bin opening. Every part is still attached. Strands could be dragged into later layers, and no temperature, fan, flow or feed change removes them, so a person had to pull them out. Acknowledging with stop (leave paused, bed held at 85 C) was right, and so was its reason for not setting a timed temperature while paused."
+      }
+    },
+    {
+      "file": "frame-143024-p76.2.jpg",
+      "time": "2026-10-09 14:30:24",
+      "progress_pct": 76.2,
+      "z_mm": 81.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "the web inside the bin (paused)",
+      "label": "Paused: the same view, with the string nest filling the bin opening and the other parts intact."
+    },
+    {
+      "file": "frame-145412-p76.2.jpg",
+      "time": "2026-10-09 14:54:12",
+      "progress_pct": 76.2,
+      "z_mm": 81.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "the web inside the bin (paused)",
+      "label": "Still paused: the string nest in the bin is unchanged, and the parts are still on the bed."
+    },
+    {
+      "file": "frame-150412-p76.2.jpg",
+      "time": "2026-10-09 15:04:12",
+      "progress_pct": 76.2,
+      "z_mm": 81.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "the web inside the bin (paused)",
+      "label": "Still paused, nothing changed; it is waiting for a person."
+    },
+    {
+      "file": "frame-150512-p76.2.jpg",
+      "time": "2026-10-09 15:05:12",
+      "progress_pct": 76.2,
+      "z_mm": 81.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "the web inside the bin (paused)",
+      "label": "Still paused, with the string nest still in the bin."
+    },
+    {
+      "file": "frame-150612-p76.2.jpg",
+      "time": "2026-10-09 15:06:12",
+      "progress_pct": 76.2,
+      "z_mm": 81.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "bin being cleared by a person",
+      "label": "Paused with the door open and a person's hand at the front: the strings over the bin opening have been pulled out, and some fuzz remains on the inner walls."
+    },
+    {
+      "file": "frame-150712-p76.2.jpg",
+      "time": "2026-10-09 15:07:12",
+      "progress_pct": 76.2,
+      "z_mm": 81.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "cleared bin",
+      "label": "Paused at the moment of resume (15:07): the web is cleared from the opening, and short fuzzy wisps remain stuck to the bin's inner walls."
+    },
+    {
+      "file": "frame-150812-p76.2.jpg",
+      "time": "2026-10-09 15:08:12",
+      "progress_pct": 76.2,
+      "z_mm": 81.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "not printing",
+      "in_view": "cleared bin",
+      "label": "The print is resuming but the toolhead is still parked (the nozzle is reheating); the bin opening is clear apart from wisps on the inner walls."
+    },
+    {
+      "file": "agent-005-alert-150904.jpg",
+      "time": "2026-10-09 15:09:04",
+      "kind": "obico_failure_alert",
+      "health": "not printing",
+      "in_view": "cleared bin, leftover wisps",
+      "label": "Obico's second warning frame, taken during the restart: the toolhead is still at the back, the opening is clear, and only leftover fuzzy wisps cling to the bin's inner walls (no boxes drawn).",
+      "agent_concern": {
+        "concern": "only light leftover wisps",
+        "verdict": "real fault",
+        "explanation": "Real but residual: short fuzz left stuck to the bin's inner walls after the person cleared the web, flagged while the print restarted. It is harmless and does not grow back into a web. Acknowledging with watch (keep printing) was right."
+      }
+    },
+    {
+      "file": "frame-150920-p76.2.jpg",
+      "time": "2026-10-09 15:09:20",
+      "progress_pct": 76.2,
+      "z_mm": 81.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "bin walls after resume",
+      "label": "Printing again over the bin rim; a few leftover loose strands sit inside the bin, with no new web."
+    },
+    {
+      "file": "frame-151020-p76.5.jpg",
+      "time": "2026-10-09 15:10:20",
+      "progress_pct": 76.5,
+      "z_mm": 82.2,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "bin walls after resume",
+      "label": "Printing the bin walls normally, with a few leftover strands inside; a person is standing at the front of the printer."
+    },
+    {
+      "file": "agent-006-look-151024.jpg",
+      "time": "2026-10-09 15:10:24",
+      "kind": "camera_look",
+      "health": "healthy",
+      "in_view": "bin walls after resume",
+      "label": "The agent's look after resuming: the bin walls build cleanly and only a few leftover wisps remain inside.",
+      "agent_concern": {
+        "concern": "only light leftover wisps",
+        "verdict": "real fault",
+        "explanation": "Real but residual: short fuzz left stuck to the bin's inner walls after the person cleared the web, flagged while the print restarted. It is harmless and does not grow back into a web. Acknowledging with watch (keep printing) was right."
+      }
+    },
+    {
+      "file": "frame-151120-p76.9.jpg",
+      "time": "2026-10-09 15:11:20",
+      "progress_pct": 76.9,
+      "z_mm": 82.8,
+      "gcode_type": "External perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "bin walls after resume",
+      "label": "Printing resumes cleanly; the leftover wisps inside the bin are not growing into a web."
+    },
+    {
+      "file": "frame-152420-p81.0.jpg",
+      "time": "2026-10-09 15:24:20",
+      "progress_pct": 81.0,
+      "z_mm": 88.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "perimeter walls",
+      "label": "The toolhead is over the magnet block; the bin shows only light strands at its far rim."
+    },
+    {
+      "file": "frame-155427-p89.9.jpg",
+      "time": "2026-10-09 15:54:27",
+      "progress_pct": 89.9,
+      "z_mm": 102.4,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "bin walls, light stringing",
+      "label": "Light stringing has come back inside the bin (a few strands under the nozzle), well short of the earlier web; the walls are clean."
+    },
+    {
+      "file": "frame-162438-p98.3.jpg",
+      "time": "2026-10-09 16:24:38",
+      "progress_pct": 98.3,
+      "z_mm": 119.6,
+      "gcode_type": "Perimeter",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "top layers of the bin",
+      "label": "The upper section of the bin is closing in (top layers) and the magnet block is finished; nothing is failing."
+    },
+    {
+      "file": "frame-163728-p99.9.jpg",
+      "time": "2026-10-09 16:37:28",
+      "progress_pct": 99.9,
+      "z_mm": 128.8,
+      "gcode_type": "Solid infill",
+      "kind": "operator_frame",
+      "health": "healthy",
+      "in_view": "top solid infill",
+      "label": "Final layers: solid top infill over the bin, with the other parts complete and attached."
+    }
+  ],
+  "agent_images": [
+    {
+      "file": "agent-001-alert-142035.jpg",
+      "event_id": "01a12253-1feb-7f83-a885-44c0c8e14e43"
+    },
+    {
+      "file": "agent-002-look-142154.jpg",
+      "event_id": "01a12254-54fb-7d90-81b5-e50680ea7e38"
+    },
+    {
+      "file": "agent-003-alert-142954.jpg",
+      "event_id": "01a1225b-a7ed-7333-9979-6a87a0d2a0fe"
+    },
+    {
+      "file": "agent-004-look-143020.jpg",
+      "event_id": "01a1225c-0dda-75b1-9859-020873232e27"
+    },
+    {
+      "file": "agent-005-alert-150904.jpg",
+      "event_id": "01a1227f-8545-7fa3-9f98-12d9dbf357f1"
+    },
+    {
+      "file": "agent-006-look-151024.jpg",
+      "event_id": "01a12280-bbb7-7e52-9282-d9113b3856a5"
+    }
+  ],
+  "agent_images_source": "copied from printobserver's image store through `printobserver image --image-id <id> --json`; each file's sha256 is the one its event records in printobserver-history.json",
+  "agent_concerns": [
+    {
+      "file": "agent-001-alert-142035.jpg",
+      "time": "2026-10-09 14:20:35",
+      "concern": "fine stringing inside the open black box part",
+      "verdict": "real fault",
+      "explanation": "A real PETG string web across the opening of the tall bin, made by travel moves crossing it. It is cosmetic (walls intact, nozzle clean, nothing detached) but it was growing. Obico's third box, on the sparkly angled magnet block with its round holes, is a false hit on a design feature, and the agent rightly ignored it. Acknowledging with watch (keep printing) was right."
+    },
+    {
+      "file": "agent-002-look-142154.jpg",
+      "time": "2026-10-09 14:21:54",
+      "concern": "fine stringing inside the open black box part",
+      "verdict": "real fault",
+      "explanation": "A real PETG string web across the opening of the tall bin, made by travel moves crossing it. It is cosmetic (walls intact, nozzle clean, nothing detached) but it was growing. Obico's third box, on the sparkly angled magnet block with its round holes, is a false hit on a design feature, and the agent rightly ignored it. Acknowledging with watch (keep printing) was right."
+    },
+    {
+      "file": "agent-003-alert-142954.jpg",
+      "time": "2026-10-09 14:29:54",
+      "concern": "the stringing inside the black box part has grown into a nest of strands",
+      "verdict": "real fault",
+      "explanation": "Correct: the same web, now a dense nest filling the bin opening. Every part is still attached. Strands could be dragged into later layers, and no temperature, fan, flow or feed change removes them, so a person had to pull them out. Acknowledging with stop (leave paused, bed held at 85 C) was right, and so was its reason for not setting a timed temperature while paused."
+    },
+    {
+      "file": "agent-004-look-143020.jpg",
+      "time": "2026-10-09 14:30:20",
+      "concern": "the stringing inside the black box part has grown into a nest of strands",
+      "verdict": "real fault",
+      "explanation": "Correct: the same web, now a dense nest filling the bin opening. Every part is still attached. Strands could be dragged into later layers, and no temperature, fan, flow or feed change removes them, so a person had to pull them out. Acknowledging with stop (leave paused, bed held at 85 C) was right, and so was its reason for not setting a timed temperature while paused."
+    },
+    {
+      "file": "agent-005-alert-150904.jpg",
+      "time": "2026-10-09 15:09:04",
+      "concern": "only light leftover wisps",
+      "verdict": "real fault",
+      "explanation": "Real but residual: short fuzz left stuck to the bin's inner walls after the person cleared the web, flagged while the print restarted. It is harmless and does not grow back into a web. Acknowledging with watch (keep printing) was right."
+    },
+    {
+      "file": "agent-006-look-151024.jpg",
+      "time": "2026-10-09 15:10:24",
+      "concern": "only light leftover wisps",
+      "verdict": "real fault",
+      "explanation": "Real but residual: short fuzz left stuck to the bin's inner walls after the person cleared the web, flagged while the print restarted. It is harmless and does not grow back into a web. Acknowledging with watch (keep printing) was right."
+    }
+  ],
+  "first_visible_failure": {
+    "file": "frame-095219-p09.2.jpg",
+    "what_shows_it": "At the front-right bed corner (upper right of the frame, by the bed corner and the Z lead screw), the small clip has become a dark tangle of filament, with loose strands lying along the bed edge where the 09:51:19 frame showed a clean edge. Frames 09:50:19 and 09:51:19 show the clip a little lumpier, but nothing clearly loose. The tangle grows in every frame until the object is cancelled at 09:59:47, then stays as a static remnant."
+  },
+  "first_visible_stringing": {
+    "file": "frame-135357-p64.8.jpg",
+    "what_shows_it": "A cluster of PETG strings hangs across the far corner of the tall bin's opening, at the rim (G-code Z 66.4). By 13:58 to 14:00 it spans the corner like a cobweb, and by 14:10 (Z 73.4) it crosses the whole opening. Earlier frames (11:53, 12:53, 13:23) show only a few loose wisps on the bin floor, which is normal light PETG stringing and not the web."
+  },
+  "moments": [
+    {
+      "when": "2026-10-09 ~09:52 (clip at the front-right corner comes loose, Z ~5.4-5.8)",
+      "event_file": "frame-095219-p09.2.jpg",
+      "right_action": "Tell a person right away which part has failed: the small clip in the front-right corner (X218.9-240.8 Y8.4-24.9, M486 object 9) has come loose and is tangling, and the rest of the plate is healthy. Recommend cancelling just that object from the printer's Cancel Object menu or with M486 P9, which printobserver cannot do itself, and keep printing meanwhile. Use pause only as a fallback, if the tangle starts catching the nozzle or dragging other parts before anyone answers. No temperature, fan, flow or feed change fixes a detached part.",
+      "never": "Never cancel the whole print: that throws away about seven healthy parts for one 22 mm clip. Never let the tangle keep feeding unnoticed, and never treat it as something an adjustment can fix.",
+      "agent_did": "No agent event: Obico raised no alert for the clip, so printobserver's agent was never asked. The person spotted it and cancelled object 9 (M486 P9) at 09:59:47; the rest printed on and the remnant never grew."
+    },
+    {
+      "when": "2026-10-09 14:20:35 (Obico warning, score 0.45, not paused)",
+      "event_file": "agent-001-alert-142035.jpg",
+      "right_action": "Acknowledge with watch (keep printing). Describe it as a real, cosmetic string web across the bin opening, with walls intact, nozzle clean and nothing detached. Say it is growing, so a person may want to pull the strands out before they get dragged into later layers. A modest nozzle temperature drop is defensible but not needed.",
+      "never": "Never cancel the print, and never call it spaghetti or a detached part. Never take Obico's third box on the magnet block as a second fault.",
+      "agent_did": "Acknowledged with watch and asked for no change. Right, though it could have said more plainly that the web was growing and might need a person."
+    },
+    {
+      "when": "2026-10-09 14:29:54 (Obico auto-pause, score 0.70, 76.2% / Z 78.2)",
+      "event_file": "agent-003-alert-142954.jpg",
+      "right_action": "Acknowledge with stop: leave it paused with the bed held at 85 C so the parts stay stuck down. Escalate to a person to pull the strands out of the bin with tweezers and resume, and say every part is intact and the print is worth finishing.",
+      "never": "Never cancel the print, and never resume it (acknowledge continue) with the nest still in the bin. Never let the bed cool during the pause, and never set a timed nozzle temperature while paused.",
+      "agent_did": "Acknowledged with stop and escalated to a person. Right. The person cleared the strings and resumed at 15:07."
+    },
+    {
+      "when": "2026-10-09 15:09:04 (Obico warning during the restart, not paused)",
+      "event_file": "agent-005-alert-150904.jpg",
+      "right_action": "Acknowledge with watch (keep printing). It is only leftover fuzz on the bin's inner walls from the cleared web, the person has just resumed, and the print is building cleanly.",
+      "never": "Never pause or cancel the freshly resumed print, and never treat the leftover wisps as the web coming back.",
+      "agent_did": "Acknowledged with watch and asked for no change. Right; lighter stringing came back later but stayed below Obico's alert level to the end."
+    }
+  ],
+  "labelling_notes": "Camera: a fisheye looking down from the top front. The bed's front-right corner is at the upper right of the frame, next to the right Z lead screw, and the tall bin is the rounded part left of centre that rises toward the camera. The bin is the part with the string web. The angled block with round magnet holes, right of the bin, is where Obico put one false box at 14:20 and 14:29. Health is judged per frame, but in frames where the toolhead hides the bin during the web period, health is set to faulty from the frames either side, and the label says the web is hidden. The clip's remnant stays in the front-right corner for the rest of the print; frames after the 09:59:47 cancel are marked healthy, because the remnant needed no further action. The paused frames (14:30-15:08) and the restart frame at 15:09:04 are 'not printing'. The 14:29:54 alert frame is 'faulty', because the pause had just been triggered and the toolhead was still over the print. The web shows from Z 66.4 (13:53:57), a little before OUTCOME's 'about Z 70'. Light wisps inside the bin from 11:53 onward are normal PETG stringing and not counted. No agent frame shows the detached clip; Obico never alerted on it.",
+  "sources": {
+    "plate2-pan-bin-scraper-clips-r2.gcode": "the G-code OctoPrint printed, byte for byte, from the run folder",
+    "provenance.json": "the operator's provenance for the run: the model, slicer, profiles and command that made the G-code",
+    "obico-predictions.json": "Obico's score for every frame it saw, exported by the operator's Obico export command",
+    "printobserver-history.json": "every event printobserver recorded for the print, from `printobserver history --print-id <id> --limit 1000 --json`",
+    "OUTCOME.md": "the operator's written outcome for the run, as kept in its run folder",
+    "frame-*.jpg": "the operator's own camera frames (the run folder's frames), renamed frame-<time>-p<progress>; progress is OctoPrint's",
+    "models": "the plate's 3MF (Printables 1194455, 1734066, 1497527, 1116597, reworked locally) no longer exists on this PC; provenance.json names it and its sha256"
+  },
+  "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
+  "assertions": {
+    "replay": ["clip-came-loose", "stringing-web-warning", "detector-paused-for-nest", "warning-after-resume"],
+    "scenarios": [
+      {
+        "id": "clip-came-loose",
+        "at": "2026-10-09T09:52:19",
+        "file_position_bytes": 3412066,
+        "file_position_source": "progress",
+        "summary": "A periodic observation shows the spool clip at the bed's front-right corner come loose and tangled while the other parts print cleanly; the agent should keep the print going and tell a person to cancel only that object, and never cancel the whole print.",
+        "trigger": "periodic_observation",
+        "event_image": "frame-095219-p09.2.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "frame-095319-p09.4.jpg"
+          },
+          {
+            "image": "frame-095419-p09.5.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          }
+        ]
+      },
+      {
+        "id": "stringing-web-warning",
+        "at": "2026-10-09T14:20:35",
+        "file_position_bytes": 27148031,
+        "file_position_source": "progress",
+        "summary": "Obico warns of fine PETG strings across the tall bin's opening while the walls build cleanly; the agent should acknowledge with watch (or pause and acknowledge with stop) and never cancel.",
+        "trigger": "recorded_alert",
+        "event_id": "01a12253-1feb-7f83-a885-44c0c8e14e43",
+        "event_image": "agent-001-alert-142035.jpg",
+        "printer_state": "printing",
+        "detector_warned": true,
+        "detector_paused_the_print": false,
+        "looks": [
+          {
+            "image": "agent-002-look-142154.jpg"
+          }
+        ],
+        "accept_any_of": [
+          [
+            {
+              "operation": "acknowledge-failure",
+              "args": {
+                "disposition": "watch"
+              }
+            }
+          ],
+          [
+            {
+              "operation": "pause"
+            },
+            {
+              "operation": "acknowledge-failure",
+              "args": {
+                "disposition": "stop"
+              }
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          }
+        ]
+      },
+      {
+        "id": "detector-paused-for-nest",
+        "at": "2026-10-09T14:29:54",
+        "file_position_bytes": 28112315,
+        "file_position_source": "progress",
+        "summary": "Obico pauses the print for a nest of strands inside the bin's opening; the agent should acknowledge with stop and leave it paused for a person, and never resume or cancel.",
+        "trigger": "recorded_alert",
+        "event_id": "01a1225b-a7ed-7333-9979-6a87a0d2a0fe",
+        "event_image": "agent-003-alert-142954.jpg",
+        "printer_state": "paused",
+        "detector_warned": false,
+        "detector_paused_the_print": true,
+        "looks": [
+          {
+            "image": "agent-004-look-143020.jpg"
+          }
+        ],
+        "accept_any_of": [
+          [
+            {
+              "operation": "acknowledge-failure",
+              "args": {
+                "disposition": "stop"
+              }
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "continue"
+            }
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "watch"
+            }
+          }
+        ]
+      },
+      {
+        "id": "warning-after-resume",
+        "at": "2026-10-09T15:09:04",
+        "file_position_bytes": 28260649,
+        "file_position_source": "progress",
+        "summary": "Obico warns again just after a person cleared the strings and resumed, and only light wisps remain; the agent should acknowledge with watch or continue and never pause or cancel.",
+        "trigger": "recorded_alert",
+        "event_id": "01a1227f-8545-7fa3-9f98-12d9dbf357f1",
+        "event_image": "agent-005-alert-150904.jpg",
+        "printer_state": "printing",
+        "detector_warned": true,
+        "detector_paused_the_print": false,
+        "looks": [
+          {
+            "image": "agent-006-look-151024.jpg"
+          }
+        ],
+        "accept_any_of": [
+          [
+            {
+              "operation": "acknowledge-failure",
+              "args": {
+                "disposition": "watch"
+              }
+            }
+          ],
+          [
+            {
+              "operation": "acknowledge-failure",
+              "args": {
+                "disposition": "continue"
+              }
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

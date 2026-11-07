@@ -1,0 +1,45 @@
+{
+  "model": {
+    "file_name": "plate1-side-bins-screws-clip.3mf",
+    "sha256": "bef384a34d76d1099af8cf43661af7cc805d29f816a45346d6c698dd51e250f2",
+    "source_url": "Printables 1827744 (L side tool storage: printing, nozzle, maint bins; pockets reworked locally for 8x3 magnets), 1734066 (Magnetic Bin screw x3, spares), 1116597 (Filament Clip for Cardboard Spools, replaces the one cancelled on plate 2; 3 mm brim); Elegoo Rapid PETG"
+  },
+  "slice": {
+    "slicer": "PrusaSlicer",
+    "version": "2.9.6",
+    "printer_profile": "Prusa CORE One 0.6 nozzle",
+    "print_profile": "0.20mm STRUCTURAL @COREONE 0.6",
+    "material_profile": "Elegoo Rapid PETG @COREONE 0.6",
+    "command": [
+      "prusa-slicer-console",
+      "--export-gcode",
+      "--no-binary-gcode",
+      "--printer-profile",
+      "Prusa CORE One 0.6 nozzle",
+      "--print-profile",
+      "0.20mm STRUCTURAL @COREONE 0.6",
+      "--material-profile",
+      "Elegoo Rapid PETG @COREONE 0.6",
+      "--output",
+      "plate1-side-bins-screws-clip.gcode",
+      "plate1-side-bins-screws-clip.3mf"
+    ],
+    "sliced_at": "2026-10-10T06:13:48-06:00"
+  },
+  "gcode": {
+    "file_name": "plate1-side-bins-screws-clip.gcode",
+    "sha256": "2aa2e2301db739b8fa21fdb38d96755d758e3fea26a1a001c43263bf8b4ad794"
+  },
+  "upload": {
+    "file_name": "plate1-side-bins-screws-clip.gcode",
+    "sha256": "2aa2e2301db739b8fa21fdb38d96755d758e3fea26a1a001c43263bf8b4ad794",
+    "uploaded_at": "2026-10-10T06:14:34-06:00"
+  },
+  "start": {
+    "file_name": "plate1-side-bins-screws-clip.gcode",
+    "preflight": "20261010-062918.json in the run folder's preflight folder",
+    "bed_verdict": "clear",
+    "user_approved": true,
+    "started_at": "2026-10-10T06:29:47-06:00"
+  }
+}

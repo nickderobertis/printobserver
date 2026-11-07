@@ -30,7 +30,7 @@ import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NewType
+from typing import Any, Literal, NewType
 
 import yaml
 from contract_codegen.schemas import ContractError, load, read_schemas
@@ -81,6 +81,13 @@ CI_STEPS = "tests/real-prints-lfs/ci-steps.yml"
 LFS_PROGRAMS = ("git lfs", "git-lfs")
 #: A recipe a command line calls.
 JUST_CALL = re.compile(r"\bjust (?P<recipe>[a-z][\w-]*)")
+
+#: What starts a scenario's turn, as `case.schema.json` declares it.
+Trigger = Literal["recorded_alert", "synthetic_alert", "periodic_observation", "start_request"]
+#: The triggers that happen during a print, whose position in its G-code is known.
+POSITIONED_TRIGGERS: frozenset[Trigger] = frozenset(
+    {"periodic_observation", "recorded_alert", "synthetic_alert"}
+)
 
 # An event's id in a case's history, and a scenario's id within its case.
 EventId = NewType("EventId", str)
@@ -239,15 +246,19 @@ def _committed(
     yet is not answered.
     """
     listing = run(
-        ["git", "ls-files", "-s", "-z", "--", *relatives],
+        # The whole index and not the paths asked for, because a case's many frames
+        # overrun a Windows command line.
+        ["git", "ls-files", "-s", "-z"],
         cwd=repo.root,
         env=environment,
         check=True,
     ).stdout
+    asked = set(relatives)
     blobs: dict[str, str] = {}
     for entry in filter(None, listing.split("\0")):
         stage, _, name = entry.partition("\t")
-        blobs[name] = stage.split()[1]
+        if name in asked:
+            blobs[name] = stage.split()[1]
     sizes = run(
         ["git", "cat-file", "--batch-check=%(objectname) %(objectsize)"],
         cwd=repo.root,
@@ -353,6 +364,9 @@ class Scenario:
     """One situation a case puts the agent in, and what passes it."""
 
     id: ScenarioId
+    at: str
+    trigger: Trigger
+    file_position_bytes: int | None
     event_id: EventId | None
     event_image: str
     printer_state: str
@@ -365,6 +379,9 @@ class Scenario:
         """A scenario from its validated JSON."""
         return cls(
             id=ScenarioId(raw["id"]),
+            at=raw["at"],
+            trigger=raw["trigger"],
+            file_position_bytes=raw.get("file_position_bytes"),
             event_id=EventId(raw["event_id"]) if "event_id" in raw else None,
             event_image=raw["event_image"],
             printer_state=raw["printer_state"],
@@ -411,6 +428,7 @@ class Case:
     directory: Path
     document: dict[str, Any]
     scenarios: tuple[Scenario, ...]
+    replay: tuple[ScenarioId, ...]
     agent_images: dict[str, EventId]
     history: dict[EventId, Event] | None
 
@@ -428,9 +446,10 @@ class Case:
         for text in texts:
             yield from FILE_TOKEN.findall(text)
 
-    def mentioned(self) -> set[str]:
-        """Every file name the case.json mentions anywhere."""
-        return set(FILE_TOKEN.findall(json.dumps(self.document)))
+    def mentions(self, name: str) -> bool:
+        """Whether the case.json names a file anywhere, a name holding a space included."""
+        whole_name = rf"(?<![\w.-]){re.escape(name)}(?![\w.-])"
+        return re.search(whole_name, json.dumps(self.document, ensure_ascii=False)) is not None
 
 
 def _file_fields(value: object) -> Iterator[str]:
@@ -503,6 +522,7 @@ def _read_case(
         directory=directory,
         document=document,
         scenarios=tuple(Scenario.read(raw) for raw in document["assertions"]["scenarios"]),
+        replay=tuple(ScenarioId(entry) for entry in document["assertions"].get("replay", ())),
         agent_images={
             entry["file"]: EventId(entry["event_id"]) for entry in document.get("agent_images", [])
         },
@@ -556,11 +576,10 @@ def real_prints_files(repo: Repo) -> list[str]:
         for named in case.referenced():
             if not (case.directory / named).is_file():
                 findings.append(f"{case.name}: {CASE_FILE} names {named}, which is not a file")
-        mentioned = case.mentioned()
         findings.extend(
             f"{case.name}: {path.name} is in the case but {CASE_FILE} names it nowhere"
             for path in sorted(case.directory.iterdir())
-            if path.name != CASE_FILE and path.name not in mentioned
+            if path.name != CASE_FILE and not case.mentions(path.name)
         )
     return findings
 
@@ -674,6 +693,77 @@ def real_prints_scenarios(repo: Repo) -> list[str]:
                 findings.append(f"{case.name}: scenario {scenario.id} is declared twice")
             seen.add(scenario.id)
             findings.extend(_scenario_findings(case, scenario, states))
+    return findings
+
+
+def printed_gcode(directory: Path) -> Path | None:
+    """The G-code a case's print ran, when the case carries it.
+
+    Its one `.gcode` that is not the `.clean.gcode` slice a fault was planted
+    in. A case that printed a sibling's file names it with `../` and carries none.
+    """
+    printed = sorted(
+        path
+        for path in directory.glob("*.gcode")
+        if path.is_file() and not path.name.endswith(".clean.gcode")
+    )
+    return printed[0] if printed else None
+
+
+def stored_size(path: Path) -> int:
+    """The size of the file a path stands for, read off its pointer where it holds one."""
+    with path.open("rb") as held:
+        head = held.read(POINTER_LIMIT + 1)
+    stands_for = pointer(head)
+    return stands_for.size if stands_for else path.stat().st_size
+
+
+def _position_findings(case: Case) -> Iterator[str]:
+    """Each way a scenario's file position is missing or outside its case's G-code."""
+    gcode = printed_gcode(case.directory)
+    size = stored_size(gcode) if gcode else None
+    for scenario in case.scenarios:
+        where = f"{case.name}: scenario {scenario.id}"
+        position = scenario.file_position_bytes
+        if position is None:
+            if size is not None and scenario.trigger in POSITIONED_TRIGGERS:
+                yield (
+                    f"{where} is a {scenario.trigger} of a case carrying its G-code and "
+                    "names no file_position_bytes"
+                )
+            continue
+        if size is None:
+            yield f"{where} names a file_position_bytes, but the case carries no G-code"
+        elif position >= size:
+            yield (
+                f"{where} has file_position_bytes {position}, past the end of "
+                f"{gcode.name if gcode else 'its G-code'} at {size} bytes"
+            )
+
+
+def _replay_findings(case: Case) -> Iterator[str]:
+    """Each way a case's `replay` names a scenario it lacks, or leaves time order."""
+    moments = {scenario.id: scenario.at for scenario in case.scenarios}
+    previous: tuple[ScenarioId, str] | None = None
+    for entry in case.replay:
+        at = moments.get(entry)
+        if at is None:
+            yield f"{case.name}: replay names {entry}, which is no scenario of the case"
+            continue
+        if previous is not None and at <= previous[1]:
+            yield (
+                f"{case.name}: replay has {entry} at {at} after {previous[0]} at {previous[1]}, "
+                "which is not strictly increasing time"
+            )
+        previous = (entry, at)
+
+
+def real_prints_replay(repo: Repo) -> list[str]:
+    """Every `replay` is in time order over its own scenarios; every position is in its file."""
+    findings: list[str] = []
+    for case in _readable(repo, "real-prints-replay", findings):
+        findings.extend(_replay_findings(case))
+        findings.extend(_position_findings(case))
     return findings
 
 

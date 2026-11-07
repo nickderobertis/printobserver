@@ -1644,6 +1644,7 @@ impl FakeVision {
         Self {
             journal,
             image: Mutex::new(FetchedImage {
+                captured_at: None,
                 bytes: RawBytes::new(b"\x89PNG\r\n\x1a\n".to_vec()),
                 content_type: "image/png".to_owned(),
             }),
