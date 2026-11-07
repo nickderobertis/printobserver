@@ -246,7 +246,14 @@ class Timeline:
         self.looked = False
         moment = self.case.moments[index]
         following = self.case.moments[index + 1 :]
-        self.ceiling = instant(following[0].at) - timedelta(seconds=1) if following else None
+        # After the last replayed event the recording itself goes on, so its next
+        # recorded moment still bounds what a look can reach.
+        later = self.case.next_recorded_after(moment.at)
+        self.ceiling = (
+            instant(following[0].at) - timedelta(seconds=1)
+            if following
+            else (later.at - timedelta(seconds=1) if later else None)
+        )
         self._set_clock(instant(moment.at))
         at = self.case.frame_at_or_before(moment.at, moment.event_image)
         if moment.is_alert:
@@ -335,7 +342,11 @@ class Timeline:
         if not self.looked:
             return low
         following = self.case.moments[self.index + 1 :]
-        high = following[0].file_position_bytes - 1 if following else self.case.gcode_size - 1
+        later = self.case.next_recorded_after(self.moment.at)
+        if following:
+            high = following[0].file_position_bytes - 1
+        else:
+            high = later.position - 1 if later else self.case.gcode_size - 1
         return max(low, min(self.case.position_at(self.now()), high))
 
     def _print_time(self) -> int:

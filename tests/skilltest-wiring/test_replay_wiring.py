@@ -16,7 +16,7 @@ import shutil
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from http.client import HTTPConnection
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
@@ -566,6 +566,49 @@ def test_a_single_event_replay_moves_the_job_at_the_recordings_rate() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "name", ["under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"]
+)
+def test_a_look_after_the_last_replayed_event_stops_short_of_the_recordings_next_moment(
+    name: str, scratch: Path
+) -> None:
+    """More recording follows the list's end: the job moves on, and never jumps to it."""
+    case = read_case(name)
+    event = case.moments[-1]
+    later = case.next_recorded_after(event.at)
+    if later is None:
+        pytest.fail(f"{name} has no recording after its last event")
+    waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
+    done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
+    answered = [json.loads(entry["out"]) for entry in done.turns[-1]["ran"]]
+    positions = [look["job"]["file_position_bytes"] for look in answered]
+    truth(
+        event.file_position_bytes <= positions[0] <= positions[-1] < later.position,
+        describing=f"{positions} from {event.file_position_bytes} and short of {later.position}",
+    )
+    received = [instant_of_utc(look["event"]["received_at"]) for look in answered]
+    truth(received[-1] < later.at, describing=f"{received[-1]} before {later.at}")
+
+
+@pytest.mark.parametrize(
+    "name", ["under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"]
+)
+def test_however_long_a_last_turn_runs_nothing_passes_the_next_recorded_moment(
+    name: str, scratch: Path
+) -> None:
+    """Hours of waiting at the list's end still read as just short of what comes next."""
+    case = read_case(name)
+    later = case.next_recorded_after(case.moments[-1].at)
+    if later is None:
+        pytest.fail(f"{name} has no recording after its last event")
+    timeline = doubles.Timeline(case=case, picture=stamped, clock=scratch / "clock")
+    timeline.next_fetch()
+    timeline.next_fetch()
+    timeline.offset += timedelta(hours=10)
+    truth(timeline.position() < later.position, describing=f"a position short of {later}")
+    truth(timeline.now() < later.at, describing=f"a clock short of {later}")
+
+
 def test_the_print_clock_never_goes_back_whatever_a_look_waited(scratch: Path) -> None:
     """A clock going back reads to the server as a later job: one print, one session."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
@@ -659,6 +702,11 @@ def test_the_runner_makes_exactly_one_turn_per_replay_entry(scratch: Path) -> No
     case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
     equal(len(done.turns), turns_per_test()[case.name])
+
+
+def instant_of_utc(held: str) -> datetime:
+    """A time the server wrote, to the second."""
+    return datetime.fromisoformat(held[:19]).replace(tzinfo=UTC)
 
 
 def _moment_accepting(*outcome: Step, never: tuple[Step, ...] = ()) -> Moment:

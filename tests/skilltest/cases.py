@@ -291,6 +291,11 @@ class Case:
                 return datetime.fromisoformat(started[:19]).replace(tzinfo=UTC)
         return self.frame_times()[0] if self.has_frame_times else self._instant_of(0)
 
+    def next_recorded_after(self, at: str) -> PrintedAt | None:
+        """The recording's next positioned moment after a local time, replayed or not."""
+        when = instant(at)
+        return next((anchor for anchor in self.anchors if anchor.at > when), None)
+
     def position_at(self, when: datetime) -> int:
         """Where the job was at an instant: a line through what the recording says.
 
