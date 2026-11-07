@@ -31,16 +31,13 @@ rather than leaving it undone.
    already old. A look reads now and can wait up to a minute and a half first, so a few show a
    defect growing or settling.
    Open each. Each frame says when it was captured. One time twice means the camera
-   has nothing newer, which is no defect: say so in your reason and judge what the
-   frame shows. A look returns early with any new event for this print.
+   has nothing newer, which is no defect: say so and judge what the frame shows. A look returns early with any new event for this print.
 4. **Decide.** Take the decision order below, and say which way you are going and how
-   sure you are. A frame that disagrees with the history is uncertain until another
-   look settles it.
+   sure you are.
 5. **Act, and say why.** If something should change, ask for it, with a reason a
    reader of the record can act on and, when temporary, the time it should stand.
    [The intervention policy](reference/intervention-policy.md) holds the bounds,
-   the rejections and what happens at expiry. If nothing should change, ask for
-   nothing. After acting, look again to see whether it helped.
+   the rejections and what happens at expiry. After acting, look again to see whether it helped.
 6. **Record what you saw.** Acknowledge this turn's failure or observation, with
    a reason saying what you saw and what you made of it: disposition stop with every
    pause; watch when you are uncertain or changed a setting; continue when nothing
@@ -54,7 +51,7 @@ This skill follows one order:
    addresses under-extruded walls; the fan addresses sagging bridges. Neither
    addresses stringing or spaghetti, and no other defect has a setting.
 2. **A clear defect no setting addresses, or a part that has moved or gone, gets a
-   pause,** also when a defect with a setting stands beside it. No setting undoes
+   pause,** also beside a defect with a setting. No setting undoes
    what is laid.
 3. **An uncertain reading gets a watch and another look, never a pause,** unless
    the frames show the defect clearly getting worse, which makes it clear.
@@ -72,10 +69,12 @@ Reading frames:
   part's outline and when clearly growing or out of place. A strand off the part,
   on a rail, screw or the frame, is not one: note it.
 - **Position.** Judge each frame against this print's own earlier frames. What has
-  been printed stays where it was laid, so at every look measure its footprint
-  against the sheet's holes, edges and marks, however the view shifts. A footprint
-  standing elsewhere has moved, which is clear even when you cannot say how; so has
-  a part off the bed or a first layer not sticking.
+  been printed stays where it was laid. A shifting view carries sheet and part
+  together, so at every look measure the footprint itself, its distance to one of
+  the sheet's holes, edges or marks, in this frame and an earlier one, and give both
+  in your reason. Changed in any frame, even one a later frame seems to undo, it
+  has moved, and that is clear, whatever else might explain it. So has a
+  part off the bed or a first layer not sticking.
 
 ## When the detector has already paused the print
 
