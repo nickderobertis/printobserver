@@ -1587,7 +1587,7 @@ earlier — saw nothing.
 
 ## The real-print suite
 
-<!-- llmlint: ignore[instruction_layer_localized] See suppressions.toml. -->
+<!-- llmlint: ignore-block[instruction_layer_localized] The task that made this suite required asks the root to say when it runs and that a flaky test is fixed at its cause; its own rules are in tests/skilltest/AGENTS.md. -->
 `just skilltest` replays each real print with a `replay` through the real server
 and harness, and every decision point must pass. A change to
 anything `repo-policy.toml`'s `[skilltest] owed_paths` names, or an install
@@ -1596,6 +1596,7 @@ Code release in that table, runs the whole suite before it lands with every test
 passing, and the `skilltest` job runs it on the same list. A flaky test is fixed
 at its cause, never retried, excluded or tolerated. A change adding a module the
 agent's context is built from adds it to that list.
+<!-- llmlint: ignore-end[instruction_layer_localized] -->
 
 `tests/skilltest/AGENTS.md` holds that suite's own rules.
 

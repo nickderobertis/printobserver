@@ -268,8 +268,10 @@ def is_event(event: object) -> bool:
         return False
     match event["kind"]:
         case "port_failure":
-            return isinstance(payload.get("site"), str) and isinstance(
-                payload.get("detail", ""), str
+            return (
+                isinstance(payload.get("site"), str)
+                and isinstance(payload.get("detail", ""), str)
+                and (payload["site"] != FAILED_SITE or isinstance(payload.get("event_id"), str))
             )
         case "action_requested" | "recovery_requested":
             return _is_requested_action(payload.get("action"))

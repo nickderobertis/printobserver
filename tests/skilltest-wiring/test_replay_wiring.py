@@ -754,6 +754,12 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         {"id": "e", "kind": "port_failure", "received_at": "2026-01-01T00:00:00Z", "payload": {}},
         {
             "id": "e",
+            "kind": "port_failure",
+            "received_at": "2026-01-01T00:00:00Z",
+            "payload": {"site": "supervision_turn", "detail": "failed"},
+        },
+        {
+            "id": "e",
             "kind": "action_requested",
             "received_at": "2026-01-01T00:00:00Z",
             "payload": {"action": {"action": "pause", "actor": ["agent"]}},
