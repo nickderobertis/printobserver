@@ -41,7 +41,7 @@ rather than leaving it undone.
    shape would make it solid; a texture the shape could explain, ribs, lattice,
    bridging over support, is not clear. Inside the outline supports, bridges and
    infill look open, in straight regular lines; curved or tangled strands are a
-   defect, never a continue.
+   defect, never a continue, and no setting undoes what is laid.
 
    Change a setting only on a clear defect; unsure, watch.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
@@ -52,8 +52,8 @@ rather than leaving it undone.
    say so in your reason. A look returns early with any new event for this print.
 4. **Decide.** Weigh what you see against the history, and say which way you are
    going and how sure you are. When one frame and the history disagree, prefer the
-   history and say so. Watching is for what has stopped getting worse: a defect
-   still growing that none of your adjustments reaches wants a person now.
+   history and say so. Watching is for what has stopped getting worse or what you
+   cannot yet tell is growing: a defect still growing that none of your adjustments reaches wants a person now.
 5. **Act, and say why.** If something should change, ask for it, with a reason a
    reader of the record can act on and, when temporary, the time it should stand.
    [The intervention policy](reference/intervention-policy.md) holds the bounds,
@@ -62,7 +62,7 @@ rather than leaving it undone.
 6. **Record what you saw.** Acknowledge this turn's failure or observation, with
    a reason saying what you saw and what you made of it: disposition continue when
    nothing is there, a false alarm included; watch when something is, however small;
-   stop when the print should stop.
+   stop when the print should stop, and whenever you paused it.
 
 ## When the detector has already paused the print
 
