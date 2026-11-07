@@ -99,7 +99,7 @@ REPLAYS = {
         "gantry-low-over-remaining-bin",
     ],
     "under-extrusion-lace": ["carry-on-healthy-before-fault"],
-    "fan-cut-bridge": ["carry-on-healthy-before-fault", "bridge-sagging-uncooled"],
+    "fan-cut-bridge": ["carry-on-healthy-before-fault"],
     "jar-top-petg-healthy": [
         "carry-on-004-other",
         "carry-on-013-other",
@@ -335,8 +335,8 @@ def _scenario_named(document: dict[str, Any], scenario: str) -> dict[str, Any]:
     return next(s for s in document["assertions"]["scenarios"] if s["id"] == scenario)
 
 
-BRIDGE = "fan-cut-bridge"
-LAST = "bridge-sagging-uncooled"
+TWO_EVENTS = "jar-top-wrong-material-first-layer-detach"
+LAST = "ring-dragged-off-its-place"
 
 
 def _unknown_id(document: dict[str, Any]) -> None:
@@ -362,7 +362,7 @@ def _missing(document: dict[str, Any]) -> None:
     [
         (_unknown_id, "replay names no-such-scenario"),
         (_out_of_order, "not strictly increasing"),
-        (_past_the_end, "past the end of fan-cut-test.gcode"),
+        (_past_the_end, "past the end of 3423-TOP-REV F.gcode"),
         (_missing, "names no file_position_bytes"),
     ],
 )
@@ -373,7 +373,7 @@ def test_a_real_case_broken_one_way_is_refused_by_name(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The real check, over a copy of a real case with one thing wrong."""
-    root = _case_tree(tmp_path, BRIDGE, edit)
+    root = _case_tree(tmp_path, TWO_EVENTS, edit)
     equal(repo_check(["real-prints-replay", "--root", str(root)]), 1)
     printed = capsys.readouterr()
     contains(printed.out + printed.err, named)
@@ -471,23 +471,24 @@ def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch
 
 
 def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
-    """With no frame left before the next event a look repeats the newest; it keeps its own."""
-    case = read_case("fan-cut-bridge")
+    """With no frame left before the next event a look repeats the newest."""
+    case = read_case("jar-top-wrong-material-first-layer-detach")
     done = mock_replay(case, [{"commands": [LOOK, LOOK]}], scratch)
     first, second = case.moments
-    equal([done.seen_frame(0, 0), done.seen_frame(0, 1)], [first.event_image, first.event_image])
+    between = case.frames[case.frame_at_or_before(first.at, first.event_image) + 1].file
+    equal([done.seen_frame(0, 0), done.seen_frame(0, 1)], [between, between])
     jobs = [json.loads(entry["out"])["job"] for entry in done.turns[0]["ran"]]
     truth(
         jobs[-1]["file_position_bytes"] < second.file_position_bytes,
         describing="nothing a turn reads to pass the next event's moment",
     )
     # The event's frame, the two looks, and then the next event's own frame.
-    equal(done.replayed.fetches[:4], [first.event_image] * 3 + [second.event_image])
+    equal(done.replayed.fetches[:4], [first.event_image, between, between, second.event_image])
 
 
 def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Path) -> None:
     """Over the real cases whose next event shows a fault, however many looks a turn takes."""
-    for name in ("jar-top-wrong-material-first-layer-detach", "fan-cut-bridge"):
+    for name in ("jar-top-wrong-material-first-layer-detach", "petg-spool-jam-air-print"):
         case = read_case(name)
         faulty = case.moments[-1].event_image
         directory = scratch / name
@@ -499,16 +500,17 @@ def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Pat
 
 def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
     """The record's times are the recording's, and a repeated frame says it is one."""
-    case = read_case("fan-cut-bridge")
+    case = read_case("jar-top-wrong-material-first-layer-detach")
     first, second = case.moments
     waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
     done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
     looks = [json.loads(entry["out"]) for entry in done.turns[0]["ran"]]
-    # The event's frame, repeated: there is nothing between it and the fault's.
+    # The one frame between the event's and the fault's, repeated with its own time.
     captured = {look["event"]["payload"]["frame_captured_at"] for look in looks}
     equal(len(captured), 1, describing=f"one capture time among {captured}")
+    between = case.frames[case.frame_at_or_before(first.at, first.event_image) + 1]
     received = looks[0]["event"]["received_at"][:16]
-    equal(received, instant(first.at).strftime("%Y-%m-%dT%H:%M"))
+    equal(received, instant(str(between.captured)).strftime("%Y-%m-%dT%H:%M"))
     # A real wait moves the job on, and nothing passes the next event's moment.
     positions = [look["job"]["file_position_bytes"] for look in looks]
     truth(positions[-1] > first.file_position_bytes, describing=f"the job to move: {positions}")
@@ -528,7 +530,7 @@ def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
 
 def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path) -> None:
     """A look after the last event does not jump to the print's end."""
-    case = read_case("fan-cut-bridge")
+    case = read_case("jar-top-wrong-material-first-layer-detach")
     last = case.moments[-1]
     done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], scratch)
     equal(done.replayed.fetches[-3:], [last.looks[-1]] * 3)
@@ -549,7 +551,7 @@ def test_the_job_keeps_moving_between_checks_while_frames_repeat_a_reading() -> 
 
 def test_the_print_clock_never_goes_back_whatever_a_look_waited(scratch: Path) -> None:
     """A clock going back reads to the server as a later job: one print, one session."""
-    case = read_case("fan-cut-bridge")
+    case = read_case("jar-top-wrong-material-first-layer-detach")
     done = mock_replay(case, [{"commands": [LOOK]}], scratch)
     equal(len(done.replayed.ledger["sessions"]), 1)
 
@@ -897,7 +899,7 @@ def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
 
 def test_a_history_command_that_fails_stops_the_replay(scratch: Path) -> None:
     """An unanswered read is the replay gone wrong, never a print with no events."""
-    case = read_case("fan-cut-bridge")
+    case = read_case("jar-top-wrong-material-first-layer-detach")
     replay = Replay(case, [sys.executable, str(MOCK_TURN), str(scratch / "script.json")])
     try:
         replay._install()
@@ -945,13 +947,19 @@ def test_a_replay_spending_past_its_allowance_stops(
     """Past the runs it allows, it stops rather than go on spending the operator's quota."""
     monkeypatch.setattr(replay_module, "RUN_ALLOWANCE_PER_ENTRY", 0)
     with pytest.raises(ReplayError, match="stopping the spend"):
-        mock_replay(read_case("fan-cut-bridge"), [{"commands": [CONTEXT]}], scratch)
+        mock_replay(
+            read_case("jar-top-wrong-material-first-layer-detach"),
+            [{"commands": [CONTEXT]}],
+            scratch,
+        )
 
 
 def test_the_doubles_refuse_what_no_adapter_sends(scratch: Path) -> None:
     """A malformed body, an unknown printer command and another Obico route are refused."""
     timeline = doubles.Timeline(
-        case=read_case("fan-cut-bridge"), picture=stamped, clock=scratch / "clock"
+        case=read_case("jar-top-wrong-material-first-layer-detach"),
+        picture=stamped,
+        clock=scratch / "clock",
     )
     octoprint = doubles.octoprint(timeline, "key")
     obico = doubles.obico(timeline)
@@ -998,7 +1006,7 @@ def test_usage_a_later_run_adds_is_summed_or_kept() -> None:
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
     """A call the transcript writes twice ran once, and a file tool's read is reported."""
-    case = read_case("fan-cut-bridge")
+    case = read_case("jar-top-wrong-material-first-layer-detach")
     done = mock_replay(
         case,
         [{"commands": [CONTEXT], "reads": ["/somewhere/SKILL.md"], "streamed_twice": True}],
@@ -1012,7 +1020,7 @@ def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
 
 def test_a_turn_the_engine_gave_up_on_fails_its_own_decision_point(scratch: Path) -> None:
     """Its failure is that entry's verdict, and the next event still gets its turn."""
-    case = read_case("fan-cut-bridge")
+    case = read_case("jar-top-wrong-material-first-layer-detach")
     unreadable: ScriptedRun = {"commands": [CONTEXT], "unreadable": True}
     done = mock_replay(case, [unreadable, unreadable, unreadable, {"commands": [CONTEXT]}], scratch)
     first, second = done.replayed.points
@@ -1083,24 +1091,28 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         "models": [],
         "compacted": False,
     }
-    carry_on, bridge = REPLAYS["fan-cut-bridge"]
+    carry_on, bridge = REPLAYS["jar-top-wrong-material-first-layer-detach"]
     points = [{**point, "scenario": carry_on}, {**point, "scenario": bridge}]
     test_record = {
-        "test": "fan-cut-bridge",
+        "test": "jar-top-wrong-material-first-layer-detach",
         "passed": True,
         "turns": 2,
         "sessions": [],
         "decision_points": points,
     }
-    (finished / "fan-cut-bridge.json").write_text(json.dumps(test_record), encoding="utf-8")
+    (finished / "jar-top-wrong-material-first-layer-detach.json").write_text(
+        json.dumps(test_record), encoding="utf-8"
+    )
     # What a live run writes beside it, which is no test's record.
-    (finished / "fan-cut-bridge.transcript.jsonl").write_text("{}\n", encoding="utf-8")
+    (finished / "jar-top-wrong-material-first-layer-detach.transcript.jsonl").write_text(
+        "{}\n", encoding="utf-8"
+    )
     equal(record.main([str(finished)]), 0)
     equal(json.loads(written.read_text("utf-8"))["detail"]["commit"], "a-commit")
     failed = tmp_path / "failed"
     failed.mkdir()
     failing = {**points[1], "passed": False}
-    (failed / "fan-cut-bridge.json").write_text(
+    (failed / "jar-top-wrong-material-first-layer-detach.json").write_text(
         json.dumps({**test_record, "passed": False, "decision_points": [points[0], failing]}),
         encoding="utf-8",
     )

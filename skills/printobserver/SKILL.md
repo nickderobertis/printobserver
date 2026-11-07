@@ -43,9 +43,7 @@ rather than leaving it undone.
    infill look open, in straight regular lines; curved or tangled strands are a
    defect, never a continue.
 
-   The printer does not report its fan, so a file that cut it shows only in the
-   print: sagging bridges want the fan at 100. Change a setting only on a clear
-   defect; unsure, watch.
+   Change a setting only on a clear defect; unsure, watch.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
    already old. A look reads now, and it can wait up to a minute and a half first, so a few show a
    defect growing or settling.
