@@ -28,8 +28,8 @@ import re
 import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import NamedTuple
 from pathlib import Path
+from typing import NamedTuple
 
 from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
 from repo_checks.shell import run
@@ -62,11 +62,8 @@ SKIPPED_DIRECTORIES = UNCOMMITTED_DIRECTORIES
 class Scanned(NamedTuple):
     """One file the directive scanners read."""
 
-    #: Where it is.
     path: Path
-    #: Where it is from the tree's root.
     relative: Path
-    #: Its lines.
     lines: list[str]
     #: Those lines joined by newlines, which a whole-file pattern is asked first.
     text: str

@@ -4655,3 +4655,9 @@ rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest/replay.py"
 site = "self.server = start("
 reason = "This starts the real `printobserver server` as the long-running child process a replay drives, through `repo_checks.shell.start`, the one path this repository allows for one. No request is exchanged here for a typed client to model; the replay talks to it separately once its port answers."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/repo-checks/src/repo_checks/checks_real_prints.py"
+site = "listing = run("
+reason = "One blocking `git ls-files` a synchronous repository check reads its answer from before it goes on, through `repo_checks.shell.run`, the one subprocess path this repository allows. There is nothing to overlap it with, and git's command line is the interface, so no typed client applies."

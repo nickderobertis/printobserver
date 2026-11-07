@@ -116,6 +116,39 @@ describe("an ordinary pull request", () => {
   });
 });
 
+describe("the real-print suite's job", () => {
+  /** The `ci.yml` run of an ordinary pull request, with the suite's classifier answering `answered`. */
+  function ciRun(answered, results = {}) {
+    const made = history("source");
+    const payload = pullRequestPayload("opened", "ordinary", "same-repository", made);
+    const classification = classified("pull_request", payload, made);
+    return plan(workflows, "ci.yml", {
+      event: { name: "pull_request", action: "opened", payload },
+      outputs: { ...ciOutputsOf(classification), "skilltest-classify": answered },
+      results,
+    });
+  }
+  const ran = (run) => run.jobs.some((job) => job.job === "skilltest");
+
+  test("runs where the classifier says the suite is owed", () => {
+    const run = ciRun({ owed: "true", reason: "skills/printobserver/SKILL.md changed" });
+    assert.ok(ran(run), "the suite runs");
+    assert.ok(!run.skipped.includes("skilltest"), "and is not skipped");
+  });
+
+  test("is skipped, which reports as passing, where it is not owed", () => {
+    const run = ciRun({ owed: "false", reason: "no owed path changed" });
+    assert.ok(!ran(run), "the suite does not run");
+    assert.ok(run.skipped.includes("skilltest"), "it is skipped");
+  });
+
+  test("runs where the classifier could not answer", () => {
+    // A job that failed answers its outputs empty, as the forge does.
+    const run = ciRun({ owed: "", reason: "" }, { "skilltest-classify": "failure" });
+    assert.ok(ran(run), "a classifier that failed owes the suite");
+  });
+});
+
 describe("release automation's version/changelog-only pull request", () => {
   let release;
   before(() => {

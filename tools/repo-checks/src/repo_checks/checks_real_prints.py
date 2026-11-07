@@ -245,6 +245,7 @@ def _committed(
     raw bytes is answered without reading it. A path the index does not hold
     yet is not answered.
     """
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     listing = run(
         # The whole index and not the paths asked for, because a case's many frames
         # overrun a Windows command line.
