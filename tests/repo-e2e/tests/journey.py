@@ -66,8 +66,10 @@ DEBUG_BUILD = pytest.mark.xdist_group("repo-root-debug-build")
 RELEASE_DRAFTING = pytest.mark.xdist_group("release-plz-drafting")
 
 # What every other journey shares with another running beside it, it only reads
-# or syncs: the repository's `node_modules`, which a copy links to and a frozen
-# `bun install` over an unchanged lockfile leaves alone; the repository's `.venv`
+# or syncs: the packages in the repository's `node_modules`, which a copy links to
+# one by one, keeping a `.bin` of its own because a frozen `bun install` relinks
+# that directory even over an unchanged lockfile, and two at once fail with
+# `EEXIST: failed to link binaries`; the repository's `.venv`
 # and the tool caches, which `uv`, `cargo` and `bun` each lock themselves; and
 # the bootstrap's tools, which it installs only where a host lacks one. A copy's
 # own build, a stand-in bound to port 0, and each worker's `shared_venv` are
@@ -291,7 +293,13 @@ class GateCopy:
             shell_run(["git", *args], cwd=self.root, check=True)
 
         if node_modules:
-            (self.root / "node_modules").symlink_to(REPO_ROOT / "node_modules")
+            installed = self.root / "node_modules"
+            installed.mkdir()
+            for entry in (REPO_ROOT / "node_modules").iterdir():
+                if entry.name == ".bin":
+                    shutil.copytree(entry, installed / ".bin", symlinks=True)
+                else:
+                    (installed / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
         self.shared_venv = shared
 
     def read(self, relative: str) -> str:
