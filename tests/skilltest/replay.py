@@ -62,12 +62,14 @@ POLL_S = 0.5
 ACTOR = Draft202012Validator(
     json.loads((REPO / "schemas/printobserver-core/Actor.json").read_text(encoding="utf-8"))
 )
-#: The kinds an agent's request is recorded under.
-REQUESTED = {"action_requested", "recovery_requested"}
+#: The kind an agent's request is recorded under in its print's history. A recovery is
+#: the printer's rather than the print's, and is no outcome any decision point names.
+REQUESTED = {"action_requested"}
 #: The kinds a turn ending is recorded under.
 ASSESSED = "agent_assessment"
 FAILED = "port_failure"
 FAILED_SITE = "supervision_turn"
+CAMERA_LOOK = "camera_look"
 #: The event kinds a replay entry is delivered under.
 TRIGGERS = {"periodic_observation", "obico_failure_alert"}
 
@@ -273,7 +275,7 @@ def is_event(event: object) -> bool:
                 and isinstance(payload.get("detail", ""), str)
                 and (payload["site"] != FAILED_SITE or isinstance(payload.get("event_id"), str))
             )
-        case "action_requested" | "recovery_requested":
+        case "action_requested":
             return _is_requested_action(payload.get("action"))
         case "agent_assessment":
             return is_assessment(payload.get("assessment"))
@@ -1040,7 +1042,7 @@ class Replay:
             failure=failures[0] if failures else None,
             event_kind=trigger["kind"],
             image_sha256=image.get("sha256"),
-            looks=sum(1 for event in during if event["kind"] == "camera_look"),
+            looks=sum(1 for event in during if event["kind"] == CAMERA_LOOK),
         )
 
     def stop(self) -> None:

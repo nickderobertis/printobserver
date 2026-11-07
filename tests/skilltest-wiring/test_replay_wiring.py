@@ -862,12 +862,6 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         },
         {
             "id": "e",
-            "kind": "recovery_requested",
-            "received_at": "2026-01-01T00:00:00Z",
-            "payload": {"action": {"action": "acknowledge_failure", "actor": {}}},
-        },
-        {
-            "id": "e",
             "kind": "agent_assessment",
             "received_at": "2026-01-01T00:00:00Z",
             "payload": {"assessment": {"summary": "fine"}},
@@ -1139,6 +1133,44 @@ def test_stopping_a_replay_stops_its_server_and_its_doubles(scratch: Path) -> No
             equal(double.socket.fileno(), -1, describing="a double's socket to be closed")
     finally:
         replay.clean_up()
+
+
+def test_the_event_kinds_the_judging_reads_are_the_servers() -> None:
+    """A kind the server renamed would otherwise judge every turn as having asked nothing."""
+    declared = "\n".join(
+        (REPO / "crates" / crate / "src" / name).read_text(encoding="utf-8")
+        for crate, name in (
+            ("printobserver-core", "kinds.rs"),
+            ("printobserver-obico", "events.rs"),
+        )
+    )
+    for kind in (
+        *replay_module.REQUESTED,
+        *replay_module.TRIGGERS,
+        replay_module.ASSESSED,
+        replay_module.FAILED,
+        replay_module.CAMERA_LOOK,
+    ):
+        contains(declared, f'const KIND: &\'static str = "{kind}";')
+
+
+def test_a_harnesss_own_bookkeeping_is_no_model_a_turn_answered_with() -> None:
+    """`<synthetic>` is written by no model, and a real one beside it is still read."""
+    report = RunReport()
+    report.take(
+        [
+            {"message": {"model": "<synthetic>", "content": []}},
+            {"message": {"model": "a-real-model", "content": []}},
+        ]
+    )
+    equal(report.models, ["a-real-model"])
+
+
+def test_a_turn_says_how_many_looks_it_took(scratch: Path) -> None:
+    """The record counts the server's own looks for that turn, and only those."""
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    done = mock_replay(case, [{"commands": [LOOK, LOOK]}, {"commands": [CONTEXT]}], scratch)
+    equal([point.looks for point in done.replayed.points], [2, 0])
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
