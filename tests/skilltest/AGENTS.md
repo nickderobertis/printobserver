@@ -17,7 +17,7 @@ The rules the real-print suite is held to, and why.
   seconds the look really waited, short of the next event's position. A frozen
   counter is what a real stall looks like, so a healthy print never shows one; a
   repeated capture time over a moving job is a camera with nothing newer, which the
-  skill says is no reason to stop.
+  skill says is no defect.
 - **What a turn did is read from where Claude Code keeps it,** its one result
   document and the session transcript under its configuration directory. A live
   test fails a turn reporting no usage, models or commands, so a move of either

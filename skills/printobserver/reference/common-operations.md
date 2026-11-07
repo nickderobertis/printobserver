@@ -547,7 +547,7 @@ nothing of the machine and is valid from every state, which is what makes it the
 way an observation is put into the record.
 
 ```console
-$ printobserver acknowledge-failure --print-id PRINT_ID --actor operator --event-id EVENT_ID --disposition watch --reason "spaghetti in the alert image, but the part is still attached; watching it"
+$ printobserver acknowledge-failure --print-id PRINT_ID --actor operator --event-id EVENT_ID --disposition watch --reason "a few thin strands in the alert image, not clearly growing; watching it"
 record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID
@@ -557,7 +557,7 @@ record.request.action.action: acknowledge_failure
 record.request.action.actor: operator
 record.request.action.disposition: watch
 record.request.action.event_id: EVENT_ID
-record.request.action.reason: spaghetti in the alert image, but the part is still attached; watching it
+record.request.action.reason: a few thin strands in the alert image, not clearly growing; watching it
 record.request.actor: operator
 record.request.requested_at: TIMESTAMP
 ```
