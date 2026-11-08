@@ -26,6 +26,7 @@ use printobserver_types::serde_json::Value;
 use tempfile::TempDir;
 
 use crate::agent::StandInAgent;
+use crate::minted::minted;
 use crate::obico_api::Host;
 use crate::world::{OPERATOR, SECRET, operator_verifier, presenting, set};
 
@@ -88,15 +89,17 @@ fn template(installer: &str, state: &Path) -> String {
 }
 
 /// The template with every commented example taken up, the token filled in.
-fn with_the_examples_taken_up(installer: &str, template: &str) -> String {
+fn with_the_examples_taken_up(installer: &str, template: &str, obico_token: &str) -> String {
     let mut taken = 0;
     let lines: Vec<String> = template
         .lines()
         .map(|line| {
             if EXAMPLES.iter().any(|marker| line.starts_with(marker)) {
                 taken += 1;
-                line.trim_start_matches("# ")
-                    .replace("access_token = \"\"", "access_token = \"an-obico-token\"")
+                line.trim_start_matches("# ").replace(
+                    "access_token = \"\"",
+                    &format!("access_token = \"{obico_token}\""),
+                )
             } else {
                 line.to_owned()
             }
@@ -165,8 +168,9 @@ async fn every_install_templates_ml_api_url_is_the_detector_the_server_probes() 
             "Printing",
             JobScript::printing("benchy.gcode", 816, 400, 60),
         );
+        let token = minted("obico-token");
         let ml_api = Host::ml_api().await;
-        let rest = Host::rest("an-obico-token").await;
+        let rest = Host::rest(&token).await;
         let camera = crate::http_host::image_host(
             std::fs::read(
                 Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/recorded-frame.jpg"),
@@ -175,7 +179,7 @@ async fn every_install_templates_ml_api_url_is_the_detector_the_server_probes() 
         )
         .await;
 
-        let taken_up = with_the_examples_taken_up(installer, &template(installer, &state));
+        let taken_up = with_the_examples_taken_up(installer, &template(installer, &state), &token);
         let mut document: toml::Value =
             toml::from_str(&taken_up).expect("the template is a document");
         let named = document["obico"]["ml_api_url"]

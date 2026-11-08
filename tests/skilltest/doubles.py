@@ -30,10 +30,10 @@ from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, NamedTuple, TypedDict
+from typing import Any, NamedTuple, NewType, TypedDict
 from urllib.parse import unquote, urlsplit
 
-from cases import Case, MachineState, Moment, instant
+from cases import Case, MachineState, Moment, ObicoPrintId, instant
 from repo_checks.loopback import LoopbackServer
 
 #: A heater command in the G-code, and the temperature it sets.
@@ -83,15 +83,18 @@ def numbered(jpeg: bytes, number: int) -> bytes:
 #: The request the Obico adapter makes of Obico's API when a detection was handled.
 ACKNOWLEDGEMENT = re.compile(r"/api/v1/printers/\d+/acknowledge_alert/")
 
+#: Obico's own identifier for one printer.
+ObicoPrinterId = NewType("ObicoPrinterId", int)
+
 #: The read of Obico's own record of the printer the detector's status is built from.
 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 PRINTER_RECORD = re.compile(r"/api/v1/printers/\d+/")
 
 #: The printer Obico's record names, which the replay's configuration names too.
-OBICO_PRINTER = 1
+OBICO_PRINTER = ObicoPrinterId(1)
 
 #: Obico's identifier for a print no recorded alert names.
-UNNAMED_OBICO_PRINT = 1
+UNNAMED_OBICO_PRINT = ObicoPrintId(1)
 
 
 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
@@ -105,7 +108,7 @@ class ObicoSnapshot(TypedDict):
 class ObicoPrint(TypedDict):
     """The print Obico's record of the printer says it is watching."""
 
-    id: int
+    id: ObicoPrintId
     filename: str
     started_at: str
 
@@ -114,7 +117,7 @@ class ObicoPrint(TypedDict):
 class ObicoPrinterRecord(TypedDict):
     """Obico's record of the printer, as far as the server reads one."""
 
-    id: int
+    id: ObicoPrinterId
     current_print: ObicoPrint | None
     pic: ObicoSnapshot | None
     normalized_p: float

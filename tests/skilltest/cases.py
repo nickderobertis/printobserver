@@ -45,6 +45,8 @@ def instant(local: str) -> datetime:
 
 ScenarioId = NewType("ScenarioId", str)
 EventId = NewType("EventId", str)
+#: Obico's own identifier for one print.
+ObicoPrintId = NewType("ObicoPrintId", int)
 
 
 class Trigger(StrEnum):
@@ -336,7 +338,7 @@ class Case:
         share = min(1.0, (when - earlier.at).total_seconds() / span)
         return earlier.position + int((later.position - earlier.position) * share)
 
-    def obico_print_id(self) -> int | None:
+    def obico_print_id(self) -> ObicoPrintId | None:
         """Obico's own identifier for the print, as the first recorded alert names it."""
         for event in self.history:
             if event.get("kind") != "obico_failure_alert" or not event.get("raw"):
@@ -344,7 +346,7 @@ class Case:
             body = json.loads(base64.b64decode(event["raw"]))
             named = body.get("print", {}).get("id") if isinstance(body, dict) else None
             if isinstance(named, int):
-                return named
+                return ObicoPrintId(named)
         return None
 
     def recorded_alert(self, event_id: str) -> dict[str, Any]:

@@ -435,6 +435,274 @@ async fn a_record_obico_would_not_send_refuses_the_read() {
     }
 }
 
+/// Wait until the status read of one print stops answering a scoring status.
+async fn until_not_scoring(world: &World, print_id: PrintId) -> Value {
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    loop {
+        let detector = status_detector(world, print_id).await;
+        if !detector["status"]
+            .as_str()
+            .is_some_and(|status| status.starts_with("scoring"))
+        {
+            return detector;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the print never stopped reading scoring: {detector}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// A record naming another print, or none, ends the evidence held at once —
+/// on the next read, well inside the two intervals it would otherwise have
+/// stood for.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_record_that_moves_on_ends_the_evidence_at_the_next_read() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let scoring = keep_scoring(&rest);
+    for moved_on in [
+        json!({ "id": 5000, "filename": "other.gcode", "started_at": null }),
+        Value::Null,
+    ] {
+        until_status(&world, print_id, "scoring_nothing_flagged").await;
+        reads(&rest, 1).await;
+        let current = rest.served()["current_print"].clone();
+        rest.answer(|answer| answer["current_print"] = moved_on.clone());
+        reads(&rest, 1).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let detector = status_detector(&world, print_id).await;
+        assert_eq!(detector["status"], "unchecked", "{moved_on}: {detector}");
+        rest.answer(|answer| answer["current_print"] = current);
+    }
+    scoring.store(false, Ordering::SeqCst);
+}
+
+/// A print that carries no `Obico` identifier is matched by its file and its
+/// start, as an alert is: the record of its job reads scoring, and the record
+/// of a later job of the same file does not. An earlier start is no objection
+/// to either, because a resume moves the start a print records later than the
+/// job's own.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_print_with_no_obico_identifier_is_matched_by_its_file_and_start() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let rest_url = rest.url();
+    let configured_token = token.clone();
+    let world = World::configured(
+        RecordingPrinter::printing(),
+        StandInAgent::new(),
+        move |document| {
+            set(
+                document,
+                "supervisor.observation_interval_s",
+                toml::Value::Integer(i64::try_from(INTERVAL_S).expect("a small interval")),
+            );
+            let mut obico = toml::Table::new();
+            obico.insert("url".to_owned(), toml::Value::String(rest_url));
+            obico.insert(
+                "access_token".to_owned(),
+                toml::Value::String(configured_token),
+            );
+            obico.insert("printer_id".to_owned(), toml::Value::Integer(PRINTER_ID));
+            set(document, "obico", toml::Value::Table(obico));
+        },
+    )
+    .await;
+    let print_id = world
+        .stores
+        .prints
+        .open_print(None, Some("benchy.gcode".to_owned()))
+        .await
+        .expect("a print opens")
+        .id;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    let started = loop {
+        let (_, status) = world
+            .get(&world.operation_url("/v1/prints/{print_id}/status", print_id))
+            .await;
+        if let Some(started) = status["print"]["job_started_at"].as_str() {
+            break started.to_owned();
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the print never took its job's start: {status}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    rest.answer(|answer| {
+        answer["current_print"]["id"] = json!(9000);
+        answer["current_print"]["started_at"] = json!(started);
+    });
+    let scoring = keep_scoring(&rest);
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+
+    // A job of the same file started long after this print's own.
+    rest.answer(|answer| answer["current_print"]["started_at"] = json!("2999-01-01T00:00:00Z"));
+    let detector = until_not_scoring(&world, print_id).await;
+    assert_eq!(detector["status"], "unchecked", "{detector}");
+    scoring.store(false, Ordering::SeqCst);
+}
+
+/// A print that has ended takes its evidence with it: its status stops reading
+/// scoring, and the next print does not inherit it while the record still
+/// names the print that ended.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_ended_print_takes_its_evidence_with_it() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, first) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let scoring = keep_scoring(&rest);
+    until_status(&world, first, "scoring_nothing_flagged").await;
+
+    world
+        .printer
+        .in_state(printobserver_printer_api::PrinterState::Operational);
+    until_not_scoring(&world, first).await;
+    let next = world
+        .stores
+        .prints
+        .open_print(Some(4212), Some("benchy.gcode".to_owned()))
+        .await
+        .expect("a print opens")
+        .id;
+    world
+        .printer
+        .in_state(printobserver_printer_api::PrinterState::Printing);
+    reads(&rest, 4).await;
+    let detector = status_detector(&world, next).await;
+    assert!(
+        !detector["status"]
+            .as_str()
+            .is_some_and(|status| status.starts_with("scoring")),
+        "the next print inherited the evidence of the one that ended: {detector}"
+    );
+    scoring.store(false, Ordering::SeqCst);
+}
+
+/// One print's status never reads another print's evidence: while the active
+/// print reads scoring, a print the record does not name reads no scoring.
+#[tokio::test(flavor = "multi_thread")]
+async fn one_prints_evidence_is_no_other_prints() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, scored) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let other = world
+        .stores
+        .prints
+        .open_print(Some(4300), Some("other.gcode".to_owned()))
+        .await
+        .expect("a print opens")
+        .id;
+    let scoring = keep_scoring(&rest);
+    until_status(&world, scored, "scoring_nothing_flagged").await;
+    for read in [
+        status_detector(&world, other).await,
+        context_detector(&world, other).await,
+    ] {
+        assert_eq!(read["status"], "unchecked", "{read}");
+    }
+    scoring.store(false, Ordering::SeqCst);
+}
+
+/// Evidence that expired and then resumes is a new stretch of scoring: the
+/// status reads scoring again, from an instant after the first stretch's.
+#[tokio::test(flavor = "multi_thread")]
+async fn evidence_resumed_after_it_expired_reads_scoring_from_a_new_instant() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let scoring = keep_scoring(&rest);
+    let first = until_status(&world, print_id, "scoring_nothing_flagged").await;
+    scoring.store(false, Ordering::SeqCst);
+    until_not_scoring(&world, print_id).await;
+
+    let again = keep_scoring(&rest);
+    let resumed = until_status(&world, print_id, "scoring_nothing_flagged").await;
+    let instant = |read: &Value| {
+        read["since"]
+            .as_str()
+            .and_then(|since| since.parse::<printobserver_types::Timestamp>().ok())
+            .expect("a scoring status carries its instant")
+    };
+    assert!(
+        instant(&resumed) > instant(&first),
+        "the resumed stretch kept the first one's instant: {first} then {resumed}"
+    );
+    again.store(false, Ordering::SeqCst);
+}
+
+/// A print's history that cannot be read to say whether the detector flagged
+/// it takes nothing from the read: the failure is recorded, and the print
+/// reads no scoring status until the history answers again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_history_that_cannot_say_whether_it_was_flagged_takes_nothing() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let rest_url = rest.url();
+    let configured_token = token.clone();
+    let holder: Arc<std::sync::Mutex<Option<Arc<crate::held_events::HeldEvents>>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let holding = Arc::clone(&holder);
+    let world = World::configured_over(
+        RecordingPrinter::printing(),
+        StandInAgent::new(),
+        move |document| {
+            set(
+                document,
+                "supervisor.observation_interval_s",
+                toml::Value::Integer(i64::try_from(INTERVAL_S).expect("a small interval")),
+            );
+            let mut obico = toml::Table::new();
+            obico.insert("url".to_owned(), toml::Value::String(rest_url));
+            obico.insert(
+                "access_token".to_owned(),
+                toml::Value::String(configured_token),
+            );
+            obico.insert("printer_id".to_owned(), toml::Value::Integer(PRINTER_ID));
+            set(document, "obico", toml::Value::Table(obico));
+        },
+        move |stores| {
+            let (stores, held) = crate::held_events::HeldEvents::over(stores);
+            *holding.lock().expect("the holder holds") = Some(held);
+            stores
+        },
+    )
+    .await;
+    let held = holder
+        .lock()
+        .expect("the holder holds")
+        .take()
+        .expect("the store was stood between");
+    held.refusing_reads_of("obico_failure_alert", true);
+    let print_id = world.open_print().await;
+    let scoring = keep_scoring(&rest);
+    let history = world.operation_url("/v1/prints/{print_id}/history", print_id);
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    while failures_saying(&world, &history, "history could not be read").await == 0 {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no failed read saying the history could not be read was recorded"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    reads(&rest, 3).await;
+    let detector = status_detector(&world, print_id).await;
+    assert_eq!(detector["status"], "unchecked", "{detector}");
+    assert!(
+        detector["scoring_unread"]
+            .as_str()
+            .is_some_and(|why| why.contains("history could not be read")),
+        "{detector}"
+    );
+
+    held.refusing_reads_of("obico_failure_alert", false);
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+    scoring.store(false, Ordering::SeqCst);
+}
+
 /// The detector's health check is asked as the server starts, not one
 /// observation interval later: with an interval of a minute and a print open,
 /// a server started again reads the detector `available` within seconds.

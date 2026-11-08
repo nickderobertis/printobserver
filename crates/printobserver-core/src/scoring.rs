@@ -25,7 +25,8 @@
 //! The status names it flagged once a failure alert of the detector's own has
 //! arrived for the print — noted as the alert is received, and read back out
 //! of the print's history at each read, so a server started again during the
-//! print still says so.
+//! print still says so. A history that cannot be read takes nothing from that
+//! round's read, and is recorded as the read failing.
 //!
 //! # Which print the record names
 //!
@@ -183,11 +184,28 @@ impl Supervisor {
                 .map(|print| print.id)
         });
         let flagged = match named {
-            Some(print_id) => self.flagged_in_history(print_id, probe.alert_kind()).await,
-            None => Ok(false),
+            Some(print_id) => match self.flagged_in_history(print_id, probe.alert_kind()).await {
+                Ok(flagged) => flagged,
+                Err(error) => {
+                    // Whether the detector flagged the print cannot be said, so
+                    // nothing read this round is taken: a status saying nothing
+                    // was flagged would be a claim nobody could check.
+                    let detail = format!(
+                        "the print's history could not be read to say whether the detector \
+                         flagged it: {error}"
+                    );
+                    self.watch_state().scoring.unread = Some(detail.clone());
+                    return Some(detail);
+                }
+            },
+            None => false,
         };
         let now = self.clock().elapsed();
         let wall = self.clock().now();
+        let window = self
+            .config()
+            .observation_interval
+            .saturating_mul(EVIDENCE_INTERVALS);
         let mut held = self.watch_state();
         let state = &mut held.scoring;
         state.unread = None;
@@ -198,7 +216,7 @@ impl Supervisor {
             state.evidence = None;
             return None;
         };
-        if matches!(flagged, Ok(true)) {
+        if flagged {
             state.flagged.insert(print_id);
         }
         let moved = state
@@ -206,8 +224,14 @@ impl Supervisor {
             .is_some_and(|(last, evidence)| last == print_id && evidence != reading.evidence);
         state.last = Some((print_id, reading.evidence));
         if moved {
+            // A stretch of evidence goes on only while it stands; one that
+            // expired before this read is over, and this read begins another.
             let since = match state.evidence {
-                Some((of, _, since)) if of == print_id => since,
+                Some((of, last_moved, since))
+                    if of == print_id && now.saturating_sub(last_moved) <= window =>
+                {
+                    since
+                }
                 _ => wall,
             };
             state.evidence = Some((print_id, now, since));
