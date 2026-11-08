@@ -1365,23 +1365,32 @@ impl crate::supervisor::Supervisor {
     /// Nothing when the print is over, the job is not this print's file, the
     /// job reports no position, or the file could not be read — a read that
     /// failed builds nothing, so the next one tries again.
+    ///
+    /// # Errors
+    ///
+    /// The store's own error when the print's actions could not be read, as
+    /// every other store read of the context answers it.
     pub(crate) async fn slicer_plan(
         &self,
         print: &crate::records::PrintRecord,
         job: Option<&printobserver_printer_api::JobSnapshot>,
         interventions: &[crate::records::Intervention],
-    ) -> Option<SlicerPlan> {
-        let job = job?;
-        let position = job.file_position_bytes?;
-        let file = print.file_name.as_deref()?;
-        if print.ended_at.is_some() || job.file_name.as_deref() != Some(file) {
-            return None;
-        }
-        let index = self.index_of(print.id, file).await?;
+    ) -> Result<Option<SlicerPlan>, crate::error::CoreError> {
+        let Some((position, file)) = job
+            .and_then(|job| job.file_position_bytes.zip(job.file_name.as_deref()))
+            .filter(|(_, file)| {
+                print.ended_at.is_none() && print.file_name.as_deref() == Some(*file)
+            })
+        else {
+            return Ok(None);
+        };
+        let Some(index) = self.index_of(print.id, file).await else {
+            return Ok(None);
+        };
         let (flow, fan) = self
             .changes_since(print.id, &index, position, interventions)
-            .await;
-        Some(index.plan_with(position, flow, fan))
+            .await?;
+        Ok(Some(index.plan_with(position, flow, fan)))
     }
 
     /// One print's index, built from its file when there is none yet.
@@ -1424,7 +1433,7 @@ impl crate::supervisor::Supervisor {
         index: &GcodeIndex,
         position: i64,
         interventions: &[crate::records::Intervention],
-    ) -> (Option<f64>, Option<f64>) {
+    ) -> Result<(Option<f64>, Option<f64>), crate::error::CoreError> {
         use printobserver_types::EventPayload as _;
 
         use crate::kinds::{ActionExecutedPayload, ActionRequestedPayload};
@@ -1434,7 +1443,7 @@ impl crate::supervisor::Supervisor {
             .iter()
             .filter_map(|kind| printobserver_types::EventKind::new(*kind).ok())
             .collect();
-        let Ok(events) = self
+        let events = self
             .stores()
             .events
             .history(crate::store::HistoryQuery {
@@ -1444,10 +1453,7 @@ impl crate::supervisor::Supervisor {
                 until: None,
                 limit: Some(crate::store::MAX_HISTORY_LIMIT),
             })
-            .await
-        else {
-            return (None, None);
-        };
+            .await?;
         let requested: BTreeMap<crate::records::ActionId, PrintAction> = events
             .iter()
             .filter_map(printobserver_types::EventRecord::payload_as::<ActionRequestedPayload>)
@@ -1482,6 +1488,6 @@ impl crate::supervisor::Supervisor {
                 _ => {}
             }
         }
-        (flow.flatten(), fan.flatten())
+        Ok((flow.flatten(), fan.flatten()))
     }
 }

@@ -499,19 +499,29 @@ fn an_unreadable_or_unmatched_action_record_changes_nothing() {
     );
 }
 
-/// A store that cannot read the print's history fails the context read, as
+/// A store that cannot read the print's actions fails the context read, as
 /// every store read of the context does, rather than answering a plan that
-/// quietly leaves the print's changes out.
+/// quietly leaves the print's changes out — while the print's recent events,
+/// read before it, were read.
 #[test]
-fn a_history_the_store_cannot_read_fails_the_context_read() {
+fn the_actions_the_store_cannot_read_fail_the_context_read() {
     let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
-    world.store.fails(
-        crate::fakes::StoreMethod::History,
+    world.context(print.id).expect("the context reads");
+    world.store.refuses_history_naming(
+        printobserver_types::EventKind::new("action_executed").expect("a kind"),
         printobserver_core::store::StoreError::Database {
             detail: "the log is locked".to_owned(),
         },
     );
-    assert!(world.context(print.id).is_err());
+
+    let refused = world.context(print.id);
+
+    assert!(
+        matches!(&refused, Err(printobserver_core::CoreError::Store(_))),
+        "{refused:?}"
+    );
+    world.store.heals();
+    assert!(world.context(print.id).is_ok());
 }
 
 /// A print whose file is named with a name no file could carry is planned

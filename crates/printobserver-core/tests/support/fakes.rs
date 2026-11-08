@@ -724,6 +724,9 @@ pub struct FakeStore {
     appends: AppendGate,
     /// The one print whose appends are refused, and how, when one is.
     refused_print: Mutex<Option<(PrintId, StoreError)>>,
+    /// The one kind a history read asking for it is refused over, and how,
+    /// when one is: every read asking for every kind is still answered.
+    refused_history_kind: Mutex<Option<(EventKind, StoreError)>>,
     /// The methods induced to write everything and then answer a failure, as
     /// a store whose commit landed and whose answer was lost does — once each.
     lost_answers: Mutex<BTreeMap<StoreMethod, StoreError>>,
@@ -748,6 +751,7 @@ impl FakeStore {
             reads_of_the_prints: Meeting::default(),
             appends: AppendGate::default(),
             refused_print: Mutex::new(None),
+            refused_history_kind: Mutex::new(None),
             lost_answers: Mutex::new(BTreeMap::new()),
         }
     }
@@ -839,10 +843,17 @@ impl FakeStore {
         *self.refused_print.lock().expect("the store holds") = Some((print_id, error));
     }
 
+    /// Refuse every history read that asks for one kind by name, with one
+    /// error, from now on.
+    pub fn refuses_history_naming(&self, kind: EventKind, error: StoreError) {
+        *self.refused_history_kind.lock().expect("the store holds") = Some((kind, error));
+    }
+
     /// Stop failing every method.
     pub fn heals(&self) {
         self.failures.lock().expect("the store holds").clear();
         *self.refused_print.lock().expect("the store holds") = None;
+        *self.refused_history_kind.lock().expect("the store holds") = None;
     }
 
     /// The failure induced at one method, if one is.
@@ -1297,6 +1308,15 @@ impl EventStore for FakeStore {
         self.journal.record(Call::ReadHistory);
         if let Some(error) = self.induced(StoreMethod::History) {
             return ready(Err(error));
+        }
+        if let Some((kind, error)) = self
+            .refused_history_kind
+            .lock()
+            .expect("the store holds")
+            .as_ref()
+            && query.kinds.contains(kind)
+        {
+            return ready(Err(error.clone()));
         }
         let limit = match resolve_history_limit(query.limit) {
             Ok(limit) => limit as usize,
