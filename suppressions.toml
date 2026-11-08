@@ -4629,7 +4629,7 @@ reason = "A one-shot local program run through `repo_checks.shell.run`, the repo
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest-wiring/mock_turn.py"
-site = "done = run(words, timeout=TIMEOUT_S)"
+site = "done = run(argv, timeout=TIMEOUT_S)"
 reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
 
 [[suppression]]
@@ -4661,3 +4661,58 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/repo-checks/src/repo_checks/checks_real_prints.py"
 site = "listing = run("
 reason = "One blocking `git ls-files` a synchronous repository check reads its answer from before it goes on, through `repo_checks.shell.run`, the one subprocess path this repository allows. There is nothing to overlap it with, and git's command line is the interface, so no typed client applies."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case \"Skill\", {\"skill\": str(skill)}:"
+reason = "Claude Code publishes no schema for its transcript's tool calls. A moved skill call only drops a `skill:` entry from what a turn opened, which the record shows rather than any assertion relying on it."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/starts.py"
+site = "return sorted(self.config_dir.glob(\"projects/*/*.jsonl\"))"
+reason = "Where Claude Code keeps its transcripts has no published contract. `test_replay.py` is the drift gate: it fails any start request whose conversation reports no commands, which is what a moved directory reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/starts.py"
+site = "\"CLAUDE_CONFIG_DIR\": str(self.config_dir),"
+reason = "The variable Claude Code reads its configuration directory from has no published contract; it is the same one the supervisor port's sign-in table names. A move of it puts the skill and the transcripts where the harness does not look, which `test_replay.py` fails on as commands and usage reported empty."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "def _allowed(line: str, prefixes: list[str] | None) -> bool:"
+reason = "This stands in for Claude Code's permission enforcement, which publishes no contract to reconcile with: the mock only has to refuse what a rule plainly does not allow, splitting a line with the suite's own `shell_lines`. The drift gate is the live suite, which runs the real harness under the same arguments and fails any conversation that ran a compound command, refused or not."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/starts.py"
+site = "done = run("
+reason = "Both sites run one local program to completion through `repo_checks.shell.run`, the repository's one subprocess site: the operator's `printobserver` command, whose answer each caller holds to the shape it reads before reading it, and `oneharness run`, whose report `is_harness_report` holds to its shape. The replay waits on each by design, one request at a time, so an async client would add a runtime for nothing."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/starts.py"
+site = "self.server = start("
+reason = "The server under test, started once per replay through `repo_checks.shell.start` as `replay.py` starts it; nothing is exchanged with the process itself, which the replay reaches over its real HTTP API through the program a person runs."
+
+[[suppression]]
+rule = "least_privilege_grants"
+file = "tests/skilltest/starts.py"
+site = "return ["
+reason = "The task this replay was written for requires the operator's conversation to run under the permissions the server's supervision turns run with: the read tools, and one shell rule per command the server's operations make, which is exactly this list. Narrowing it to a start's reads would test the agent under permissions production never hands it; the wiring tests hold this list equal to the one a supervision turn's harness is started with."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class IdleJobFile(TypedDict):"
+reason = "The idle printer's and a held file's answers, typed as the stand-in sends them, are copies of OctoPrint's read by the real adapter, as this file's other answers are: `printobserver-octoprint` parses them as it parses a real instance's, its integration tier holds that parser to a real OctoPrint on every change, and the start wiring tests run the real server's start through the adapter against this stand-in, so a shape the adapter cannot read fails them."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "def bench_octoprint(bench: Bench, api_key: str) -> ThreadingHTTPServer:"
+reason = "The paths and commands of an idle printer's start, as OctoPrint serves them, held the same way as this file's other stand-in: the real adapter is the one source of what it sends, `printobserver-octoprint`'s integration tier holds that adapter to a real OctoPrint, and a request this stand-in does not answer as OctoPrint does fails the start wiring tests, which drive a real start through it."
+

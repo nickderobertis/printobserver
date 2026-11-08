@@ -20,6 +20,7 @@ def main() -> int:
     kept.mkdir(exist_ok=True)
     for name in (
         "printobserver",
+        "printobserver-server-oneharness",
         "printobserver-server-responder",
         "printobserver-server-turn-launcher",
     ):

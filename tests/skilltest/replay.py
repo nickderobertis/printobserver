@@ -41,6 +41,7 @@ from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
+from shell_lines import is_compound
 
 INSTALLER = REPO / "scripts" / "install.sh"
 SKILL = REPO / "skills" / "printobserver"
@@ -118,14 +119,21 @@ class Secrets:
 
 
 def service_config(
-    state: Path, listen: str, octoprint: str, camera: str, obico: str, minted: Secrets
+    state: Path,
+    listen: str,
+    octoprint: str,
+    camera: str,
+    obico: str,
+    minted: Secrets,
+    *,
+    interval_s: int = OBSERVATION_INTERVAL_S,
 ) -> str:
     """The installer's configuration, with what an operator fills in filled in."""
     verifier = hashlib.sha256(minted.operator.encode()).hexdigest()
     text = (
         _installer_template()
         .replace("$RUNTIME_STATE", state.as_posix())
-        .replace("$INTERVAL_LINE", f"observation_interval_s = {OBSERVATION_INTERVAL_S}")
+        .replace("$INTERVAL_LINE", f"observation_interval_s = {interval_s}")
         .replace('listen = "127.0.0.1:8420"', f'listen = "{listen}"')
         .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
         .replace('api_key = ""', f'api_key = "{minted.octoprint_key}"')
@@ -203,6 +211,19 @@ def refuse_a_pointer(data: bytes, case: str, name: str) -> bytes:
         msg = f"{case}/{name} is an LFS pointer: run `just real-prints-fetch`"
         raise ReplayError(msg)
     return data
+
+
+def keep_the_log(server: subprocess.Popen[str], log: Path) -> None:
+    """Keep what the server prints, so neither pipe fills and it is there to read."""
+
+    def kept(stream: TextIO | None) -> None:
+        with log.open("a", encoding="utf-8") as written:
+            for line in stream or ():
+                written.write(line)
+                written.flush()
+
+    for stream in (server.stdout, server.stderr):
+        threading.Thread(target=kept, args=(stream,), daemon=True).start()
 
 
 def _utc_instant(held: str) -> datetime:
@@ -377,6 +398,8 @@ class TestRecord(TypedDict):
     passed: bool
     turns: int
     sessions: list[str]
+    #: Each `printobserver` command a conversation ran beside another, by conversation.
+    compound_commands: dict[str, list[str]]
     decision_points: list[DecisionRecord]
 
 
@@ -484,6 +507,25 @@ class Replayed:
             if point.why_not
         )
 
+    def compound_commands(self) -> dict[str, list[str]]:
+        """Each `printobserver` command a conversation ran beside another, by conversation.
+
+        A turn is its ledger entry's session's; with no entry to read, the print's last.
+        """
+        sessions = [session["session_name"] for session in self.ledger["sessions"]]
+        found: dict[str, list[str]] = {session: [] for session in sessions}
+        turns = self.ledger["turns"]
+        for number, point in enumerate(self.points):
+            session = (
+                turns[number]["session_name"]
+                if len(turns) == len(self.points)
+                else (sessions[-1] if sessions else "")
+            )
+            found.setdefault(session, []).extend(
+                command for command in point.commands if is_compound(command)
+            )
+        return found
+
     def as_record(self) -> TestRecord:
         """The replay as `results/latest.json` carries it."""
         return {
@@ -491,6 +533,7 @@ class Replayed:
             "passed": self.passed,
             "turns": len(self.points),
             "sessions": [session["session_name"] for session in self.ledger["sessions"]],
+            "compound_commands": self.compound_commands(),
             "decision_points": [point.as_record() for point in self.points],
         }
 
@@ -528,6 +571,25 @@ def _json_lines(text: str) -> list[dict[str, Any]]:
         if isinstance(parsed, dict):
             lines.append(parsed)
     return lines
+
+
+#: How much of what a failed turn's harness runs printed its record keeps.
+HARNESS_SAID_CHARS = 1500
+
+
+def _harness_said(runs: list[Run]) -> str:
+    """The end of what a turn's harness runs printed, which is where a run says why it failed.
+
+    The engine's own refusal of an answer names no cause when the harness printed
+    no answer at all, so a failed turn's record carries the harness's own words.
+    """
+    said = " | ".join(
+        harness_run.record.read_text("utf-8", "replace").strip() or "(nothing)"
+        if harness_run.record.is_file()
+        else "(no output kept)"
+        for harness_run in runs
+    )
+    return said[-HARNESS_SAID_CHARS:]
 
 
 def _lines_of(harness_run: Run) -> list[dict[str, Any]]:
@@ -591,6 +653,9 @@ class RunReport:
                         self.commands.append(command)
                     case "Read", {"file_path": str(path)}:
                         self.opened.append(Path(path).name)
+                    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
+                    case "Skill", {"skill": str(skill)}:
+                        self.opened.append(f"skill:{skill}")
                     case _:
                         pass
             case _:
@@ -857,16 +922,7 @@ class Replay:
         return ended
 
     def _keep_the_log(self, server: subprocess.Popen[str]) -> None:
-        """Keep what the server prints, so neither pipe fills and it is there to read."""
-
-        def kept(stream: TextIO | None) -> None:
-            with (self.root / "server.log").open("a", encoding="utf-8") as log:
-                for line in stream or ():
-                    log.write(line)
-                    log.flush()
-
-        for stream in (server.stdout, server.stderr):
-            threading.Thread(target=kept, args=(stream,), daemon=True).start()
+        keep_the_log(server, self.root / "server.log")
 
     def _log_tail(self) -> str:
         """What the server recorded of the failed turn."""
@@ -1034,7 +1090,9 @@ class Replay:
             usage=report.usage,
             models=report.models,
             compacted=report.compacted,
-            failure=failures[0] if failures else None,
+            failure=f"{failures[0]}; the harness answered: {_harness_said(runs)}"
+            if failures
+            else None,
             event_kind=trigger["kind"],
             image_sha256=image.get("sha256"),
             looks=sum(1 for event in during if event["kind"] == CAMERA_LOOK),

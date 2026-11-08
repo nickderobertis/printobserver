@@ -10,6 +10,7 @@
 //! responder this crate ships. What is asserted is read off that process: the
 //! directory it ran in, and the system prompt it was handed.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use printobserver_core::Actor;
@@ -359,4 +360,265 @@ async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it()
         prose_of(&installed_text).starts_with("# Supervising a 3D print\n"),
         "the installed skill's prose does not open on its title"
     );
+}
+
+/// The reference document the skill's start instructions send the agent to for
+/// the command itself.
+const COMMON_OPERATIONS: &str = "reference/common-operations.md";
+
+/// The heading of that document's worked start.
+const START_HEADING: &str = "### start_print";
+
+/// One documented start: its command line, and the request the document shows
+/// the real program made of it.
+struct DocumentedStart {
+    /// The command line, as written.
+    line: String,
+    /// Each `record.request.action.<field>: <value>` line its output shows, by
+    /// the field's dotted path under the action.
+    requested: BTreeMap<String, String>,
+}
+
+/// The output prefix under which a start's answer shows the request it made.
+const REQUESTED: &str = "record.request.action.";
+
+/// Every `start-print` command the skill's documents show under the worked
+/// start, with the request each one's shown output says it made.
+///
+/// That output is what the command-line program printed against a real server:
+/// `printobserver`'s documented-examples journey runs each example and refuses
+/// a document showing anything else, so it is the program's own translation of
+/// the line, held here against this journey's.
+fn documented_starts() -> Vec<DocumentedStart> {
+    let path = committed_skill()
+        .parent()
+        .expect("the skill sits in a directory")
+        .join(COMMON_OPERATIONS);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{} reads: {error}", path.display()));
+    let (_, after) = text
+        .split_once(START_HEADING)
+        .unwrap_or_else(|| panic!("{COMMON_OPERATIONS} carries no `{START_HEADING}`"));
+    let section = after.split("\n### ").next().unwrap_or_default();
+    let mut found: Vec<DocumentedStart> = Vec::new();
+    let mut reading = false;
+    for line in section.lines() {
+        if let Some(command) = line.strip_prefix("$ ") {
+            reading = command.starts_with("printobserver start-print ");
+            if reading {
+                found.push(DocumentedStart {
+                    line: command.to_owned(),
+                    requested: BTreeMap::new(),
+                });
+            }
+        } else if line.starts_with("```") {
+            reading = false;
+        } else if reading
+            && let Some((field, value)) = line
+                .strip_prefix(REQUESTED)
+                .and_then(|shown| shown.split_once(": "))
+            && let Some(start) = found.last_mut()
+        {
+            start.requested.insert(field.to_owned(), value.to_owned());
+        }
+    }
+    found
+}
+
+/// A request body's fields by dotted path, each value written as the program's
+/// output writes it: a string bare, an empty document as `{}`, anything else
+/// as JSON.
+fn flattened(prefix: &str, value: &Value, into: &mut BTreeMap<String, String>) {
+    match value {
+        Value::Object(fields) if !fields.is_empty() => {
+            for (name, field) in fields {
+                let path = if prefix.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{prefix}.{name}")
+                };
+                flattened(&path, field, into);
+            }
+        }
+        Value::String(text) => {
+            into.insert(prefix.to_owned(), text.clone());
+        }
+        other => {
+            into.insert(prefix.to_owned(), other.to_string());
+        }
+    }
+}
+
+/// This journey's translation of a documented start is the one the program
+/// made of it: the operation it names and every field of the body it sends,
+/// as the document shows the program's own answer recording them.
+#[test]
+fn every_documented_start_is_translated_as_the_program_translates_it() {
+    let documented = documented_starts();
+    assert!(
+        !documented.is_empty(),
+        "{COMMON_OPERATIONS} shows no start under `{START_HEADING}`"
+    );
+    for start in &documented {
+        let (operation, _, body) = request_of(&start.line, "PRINT_ID", "FILE");
+        let mut translated = BTreeMap::from([("action".to_owned(), operation)]);
+        flattened("", &body, &mut translated);
+        assert_eq!(
+            translated, start.requested,
+            "`{}` is translated otherwise than the program's own answer records it",
+            start.line
+        );
+    }
+}
+
+/// One command line split into words as a POSIX shell splits a line holding
+/// no expansion: single quotes keep everything; a backslash keeps the character
+/// after it outside quotes, and inside double quotes keeps `$`, a backquote, `"`,
+/// a backslash or a line break after it and is kept itself before anything
+/// else. A documented line using an expansion is refused rather than read.
+fn shell_words(line: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word: Option<String> = None;
+    let mut quote: Option<char> = None;
+    let mut characters = line.chars().peekable();
+    while let Some(character) = characters.next() {
+        assert!(
+            quote == Some('\'') || !matches!(character, '$' | '`'),
+            "`{line}` uses an expansion, which this reading does not follow"
+        );
+        match (quote, character) {
+            (Some('\''), '\'') | (Some('"'), '"') => quote = None,
+            (Some('"'), '\\') => {
+                let next = characters.next().unwrap_or('\\');
+                let kept = word.get_or_insert_with(String::new);
+                if !matches!(next, '$' | '`' | '"' | '\\' | '\n') {
+                    kept.push('\\');
+                }
+                kept.push(next);
+            }
+            (Some(_), inside) => word.get_or_insert_with(String::new).push(inside),
+            (None, '\\') => {
+                if let Some(next) = characters.next() {
+                    word.get_or_insert_with(String::new).push(next);
+                }
+            }
+            (None, '\'' | '"') => {
+                quote = Some(character);
+                word.get_or_insert_with(String::new);
+            }
+            (None, space) if space.is_whitespace() => words.extend(word.take()),
+            (None, other) => word.get_or_insert_with(String::new).push(other),
+        }
+    }
+    assert!(quote.is_none(), "`{line}` leaves a quote open");
+    words.extend(word);
+    words
+}
+
+/// The splitting reads quotes and escapes as a shell does.
+#[test]
+fn a_documented_line_is_split_as_a_shell_splits_it() {
+    assert_eq!(
+        shell_words(r#"a 'b c' "d \"e\" \\ \x" f\ g"#),
+        ["a", "b c", r#"d "e" \ \x"#, "f g"]
+    );
+}
+
+/// The request a documented start makes: the operation its command names, the
+/// print its `--print-id` names, and the body its other options carry, each
+/// option the field of the same name and each value read as JSON where it is
+/// a document or a flag.
+fn request_of(line: &str, print: &str, file: &str) -> (String, String, Value) {
+    let words: Vec<String> = shell_words(&line.replace("PRINT_ID", print).replace("FILE", file));
+    let (program, rest) = words.split_first().expect("a command line names a program");
+    assert_eq!(program, "printobserver", "`{line}` runs another program");
+    let (command, options) = rest.split_first().expect("a command line names a command");
+    let operation = command.replace('-', "_");
+    let mut body = printobserver_types::serde_json::Map::new();
+    let mut path_print = None;
+    for pair in options.chunks(2) {
+        let [option, value] = pair else {
+            panic!("`{line}` leaves an option without a value");
+        };
+        let field = option
+            .strip_prefix("--")
+            .unwrap_or_else(|| panic!("`{option}` is no option"))
+            .replace('-', "_");
+        if field == "print_id" {
+            path_print = Some(value.clone());
+            continue;
+        }
+        let read = printobserver_types::serde_json::from_str::<Value>(value)
+            .ok()
+            .filter(|parsed| parsed.is_object() || parsed.is_boolean())
+            .unwrap_or_else(|| Value::String(value.clone()));
+        body.insert(field, read);
+    }
+    (
+        operation,
+        path_print.unwrap_or_else(|| panic!("`{line}` names no print")),
+        Value::Object(body),
+    )
+}
+
+/// Every start the skill's documents show, made as the operator against a real
+/// server watching the scripted `OctoPrint` with a PLA spool loaded and the
+/// file sliced for PLA, starts the printer once and records the sheet it
+/// declared; and the same start with a PETG spool and a PETG slice loaded
+/// instead is refused for its sheet, and the printer is never told to start —
+/// which is why the skill says to read the material before naming the sheet.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_documented_start_starts_on_the_sheet_it_declares_and_only_for_its_material() {
+    let documented = documented_starts();
+    assert!(
+        !documented.is_empty(),
+        "{COMMON_OPERATIONS} shows no start under `{START_HEADING}`"
+    );
+    for DocumentedStart { line, .. } in &documented {
+        for (material, file, accepted) in [
+            ("PLA", crate::pairing::PLA_FILE, true),
+            ("PETG", crate::pairing::PETG_FILE, false),
+        ] {
+            let watch = crate::pairing::watching(|_| {}).await;
+            crate::pairing::loaded_with(&watch, material).await;
+            watch.octoprint.reports(
+                "Operational",
+                printobserver_octoprint::standin::JobScript::idle(),
+            );
+            let nothing_holds = PrintId::new().to_string();
+            let (operation, print, body) = request_of(line, &nothing_holds, file);
+            let url =
+                crate::pairing::url_of(&watch, &operation, Some(("{print_id}", print.as_str())));
+            let (status, answer) = crate::pairing::posted(&watch.client, &url, &body).await;
+            let declared = &body["manifest"]["sheet"];
+            if accepted {
+                assert_eq!(status, reqwest::StatusCode::OK, "`{line}`: {answer}");
+                assert_eq!(
+                    crate::pairing::starts(&watch),
+                    1,
+                    "`{line}` did not start once"
+                );
+                let started = answer["record"]["print_id"]
+                    .as_str()
+                    .expect("the start names its print")
+                    .to_owned();
+                let recorded = crate::pairing::events_of(&watch, &started, "print_started").await;
+                let preflight = &recorded
+                    .last()
+                    .unwrap_or_else(|| panic!("`{line}` recorded no start"))["payload"]["preflight"];
+                assert_eq!(&preflight["sheet"]["sheet"], declared, "{preflight}");
+            } else {
+                assert_eq!(status, reqwest::StatusCode::CONFLICT, "`{line}`: {answer}");
+                let refused = &crate::pairing::rejection(&answer)["sheet_refused"]["objection"];
+                assert_eq!(&refused["sheet"], declared, "`{line}`: {answer}");
+                assert_eq!(refused["material"], material, "`{line}`: {answer}");
+                assert_eq!(
+                    crate::pairing::starts(&watch),
+                    0,
+                    "`{line}` started the printer"
+                );
+            }
+            watch.server.stop().await;
+        }
+    }
 }

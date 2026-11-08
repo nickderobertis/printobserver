@@ -423,3 +423,116 @@ def replayed_case_names() -> list[str]:
     """Every case on disk with a `replay`, so a case gaining one is one test with no edit here."""
     # llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
     return sorted(replays(CASES))
+
+
+#: The sheet a frame's `sheet` label records, as the server's sheet table names it; a
+#: label it lacks, such as "cannot tell", records no sheet.
+SHEET_LABELS = {"smooth PEI": "smooth-pei", "textured": "textured-pei"}
+
+
+@dataclass(frozen=True)
+class StartRequest:
+    """One `start_request` of a case's `replay`: a request to start a print, and its frame."""
+
+    id: ScenarioId
+    at: str
+    #: The camera's frame of the bed at the request's moment.
+    event_image: str
+    #: The sheet the frame's own label records, as the server names it, if it records one.
+    sheet: str | None
+    #: The material the frame's own label says the print was sliced for, if it says one.
+    sliced_material: str | None
+    accept_any_of: tuple[tuple[Step, ...], ...]
+    never: tuple[Step, ...]
+    summary: str
+
+    @property
+    def day(self) -> str:
+        """The calendar day the request was made on, which is the conversation it is part of."""
+        return self.at[:10]
+
+    @property
+    def accepts_a_start(self) -> bool:
+        """Whether an outcome the case accepts starts the print."""
+        return any(
+            any(step.operation == "start-print" for step in outcome)
+            for outcome in self.accept_any_of
+        )
+
+
+@dataclass(frozen=True)
+class StartCase:
+    """One case whose `replay` is start requests alone, read for the test that feeds it."""
+
+    name: str
+    directory: Path
+    requests: tuple[StartRequest, ...]
+
+    @property
+    def test_id(self) -> str:
+        """The id this case's one test is collected under."""
+        return self.name
+
+
+class CaseDocument(NamedTuple):
+    """One case's `case.json`, once it holds what its schema declares, indexed for reading.
+
+    Its scenarios and frames stay the JSON objects the schema holds them to: the
+    schema leaves a frame's fields open, so a type here would only restate it.
+    """
+
+    replay: tuple[str, ...]
+    #: Each scenario, by its id.
+    scenarios: dict[str, dict[str, Any]]
+    #: Each frame, by its file's name.
+    frames: dict[str, dict[str, Any]]
+
+
+def _case_document(name: str) -> CaseDocument:
+    document = _valid_document(CASES / name / "case.json", CASES / "case.schema.json")
+    return CaseDocument(
+        replay=tuple(document["assertions"].get("replay", ())),
+        scenarios={scenario["id"]: scenario for scenario in document["assertions"]["scenarios"]},
+        frames={frame["file"]: frame for frame in document["frames"]},
+    )
+
+
+def is_start_case(name: str) -> bool:
+    """Whether every entry of a case's `replay` is a request to start a print."""
+    held = _case_document(name)
+    return bool(held.replay) and all(
+        held.scenarios[entry]["trigger"] == Trigger.START_REQUEST for entry in held.replay
+    )
+
+
+def read_start_case(name: str) -> StartCase:
+    """One case of `tests/real-prints` whose `replay` is start requests, by its directory's name."""
+    held = _case_document(name)
+    requests = []
+    for entry in held.replay:
+        scenario = held.scenarios[entry]
+        if scenario["trigger"] != Trigger.START_REQUEST:
+            msg = f"{name}'s replay mixes {entry}, a {scenario['trigger']}, into start requests"
+            raise ValueError(msg)
+        frame = held.frames.get(scenario["event_image"], {})
+        material = frame.get("sliced_material")
+        if material is not None and not isinstance(material, str):
+            msg = f"{name}'s frame {scenario['event_image']} names {material!r} as its material"
+            raise ValueError(msg)
+        request = StartRequest(
+            id=ScenarioId(entry),
+            at=scenario["at"],
+            event_image=scenario["event_image"],
+            sheet=SHEET_LABELS.get(str(frame.get("sheet"))),
+            sliced_material=material,
+            accept_any_of=tuple(
+                tuple(_step(step) for step in outcome) for outcome in scenario["accept_any_of"]
+            ),
+            never=tuple(_step(step) for step in scenario["never"]),
+            summary=scenario["summary"],
+        )
+        if request.accepts_a_start and request.sheet is None:
+            msg = f"{name}'s {entry} accepts a start and its frame records no sheet it names"
+            raise ValueError(msg)
+        requests.append(request)
+    return StartCase(name=name, directory=CASES / name, requests=tuple(requests))

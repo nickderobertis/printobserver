@@ -514,12 +514,19 @@ Start a print of a named file, bounded by a manifest. Valid only while the
 printer is operational. A start opens a print of its own when no print is open,
 so `record.print_id` names the print the job runs under and its manifest is
 attached to: act on that print afterwards. The examples below this one do.
+With no print open the start opens its own whichever print it names, so any
+identifier `prints` lists serves as `--print-id`, and with none listed, a UUID
+version 7 of your own.
 The manifest's `sheet` names the build sheet that is down; a start naming none
 is refused. `--override-material-check true` and `--override-sheet-check true`
 start one the material or sheet check refused, as the operator alone.
 
+Before a start, take the printer's look and open its frame: the start below is
+the one made when that frame shows a clear bed and the smooth PEI sheet, and the
+spool loaded is PLA, which that sheet suits.
+
 ```console
-$ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "re-running the job after clearing the bed"
+$ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "the camera's frame shows a clear bed and the smooth PEI sheet, which suits the loaded PLA"
 record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID
@@ -535,7 +542,7 @@ record.request.action.manifest.metadata: {}
 record.request.action.manifest.nozzle_diameter_mm: 0.4
 record.request.action.manifest.sheet: smooth-pei
 record.request.action.manifest.slicer_profile: draft
-record.request.action.reason: re-running the job after clearing the bed
+record.request.action.reason: the camera's frame shows a clear bed and the smooth PEI sheet, which suits the loaded PLA
 record.request.actor: operator
 record.request.requested_at: TIMESTAMP
 ```

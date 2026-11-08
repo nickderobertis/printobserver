@@ -10,6 +10,7 @@ stamped with the name of the frame it stands for.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
@@ -39,7 +40,9 @@ from cases import (
     Step,
     Trigger,
     instant,
+    is_start_case,
     read_case,
+    read_start_case,
     replayed_case_names,
 )
 from mock_turn import ScriptedRun, Seen
@@ -109,6 +112,36 @@ REPLAYS = {
         "carry-on-042-other",
         "carry-on-049-support",
         "carry-on-059-other",
+    ],
+}
+#: The start requests section 2 of the start replays fixes, by case: every request of
+#: each bed case but those repeating another's bed state, in time order.
+START_REPLAYS = {
+    "bed-and-sheet-check": [
+        "clear-smooth-pei-20261007-075606",
+        "not-clear-smooth-pei-20261007-105905",
+        "partial-textured-20261008-140612",
+        "not-clear-textured-20261008-172933",
+        "clear-textured-20261010-061436",
+        "not-clear-textured-20261010-164500",
+        "not-clear-textured-20261010-174900",
+        "clear-textured-20261027-153224",
+        "corrupted-textured-20261027-154933",
+        "partial-textured-20261029-183517",
+        "not-clear-textured-20261029-195324",
+        "not-clear-textured-20261030-142205",
+        "not-clear-textured-20261030-174128",
+        "partial-smooth-pei-20261031-164529",
+        "not-clear-smooth-pei-20261031-191910",
+    ],
+    "bed-clear-check": [
+        "not-clear-02-failed-print-left-on-bed-1546",
+        "clear-01-bed-lowered-1727",
+        "clear-02-bed-raised-1921",
+        "clear-04-heating-before-first-layer-2044",
+        "not-clear-01-one-stray-strand-2218",
+        "clear-05-head-parked-2219",
+        "not-clear-03-parts-and-strands-0415",
     ],
 }
 CONTEXT = ["printobserver", "context", "--print-id", "{print}", "--json"]
@@ -237,7 +270,10 @@ def test_the_cases_carry_exactly_the_replays_the_suite_was_given() -> None:
         [moment.at for moment in bubbler.moments],
         sorted(moment.at for moment in bubbler.moments),
     )
-    equal(sorted([*REPLAYS, bubbler.name]), replayed_case_names())
+    for name, replay in START_REPLAYS.items():
+        truth(is_start_case(name), describing=f"{name}'s replay to be start requests alone")
+        equal([request.id for request in read_start_case(name).requests], replay, describing=name)
+    equal(sorted([*REPLAYS, *START_REPLAYS, bubbler.name]), replayed_case_names())
 
 
 def _scenarios() -> Iterator[tuple[str, dict[str, Any], dict[str, Any]]]:
@@ -660,6 +696,27 @@ def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
     case = read_case("jar-top-wrong-material-first-layer-detach")
     done = mock_replay(case, [{"commands": [CONTEXT]}, {"commands": [PAUSE]}], scratch)
     truth(done.replayed.passed, describing=f"every decision point: {done.replayed.failures()}")
+
+
+def test_a_supervision_turns_compound_command_is_reported_under_its_conversation(
+    scratch: Path,
+) -> None:
+    """A piped read is written down under the session it ran in, and the record carries it.
+
+    With no ledger turn to read a decision point's session from, it is the print's last.
+    """
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    piped = "printobserver context --print-id {print} --json | head -5"
+    done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
+    replayed = done.replayed
+    sessions = [session["session_name"] for session in replayed.ledger["sessions"]]
+    equal(len(sessions), 1)
+    ran = [line for line in replayed.points[0].commands if "| head" in line]
+    equal(len(ran), 1)
+    equal(replayed.compound_commands(), {sessions[0]: ran})
+    equal(replayed.as_record()["compound_commands"], {sessions[0]: ran})
+    unattributed = dataclasses.replace(replayed, ledger={**replayed.ledger, "turns": []})
+    equal(unattributed.compound_commands(), {sessions[0]: ran})
 
 
 def test_a_printer_that_cannot_be_read_still_gets_its_scheduled_check(scratch: Path) -> None:
@@ -1232,6 +1289,9 @@ def test_a_turn_the_engine_gave_up_on_fails_its_own_decision_point(scratch: Path
     first, second = done.replayed.points
     truth(first.why_not is not None, describing="the failed turn to fail its decision point")
     contains(str(first.why_not), "the turn failed")
+    # The harness's own words are kept, because the engine's refusal names no cause.
+    contains(str(first.why_not), "the harness answered:")
+    contains(str(first.why_not), "no answer in the shape asked for")
     truth(second.moment.id == case.moments[1].id, describing="the next event to get its turn")
     equal(first.assessment, None, describing="the failed turn, which answered nothing")
     truth(second.assessment is not None, describing="the next turn's assessment to be its own")
@@ -1302,6 +1362,7 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "passed": True,
         "turns": 2,
         "sessions": [],
+        "compound_commands": {},
         "decision_points": points,
     }
     return points, test_record
@@ -1366,6 +1427,9 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         ("repeated", {**test_record, "decision_points": [points[0], points[0]]}),
         ("reordered", {**test_record, "decision_points": points[::-1]}),
         ("sessions", {**test_record, "sessions": [3]}),
+        ("no compound report", {k: v for k, v in test_record.items() if k != "compound_commands"}),
+        ("a conversation unreported", {**test_record, "sessions": ["operator-2026-10-07"]}),
+        ("compound", {**test_record, "compound_commands": {"": [3]}}),
         (
             "why",
             {**test_record, "decision_points": [{**points[0], "why_not": 3}, points[1]]},
