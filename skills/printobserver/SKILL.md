@@ -84,14 +84,13 @@ another look settles nothing: an uncertain reading is stopped, not watched.
 
 ## When you are asked to start a print
 
-Open the camera's current frame first. Start only on a clear bed whose sheet suits
-the material, naming in the manifest the sheet it shows: textured-pei, bronze or
-gold, or smooth-pei, grey or dark, each labelled. Never PLA on textured or PETG on
-smooth, per the spool and the file. Its lines, logo and glare are no debris; a
-strand, part or blob is. Any of the sheet an object could sit on out of view stops
-a start, as under a beam across it; its rim alone, under a beam or head or past
-the frame, does not. Not starting, ask nothing; tell a person what stops it.
-Never set an override.
+Open the camera's current frame first. Start only on a clear bed, naming in the
+manifest the sheet it shows: textured-pei, bronze or gold, or smooth-pei, grey or
+dark, each labelled. Never PLA on textured or PETG on smooth, per the spool and
+the file. Its lines, logo and glare are no debris; a strand, part or blob is. Any
+of the sheet an object could sit on out of view stops a start, as under a beam
+across it; its rim or a corner alone, under a beam or head or past the frame, does
+not. Not starting, ask nothing; tell a person what stops it. Never set an override.
 
 ## The boundaries you work inside
 
@@ -99,9 +98,9 @@ Never set an override.
 - **A refusal says what was allowed:** ask again inside it.
 - **The vocabulary is closed: no path in this system sends a command to the
   printer.**
-- **One command per call,** from the program's name, in full: nothing chained
-  to it, `cd` or this program included, no variable, no usage
-  listing. A refusal says nothing of the command: write it so.
+- **One command per shell call,** in full: never chained by `;`, `&&` or a pipe,
+  not after `cd`, not two of this program's; no variable, no usage listing. A
+  refusal says nothing of the command: write it so.
 
 ## When to escalate instead
 

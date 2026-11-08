@@ -95,10 +95,11 @@ def _the_operators_agent_decides_each_start(name: str, program: str) -> None:
                 point.report.usage and point.report.models,
                 describing=f"{point.request.id}'s conversation to report its usage and models",
             )
-            expect.truth(
-                point.report.commands,
-                describing=f"the transcript to say what {point.request.id}'s agent ran",
-            )
+        # A request whose frame settles it needs no command, but a day of them does.
+        expect.truth(
+            any(point.report.commands for point in replayed.points),
+            describing="the transcript to say what the agent ran",
+        )
         expect.equal(
             {session: [] for session in replayed.sessions},
             replayed.compound_commands(),
