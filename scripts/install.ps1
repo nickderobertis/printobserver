@@ -619,13 +619,20 @@ shared_secret = ""
 # [camera]
 # snapshot_url = "http://127.0.0.1:1984/api/frame.jpeg?src=camera"
 
-# Optional: Obico's own API, so that a print Obico paused, and the agent adjusted
-# and the supervisor resumed, is acknowledged to Obico, which re-arms its
-# detection for the rest of the print. Give both keys or neither; the token is
-# an OAuth2 access token from the Obico instance's own administration.
+# Optional: Obico's own API and its failure detector. With the address and the
+# token, Obico's record of the printer is read once per observation interval,
+# which is how the detector's status says Obico is scoring a print, and a print
+# Obico paused, and the agent adjusted and the supervisor resumed, is
+# acknowledged to Obico, which re-arms its detection for the rest of the print.
+# Give both keys or neither; the token is an OAuth2 access token from the Obico
+# instance's own administration. The printer read is the one Obico's own posts
+# name; printer_id = <the number in its Obico page's address> names it sooner.
+# ml_api_url is Obico's detector service, whose health check is asked during
+# every print; left out, nothing asks it.
 # [obico]
 # url = "http://127.0.0.1:3334"
 # access_token = ""
+# ml_api_url = "http://127.0.0.1:3333"
 
 # How a start checks the spools loaded against what its file needs, by
 # OctoPrint's own analysis of it. Every key is optional; left out, a start is

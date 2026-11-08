@@ -1780,6 +1780,7 @@ fn with_the_examples_uncommented(template: &str) -> String {
                 "# [obico]",
                 "# url = ",
                 "# access_token = ",
+                "# ml_api_url = ",
             ]
             .iter()
             .any(|marker| line.starts_with(marker));
@@ -1792,7 +1793,7 @@ fn with_the_examples_uncommented(template: &str) -> String {
         })
         .collect();
     assert_eq!(
-        uncommented, 5,
+        uncommented, 6,
         "the template does not carry the commented [camera] and [obico] examples"
     );
     lines.join("\n")
@@ -1834,6 +1835,10 @@ fn the_installed_configuration_reads_with_and_without_its_examples() {
         .expect("the configuration reads with its examples taken up");
     assert!(taken_up.camera_snapshot_url.is_some());
     assert!(taken_up.obico_api.is_some());
+    assert!(
+        taken_up.obico_ml_api_url.is_some(),
+        "the template's [obico] example names no detector service"
+    );
 }
 
 /// One print in a state directory, as an alert would have opened it.

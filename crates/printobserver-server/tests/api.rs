@@ -54,6 +54,8 @@ mod following;
 mod images;
 #[path = "journeys/ingress.rs"]
 mod ingress;
+#[path = "journeys/installed_detector.rs"]
+mod installed_detector;
 #[path = "journeys/ledger_restarts.rs"]
 mod ledger_restarts;
 #[path = "journeys/looking.rs"]

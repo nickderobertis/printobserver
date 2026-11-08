@@ -832,6 +832,7 @@ fn with_the_examples_taken_up(configuration: &str) -> String {
         "# [obico]",
         "# url = ",
         "# access_token = ",
+        "# ml_api_url = ",
     ];
     let mut taken = 0;
     let lines: Vec<String> = configuration
@@ -911,4 +912,5 @@ fn the_powershell_installers_configuration_reads_with_and_without_its_examples()
     .expect("the configuration reads with its examples taken up");
     assert!(taken_up.camera_snapshot_url.is_some());
     assert!(taken_up.obico_api.is_some());
+    assert!(taken_up.obico_ml_api_url.is_some());
 }
