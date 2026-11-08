@@ -94,8 +94,12 @@ def default_sheets(template: str | None = None) -> dict[str, tuple[str, ...]]:
         raise ReplayError(msg)
     table = {}
     for row in block["rows"].splitlines():
-        material, sheets = row.removeprefix("# ").split(" = ", 1)
-        table[material] = tuple(json.loads(sheets))
+        material, written = row.removeprefix("# ").split(" = ", 1)
+        sheets = json.loads(written)
+        if not isinstance(sheets, list) or not all(isinstance(sheet, str) for sheet in sheets):
+            msg = f"{INSTALLER} states {material}'s sheets as {written}, no list of sheets"
+            raise ReplayError(msg)
+        table[material] = tuple(sheets)
     return table
 
 
@@ -262,10 +266,11 @@ def is_harness_report(report: object) -> bool:
         and len(results) == 1
         and all(
             isinstance(result, dict)
-            and isinstance(result.get("status"), str)
-            and isinstance(result.get("text"), str | None)
-            and isinstance(result.get("error"), str | None)
-            and isinstance(result.get("stderr"), str)
+            and {"status", "text", "error", "stderr"} <= result.keys()
+            and isinstance(result["status"], str)
+            and isinstance(result["text"], str | None)
+            and isinstance(result["error"], str | None)
+            and isinstance(result["stderr"], str)
             for result in results
         )
     )

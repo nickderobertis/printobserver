@@ -516,12 +516,15 @@ def read_start_case(name: str) -> StartCase:
             raise ValueError(msg)
         frame = held.frames.get(scenario["event_image"], {})
         material = frame.get("sliced_material")
+        if material is not None and not isinstance(material, str):
+            msg = f"{name}'s frame {scenario['event_image']} names {material!r} as its material"
+            raise ValueError(msg)
         request = StartRequest(
             id=ScenarioId(entry),
             at=scenario["at"],
             event_image=scenario["event_image"],
             sheet=SHEET_LABELS.get(str(frame.get("sheet"))),
-            sliced_material=material if isinstance(material, str) else None,
+            sliced_material=material,
             accept_any_of=tuple(
                 tuple(_step(step) for step in outcome) for outcome in scenario["accept_any_of"]
             ),

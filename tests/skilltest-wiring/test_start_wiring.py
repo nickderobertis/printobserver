@@ -272,6 +272,16 @@ def test_a_compound_command_is_refused_by_the_conversations_permissions_and_repo
         ('"printobserver" look; echo done', True),
         ("echo $(printobserver prints)", True),
         ("echo `printobserver prints`", True),
+        ('echo "$(printobserver prints)"', True),
+        ("printobserver look 2>&1", False),
+        ("printobserver look &> out", False),
+        ("X=1 printobserver prints; echo done", True),
+        ("/usr/local/bin/printobserver prints | head", True),
+        ("echo 'printobserver prints; echo'", False),
+        ('printobserver start-print --reason "clear (smooth PEI)"', False),
+        ("printobserver look --reason 'a `b` c'", False),
+        ("find / -name x 2>/dev/null; which printobserver", False),
+        ("env X=1 printobserver prints && echo done", True),
     ],
 )
 def test_a_compound_command_is_one_chaining_the_program_to_another(
