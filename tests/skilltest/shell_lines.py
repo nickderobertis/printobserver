@@ -148,9 +148,27 @@ def substitutions(line: str) -> tuple[str, list[str]]:
     return "".join(kept), read
 
 
+#: The reserved words opening and closing a brace group, `{ ...; }`.
+BRACES = {"{", "}"}
+
+
 def _named(words: list[str]) -> list[str]:
-    """A command's words from its program on, the variable assignments before it left out."""
-    return [*itertools.dropwhile(lambda word: ASSIGNMENT.match(word) is not None, words)]
+    """A command's words from its program on, leaving out assignments and a group's brace."""
+    return [
+        *itertools.dropwhile(
+            lambda word: word in BRACES or ASSIGNMENT.match(word) is not None, words
+        )
+    ]
+
+
+def _grouped(line: str) -> bool:
+    """Whether a line runs a group, `( ... )` or `{ ...; }`, outside its substitutions."""
+    outer, _ = substitutions(line)
+    tokens = _tokens(outer) or []
+    return any(
+        token in BRACES or (set(token) & set("()") and set(token) <= set(PUNCTUATION))
+        for token in tokens
+    )
 
 
 def _program(word: str) -> str:
@@ -217,4 +235,6 @@ def is_compound(line: str) -> bool:
     command by how it begins, so the skill asks for one command per call.
     """
     run = commands(line)
-    return len(run) > 1 and any(runs_the_program(words) for words in run)
+    if not any(runs_the_program(words) for words in run):
+        return False
+    return len(run) > 1 or _grouped(line)

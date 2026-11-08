@@ -318,6 +318,11 @@ def test_a_compound_start_the_rules_refuse_reaches_no_server_and_is_reported(
         ("printobserver look --reason 'a `b` c'", False),
         ("find / -name x 2>/dev/null; which printobserver", False),
         ("(printobserver prints); echo done", True),
+        # A group runs its commands in a shell of their own, one command or several.
+        ("(printobserver prints)", True),
+        ("( printobserver prints )", True),
+        ("{ printobserver prints; }", True),
+        ("printobserver start-print --reason 'a { b } (c)'", False),
         ("printobserver look # ; echo done", False),
         ("printobserver look --reason 'unclosed", False),
         ("env X=1 printobserver prints && echo done", True),
