@@ -268,6 +268,10 @@ def test_a_compound_command_is_refused_by_the_conversations_permissions_and_repo
         ("printobserver look | head", True),
         ("printobserver look\nprintobserver prints", True),
         ("ls -la && cat x", False),
+        ("printobserver start-print --reason a\\;b", False),
+        ('"printobserver" look; echo done', True),
+        ("echo $(printobserver prints)", True),
+        ("echo `printobserver prints`", True),
     ],
 )
 def test_a_compound_command_is_one_chaining_the_program_to_another(

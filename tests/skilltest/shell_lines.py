@@ -1,6 +1,6 @@
 """How one shell line an agent wrote splits into the commands it runs.
 
-Its own module, importing nothing, because two sides read lines by it: the suite,
+Its own module, importing nothing of the suite's, because two sides read lines by it: the suite,
 which reports a `printobserver` command chained to another, and the wiring tests'
 stand-in for the harness, which refuses a chained line the way the harness's
 permission rules do. One splitter keeps the two from disagreeing about a line.
@@ -8,17 +8,26 @@ permission rules do. One splitter keeps the two from disagreeing about a line.
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
-#: Shell operators that make a line run more than one command, outside its quotes.
-OPERATORS = ("&&", "||", ";", "|", "&", "\n")
+#: What ends one command and begins another, outside quotes and escapes: the chaining
+#: operators, a line break, and the bounds of a command substitution.
+OPERATORS = ("&&", "||", "$(", ";", "|", "&", "\n", "`", ")")
 
 
 def segments(command: str) -> list[str]:
-    """The commands one shell line runs, split at the operators outside its quotes."""
+    """The commands one shell line runs, split where a command ends outside quotes and escapes.
+
+    A command substitution is a command of its own, so its bounds split the line too.
+    """
     found, current, quote, index = [], "", "", 0
     while index < len(command):
         character = command[index]
+        if character == "\\" and quote != "'":
+            current += command[index : index + 2]
+            index += 2
+            continue
         if quote:
             current += character
             if character == quote:
@@ -39,6 +48,15 @@ def segments(command: str) -> list[str]:
     return [part.strip() for part in found if part.strip()]
 
 
+def _program_of(part: str) -> str:
+    """The program one command runs, its quotes taken off as the shell takes them off."""
+    try:
+        words = shlex.split(part)
+    except ValueError:
+        words = part.split()
+    return Path(words[0]).name.removesuffix(".exe") if words else ""
+
+
 def is_compound(command: str) -> bool:
     """Whether a shell line runs a `printobserver` command beside another command.
 
@@ -47,7 +65,4 @@ def is_compound(command: str) -> bool:
     costs the action it carried, so the skill asks for one command per call.
     """
     parts = segments(command)
-    runs_the_program = any(
-        Path(part.split()[0]).name.removesuffix(".exe") == "printobserver" for part in parts
-    )
-    return runs_the_program and len(parts) > 1
+    return len(parts) > 1 and any(_program_of(part) == "printobserver" for part in parts)
