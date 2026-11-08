@@ -28,10 +28,10 @@ const PATIENCE: Duration = Duration::from_secs(30);
 const INTERVAL_S: u64 = 1;
 
 /// The printer the recorded answer is.
-const PRINTER_ID: i64 = 17;
+const PRINTER_ID: i64 = crate::obico_api::RECORDED_PRINTER_ID;
 
 /// The path the printer's record is read at.
-const PRINTER_PATH: &str = "/api/v1/printers/17/";
+const PRINTER_PATH: &str = "/api/v1/printers/1/";
 
 /// A world watching an active print, reading `Obico`'s REST API at `rest`,
 /// with the detector's `ml_api` at `ml_api` when one is given and the printer
@@ -415,10 +415,10 @@ async fn a_record_obico_would_not_send_refuses_the_read() {
             answer["id"] = json!(PRINTER_ID + 1);
         }),
     ];
+    let served = rest.served();
     for (said, change) in unreadable {
         rest.answer(|answer| {
-            *answer = printobserver_types::serde_json::from_str(crate::obico_api::RECORDED_PRINTER)
-                .expect("the recording is JSON");
+            *answer = served.clone();
             change(answer);
         });
         let seen_before = failures_saying(&world, &history, said).await;
@@ -1200,10 +1200,12 @@ async fn the_printer_is_learned_from_what_obico_posts() {
         "a printer was read before one was known"
     );
 
-    let notification: Value = printobserver_types::serde_json::from_str(include_str!(
+    let mut notification: Value = printobserver_types::serde_json::from_str(include_str!(
         "../../../printobserver-obico/samples/obico/printer-notification-about-a-print.json"
     ))
     .expect("the committed sample is JSON");
+    // The body names the printer the recorded answer is.
+    notification["printer"]["id"] = json!(PRINTER_ID);
     post(&world, &notification).await;
     until_status(&world, print_id, "scoring_nothing_flagged").await;
     assert!(printer_reads(&rest) > 0);

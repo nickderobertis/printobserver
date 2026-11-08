@@ -2,10 +2,13 @@
 //! failure detector's `ml_api`.
 //!
 //! The REST host serves `GET /api/v1/printers/{id}/` from [`RECORDED_PRINTER`]
-//! — every field the check-costs spike read off a real `Obico` printer answer
-//! at revision `49c0bc70`, its credential `auth_token` a sentinel — with the
-//! three fields a journey moves between reads: `current_print`, `pic` and
-//! `normalized_p`.
+//! — the answer a real self-hosted `Obico`, brought up at revision
+//! `49c0bc70` by `tools/obico-env`, gave that read under a bearer
+//! `access_token` while it watched a running print, with the printer's own
+//! credential `auth_token` (which the answer carries twice, once on the
+//! printer and once on its current print's printer) replaced by a sentinel.
+//! A journey moves only the three fields the status reads between reads:
+//! `current_print`, `pic` and `normalized_p`.
 //! It answers only a request carrying `Authorization: Bearer <access_token>`
 //! and refuses any other `403`, as `Obico` does; it answers an
 //! acknowledgement `200`, and anything else `404`. The `ml_api` host answers
@@ -23,35 +26,35 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
-/// The printer answer the REST host serves: every field the check-costs spike
-/// read off a real `Obico` printer answer at revision `49c0bc70`, its
-/// credential `auth_token` a sentinel.
+/// The printer answer the REST host serves: the body a real self-hosted
+/// `Obico` at revision `49c0bc70` answered `GET /api/v1/printers/1/` with,
+/// `200`, under `Authorization: Bearer <access_token>`, while it watched a
+/// running print and had taken a snapshot of it — verbatim, but for both
+/// copies of the printer's credential `auth_token`, which are the sentinel.
 // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 pub const RECORDED_PRINTER: &str = r#"{
-  "id": 17,
-  "name": "Prusa MK4",
-  "created_at": "2026-02-27T09:14:02.118344Z",
-  "archived_at": null,
+  "id": 1,
+  "name": "printobserver",
+  "created_at": "2026-11-08T03:25:04.004260Z",
   "action_on_failure": "PAUSE",
+  "watching_enabled": true,
+  "not_watching_reason": null,
   "tools_off_on_pause": true,
   "bed_off_on_pause": false,
   "retract_on_pause": 6.5,
   "lift_z_on_pause": 2.5,
   "detective_sensitivity": 1.0,
-  "watching_enabled": true,
-  "not_watching_reason": "",
   "min_timelapse_secs_on_finish": 600,
   "min_timelapse_secs_on_cancel": 300,
   "auth_token": "SENTINEL-obico-printer-auth-token-0b6f3c",
+  "archived_at": null,
   "agent_name": "octoprint_obico",
   "agent_version": "2.5.2",
-  "settings": {
-    "webcam_flipV": false,
-    "webcam_flipH": false,
-    "webcam_rotation": 0,
-    "ratio169": false
+  "pic": {
+    "img_url": "http://localhost:32780/media/tsd-pics/raw/1/1/1794108307.523408.jpg?digest=YidceGUxM2xSOVx4ZGZceDExPmJaNVx4ZWJceGM0XHg4Y1x4OTVceGMxMVx4Y2ZceDEzJlx4ZmFceGI1XHhkZl0_XHhlMVx4ZDhceDg2XHg4MSpceGFjXHhjMyc="
   },
   "status": {
+    "_ts": 1794108305,
     "state": {
       "text": "Printing",
       "flags": {
@@ -59,7 +62,9 @@ pub const RECORDED_PRINTER: &str = r#"{
         "printing": true,
         "paused": false,
         "cancelling": false,
-        "error": false
+        "error": false,
+        "ready": false,
+        "closedOrError": false
       }
     },
     "job": {
@@ -72,39 +77,77 @@ pub const RECORDED_PRINTER: &str = r#"{
       "completion": 12.5,
       "printTime": 900,
       "printTimeLeft": 6300
-    },
-    "_ts": 1772367300
+    }
   },
-  "pic": {
-    "img_url": "http://127.0.0.1:3334/media/tsd-pics/snapshots/17/latest_unrotated.jpg?digest=1772367300"
+  "settings": {
+    "data_channel_id": "",
+    "temp_profiles": [],
+    "printer_metadata": "{}",
+    "tsd_plugin_version": "",
+    "octoprint_version": "",
+    "platform_uname": "[]",
+    "installed_plugins": "[]",
+    "webcam_flipV": false,
+    "webcam_flipH": false,
+    "webcam_rotate90": false,
+    "webcam_rotation": 0,
+    "webcam_streamRatio": "16:9",
+    "ratio169": true,
+    "agent_name": "octoprint_obico",
+    "agent_version": "2.5.2"
   },
-  "normalized_p": 0.0,
   "current_print": {
-    "id": 4211,
-    "printer": 17,
+    "id": 1,
+    "printer": {
+      "id": 1,
+      "name": "printobserver",
+      "created_at": "2026-11-08T03:25:04.004260Z",
+      "action_on_failure": "PAUSE",
+      "watching_enabled": true,
+      "not_watching_reason": null,
+      "tools_off_on_pause": true,
+      "bed_off_on_pause": false,
+      "retract_on_pause": 6.5,
+      "lift_z_on_pause": 2.5,
+      "detective_sensitivity": 1.0,
+      "min_timelapse_secs_on_finish": 600,
+      "min_timelapse_secs_on_cancel": 300,
+      "auth_token": "SENTINEL-obico-printer-auth-token-0b6f3c",
+      "archived_at": null,
+      "agent_name": "octoprint_obico",
+      "agent_version": "2.5.2"
+    },
+    "g_code_file": null,
     "filename": "benchy.gcode",
-    "started_at": "2026-03-01T12:00:00.500000Z",
+    "started_at": "2026-11-08T03:25:04.015845Z",
+    "ended_at": null,
     "finished_at": null,
     "cancelled_at": null,
-    "ended_at": null,
     "uploaded_at": null,
     "alerted_at": null,
     "alert_acknowledged_at": null,
     "alert_muted_at": null,
     "paused_at": null,
-    "alert_overwrite": null,
-    "access_consented_at": null,
-    "video_archived_at": null,
     "video_url": null,
     "tagged_video_url": null,
     "poster_url": null,
-    "print_time": 900,
+    "alert_overwrite": null,
     "filament_used": null,
+    "print_time": null,
+    "access_consented_at": null,
+    "video_archived_at": null,
     "need_alert_overwrite": false,
-    "need_print_shot_feedback": false,
-    "g_code_file": null
-  }
+    "need_print_shot_feedback": false
+  },
+  "normalized_p": 0.0
 }"#;
+
+/// The printer the recorded answer is.
+pub const RECORDED_PRINTER_ID: i64 = 1;
+
+/// The print every journey's world has open, by `Obico`'s identifier for it:
+/// the one the committed failure alert sample names.
+pub const ACTIVE_PRINT: i64 = 4211;
 
 /// The credential the recorded answer carries, which nothing the server
 /// writes may carry.
@@ -167,9 +210,13 @@ pub struct Host {
 }
 
 impl Host {
-    /// `Obico`'s REST API, admitting `token`, serving the recorded printer.
+    /// `Obico`'s REST API, admitting `token`, serving the recorded printer
+    /// watching the journey's open print: the recording's `current_print`
+    /// with its identifier made [`ACTIVE_PRINT`].
     pub async fn rest(token: &str) -> Self {
-        Self::start(Some(token.to_owned())).await
+        let host = Self::start(Some(token.to_owned())).await;
+        host.answer(|answer| answer["current_print"]["id"] = json!(ACTIVE_PRINT));
+        host
     }
 
     /// The detector's `ml_api`, answering its health check `200`.
@@ -221,14 +268,19 @@ impl Host {
         change(&mut self.held.lock().expect("the host holds").answer);
     }
 
-    /// A new snapshot, as `Obico` takes one from the camera, scored `score`.
+    /// A new snapshot, as `Obico` takes one from the camera, scored `score`:
+    /// the recorded snapshot's address with its `digest` made `snapshot`,
+    /// since `Obico` names every snapshot it takes by a digest of its own.
     pub fn scores(&self, snapshot: u64, score: f64) {
         self.answer(|answer| {
-            answer["pic"] = json!({
-                "img_url": format!(
-                    "http://127.0.0.1:3334/media/tsd-pics/snapshots/17/latest_unrotated.jpg?digest={snapshot}"
-                ),
-            });
+            let recorded = answer["pic"]["img_url"]
+                .as_str()
+                .expect("the recording names a snapshot")
+                .to_owned();
+            let (address, _) = recorded
+                .split_once("?digest=")
+                .expect("the recorded snapshot carries a digest");
+            answer["pic"]["img_url"] = json!(format!("{address}?digest={snapshot}"));
             answer["normalized_p"] = json!(score);
         });
     }
