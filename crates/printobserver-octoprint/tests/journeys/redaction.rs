@@ -70,6 +70,16 @@ fn succeeding(request: &Recorded) -> Reply {
     }
 }
 
+/// A sink keeping nothing it is handed, for the read whose bytes this journey
+/// is not about.
+struct Discarded;
+
+impl printobserver_printer_api::GcodeSink for Discarded {
+    fn take(&mut self, _piece: &[u8]) -> core::ops::ControlFlow<()> {
+        core::ops::ControlFlow::Continue(())
+    }
+}
+
 /// Drive every method the printer port declares, once each.
 fn drive_every_method(printer: &OctoPrintPrinter) {
     drop(block_on(printer.snapshot()));
@@ -99,6 +109,10 @@ fn drive_every_method(printer: &OctoPrintPrinter) {
     drop(block_on(printer.printed_extent(
         FileName::new("hold.gcode").expect("a file name"),
         8,
+    )));
+    drop(block_on(printer.read_gcode(
+        FileName::new("hold.gcode").expect("a file name"),
+        &mut Discarded,
     )));
     drop(block_on(printer.read_position()));
     drop(block_on(printer.push_events()));
