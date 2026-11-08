@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 from closures import closure
 from repo_checks.checks_integration import integration_tier
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, contains, refused
 from repo_checks.fixture_repository import init_repository
 from repo_checks.model import Repo
 from repo_checks.shell import run
@@ -364,6 +364,35 @@ def test_an_upload_skipped_on_some_changes_is_refused(tree: Callable[[], Tree]) 
         "      - if: github.event_name == 'push'\n        uses: actions/upload-artifact@v4\n",
     )
     refused(integration_tier(broken.repo), "actions/upload-artifact@v4` under the condition")
+
+
+#: The integration job's save of the release program it built, as committed.
+RELEASE_PROGRAM_SAVE = (
+    "      - if: github.ref == 'refs/heads/main' && "
+    "steps.release-program-cache.outputs.cache-hit != 'true'\n"
+    "        uses: actions/cache/save@v4\n"
+)
+
+
+def test_a_cache_save_taken_only_on_main_is_accepted(committed: Repo) -> None:
+    """A save verifies nothing, so a run that skips it skips no part of the tier."""
+    contains(committed.path(CI).read_text(encoding="utf-8"), RELEASE_PROGRAM_SAVE)
+
+    accepted(integration_tier(committed), describing="the main-only release-program save")
+
+
+def test_a_conditional_cache_restore_is_still_refused(tree: Callable[[], Tree]) -> None:
+    """The exception is the save alone: a restore under a condition still narrows the run."""
+    broken = tree()
+    broken.edit(
+        CI,
+        "      - id: release-program-cache\n        uses: actions/cache/restore@v4\n",
+        "      - id: release-program-cache\n"
+        "        if: github.event_name == 'push'\n"
+        "        uses: actions/cache/restore@v4\n",
+    )
+
+    refused(integration_tier(broken.repo), "actions/cache/restore@v4` under the condition")
 
 
 @pytest.mark.parametrize(
