@@ -542,10 +542,13 @@ pub struct IndexBuilder {
     flow: Vec<Mark<f64>>,
     /// The fan speeds so far.
     fan: Vec<Mark<f64>>,
-    /// Every object labelled so far, by its number.
-    objects: BTreeMap<i64, ObjectDraft>,
-    /// The object the moves being read lay material for.
-    current_object: Option<i64>,
+    /// Every object labelled so far, in the order first labelled.
+    objects: Vec<ObjectDraft>,
+    /// Where each object's number is in `objects`.
+    object_numbers: BTreeMap<i64, usize>,
+    /// The object the moves being read lay material for, by its place in
+    /// `objects`.
+    current_object: Option<usize>,
     /// Whether any object was labelled.
     labelled_objects: bool,
     /// Where the head is in X, Y and Z.
@@ -604,9 +607,11 @@ impl IndexBuilder {
         if !self.line.is_empty() || self.overlong {
             self.end_line();
         }
+        let mut drafts: Vec<Option<ObjectDraft>> = self.objects.into_iter().map(Some).collect();
         let objects = self
-            .objects
+            .object_numbers
             .into_values()
+            .filter_map(|place| drafts.get_mut(place).and_then(Option::take))
             .filter_map(|draft| {
                 draft
                     .bounds
@@ -667,6 +672,12 @@ impl IndexBuilder {
             }
             return;
         }
+        // A move is nearly every line of a print, so `G0`–`G3` written as a
+        // slicer writes them are read by their own one pass.
+        if let [b'G', code @ b'0'..=b'3', b' ', rest @ ..] = raw {
+            self.motion(u32::from(code - b'0'), &move_of(rest));
+            return;
+        }
         let held = words(raw);
         let mut words = held.as_slice();
         // A leading `N<line number>` numbers the line and is no word of it.
@@ -682,7 +693,7 @@ impl IndexBuilder {
             held.first_code
         };
         match (char::from(first.letter), code) {
-            ('G', Some(code @ 0..=3)) => self.motion(code, &words[1..]),
+            ('G', Some(code @ 0..=3)) => self.motion(code, &Move::of(&words[1..])),
             ('G', Some(28)) => self.home(&words[1..]),
             ('G', Some(90)) => self.axes = Positioning::Absolute,
             ('G', Some(91)) => self.axes = Positioning::Relative,
@@ -736,45 +747,30 @@ impl IndexBuilder {
     }
 
     /// A move: where the head goes, and whether it laid material on the way.
-    fn motion(&mut self, code: u32, words: &[Word]) {
+    fn motion(&mut self, code: u32, words: &Move) {
+        // Plain statements rather than iterators and closures: this runs for
+        // every move of a print.
         let start = self.at;
-        // One pass over the words: a move carries a handful, and a print
-        // carries millions of moves.
-        let mut extruded = None;
-        let mut at = 0;
-        while at < words.len() {
-            let Word { letter, value } = words[at];
-            at += 1;
-            if !value.is_finite() {
-                continue;
-            }
-            let axis = match letter {
-                b'X' => 0,
-                b'Y' => 1,
-                b'Z' => 2,
-                b'E' if value.abs() <= WORD_LIMIT => {
-                    extruded = Some(value);
-                    continue;
-                }
-                _ => continue,
-            };
-            if value.abs() <= AXIS_LIMIT {
-                self.at[axis] = match self.axes {
-                    Positioning::Absolute => value,
-                    Positioning::Relative => self.at[axis] + value,
-                };
+        let relative = self.axes == Positioning::Relative;
+        if let Some(x) = words.x {
+            self.place(0, x, relative);
+        }
+        if let Some(y) = words.y {
+            self.place(1, y, relative);
+        }
+        if let Some(z) = words.z {
+            self.place(2, z, relative);
+        }
+        let mut fed = 0.0;
+        if let Some(value) = words.e {
+            if relative || self.extruder == Positioning::Relative {
+                self.e += value;
+                fed = value;
+            } else {
+                fed = value - self.e;
+                self.e = value;
             }
         }
-        let fed = extruded.map_or(0.0, |value| {
-            if self.axes == Positioning::Relative || self.extruder == Positioning::Relative {
-                self.e += value;
-                value
-            } else {
-                let fed = value - self.e;
-                self.e = value;
-                fed
-            }
-        });
         let travel = (self.at[0] - start[0]).hypot(self.at[1] - start[1]);
         if fed <= 0.0 || (travel <= TRAVEL_MM && code < 2) {
             return;
@@ -786,14 +782,24 @@ impl IndexBuilder {
             return;
         };
         let end = self.at;
-        if let Some(draft) = self.objects.get_mut(&object) {
-            grow(&mut draft.bounds, start[0], start[1]);
-            grow(&mut draft.bounds, end[0], end[1]);
-            if code >= 2 {
-                for [x, y] in arc_extremes(words, code == 2, start, end) {
-                    grow(&mut draft.bounds, x, y);
-                }
+        let draft = &mut self.objects[object];
+        grow(&mut draft.bounds, start[0], start[1]);
+        grow(&mut draft.bounds, end[0], end[1]);
+        if code >= 2 {
+            for [x, y] in arc_extremes(words, code == 2, start, end) {
+                grow(&mut draft.bounds, x, y);
             }
+        }
+    }
+
+    /// Move one axis to a place, or by a distance, when it is within reach.
+    fn place(&mut self, axis: usize, value: f64, relative: bool) {
+        if value.abs() <= AXIS_LIMIT {
+            self.at[axis] = if relative {
+                self.at[axis] + value
+            } else {
+                value
+            };
         }
     }
 
@@ -883,7 +889,7 @@ impl IndexBuilder {
                 .take(NAME_LIMIT)
                 .collect();
             if let Some(object) = self.current_object
-                && let Some(draft) = self.objects.get_mut(&object)
+                && let Some(draft) = self.objects.get_mut(object)
                 && !name.is_empty()
             {
                 draft.name = Some(name);
@@ -903,12 +909,17 @@ impl IndexBuilder {
             return;
         }
         let id = whole(number);
-        if !self.objects.contains_key(&id) && self.objects.len() >= OBJECT_LIMIT {
+        let place = if let Some(place) = self.object_numbers.get(&id) {
+            *place
+        } else if self.objects.len() >= OBJECT_LIMIT {
             self.current_object = None;
             return;
-        }
-        self.objects.entry(id).or_default();
-        self.current_object = Some(id);
+        } else {
+            self.objects.push(ObjectDraft::default());
+            self.object_numbers.insert(id, self.objects.len() - 1);
+            self.objects.len() - 1
+        };
+        self.current_object = Some(place);
     }
 }
 
@@ -950,16 +961,16 @@ fn grow(bounds: &mut Option<[f64; 4]>, x: f64, y: f64) {
 /// clockwise and `G3` counter-clockwise; an arc ending where it began is the
 /// whole circle.
 fn arc_extremes(
-    words: &[Word],
+    words: &Move,
     clockwise: bool,
     start: [f64; 3],
     end: [f64; 3],
 ) -> impl Iterator<Item = [f64; 2]> {
-    let centre = number(words, 'R').map_or_else(
+    let centre = words.r.map_or_else(
         || {
             Some([
-                start[0] + number(words, 'I').unwrap_or(0.0),
-                start[1] + number(words, 'J').unwrap_or(0.0),
+                start[0] + words.i.unwrap_or(0.0),
+                start[1] + words.j.unwrap_or(0.0),
             ])
         },
         |radius| centre_of_radius(radius, clockwise, start, end),
@@ -1018,13 +1029,7 @@ fn centre_of_radius(
 /// that text is when it is one, up to [`WORD_COUNT`] of them: up to the `;`
 /// a comment starts at or the `*` a checksum does.
 ///
-/// Each number is read as its bytes go by — an optional sign, digits and at
-/// most one point, which is every number a slicer writes — with plain
-/// comparisons rather than calls, because this runs over every byte of every
-/// move of a print and is as fast in a build without optimisation as it is
-/// written to be. The digits are summed exactly and divided once by a power of
-/// ten, which is the correctly rounded value a full parse answers; anything
-/// else a word carries is read by the full parse.
+/// Each number is read by [`number_at`].
 fn words(command: &[u8]) -> Words {
     let mut found = Words {
         held: [Word {
@@ -1050,55 +1055,9 @@ fn words(command: &[u8]) -> Words {
             _ => continue,
         };
         let start = at;
-        let mut negative = false;
-        if at < length && (command[at] == b'-' || command[at] == b'+') {
-            negative = command[at] == b'-';
-            at += 1;
-        }
-        let mut sum = 0.0_f64;
-        let mut digits = 0_usize;
-        let mut fraction = 0_usize;
-        let mut point = false;
-        let mut plain = true;
-        while at < length {
-            let byte = command[at];
-            let digit = match byte {
-                b'0' => 0.0,
-                b'1' => 1.0,
-                b'2' => 2.0,
-                b'3' => 3.0,
-                b'4' => 4.0,
-                b'5' => 5.0,
-                b'6' => 6.0,
-                b'7' => 7.0,
-                b'8' => 8.0,
-                b'9' => 9.0,
-                b'.' if !point => {
-                    point = true;
-                    at += 1;
-                    continue;
-                }
-                b' ' | b'\t' | b';' | b'*' | b'A'..=b'Z' | b'a'..=b'z' => break,
-                _ => {
-                    plain = false;
-                    at += 1;
-                    continue;
-                }
-            };
-            sum = sum * 10.0 + digit;
-            digits += 1;
-            if point {
-                fraction += 1;
-            }
-            at += 1;
-        }
+        let (value, next) = number_at(command, at);
+        at = next;
         let text = &command[start..at];
-        let value = if plain && digits > 0 && digits <= MANTISSA_DIGITS {
-            let value = sum / TENTHS[fraction];
-            if negative { -value } else { value }
-        } else {
-            decimal(text).unwrap_or(f64::NAN)
-        };
         // A command's code is the first word's, or the second's after a
         // line number, read as the whole number it is written as.
         if found.len == 0 {
@@ -1118,9 +1077,96 @@ fn words(command: &[u8]) -> Words {
     found
 }
 
-/// The most digits a number is summed from exactly: every integer up to
-/// fifteen digits is a `f64` exactly.
-const MANTISSA_DIGITS: usize = 15;
+/// The number a word carries, read from `at` to the next space, letter, `;`
+/// or `*`, and the offset just past it; a word that is no number is not a
+/// number.
+///
+/// The end is found with a plain loop rather than an iterator adaptor, and the
+/// number is read by the standard library's own parse, which is compiled
+/// optimised whatever this crate is built as: this runs for every number of
+/// every move of a print.
+fn number_at(line: &[u8], mut at: usize) -> (f64, usize) {
+    let start = at;
+    while at < line.len()
+        && !matches!(line[at], b' ' | b'\t' | b';' | b'*' | b'A'..=b'Z' | b'a'..=b'z')
+    {
+        at += 1;
+    }
+    (decimal(&line[start..at]).unwrap_or(f64::NAN), at)
+}
+
+/// The words of a move this reader uses, each a number within reach when the
+/// move carries it: where it goes, what it feeds, and an arc's centre or
+/// radius.
+#[derive(Debug, Clone, Copy, Default)]
+struct Move {
+    /// `X`.
+    x: Option<f64>,
+    /// `Y`.
+    y: Option<f64>,
+    /// `Z`.
+    z: Option<f64>,
+    /// `E`.
+    e: Option<f64>,
+    /// `I`.
+    i: Option<f64>,
+    /// `J`.
+    j: Option<f64>,
+    /// `R`.
+    r: Option<f64>,
+}
+
+impl Move {
+    /// A move's words, from a command read word by word.
+    fn of(words: &[Word]) -> Self {
+        Self {
+            x: number(words, 'X'),
+            y: number(words, 'Y'),
+            z: number(words, 'Z'),
+            e: number(words, 'E'),
+            i: number(words, 'I'),
+            j: number(words, 'J'),
+            r: number(words, 'R'),
+        }
+    }
+}
+
+/// A move's words, read in one pass from what follows its `G0`–`G3`: the
+/// first of each letter it uses, up to the `;` a comment starts at or the `*`
+/// a checksum does. Every other word — the feedrate above all — is passed
+/// over unread, which is what keeps this the cheap path through a print.
+fn move_of(line: &[u8]) -> Move {
+    let mut found = Move::default();
+    let length = line.len();
+    let mut at = 0;
+    while at < length {
+        let letter = line[at];
+        at += 1;
+        let slot = match letter {
+            b';' | b'*' => break,
+            b'X' | b'x' => &mut found.x,
+            b'Y' | b'y' => &mut found.y,
+            b'Z' | b'z' => &mut found.z,
+            b'E' | b'e' => &mut found.e,
+            b'I' | b'i' => &mut found.i,
+            b'J' | b'j' => &mut found.j,
+            b'R' | b'r' => &mut found.r,
+            b'A'..=b'Z' | b'a'..=b'z' => {
+                while at < length && !matches!(line[at], b' ' | b'\t' | b';' | b'*') {
+                    at += 1;
+                }
+                continue;
+            }
+            _ => continue,
+        };
+        let (value, next) = number_at(line, at);
+        at = next;
+        if slot.is_none() {
+            *slot = Some(value).filter(|value| value.is_finite() && value.abs() <= WORD_LIMIT);
+        }
+    }
+    found
+}
 
 /// One word of a command: its letter, upper-cased, and the number it carries,
 /// not a number when it carries none.
@@ -1168,13 +1214,7 @@ fn whole_number(text: &[u8]) -> Option<u32> {
     (!text.is_empty()).then_some(value)
 }
 
-/// The powers of ten a decimal's fraction is divided by.
-const TENTHS: [f64; 16] = [
-    1.0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
-];
-
-/// The number a word's text is, by the full parse: what a word the fast read
-/// in [`words`] does not take is read by.
+/// The number a word's text is, by the standard library's own parse.
 fn decimal(text: &[u8]) -> Option<f64> {
     core::str::from_utf8(text).ok()?.parse::<f64>().ok()
 }

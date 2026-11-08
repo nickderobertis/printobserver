@@ -282,7 +282,7 @@ impl LongPlate {
                     (y - self.at[1]) / 2.0,
                 );
             } else {
-                let _ = writeln!(out, "G1 X{x:.2} Y{y:.2} E.{fed:04}");
+                let _ = writeln!(out, "G1 X{} Y{} E.{fed:03}", hundredths(x), hundredths(y));
             }
             self.at = [x, y];
         }
@@ -340,6 +340,16 @@ fn tail(out: &mut String) {
 fn z_of(layer: u32) -> f64 {
     let step = (FINAL_Z_MM - FIRST_Z_MM) / f64::from(LAYERS - 1);
     ((FIRST_Z_MM + f64::from(layer - 1) * step) * 1000.0).round() / 1000.0
+}
+
+/// A coordinate to a hundredth, as a slicer writes one: no more decimals than
+/// it needs.
+fn hundredths(value: f64) -> String {
+    let written = format!("{value:.2}");
+    written
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_owned()
 }
 
 /// A length as a slicer writes one: no more decimals than it needs.
