@@ -272,6 +272,9 @@ pub struct Supervisor {
     /// The prints a recovery moved the printer under while they were paused,
     /// and the `recovery_executed` event of the first that did.
     moved_while_paused: Mutex<BTreeMap<PrintId, printobserver_types::EventId>>,
+    /// Every print's G-code index, built once per print for as long as this
+    /// supervisor runs.
+    gcode_indexes: crate::gcode_index::GcodeIndexes,
 }
 
 /// One print's G-code read to one file position, and what it laid down.
@@ -348,6 +351,7 @@ impl Supervisor {
             )),
             recovery_extents: Mutex::new(None),
             moved_while_paused: Mutex::new(BTreeMap::new()),
+            gcode_indexes: crate::gcode_index::GcodeIndexes::default(),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
         std::thread::Builder::new()
@@ -400,6 +404,11 @@ impl Supervisor {
         self.turn_authority
             .get()
             .map_or_else(NoAccess::opened, |authority| authority.open(print_id))
+    }
+
+    /// Every print's G-code index.
+    pub(crate) const fn gcode_indexes(&self) -> &crate::gcode_index::GcodeIndexes {
+        &self.gcode_indexes
     }
 
     /// Durable state, one handle per aggregate.
@@ -645,6 +654,17 @@ impl Supervisor {
         position_bytes: i64,
     ) -> Result<Option<PrintedExtent>, PrinterError> {
         self.printer.printed_extent(file_name, position_bytes).await
+    }
+
+    /// Stream one file's whole G-code into a sink.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
+    pub(crate) async fn read_gcode(
+        &self,
+        file_name: FileName,
+        sink: &mut dyn printobserver_printer_api::GcodeSink,
+    ) -> Result<(), PrinterError> {
+        self.printer.read_gcode(file_name, sink).await
     }
 
     /// Read where the print head is.

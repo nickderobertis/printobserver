@@ -62,6 +62,7 @@ pub mod error;
 pub mod events;
 pub mod expiry;
 pub mod filament;
+pub mod gcode_index;
 pub mod inbox;
 pub mod kinds;
 pub mod listing;
@@ -98,20 +99,22 @@ pub use filament::{
     DEFAULT_DIAMETER_MM, MATERIAL_DENSITIES, MarkClearing, buffer_g, density_for, grams_for_length,
     marks_cleared_by,
 };
+pub use gcode_index::{GcodeIndex, IndexBuilder, PlanFact, PlannedObject, SetValue, SlicerPlan};
 pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, ChargePendedPayload,
     DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
-    InterventionExpiredPayload, OperatorAcknowledgementPayload, PeriodicObservationPayload,
-    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload,
-    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
-    PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
-    RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
-    SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
-    SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
-    UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
+    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, GcodeIndexedPayload,
+    HeatedTool, InterventionExpiredPayload, OperatorAcknowledgementPayload,
+    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PositionFreshness,
+    PreflightCheckedPayload, PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload,
+    PrinterConnectionChangedPayload, PrinterResetPayload, RebaselineDisposition,
+    RecoveryExecutedPayload, RecoveryRejectedPayload, RecoveryRequestedPayload, SignalPosition,
+    SpoolAdjustedPayload, SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload,
+    SpoolRetiredPayload, SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS,
+    UnaccountedPrintPayload, UnattendedPrinterActivityPayload, agent_source, operator_source,
+    system_source,
 };
 pub use look::{CameraRetry, DEFAULT_CAMERA_RETRIES, DEFAULT_CAMERA_RETRY_BACKOFF, Look};
 pub use observation::Observed;

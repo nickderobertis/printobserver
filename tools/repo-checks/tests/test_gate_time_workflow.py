@@ -80,6 +80,8 @@ ADDED = {
         ("printobserver-sdk-python-integration", "format-check"),
         ("printobserver-sdk-python-integration", "lint"),
         ("printobserver-sdk-python-integration", "typecheck"),
+        ("printobserver-core-index-budget", "budgets"),
+        ("printobserver-core-index-budget", "test"),
         ("printobserver-server-check-delay-budget", "budgets"),
         ("printobserver-server-check-delay-budget", "test"),
         ("real-prints-lfs", "budgets"),

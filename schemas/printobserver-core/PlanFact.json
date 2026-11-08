@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A fact of the plan the print's file does not state.",
+  "oneOf": [
+    {
+      "const": "layer",
+      "description": "The file marks no layers.",
+      "type": "string"
+    },
+    {
+      "const": "final_z",
+      "description": "The file states no final height.",
+      "type": "string"
+    },
+    {
+      "const": "types",
+      "description": "The file labels no extrusion types.",
+      "type": "string"
+    },
+    {
+      "const": "minutes_left",
+      "description": "The file carries no estimate of the time left, by the current position.",
+      "type": "string"
+    },
+    {
+      "const": "flow_factor",
+      "description": "The file sets no flow factor, by the current position.",
+      "type": "string"
+    },
+    {
+      "const": "fan_percent",
+      "description": "The file sets no part-cooling fan speed, by the current position.",
+      "type": "string"
+    },
+    {
+      "const": "objects",
+      "description": "The file labels no objects.",
+      "type": "string"
+    }
+  ],
+  "title": "PlanFact"
+}

@@ -126,6 +126,8 @@ pub enum PrinterMethod {
     ExtrudedTo,
     /// `printed_extent`.
     PrintedExtent,
+    /// `read_gcode`.
+    ReadGcode,
     /// `read_position`.
     ReadPosition,
     /// `push_events`.
@@ -136,7 +138,7 @@ pub enum PrinterMethod {
 
 impl PrinterMethod {
     /// Every method the printer port declares.
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::Snapshot,
         Self::Job,
         Self::Start,
@@ -153,6 +155,7 @@ impl PrinterMethod {
         Self::PrintedFiles,
         Self::ExtrudedTo,
         Self::PrintedExtent,
+        Self::ReadGcode,
         Self::ReadPosition,
         Self::PushEvents,
         Self::SendCommand,
@@ -178,6 +181,7 @@ impl PrinterMethod {
             Self::PrintedFiles => "printed_files",
             Self::ExtrudedTo => "extruded_to",
             Self::PrintedExtent => "printed_extent",
+            Self::ReadGcode => "read_gcode",
             Self::ReadPosition => "read_position",
             Self::PushEvents => "push_events",
             Self::SendCommand => "send_command",
@@ -206,6 +210,11 @@ pub struct FakePrinter {
     /// The material each tool of a file was sliced for, by file, where a test
     /// declared it; every other file is sliced for [`SLICED_FOR`].
     sliced: Mutex<BTreeMap<String, Vec<Option<String>>>>,
+    /// Each file's G-code, by name, where a test declared it.
+    gcode: Mutex<BTreeMap<String, Vec<u8>>>,
+    /// The file every whole-file read was asked for, in order — counted apart
+    /// from the journal, which records the calls a policy rules on.
+    gcode_reads: Mutex<Vec<String>>,
 }
 
 /// The material a file no test declared otherwise was sliced for: the one
@@ -224,7 +233,28 @@ impl FakePrinter {
             files: Mutex::new(BTreeMap::new()),
             extrusion: Mutex::new(BTreeMap::new()),
             sliced: Mutex::new(BTreeMap::new()),
+            gcode: Mutex::new(BTreeMap::new()),
+            gcode_reads: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Hold this G-code as one file's, which a whole-file read streams.
+    pub fn holds_gcode(&self, file_name: &str, text: &str) {
+        self.gcode
+            .lock()
+            .expect("the printer holds")
+            .insert(file_name.to_owned(), text.as_bytes().to_vec());
+    }
+
+    /// How many whole-file reads one file was asked for.
+    #[must_use]
+    pub fn gcode_reads(&self, file_name: &str) -> usize {
+        self.gcode_reads
+            .lock()
+            .expect("the printer holds")
+            .iter()
+            .filter(|read| read.as_str() == file_name)
+            .count()
     }
 
     /// Answer that a file was sliced for these materials, tool 0 first, a
@@ -350,6 +380,42 @@ impl FakePrinter {
 }
 
 impl PrinterPort for FakePrinter {
+    fn read_gcode<'a>(
+        &'a self,
+        file_name: FileName,
+        sink: &'a mut dyn printobserver_printer_api::GcodeSink,
+    ) -> BoxFuture<'a, Result<(), PrinterError>> {
+        self.gcode_reads
+            .lock()
+            .expect("the printer holds")
+            .push(file_name.as_str().to_owned());
+        let answer = self.induced(PrinterMethod::ReadGcode).map_or_else(
+            || {
+                let held = self
+                    .gcode
+                    .lock()
+                    .expect("the printer holds")
+                    .get(file_name.as_str())
+                    .cloned();
+                let Some(bytes) = held else {
+                    return Err(PrinterError::Refused {
+                        status: 404,
+                        detail: format!("there is no file {file_name}"),
+                    });
+                };
+                // In pieces that cut lines, as a download arrives.
+                for piece in bytes.chunks(7) {
+                    if sink.take(piece).is_break() {
+                        break;
+                    }
+                }
+                Ok(())
+            },
+            Err,
+        );
+        Box::pin(async move { answer })
+    }
+
     fn snapshot(&self) -> BoxFuture<'_, Result<PrinterSnapshot, PrinterError>> {
         self.journal.record(Call::Snapshot);
         let answer = self.induced(PrinterMethod::Snapshot).map_or_else(
@@ -534,6 +600,9 @@ pub enum StoreMethod {
     AccountTallies,
     /// `record_file_position`.
     RecordFilePosition,
+    /// `file_position`, which an executed action reads its place in the file
+    /// from.
+    FilePosition,
     /// `history`, which the agent's interval is read back from.
     History,
     /// `due_interventions`, which the interventions left active are read by.
@@ -655,6 +724,9 @@ pub struct FakeStore {
     appends: AppendGate,
     /// The one print whose appends are refused, and how, when one is.
     refused_print: Mutex<Option<(PrintId, StoreError)>>,
+    /// The one kind a history read asking for it is refused over, and how,
+    /// when one is: every read asking for every kind is still answered.
+    refused_history_kind: Mutex<Option<(EventKind, StoreError)>>,
     /// The methods induced to write everything and then answer a failure, as
     /// a store whose commit landed and whose answer was lost does — once each.
     lost_answers: Mutex<BTreeMap<StoreMethod, StoreError>>,
@@ -679,6 +751,7 @@ impl FakeStore {
             reads_of_the_prints: Meeting::default(),
             appends: AppendGate::default(),
             refused_print: Mutex::new(None),
+            refused_history_kind: Mutex::new(None),
             lost_answers: Mutex::new(BTreeMap::new()),
         }
     }
@@ -770,10 +843,17 @@ impl FakeStore {
         *self.refused_print.lock().expect("the store holds") = Some((print_id, error));
     }
 
+    /// Refuse every history read that asks for one kind by name, with one
+    /// error, from now on.
+    pub fn refuses_history_naming(&self, kind: EventKind, error: StoreError) {
+        *self.refused_history_kind.lock().expect("the store holds") = Some((kind, error));
+    }
+
     /// Stop failing every method.
     pub fn heals(&self) {
         self.failures.lock().expect("the store holds").clear();
         *self.refused_print.lock().expect("the store holds") = None;
+        *self.refused_history_kind.lock().expect("the store holds") = None;
     }
 
     /// The failure induced at one method, if one is.
@@ -1228,6 +1308,15 @@ impl EventStore for FakeStore {
         self.journal.record(Call::ReadHistory);
         if let Some(error) = self.induced(StoreMethod::History) {
             return ready(Err(error));
+        }
+        if let Some((kind, error)) = self
+            .refused_history_kind
+            .lock()
+            .expect("the store holds")
+            .as_ref()
+            && query.kinds.contains(kind)
+        {
+            return ready(Err(error.clone()));
         }
         let limit = match resolve_history_limit(query.limit) {
             Ok(limit) => limit as usize,
@@ -2356,6 +2445,9 @@ impl FilamentStore for FakeStore {
         &self,
         print_id: PrintId,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Option<FilePosition>, StoreError>> {
+        if let Some(error) = self.induced(StoreMethod::FilePosition) {
+            return ready(Err(error));
+        }
         ready(Ok(self.read_ledger(|ledger| ledger.position(print_id))))
     }
 

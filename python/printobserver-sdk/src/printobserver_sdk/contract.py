@@ -148,6 +148,10 @@ class ActionExecutedPayload(TypedDict):
 
     # The action's identifier.
     action_id: ActionId
+    # How far into its file the print had last been read to have got when
+    # the action was taken, in bytes, when that was known: what places a
+    # change against the commands the file sets the same thing with.
+    file_position_bytes: NotRequired[int | None]
     # The bounded intervention it opened, when it opened one.
     intervention_id: NotRequired[InterventionId | None]
 
@@ -828,6 +832,25 @@ class Footprint(TypedDict):
 
 # Why a camera frame was not one to hand the agent.
 FrameCause: TypeAlias = Literal["blank", "undecodable"]
+
+
+class GcodeIndexedPayload(TypedDict):
+    """`GcodeIndexedPayload`, as the contracts declare it.
+
+    A print's G-code was read and indexed: what the slicer planned at each
+    file position is now known for it, without reading the file again.
+
+    Written once per index built, which is once per print for as long as
+    the
+    server runs.
+    """
+
+    # How many bytes of it were read.
+    bytes: int
+    # The file that was indexed.
+    file_name: FileName
+    # How many layers it plans.
+    layers: int
 
 
 class HeatedTool(TypedDict):
@@ -1526,6 +1549,30 @@ class PeriodicObservationPayload(TypedDict):
     printer: NotRequired[PrinterSnapshot | None]
 
 
+# A fact of the plan the print's file does not state.
+PlanFact: TypeAlias = Literal[
+    "layer", "final_z", "types", "minutes_left", "flow_factor", "fan_percent", "objects"
+]
+
+
+class PlannedObject(TypedDict):
+    """`PlannedObject`, as the contracts declare it.
+
+    One object the print's file lays down, and the bed area it covers.
+    """
+
+    # Its name, as the file labels it.
+    name: NotRequired[str | None]
+    # The most X its material reaches, in millimetres.
+    x_max_mm: float
+    # The least X its material reaches, in millimetres.
+    x_min_mm: float
+    # The most Y its material reaches, in millimetres.
+    y_max_mm: float
+    # The least Y its material reaches, in millimetres.
+    y_min_mm: float
+
+
 class PolicyDecisionRejected(TypedDict):
     """The `rejected` arm of `PolicyDecision`.
 
@@ -2069,6 +2116,10 @@ class PrintContext(TypedDict):
     printer: NotRequired[PrinterSnapshot | None]
     # A bounded list of this print's events, newest first.
     recent_events: list[EventRecord]
+    # What the slicer planned at the job's current file position, read from
+    # the print's own G-code: absent when the file could not be read, or the
+    # job is not this print's.
+    slicer: NotRequired[SlicerPlan | None]
 
 
 class PrintEnded(TypedDict):
@@ -3080,6 +3131,21 @@ class Reported(TypedDict):
     value: float
 
 
+class SetValue(TypedDict):
+    """`SetValue`, as the contracts declare it.
+
+    One adjustable as the print's file set it at the current position, and
+    as
+    a change made through this program since then left it.
+    """
+
+    # What the latest change made through this program set it to, when one
+    # was made after the file last set it.
+    changed: NotRequired[float | None]
+    # What the file's own commands set it to, by the current position.
+    file: NotRequired[float | None]
+
+
 # A build sheet's identifier as the sheet table names it, such as
 # `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
 SheetId: TypeAlias = str
@@ -3206,6 +3272,47 @@ class SignalPosition(TypedDict):
     freshness: PositionFreshness
     # The position.
     position: FilePosition
+
+
+class SlicerPlan(TypedDict):
+    """`SlicerPlan`, as the contracts declare it.
+
+    What the slicer planned at the print's current file position: the
+    shape
+    and place of what should be printing, read from the print's own
+    G-code.
+
+    These are the slicer's plan rather than an observation: a feature
+    named
+    here is part of the design at this height, and nothing here says how
+    well
+    it printed.
+    """
+
+    # The part-cooling fan speed, in percent.
+    fan_percent: NotRequired[SetValue | None]
+    # The final layer's height, in millimetres.
+    final_z_mm: NotRequired[float | None]
+    # The flow factor, one meaning one hundred percent.
+    flow_factor: NotRequired[SetValue | None]
+    # The layer the print is in, counting the first as 1; absent before the
+    # first.
+    layer: NotRequired[int | None]
+    # How many layers the file plans.
+    layers: NotRequired[int | None]
+    # The slicer's own estimate of the minutes left, at the current
+    # position.
+    minutes_left: NotRequired[int | None]
+    # Every object the file lays down, each with the bed area it covers.
+    objects: NotRequired[list[PlannedObject]]
+    # What the current layer lays material as, in the order the file first
+    # names each: `Perimeter`, `Support material`, `Bridge infill`.
+    types: NotRequired[list[str]]
+    # The facts the file does not state, which are therefore unknown rather
+    # than absent.
+    unknown: NotRequired[list[PlanFact]]
+    # The current layer's height, in millimetres.
+    z_mm: NotRequired[float | None]
 
 
 class SpoolAdjustedPayload(TypedDict):
@@ -4108,6 +4215,7 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "filament_change_signalled": FilamentChangeSignalledPayload,
     "filament_consumed": FilamentConsumedPayload,
     "file_tally_rebaselined": FileTallyRebaselinedPayload,
+    "gcode_indexed": GcodeIndexedPayload,
     "intervention_expired": InterventionExpiredPayload,
     "malformed_external_event": MalformedExternalEventPayload,
     "obico_failure_alert": ObicoFailureAlertPayload,
@@ -4205,6 +4313,12 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["file_tally_rebaselined"]
 ) -> FileTallyRebaselinedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["gcode_indexed"]
+) -> GcodeIndexedPayload | None: ...
 
 
 @overload
@@ -4468,6 +4582,15 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "ref": "ActionId"
+     }
+    },
+    "file_position_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
      }
     },
     "intervention_id": {
@@ -5610,6 +5733,35 @@ SHAPES: dict[str, object] = json.loads(
    "blank",
    "undecodable"
   ]
+ },
+ "GcodeIndexedPayload": {
+  "struct": {
+   "fields": {
+    "bytes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FileName"
+     }
+    },
+    "layers": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
  },
  "HeatedTool": {
   "struct": {
@@ -6855,6 +7007,62 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "PlanFact": {
+  "enum": [
+   "layer",
+   "final_z",
+   "types",
+   "minutes_left",
+   "flow_factor",
+   "fan_percent",
+   "objects"
+  ]
+ },
+ "PlannedObject": {
+  "struct": {
+   "fields": {
+    "name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "x_max_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "x_min_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y_max_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y_min_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "PolicyDecision": {
   "union": {
    "tag_field": "",
@@ -7804,6 +8012,15 @@ SHAPES: dict[str, object] = json.loads(
        "ref": "EventRecord"
       },
       "non_empty": false
+     }
+    },
+    "slicer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SlicerPlan"
+      }
      }
     }
    },
@@ -9192,6 +9409,32 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "SetValue": {
+  "struct": {
+   "fields": {
+    "changed": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "file": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "SheetId": {
   "alias": {
    "scalar": "string"
@@ -9385,6 +9628,107 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "ref": "FilePosition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SlicerPlan": {
+  "struct": {
+   "fields": {
+    "fan_percent": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SetValue"
+      }
+     }
+    },
+    "final_z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "flow_factor": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SetValue"
+      }
+     }
+    },
+    "layer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "layers": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "minutes_left": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "objects": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlannedObject"
+      },
+      "non_empty": false
+     }
+    },
+    "types": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
+     }
+    },
+    "unknown": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlanFact"
+      },
+      "non_empty": false
+     }
+    },
+    "z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
      }
     }
    },

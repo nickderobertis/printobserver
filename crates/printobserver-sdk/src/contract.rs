@@ -175,6 +175,11 @@ pub struct ActionAnswer {
 pub struct ActionExecutedPayload {
     /// The action's identifier.
     pub action_id: ActionId,
+    /// How far into its file the print had last been read to have got when
+    /// the action was taken, in bytes, when that was known: what places a
+    /// change against the commands the file sets the same thing with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_position_bytes: Option<i64>,
     /// The bounded intervention it opened, when it opened one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intervention_id: Option<InterventionId>,
@@ -838,6 +843,21 @@ pub enum FrameCause {
     Undecodable,
 }
 
+/// A print's G-code was read and indexed: what the slicer planned at each
+/// file position is now known for it, without reading the file again.
+///
+/// Written once per index built, which is once per print for as long as the
+/// server runs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GcodeIndexedPayload {
+    /// How many bytes of it were read.
+    pub bytes: i64,
+    /// The file that was indexed.
+    pub file_name: FileName,
+    /// How many layers it plans.
+    pub layers: i64,
+}
+
 /// One tool heater whose target was above zero.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HeatedTool {
@@ -1444,6 +1464,49 @@ pub struct PeriodicObservationPayload {
     pub printer: Option<PrinterSnapshot>,
 }
 
+/// A fact of the plan the print's file does not state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanFact {
+    /// The file marks no layers.
+    #[serde(rename = "layer")]
+    Layer,
+    /// The file states no final height.
+    #[serde(rename = "final_z")]
+    FinalZ,
+    /// The file labels no extrusion types.
+    #[serde(rename = "types")]
+    Types,
+    /// The file carries no estimate of the time left, by the current
+    /// position.
+    #[serde(rename = "minutes_left")]
+    MinutesLeft,
+    /// The file sets no flow factor, by the current position.
+    #[serde(rename = "flow_factor")]
+    FlowFactor,
+    /// The file sets no part-cooling fan speed, by the current position.
+    #[serde(rename = "fan_percent")]
+    FanPercent,
+    /// The file labels no objects.
+    #[serde(rename = "objects")]
+    Objects,
+}
+
+/// One object the print's file lays down, and the bed area it covers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlannedObject {
+    /// Its name, as the file labels it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The most X its material reaches, in millimetres.
+    pub x_max_mm: f64,
+    /// The least X its material reaches, in millimetres.
+    pub x_min_mm: f64,
+    /// The most Y its material reaches, in millimetres.
+    pub y_max_mm: f64,
+    /// The least Y its material reaches, in millimetres.
+    pub y_min_mm: f64,
+}
+
 /// The decision policy took on one request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PolicyDecision {
@@ -1918,6 +1981,11 @@ pub struct PrintContext {
     pub printer: Option<PrinterSnapshot>,
     /// A bounded list of this print's events, newest first.
     pub recent_events: Vec<EventRecord>,
+    /// What the slicer planned at the job's current file position, read from
+    /// the print's own G-code: absent when the file could not be read, or the
+    /// job is not this print's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slicer: Option<SlicerPlan>,
 }
 
 /// One print's end, as its `print_ended` event stored it.
@@ -2635,6 +2703,19 @@ pub struct Reported {
     pub value: f64,
 }
 
+/// One adjustable as the print's file set it at the current position, and as
+/// a change made through this program since then left it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetValue {
+    /// What the latest change made through this program set it to, when one
+    /// was made after the file last set it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changed: Option<f64>,
+    /// What the file's own commands set it to, by the current position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<f64>,
+}
+
 /// A build sheet's identifier as the sheet table names it, such as
 /// `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
 // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
@@ -2727,6 +2808,50 @@ pub struct SignalPosition {
     pub freshness: PositionFreshness,
     /// The position.
     pub position: FilePosition,
+}
+
+/// What the slicer planned at the print's current file position: the shape
+/// and place of what should be printing, read from the print's own G-code.
+///
+/// These are the slicer's plan rather than an observation: a feature named
+/// here is part of the design at this height, and nothing here says how well
+/// it printed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SlicerPlan {
+    /// The part-cooling fan speed, in percent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fan_percent: Option<SetValue>,
+    /// The final layer's height, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_z_mm: Option<f64>,
+    /// The flow factor, one meaning one hundred percent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_factor: Option<SetValue>,
+    /// The layer the print is in, counting the first as 1; absent before the
+    /// first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<i64>,
+    /// How many layers the file plans.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layers: Option<i64>,
+    /// The slicer's own estimate of the minutes left, at the current
+    /// position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minutes_left: Option<i64>,
+    /// Every object the file lays down, each with the bed area it covers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objects: Option<Vec<PlannedObject>>,
+    /// What the current layer lays material as, in the order the file first
+    /// names each: `Perimeter`, `Support material`, `Bridge infill`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub types: Option<Vec<String>>,
+    /// The facts the file does not state, which are therefore unknown rather
+    /// than absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unknown: Option<Vec<PlanFact>>,
+    /// The current layer's height, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z_mm: Option<f64>,
 }
 
 /// A spool's remaining figure was corrected.
@@ -3488,6 +3613,10 @@ impl EventPayloadKind for FileTallyRebaselinedPayload {
     const KIND: &'static str = "file_tally_rebaselined";
 }
 
+impl EventPayloadKind for GcodeIndexedPayload {
+    const KIND: &'static str = "gcode_indexed";
+}
+
 impl EventPayloadKind for InterventionExpiredPayload {
     const KIND: &'static str = "intervention_expired";
 }
@@ -3601,7 +3730,7 @@ impl EventPayloadKind for UnattendedPrinterActivityPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 40] = [
+pub const EVENT_KINDS: [&str; 41] = [
     "action_executed",
     "action_rejected",
     "action_requested",
@@ -3614,6 +3743,7 @@ pub const EVENT_KINDS: [&str; 40] = [
     "filament_change_signalled",
     "filament_consumed",
     "file_tally_rebaselined",
+    "gcode_indexed",
     "intervention_expired",
     "malformed_external_event",
     "obico_failure_alert",

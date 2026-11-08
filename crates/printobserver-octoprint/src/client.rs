@@ -41,6 +41,10 @@
 //! moment the position is reached, so the file is never held whole and the
 //! rest of it need never arrive.
 //!
+//! [`PrinterPort::read_gcode`] follows the same link and streams the whole
+//! body into the caller's sink, a piece at a time, for a reader that needs the
+//! file from its first byte to its last.
+//!
 //! [`PrinterPort::filament_types`] follows the same link for the other end of
 //! the file: it asks for only the last [`TAIL_BYTES`] with a suffix `Range`,
 //! which is where a slicer writes the settings it sliced with
@@ -61,7 +65,7 @@ use core::fmt::Write as _;
 use core::ops::ControlFlow;
 
 use printobserver_printer_api::{
-    Adjustable, AxisPosition, FileFacts, HomeAxes, PrintedExtent, ToolFilament,
+    Adjustable, AxisPosition, FileFacts, GcodeSink, HomeAxes, PrintedExtent, ToolFilament,
 };
 use printobserver_printer_api::{
     BoxFuture, BoxStream, JobSnapshot, PrinterCommand, PrinterError, PrinterPort, PrinterPush,
@@ -349,6 +353,41 @@ impl OctoPrintPrinter {
         }
     }
 
+    /// Stream one file's whole G-code into a sink, from its first byte, until
+    /// the body ends or the sink has enough.
+    ///
+    /// The same download [`Self::read_gcode_to`] follows — the file's facts,
+    /// then the path of the link they name, sent to the configured instance —
+    /// and the same streamed read, so the file is never held whole.
+    fn read_whole_gcode(
+        &self,
+        file_name: &FileName,
+        sink: &mut dyn GcodeSink,
+    ) -> Result<(), PrinterError> {
+        let followed = self.download_of(file_name)?;
+        let path = followed.as_str();
+        let mut whole = Whole(sink);
+        let outcome = http::stream(
+            self.config.endpoint(),
+            self.config.api_key(),
+            path,
+            self.config.timeout(),
+            &mut whole,
+        );
+        match outcome {
+            Ok(None) => Ok(()),
+            Ok(Some(response)) => ruled(Method::Get, path, response).map(|_| ()),
+            Err(transport) => {
+                let error = match transport {
+                    Transport::Unreachable(detail) => PrinterError::Unreachable { detail },
+                    Transport::Malformed(detail) => PrinterError::Malformed { detail },
+                };
+                log::warn!("octoprint GET {path} did not answer: {error}");
+                Err(error)
+            }
+        }
+    }
+
     /// Read the material each tool of one file is sliced for, from the
     /// settings its slicer wrote at its end: the last [`TAIL_BYTES`] of the
     /// download, asked for with a suffix `Range` so the rest never arrives.
@@ -503,6 +542,17 @@ const STARTING_ASK_EVERY: std::time::Duration = std::time::Duration::from_millis
 
 /// The G-code reader, as the sink a download is streamed into.
 struct Reader(ExtrudedTo);
+
+/// A caller's G-code sink, as the sink a whole download is streamed into.
+struct Whole<'a>(&'a mut dyn GcodeSink);
+
+impl Sink for Whole<'_> {
+    fn take(&mut self, bytes: &[u8]) -> ControlFlow<()> {
+        self.0.take(bytes)
+    }
+
+    fn end(&mut self) {}
+}
 
 /// A file's tail, as the sink its ranged download is streamed into.
 struct TailReader(Tail);
@@ -709,6 +759,14 @@ impl PrinterPort for OctoPrintPrinter {
         position_bytes: i64,
     ) -> BoxFuture<'_, Result<Option<PrintedExtent>, PrinterError>> {
         Box::pin(async move { self.read_printed_extent(&file_name, position_bytes) })
+    }
+
+    fn read_gcode<'a>(
+        &'a self,
+        file_name: FileName,
+        sink: &'a mut dyn GcodeSink,
+    ) -> BoxFuture<'a, Result<(), PrinterError>> {
+        Box::pin(async move { self.read_whole_gcode(&file_name, sink) })
     }
 
     fn read_position(&self) -> BoxFuture<'_, Result<AxisPosition, PrinterError>> {

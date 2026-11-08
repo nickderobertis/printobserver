@@ -86,7 +86,7 @@ REPLAYS = {
         "first-layer-before-the-failure",
         "ring-dragged-off-its-place",
     ],
-    "petg-spool-jam-air-print": ["first-layers-healthy"],
+    "petg-spool-jam-air-print": ["first-layers-healthy", "air-print-parts-stopped-growing"],
     "petg-clip-detach-and-stringing-web": [
         "clip-came-loose",
         "stringing-web-warning",
@@ -98,8 +98,8 @@ REPLAYS = {
         "nozzle-left-on-part-after-reset",
         "gantry-low-over-remaining-bin",
     ],
-    "under-extrusion-lace": ["carry-on-healthy-before-fault"],
-    "fan-cut-bridge": ["carry-on-healthy-before-fault"],
+    "under-extrusion-lace": ["carry-on-healthy-before-fault", "porous-walls"],
+    "fan-cut-bridge": ["carry-on-healthy-before-fault", "bridge-sagging-uncooled"],
     "jar-top-petg-healthy": [
         "carry-on-004-other",
         "carry-on-013-other",
@@ -553,8 +553,8 @@ def test_the_job_keeps_moving_between_checks_while_frames_repeat_a_reading() -> 
         truth(off < moved / 20, describing=f"{steady} at {seconds} s, off by {off}")
 
 
-def test_a_single_event_replay_moves_the_job_at_the_recordings_rate() -> None:
-    """A case replaying one event still has its other scenarios to read the rate from."""
+def test_a_replay_moves_the_job_at_the_recordings_rate_after_its_first_event() -> None:
+    """A look after a case's first event finds the job a little further on, not at its end."""
     for name in ("under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"):
         case = read_case(name)
         event = case.moments[0]
@@ -566,9 +566,7 @@ def test_a_single_event_replay_moves_the_job_at_the_recordings_rate() -> None:
         )
 
 
-@pytest.mark.parametrize(
-    "name", ["under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"]
-)
+@pytest.mark.parametrize("name", ["jar-top-petg-healthy"])
 def test_a_look_after_the_last_replayed_event_stops_short_of_the_recordings_next_moment(
     name: str, scratch: Path
 ) -> None:
@@ -590,9 +588,7 @@ def test_a_look_after_the_last_replayed_event_stops_short_of_the_recordings_next
     truth(received[-1] < later.at, describing=f"{received[-1]} before {later.at}")
 
 
-@pytest.mark.parametrize(
-    "name", ["under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"]
-)
+@pytest.mark.parametrize("name", ["jar-top-petg-healthy"])
 def test_however_long_a_last_turn_runs_nothing_passes_the_next_recorded_moment(
     name: str, scratch: Path
 ) -> None:

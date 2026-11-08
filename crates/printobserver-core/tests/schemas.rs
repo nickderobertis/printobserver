@@ -26,16 +26,18 @@ use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, ChargePendedPayload,
     DetectorHealth, DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
-    InterventionExpiredPayload, Look, OperatorAcknowledgementPayload, PeriodicObservationPayload,
-    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
-    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
-    PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
+    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, GcodeIndexedPayload,
+    HeatedTool, InterventionExpiredPayload, Look, OperatorAcknowledgementPayload,
+    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PositionFreshness,
+    PreflightCheckedPayload, PrintContext, PrintEndedPayload, PrintStartedPayload,
+    PrintUntrackedPayload, PrinterConnectionChangedPayload, PrinterResetPayload,
+    RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
     RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
     SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
     SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
+use printobserver_core::{PlanFact, PlannedObject, SetValue, SlicerPlan};
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
 use printobserver_types::{
@@ -113,6 +115,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<PeriodicObservationPayload>("PeriodicObservationPayload"),
         kind_of::<CameraDegradedPayload>("CameraDegradedPayload"),
         kind_of::<CameraRetryPayload>("CameraRetryPayload"),
+        kind_of::<GcodeIndexedPayload>("GcodeIndexedPayload"),
         kind_of::<PrintStartedPayload>("PrintStartedPayload"),
         kind_of::<PrintEndedPayload>("PrintEndedPayload"),
         kind_of::<FilamentConsumedPayload>("FilamentConsumedPayload"),
@@ -171,6 +174,13 @@ fn generated() -> Vec<(String, Value)> {
         "DetectorHealth.json".to_owned(),
         schema_of::<DetectorHealth>(),
     ));
+    entries.push(("SlicerPlan.json".to_owned(), schema_of::<SlicerPlan>()));
+    entries.push((
+        "PlannedObject.json".to_owned(),
+        schema_of::<PlannedObject>(),
+    ));
+    entries.push(("SetValue.json".to_owned(), schema_of::<SetValue>()));
+    entries.push(("PlanFact.json".to_owned(), schema_of::<PlanFact>()));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));
     let look = look();
@@ -218,6 +228,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("PeriodicObservationPayload", "periodic_observation"),
             ("CameraDegradedPayload", "camera_degraded"),
             ("CameraRetryPayload", "camera_retry"),
+            ("GcodeIndexedPayload", "gcode_indexed"),
             ("PrintStartedPayload", "print_started"),
             ("PrintEndedPayload", "print_ended"),
             ("FilamentConsumedPayload", "filament_consumed"),
@@ -381,6 +392,7 @@ fn the_print_context_carries_exactly_the_stated_fields() {
             field("print", "PrintRecord", true),
             field("printer", "PrinterSnapshot", false),
             field("recent_events", "array:EventRecord", true),
+            field("slicer", "SlicerPlan", false),
         ]
     );
     assert_eq!(

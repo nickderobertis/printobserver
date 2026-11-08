@@ -32,14 +32,15 @@ const EXEMPT: &str = "FileName";
 /// The one method that newtype must be taken by.
 const EXEMPT_METHOD: &str = "start";
 
-/// Every method that newtype may be taken by: `start`, and the four reads that
+/// Every method that newtype may be taken by: `start`, and the five reads that
 /// name one file.
-const EXEMPT_METHODS: [&str; 5] = [
+const EXEMPT_METHODS: [&str; 6] = [
     EXEMPT_METHOD,
     "file_facts",
     "filament_types",
     "extruded_to",
     "printed_extent",
+    "read_gcode",
 ];
 
 /// The printer port's own source.

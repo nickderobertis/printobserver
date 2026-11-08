@@ -23,6 +23,11 @@ printobserver-vision-api = { workspace = true }
 # either.
 [dev-dependencies]
 jsonschema.workspace = true
+# The counting global allocator the `index_budget` binary measures the index
+# build's peak heap with: the one allocator that binary runs under, so every
+# allocation the build makes is counted, without an `unsafe` site of this
+# workspace's own.
+peak_alloc = "0.3"
 quote = "1"
 syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits", "visit"] }
 
