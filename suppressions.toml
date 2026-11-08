@@ -4698,3 +4698,9 @@ file = "tests/skilltest/starts.py"
 site = "self.server = start("
 reason = "The server under test, started once per replay through `repo_checks.shell.start` as `replay.py` starts it; nothing is exchanged with the process itself, which the replay reaches over its real HTTP API through the program a person runs."
 
+[[suppression]]
+rule = "least_privilege_grants"
+file = "tests/skilltest/starts.py"
+site = "return ["
+reason = "The task this replay was written for requires the operator's conversation to run under the permissions the server's supervision turns run with: the read tools, and one shell rule per command the server's operations make, which is exactly this list. Narrowing it to a start's reads would test the agent under permissions production never hands it; the wiring tests hold this list equal to the one a supervision turn's harness is started with."
+

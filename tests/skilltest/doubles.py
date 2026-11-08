@@ -953,13 +953,13 @@ def bench_octoprint(bench: Bench, api_key: str) -> ThreadingHTTPServer:
             }
 
         def _download(self, name: str) -> None:
-            """A file's bytes, or only its last ones when a suffix `Range` asks for them."""
+            """A file's bytes, or only its last ones when a suffix `Range` asks for some of them."""
             held = bench.files.get(name)
             if held is None:
                 self.answer(404)
                 return
             asked = SUFFIX_RANGE.match(self.headers.get("Range", ""))
-            if asked is None or int(asked["count"]) >= len(held):
+            if asked is None or not 0 < int(asked["count"]) < len(held):
                 self.answer(200, held, "text/plain")
                 return
             start = len(held) - int(asked["count"])

@@ -75,6 +75,8 @@ READ_TOOLS = ("Read", "Grep", "Glob")
 #: without it the skill installed for the operator's agent is one it never sees.
 SKILL_TOOL = "Skill"
 SKILL_RULE = "Skill(printobserver)"
+#: A command's name as the program spells it: words of lowercase letters, joined by `-`.
+COMMAND_NAME = re.compile(r"[a-z]+(?:[- ][a-z]+)*")
 #: The actor an operator's agent acts as, which its credential authenticates.
 OPERATOR = "operator"
 #: A conversation's name, by the calendar day its requests were made on.
@@ -192,10 +194,22 @@ def agent_rules() -> list[str]:
     command carrying an operation is one the server serves, and an operation reached
     through another's command carries none of its own.
     """
-    surface = json.loads((SKILL / "reference" / "surface.json").read_text(encoding="utf-8"))
+    path = SKILL / "reference" / "surface.json"
+    surface = json.loads(path.read_text(encoding="utf-8"))
+    commands = surface.get("commands") if isinstance(surface, dict) else None
+    if not isinstance(commands, list) or not all(
+        isinstance(command, dict)
+        and isinstance(command.get("command"), str)
+        and COMMAND_NAME.fullmatch(command["command"])
+        and isinstance(command.get("operation"), str | None)
+        for command in commands
+    ):
+        msg = f"{path} lists no commands, each a name and the operation it makes"
+        raise ReplayError(msg)
+    # llmlint: ignore[least_privilege_grants] See suppressions.toml.
     return [
         f"Bash(printobserver {command['command']}:*)"
-        for command in surface["commands"]
+        for command in commands
         if command.get("operation")
     ]
 

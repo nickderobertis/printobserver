@@ -5,16 +5,12 @@
 //! locked `oneharness` crate rather than taken from whatever a host installed,
 //! so the conversation runs on the same engine release the supervisor port
 //! links, and nothing outside this lock decides how the harness is started.
-//! It is the crate's own entry point, word for word: nothing here adds
-//! behaviour.
+//! It parses its arguments and dispatches them through the crate's own
+//! public entry points, and adds nothing: the replay's stand-in for the paid
+//! model is reached through `--bin`, never through this program.
 
 use clap::Parser as _;
 
 fn main() {
-    // The crate's own entry point answers as its published responder when
-    // asked to, and so does this.
-    if std::env::var_os("ONEHARNESS_INTERNAL_MOCK_HARNESS").is_some() {
-        oneharness::mock_harness::run();
-    }
     std::process::exit(oneharness::dispatch(oneharness::Cli::parse()));
 }
