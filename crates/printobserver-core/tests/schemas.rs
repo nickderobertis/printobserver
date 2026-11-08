@@ -24,14 +24,14 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    BedClearAssertedPayload, CameraDegradedPayload, CameraLookPayload, CameraRetryPayload,
-    ChargePendedPayload, DetectorHealth, DetectorHealthChangedPayload, DetectorStatus,
-    FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
-    FrameCause, HeatedTool, InterventionExpiredPayload, Look, OperatorAcknowledgementPayload,
-    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PositionFreshness,
-    PreflightCheckedPayload, PrintContext, PrintEndedPayload, PrintStartedPayload,
-    PrintUntrackedPayload, PrinterConnectionChangedPayload, PrinterResetPayload,
-    RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
+    BedClearActor, BedClearAssertedPayload, CameraDegradedPayload, CameraLookPayload,
+    CameraRetryPayload, ChargePendedPayload, DetectorHealth, DetectorHealthChangedPayload,
+    DetectorStatus, FilamentChangeSignalledPayload, FilamentConsumedPayload,
+    FileTallyRebaselinedPayload, FrameCause, HeatedTool, InterventionExpiredPayload, Look,
+    OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
+    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext, PrintEndedPayload,
+    PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
+    PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
     RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
     SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
     SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
@@ -172,6 +172,10 @@ fn generated() -> Vec<(String, Value)> {
     entries.push((
         "DetectorHealth.json".to_owned(),
         schema_of::<DetectorHealth>(),
+    ));
+    entries.push((
+        "BedClearActor.json".to_owned(),
+        schema_of::<BedClearActor>(),
     ));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));

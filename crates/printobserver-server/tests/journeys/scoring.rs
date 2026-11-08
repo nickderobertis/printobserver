@@ -17,7 +17,7 @@ use printobserver_types::serde_json::{Value, json};
 
 use crate::agent::StandInAgent;
 use crate::minted::minted;
-use crate::obico_api::{AUTH_TOKEN_SENTINEL, Host};
+use crate::obico_api::{AUTH_TOKEN_SENTINEL, Host, Mood};
 use crate::printer::RecordingPrinter;
 use crate::world::{SECRET, World, failure_alert, files_carrying, set};
 
@@ -251,6 +251,161 @@ async fn a_moving_snapshot_reads_scoring_with_no_ml_api_until_it_stops() {
             request.line
         );
     }
+}
+
+/// A score that changes between reads is scoring evidence on its own: with the
+/// snapshot left where it is, the print reads `scoring_nothing_flagged`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_score_that_moves_alone_is_scoring_evidence() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let pic = rest.served()["pic"].clone();
+    let going = Arc::new(AtomicBool::new(true));
+    let still = Arc::clone(&going);
+    let host = Arc::clone(&rest);
+    tokio::spawn(async move {
+        let mut score = 0.0_f64;
+        while still.load(Ordering::SeqCst) {
+            score += 0.01;
+            host.answer(|answer| answer["normalized_p"] = json!(score));
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    });
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+    going.store(false, Ordering::SeqCst);
+    assert_eq!(
+        rest.served()["pic"],
+        pic,
+        "the snapshot moved, so the score alone proved nothing"
+    );
+}
+
+/// A print an alert flagged reads `scoring_flagged` again after the server is
+/// started again: the flag is read back out of the print's history.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_flagged_print_reads_flagged_after_a_restart() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let scoring = keep_scoring(&rest);
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+    let image = crate::http_host::image_host(
+        std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/recorded-frame.jpg"),
+        )
+        .expect("the recorded frame reads"),
+    )
+    .await;
+    post(&world, &failure_alert(4211, &image.url())).await;
+    until_status(&world, print_id, "scoring_flagged").await;
+
+    let restarted = world.restart().await;
+    let after = until_status(&restarted, print_id, "scoring_flagged").await;
+    assert!(after["since"].is_string(), "{after}");
+    scoring.store(false, Ordering::SeqCst);
+}
+
+/// A read that cannot complete — nothing listening, no answer within the
+/// bound, or an answer broken off part-way — is a port failure saying which.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_read_that_cannot_complete_is_a_port_failure_saying_why() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let history = world.operation_url("/v1/prints/{print_id}/history", print_id);
+    let failed_with = |answer: &Value, said: &str| {
+        answer["events"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|event| {
+                event["kind"] == "port_failure"
+                    && event["payload"]["site"] == "detector_scoring_read"
+            })
+            .any(|event| {
+                event["payload"]["detail"]
+                    .as_str()
+                    .is_some_and(|detail| detail.contains(said))
+            })
+    };
+    for (mood, said) in [
+        (Mood::BreakingOff, "broke off"),
+        (Mood::Hanging, "did not answer within"),
+    ] {
+        rest.answers(mood);
+        let deadline = tokio::time::Instant::now() + PATIENCE;
+        loop {
+            let (_, answer) = world.get(&format!("{history}?limit=500")).await;
+            if failed_with(&answer, said) {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "no failed read saying {said:?} was recorded: {answer}"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    rest.answers(Mood::Answering);
+    rest.stop();
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    loop {
+        let (_, answer) = world.get(&format!("{history}?limit=500")).await;
+        if failed_with(&answer, "could not be reached") {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no failed read saying it could not reach Obico was recorded: {answer}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let detector = status_detector(&world, print_id).await;
+    assert!(
+        detector["scoring_unread"]
+            .as_str()
+            .is_some_and(|why| why.contains("could not be reached")),
+        "{detector}"
+    );
+}
+
+/// The detector's health check is asked as the server starts, not one
+/// observation interval later: with an interval of a minute and a print open,
+/// a server started again reads the detector `available` within seconds.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_detector_is_checked_as_the_server_starts() {
+    let ml_api = Host::ml_api().await;
+    let url = ml_api.url();
+    let world = World::configured(
+        RecordingPrinter::printing(),
+        StandInAgent::new(),
+        move |document| {
+            set(
+                document,
+                "supervisor.observation_interval_s",
+                toml::Value::Integer(60),
+            );
+            let mut obico = toml::Table::new();
+            obico.insert("ml_api_url".to_owned(), toml::Value::String(url));
+            set(document, "obico", toml::Value::Table(obico));
+        },
+    )
+    .await;
+    let print_id = world.open_print().await;
+    let asked_before = ml_api.received().len();
+    let started = Instant::now();
+    let restarted = world.restart().await;
+    let detector = until_status(&restarted, print_id, "available").await;
+    assert!(
+        started.elapsed() < Duration::from_secs(30),
+        "the first check waited for the interval: {detector}"
+    );
+    assert!(
+        ml_api.received().len() > asked_before,
+        "the started server never asked the detector"
+    );
 }
 
 /// With the record moving and a health check that fails, the print still

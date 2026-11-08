@@ -73,7 +73,7 @@ pub use frame::{
 };
 pub use health::{DetectorHealthCheck, HEALTH_PATH, HEALTH_TIMEOUT};
 pub use ingress::{IngressError, ObicoIngress, Receipt};
-pub use scoring::{KnownPrinter, ObicoScoring};
+pub use scoring::{KnownPrinter, ObicoPrinterId, ObicoScoring};
 pub use vision::{
     AccessToken, DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, ObicoApi,
     ObicoVision, ObicoVisionConfig, ObicoVisionError,

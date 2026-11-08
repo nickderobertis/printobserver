@@ -93,6 +93,29 @@ OBICO_PRINTER = 1
 UNNAMED_OBICO_PRINT = 1
 
 
+class ObicoSnapshot(TypedDict):
+    """The latest snapshot Obico's record of the printer names."""
+
+    img_url: str
+
+
+class ObicoPrint(TypedDict):
+    """The print Obico's record of the printer says it is watching."""
+
+    id: int
+    filename: str
+    started_at: str
+
+
+class ObicoPrinterRecord(TypedDict):
+    """Obico's record of the printer, as far as the server reads one."""
+
+    id: int
+    current_print: ObicoPrint | None
+    pic: ObicoSnapshot | None
+    normalized_p: float
+
+
 class JobFile(TypedDict):
     """The file block of what `GET /api/job` answers."""
 
@@ -329,7 +352,7 @@ class Timeline:
             self.fetches.append(name)
             return FrameDue(name, self.frame_times[shown])
 
-    def obico_printer(self) -> dict[str, object]:
+    def obico_printer(self) -> ObicoPrinterRecord:
         """Obico's record of the printer, from the case's own recorded detector state.
 
         A case recording what the detector did is one whose print Obico was watching,
@@ -340,20 +363,22 @@ class Timeline:
         case frame by frame, so it is the zero a score of nothing flagged reads as.
         """
         if not self.case.detector_recorded:
-            return {"id": OBICO_PRINTER, "current_print": None, "pic": None, "normalized_p": 0.0}
+            return ObicoPrinterRecord(
+                id=OBICO_PRINTER, current_print=None, pic=None, normalized_p=0.0
+            )
         taken = int(self.now().timestamp())
-        return {
-            "id": OBICO_PRINTER,
-            "current_print": {
-                "id": self.case.obico_print_id() or UNNAMED_OBICO_PRINT,
-                "filename": self.case.gcode.name,
-                "started_at": self.case.job_started().isoformat().replace("+00:00", "Z"),
-            },
-            "pic": {
-                "img_url": f"/media/tsd-pics/snapshots/{OBICO_PRINTER}/latest.jpg?digest={taken}"
-            },
-            "normalized_p": 0.0,
-        }
+        return ObicoPrinterRecord(
+            id=OBICO_PRINTER,
+            current_print=ObicoPrint(
+                id=self.case.obico_print_id() or UNNAMED_OBICO_PRINT,
+                filename=self.case.gcode.name,
+                started_at=self.case.job_started().isoformat().replace("+00:00", "Z"),
+            ),
+            pic=ObicoSnapshot(
+                img_url=f"/media/tsd-pics/snapshots/{OBICO_PRINTER}/latest.jpg?digest={taken}"
+            ),
+            normalized_p=0.0,
+        )
 
     def camera_answer(self) -> CameraFrame | None:
         """The bytes this fetch answers, and when they were captured.

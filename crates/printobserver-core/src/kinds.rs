@@ -1583,10 +1583,33 @@ impl Sample for RecoveryRejectedPayload {
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct BedClearAssertedPayload {
-    /// Who said so: the operator, always.
-    pub actor: Actor,
+    /// Who said so: the operator, the one actor whose word this records.
+    pub actor: BedClearActor,
     /// Why they say so.
     pub reason: String,
+}
+
+/// Who may say the bed is clear: the operator, and no other actor.
+///
+/// Its own type rather than [`Actor`], so that a record of the agent's or the
+/// system's word that the bed is clear is one no value can spell. On the wire
+/// it is `"operator"`, as [`Actor::Operator`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum BedClearActor {
+    /// A person: the operator.
+    Operator,
+}
+
+impl BedClearActor {
+    /// The actor this is, in the vocabulary every other record names actors in.
+    #[must_use]
+    pub const fn actor(self) -> Actor {
+        match self {
+            Self::Operator => Actor::Operator,
+        }
+    }
 }
 
 impl EventPayload for BedClearAssertedPayload {
@@ -1596,7 +1619,7 @@ impl EventPayload for BedClearAssertedPayload {
 impl Sample for BedClearAssertedPayload {
     fn sample_full() -> Self {
         Self {
-            actor: Actor::Operator,
+            actor: BedClearActor::Operator,
             reason: "the cancelled print is off the bed and nothing else is on it".to_owned(),
         }
     }

@@ -360,6 +360,18 @@ pub struct AgentAssessmentPayload {
     pub session_name: String,
 }
 
+/// Who may say the bed is clear: the operator, and no other actor.
+///
+/// Its own type rather than `Actor`, so that a record of the agent's or the
+/// system's word that the bed is clear is one no value can spell. On the wire
+/// it is `"operator"`, as `Actor::Operator` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BedClearActor {
+    /// A person: the operator.
+    #[serde(rename = "operator")]
+    Operator,
+}
+
 /// What recording the operator's word that the bed is clear answers: the
 /// event
 /// it was recorded as, which every recovery decided on it names.
@@ -383,8 +395,8 @@ pub struct BedClearAnswer {
 /// they can see.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BedClearAssertedPayload {
-    /// Who said so: the operator, always.
-    pub actor: Actor,
+    /// Who said so: the operator, the one actor whose word this records.
+    pub actor: BedClearActor,
     /// Why they say so.
     pub reason: String,
 }

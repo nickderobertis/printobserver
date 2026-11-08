@@ -102,8 +102,8 @@ pub use filament::{
 pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    BedClearAssertedPayload, CameraDegradedPayload, CameraLookPayload, CameraRetryPayload,
-    ChargePendedPayload, DetectorHealthChangedPayload, DetectorStatus,
+    BedClearActor, BedClearAssertedPayload, CameraDegradedPayload, CameraLookPayload,
+    CameraRetryPayload, ChargePendedPayload, DetectorHealthChangedPayload, DetectorStatus,
     FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
     FrameCause, HeatedTool, InterventionExpiredPayload, OperatorAcknowledgementPayload,
     PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PositionFreshness,

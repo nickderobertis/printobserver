@@ -1,11 +1,11 @@
 //! Real loopback hosts standing in for `Obico`'s REST API and for its
 //! failure detector's `ml_api`.
 //!
-//! The REST host serves `GET /api/v1/printers/{id}/` from the printer answer
-//! committed at `tests/fixtures/obico-printer.json` — every field the
-//! check-costs spike read off a real `Obico` printer answer at revision
-//! `49c0bc70`, its credential `auth_token` a sentinel — with the three fields
-//! a journey moves between reads: `current_print`, `pic` and `normalized_p`.
+//! The REST host serves `GET /api/v1/printers/{id}/` from [`RECORDED_PRINTER`]
+//! — every field the check-costs spike read off a real `Obico` printer answer
+//! at revision `49c0bc70`, its credential `auth_token` a sentinel — with the
+//! three fields a journey moves between reads: `current_print`, `pic` and
+//! `normalized_p`.
 //! It answers only a request carrying `Authorization: Bearer <access_token>`
 //! and refuses any other `403`, as `Obico` does; it answers an
 //! acknowledgement `200`, and anything else `404`. The `ml_api` host answers
@@ -23,8 +23,88 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
-/// The printer answer the REST host serves, as committed.
-pub const RECORDED_PRINTER: &str = include_str!("../fixtures/obico-printer.json");
+/// The printer answer the REST host serves: every field the check-costs spike
+/// read off a real `Obico` printer answer at revision `49c0bc70`, its
+/// credential `auth_token` a sentinel.
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
+pub const RECORDED_PRINTER: &str = r#"{
+  "id": 17,
+  "name": "Prusa MK4",
+  "created_at": "2026-02-27T09:14:02.118344Z",
+  "archived_at": null,
+  "action_on_failure": "PAUSE",
+  "tools_off_on_pause": true,
+  "bed_off_on_pause": false,
+  "retract_on_pause": 6.5,
+  "lift_z_on_pause": 2.5,
+  "detective_sensitivity": 1.0,
+  "watching_enabled": true,
+  "not_watching_reason": "",
+  "min_timelapse_secs_on_finish": 600,
+  "min_timelapse_secs_on_cancel": 300,
+  "auth_token": "SENTINEL-obico-printer-auth-token-0b6f3c",
+  "agent_name": "octoprint_obico",
+  "agent_version": "2.5.2",
+  "settings": {
+    "webcam_flipV": false,
+    "webcam_flipH": false,
+    "webcam_rotation": 0,
+    "ratio169": false
+  },
+  "status": {
+    "state": {
+      "text": "Printing",
+      "flags": {
+        "operational": true,
+        "printing": true,
+        "paused": false,
+        "cancelling": false,
+        "error": false
+      }
+    },
+    "job": {
+      "file": {
+        "name": "benchy.gcode",
+        "display": "benchy.gcode"
+      }
+    },
+    "progress": {
+      "completion": 12.5,
+      "printTime": 900,
+      "printTimeLeft": 6300
+    },
+    "_ts": 1772367300
+  },
+  "pic": {
+    "img_url": "http://127.0.0.1:3334/media/tsd-pics/snapshots/17/latest_unrotated.jpg?digest=1772367300"
+  },
+  "normalized_p": 0.0,
+  "current_print": {
+    "id": 4211,
+    "printer": 17,
+    "filename": "benchy.gcode",
+    "started_at": "2026-03-01T12:00:00.500000Z",
+    "finished_at": null,
+    "cancelled_at": null,
+    "ended_at": null,
+    "uploaded_at": null,
+    "alerted_at": null,
+    "alert_acknowledged_at": null,
+    "alert_muted_at": null,
+    "paused_at": null,
+    "alert_overwrite": null,
+    "access_consented_at": null,
+    "video_archived_at": null,
+    "video_url": null,
+    "tagged_video_url": null,
+    "poster_url": null,
+    "print_time": 900,
+    "filament_used": null,
+    "need_alert_overwrite": false,
+    "need_print_shot_feedback": false,
+    "g_code_file": null
+  }
+}"#;
 
 /// The credential the recorded answer carries, which nothing the server
 /// writes may carry.
@@ -48,9 +128,22 @@ impl Request {
     }
 }
 
+/// How the REST host answers a printer read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mood {
+    /// With the record.
+    Answering,
+    /// With nothing, for longer than the server's read waits.
+    Hanging,
+    /// With the start of an answer, and then nothing more.
+    BreakingOff,
+}
+
 /// What one host holds between requests.
 #[derive(Debug)]
 struct Held {
+    /// How it answers a printer read.
+    mood: Mood,
     /// The answer it serves.
     answer: Value,
     /// The status `/hc/` answers.
@@ -59,7 +152,7 @@ struct Held {
     received: Vec<Request>,
 }
 
-/// One loopback host.
+/// One loopback host, which answers a printer read as its [`Mood`] says.
 #[derive(Debug)]
 pub struct Host {
     /// Where it listens.
@@ -88,6 +181,7 @@ impl Host {
             .expect("a loopback port");
         let address = listener.local_addr().expect("the bound address");
         let held = Arc::new(Mutex::new(Held {
+            mood: Mood::Answering,
             answer: serde_json::from_str(RECORDED_PRINTER).expect("the recording is JSON"),
             health: "200 OK",
             received: Vec::new(),
@@ -113,6 +207,11 @@ impl Host {
         format!("http://{}", self.address)
     }
 
+    /// The answer it serves now.
+    pub fn served(&self) -> Value {
+        self.held.lock().expect("the host holds").answer.clone()
+    }
+
     /// Change the answer it serves from now on.
     pub fn answer(&self, change: impl FnOnce(&mut Value)) {
         change(&mut self.held.lock().expect("the host holds").answer);
@@ -128,6 +227,16 @@ impl Host {
             });
             answer["normalized_p"] = json!(score);
         });
+    }
+
+    /// Answer a printer read this way from now on.
+    pub fn answers(&self, mood: Mood) {
+        self.held.lock().expect("the host holds").mood = mood;
+    }
+
+    /// Stop listening, so a connection is refused.
+    pub fn stop(&self) {
+        self.serving.abort();
     }
 
     /// Answer `/hc/` with this status line from now on.
@@ -165,14 +274,15 @@ async fn respond(mut stream: TcpStream, held: &Mutex<Held>, token: Option<&str>)
         .map(str::to_owned)
         .collect();
     let path = line.split(' ').nth(1).unwrap_or_default().to_owned();
-    let (status, body) = {
+    let (status, body, mood) = {
         let mut held = held.lock().expect("the host holds");
+        let mood = held.mood;
         held.received.push(Request {
             line: line.clone(),
             headers: headers.clone(),
             at: Instant::now(),
         });
-        match token {
+        let (status, body) = match token {
             None if path == "/hc/" => (held.health, b"ok".to_vec()),
             None => ("404 Not Found", Vec::new()),
             Some(token) => {
@@ -198,8 +308,29 @@ async fn respond(mut stream: TcpStream, held: &Mutex<Held>, token: Option<&str>)
                     ("404 Not Found", br#"{"detail":"Not found."}"#.to_vec())
                 }
             }
-        }
+        };
+        (status, body, mood)
     };
+    let reading = line.starts_with("GET ") && path.starts_with("/api/v1/printers/");
+    if reading && status.starts_with("200") {
+        match mood {
+            Mood::Answering => {}
+            Mood::Hanging => {
+                tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+                return;
+            }
+            Mood::BreakingOff => {
+                let cut = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = stream.write_all(cut.as_bytes()).await;
+                let _ = stream.write_all(&body[..body.len() / 2]).await;
+                let _ = stream.shutdown().await;
+                return;
+            }
+        }
+    }
     let preamble = format!(
         "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()

@@ -126,6 +126,7 @@ use printobserver_core::{
 };
 use printobserver_obico::{
     AccessToken, BlankFrameBound, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, ObicoApi,
+    ObicoPrinterId,
 };
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
@@ -1185,7 +1186,7 @@ pub struct ServerConfig {
     pub obico_ml_api_url: Option<WebAddress>,
     /// Which of `Obico`'s printers its record of the print is read from, when
     /// configured.
-    pub obico_printer_id: Option<i64>,
+    pub obico_printer_id: Option<ObicoPrinterId>,
     /// How long the ingress may take to answer.
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
@@ -1365,19 +1366,20 @@ fn web_address(field: ConfigField, url: &str) -> Result<WebAddress, ConfigError>
 /// number from 1 — when each is written down.
 fn detector_reads(
     section: &ObicoSection,
-) -> Result<(Option<WebAddress>, Option<i64>), ConfigError> {
+) -> Result<(Option<WebAddress>, Option<ObicoPrinterId>), ConfigError> {
     let ml_api_url = section
         .ml_api_url
         .as_deref()
         .map(|url| web_address(ConfigField::ObicoMlApiUrl, url))
         .transpose()?;
-    match section.printer_id {
-        Some(id) if id < 1 => Err(ConfigError::about(
-            ConfigField::ObicoPrinterId,
-            "it must be Obico's own identifier for a printer, a whole number from 1",
-        )),
-        id => Ok((ml_api_url, id)),
-    }
+    let printer_id = section
+        .printer_id
+        .map(|id| {
+            ObicoPrinterId::new(id)
+                .map_err(|why| ConfigError::about(ConfigField::ObicoPrinterId, why))
+        })
+        .transpose()?;
+    Ok((ml_api_url, printer_id))
 }
 
 /// `Obico`'s API, when both its address and its token are written down.

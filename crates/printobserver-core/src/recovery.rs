@@ -50,8 +50,8 @@ use printobserver_types::{EventId, EventKind, EventPayload as _, FileName, Print
 
 use crate::error::CoreError;
 use crate::kinds::{
-    BedClearAssertedPayload, PrintStartedPayload, RecoveryExecutedPayload, RecoveryRejectedPayload,
-    RecoveryRequestedPayload,
+    BedClearActor, BedClearAssertedPayload, PrintStartedPayload, RecoveryExecutedPayload,
+    RecoveryRejectedPayload, RecoveryRequestedPayload,
 };
 use crate::records::{
     ActionAllowance, Actor, ActorClass, AwayFromBed, BedTemperature, ExecutionOutcome, LastPrint,
@@ -864,10 +864,10 @@ impl Supervisor {
         reason: String,
     ) -> Result<printobserver_types::EventRecord, CoreError> {
         let payload = BedClearAssertedPayload {
-            actor: Actor::Operator,
+            actor: BedClearActor::Operator,
             reason,
         };
-        let source = crate::actions::source_of(&payload.actor);
+        let source = crate::actions::source_of(&payload.actor.actor());
         let draft = self.draft_of(None, source, &payload)?;
         Ok(self.stores().events.append_event(draft).await?)
     }

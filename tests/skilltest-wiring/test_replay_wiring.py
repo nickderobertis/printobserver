@@ -816,21 +816,6 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         server.server_close()
 
 
-def _printer_record(timeline: doubles.Timeline) -> tuple[int, dict[str, Any]]:
-    """What the Obico double answers its printer read with, over a real socket."""
-    server = doubles.obico(timeline)
-    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    connection = HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
-    try:
-        connection.request("GET", f"/api/v1/printers/{doubles.OBICO_PRINTER}/")
-        answered = connection.getresponse()
-        return answered.status, json.loads(answered.read())
-    finally:
-        connection.close()
-        server.shutdown()
-        server.server_close()
-
-
 def test_the_obico_doubles_printer_record_is_the_cases_recorded_detector(scratch: Path) -> None:
     """A case recording the detector names its print and a snapshot that moves; none, no print.
 
@@ -840,27 +825,25 @@ def test_the_obico_doubles_printer_record_is_the_cases_recorded_detector(scratch
     case = read_case("petg-clip-detach-and-stringing-web")
     truth(case.detector_recorded, describing="the case records what the detector did")
     timeline = doubles.Timeline(case=case, picture=stamped, clock=scratch / "clock")
-    status, first = _printer_record(timeline)
-    equal(status, 200)
+    first = timeline.obico_printer()
     named = case.obico_print_id()
     truth(named is not None, describing="the case's recorded alert names Obico's print")
-    equal(first["current_print"]["id"], named)
-    equal(first["current_print"]["filename"], case.gcode.name)
-    equal(
-        datetime.fromisoformat(first["current_print"]["started_at"]),
-        case.job_started(),
-    )
+    current = first["current_print"]
+    truth(current is not None, describing="the record names the print Obico watched")
+    if current is not None:
+        equal(current["id"], named)
+        equal(current["filename"], case.gcode.name)
+        equal(datetime.fromisoformat(current["started_at"]), case.job_started())
     truth("auth_token" not in first, describing="the double carries no printer credential")
     timeline.offset += timedelta(seconds=5)
-    _, later = _printer_record(timeline)
+    later = timeline.obico_printer()
     truth(
         later["pic"] != first["pic"], describing="a watching Obico's snapshot moved between reads"
     )
 
     unrecorded = dataclasses.replace(case, detector_recorded=False)
     quiet = doubles.Timeline(case=unrecorded, picture=stamped, clock=scratch / "quiet-clock")
-    _, record_of_none = _printer_record(quiet)
-    equal(record_of_none["current_print"], None)
+    equal(quiet.obico_printer()["current_print"], None)
 
     minted = Minted()
     config = tomllib.loads(

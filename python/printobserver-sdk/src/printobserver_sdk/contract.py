@@ -314,6 +314,14 @@ class AgentAssessmentPayload(TypedDict):
     session_name: str
 
 
+# Who may say the bed is clear: the operator, and no other actor.
+#
+# Its own type rather than `Actor`, so that a record of the agent's or the
+# system's word that the bed is clear is one no value can spell. On the wire
+# it is `"operator"`, as `Actor::Operator` is.
+BedClearActor: TypeAlias = Literal["operator"]
+
+
 class BedClearAnswer(TypedDict):
     """`BedClearAnswer`, as the contracts declare it.
 
@@ -350,8 +358,8 @@ class BedClearAssertedPayload(TypedDict):
     they can see.
     """
 
-    # Who said so: the operator, always.
-    actor: Actor
+    # Who said so: the operator, the one actor whose word this records.
+    actor: BedClearActor
     # Why they say so.
     reason: str
 
@@ -4866,6 +4874,11 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "BedClearActor": {
+  "enum": [
+   "operator"
+  ]
+ },
  "BedClearAnswer": {
   "struct": {
    "fields": {
@@ -4895,7 +4908,7 @@ SHAPES: dict[str, object] = json.loads(
      "paired_with": "",
      "required": true,
      "shape": {
-      "ref": "Actor"
+      "ref": "BedClearActor"
      }
     },
     "reason": {

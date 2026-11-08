@@ -264,6 +264,15 @@ export interface AgentAssessmentPayload {
 }
 
 /**
+ * Who may say the bed is clear: the operator, and no other actor.
+ *
+ * Its own type rather than `Actor`, so that a record of the agent's or the
+ * system's word that the bed is clear is one no value can spell. On the wire
+ * it is `"operator"`, as `Actor::Operator` is.
+ */
+export type BedClearActor = "operator";
+
+/**
  * What recording the operator's word that the bed is clear answers: the
  * event
  * it was recorded as, which every recovery decided on it names.
@@ -288,8 +297,8 @@ export interface BedClearAnswer {
  * they can see.
  */
 export interface BedClearAssertedPayload {
-  /** Who said so: the operator, always. */
-  actor: Actor;
+  /** Who said so: the operator, the one actor whose word this records. */
+  actor: BedClearActor;
   /** Why they say so. */
   reason: string;
 }
@@ -2885,6 +2894,11 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "BedClearActor": {
+  "enum": [
+   "operator"
+  ]
+ },
  "BedClearAnswer": {
   "struct": {
    "fields": {
@@ -2914,7 +2928,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "paired_with": "",
      "required": true,
      "shape": {
-      "ref": "Actor"
+      "ref": "BedClearActor"
      }
     },
     "reason": {

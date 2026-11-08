@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-192 types. The set is every type any crate declares under
+193 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -7480,6 +7480,25 @@ Declared by `printobserver-core`.
 }
 ```
 
+### BedClearActor
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Who may say the bed is clear: the operator, and no other actor.\n\nIts own type rather than [`Actor`], so that a record of the agent's or the\nsystem's word that the bed is clear is one no value can spell. On the wire\nit is `\"operator\"`, as [`Actor::Operator`] is.",
+  "oneOf": [
+    {
+      "const": "operator",
+      "description": "A person: the operator.",
+      "type": "string"
+    }
+  ],
+  "title": "BedClearActor"
+}
+```
+
 ### BedClearAnswer
 
 Declared by `printobserver-server`.
@@ -7644,40 +7663,12 @@ Declared by `printobserver-core`.
 ```json
 {
   "$defs": {
-    "Actor": {
-      "description": "Who asked for something.",
+    "BedClearActor": {
+      "description": "Who may say the bed is clear: the operator, and no other actor.\n\nIts own type rather than [`Actor`], so that a record of the agent's or the\nsystem's word that the bed is clear is one no value can spell. On the wire\nit is `\"operator\"`, as [`Actor::Operator`] is.",
       "oneOf": [
         {
-          "additionalProperties": false,
-          "description": "The supervising agent, naming its session.",
-          "properties": {
-            "agent": {
-              "additionalProperties": false,
-              "properties": {
-                "session_name": {
-                  "description": "The supervision session the agent is acting in.",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "session_name"
-              ],
-              "type": "object"
-            }
-          },
-          "required": [
-            "agent"
-          ],
-          "type": "object"
-        },
-        {
           "const": "operator",
-          "description": "A person.",
-          "type": "string"
-        },
-        {
-          "const": "system",
-          "description": "The supervisor itself.",
+          "description": "A person: the operator.",
           "type": "string"
         }
       ]
@@ -7688,8 +7679,8 @@ Declared by `printobserver-core`.
   "description": "The operator's word that the bed is clear: nothing is on it that homing Z\ncould crush or a move over the part could strike.\n\nThe printer's rather than any print's, so it is written with no print. It\nstands until the next `print_started`, whichever way that print started,\nand while it stands a recovery that needs the bed or the nozzle clear is\ndecided as though it carried the operator's assertion \u2014 read back out of\nthe event log, so a server started again holds it as the one before did.\nOnly the operator records one: an assertion is a person's word for what\nthey can see.",
   "properties": {
     "actor": {
-      "$ref": "#/$defs/Actor",
-      "description": "Who said so: the operator, always."
+      "$ref": "#/$defs/BedClearActor",
+      "description": "Who said so: the operator, the one actor whose word this records."
     },
     "reason": {
       "description": "Why they say so.",
