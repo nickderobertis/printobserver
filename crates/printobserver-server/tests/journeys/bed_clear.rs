@@ -9,7 +9,8 @@
 //! word in its audit — after a restart too, because the word is read back out
 //! of the event log. A print starting, through printobserver or observed at
 //! the printer, ends it; a policy counting no operator assertion never
-//! honours it; and nobody but the operator may give it.
+//! honours it; an agent the policy grants a recovery is carried out on it;
+//! and nobody but the operator may give it.
 
 use core::fmt::Write as _;
 use std::sync::Arc;
@@ -198,6 +199,22 @@ impl Bench {
             .await
     }
 
+    /// Ask for one recovery as one client claiming one actor, asserting
+    /// nothing.
+    async fn recover_as(
+        &self,
+        client: &reqwest::Client,
+        actor: Value,
+        action: &str,
+        fields: Value,
+    ) -> (StatusCode, Value) {
+        let mut body = fields;
+        body["actor"] = actor;
+        body["reason"] = json!("put the machine somewhere safe");
+        self.post_as(client, &format!("/printer/recovery/{action}"), &body)
+            .await
+    }
+
     /// Every event of the printer history, oldest first.
     async fn history(&self) -> Vec<Value> {
         let mut events: Vec<Value> = self
@@ -315,17 +332,17 @@ impl Bench {
         assert_eq!(status, StatusCode::OK, "{answer:#}");
     }
 
-    /// Hold one supervision turn open about a print of its own, answering the
-    /// turn's credential and the actor it claims.
-    async fn agent_turn(&self) -> (reqwest::Client, Value) {
+    /// Hold one supervision turn open about a print of one file, answering
+    /// the turn's credential and the actor it claims.
+    async fn agent_turn(&self, file: &str) -> (reqwest::Client, Value) {
         let store = SqliteStore::open(self.root.path().join("state")).expect("the store opens");
         store
-            .open_print(Some(OBICO_PRINT), Some(TALL.to_owned()))
+            .open_print(Some(OBICO_PRINT), Some(file.to_owned()))
             .await
             .expect("a print opens");
         let size = i64::try_from(tall_gcode().len()).expect("a small file");
         self.octoprint
-            .reports("Printing", JobScript::printing(TALL, size, 0, 5));
+            .reports("Printing", JobScript::printing(file, size, 0, 5));
         self.agent.hold_turns();
         let status = reqwest::Client::new()
             .post(format!("{}?token={SECRET}", self.server.ingress_url()))
@@ -527,6 +544,62 @@ async fn a_policy_counting_no_operator_assertion_never_honours_the_word() {
     }
 }
 
+/// An agent the policy grants a park is held to clearance like anybody
+/// else, and the operator's standing word is the clearance its park is
+/// carried out on: refused over the cancelled tower's top before the word,
+/// carried out after it with no assertion of its own, naming the word in both
+/// its audit events.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_granted_agent_parks_on_the_operators_word() {
+    let granting_a_park = |document: &mut toml::Value| {
+        set(
+            document,
+            "policy",
+            toml::from_str("[recovery]\nagent = [\"recover_park\"]\n").expect("a policy table"),
+        );
+    };
+    let bench = Bench::start(granting_a_park).await;
+    // The turn is about a print of another file, and stays open while that
+    // print ends and the tower is printed and cancelled.
+    let (turn, agent) = bench.agent_turn(NEXT).await;
+    bench.octoprint.reports("Operational", JobScript::idle());
+    tokio::time::sleep(POLL * 3).await;
+    bench.a_print_observed_and_cancelled(TALL).await;
+    bench.home_z_asserted().await;
+
+    bench.octoprint.moves_head_to([50.0, 50.0, 4.0]);
+    let (status, answer) = bench
+        .recover_as(&turn, agent.clone(), "recover_park", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
+    assert_eq!(
+        answer["decision"]["rejected"]["insufficient_clearance"]["tallest_mm"],
+        json!(TALL_MM),
+        "the agent's park was not refused for the cancelled tower: {answer:#}"
+    );
+
+    let word = bench.bed_clear().await;
+    bench.octoprint.moves_head_to([50.0, 50.0, 4.0]);
+    let (status, answer) = bench
+        .recover_as(&turn, agent, "recover_park", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{answer:#}");
+    assert_eq!(answer["decision"]["executed"], "succeeded", "{answer:#}");
+    assert_eq!(answer["events"][0]["kind"], "recovery_requested");
+    assert_eq!(answer["events"][1]["kind"], "recovery_executed");
+    for event in answer["events"].as_array().expect("the audit") {
+        assert!(
+            event["payload"]["actor"].get("agent").is_some(),
+            "the park was not the agent's: {event:#}"
+        );
+        assert_eq!(
+            event["payload"]["bed_clear"], word["id"],
+            "the agent's park does not name the word it was carried out on: {event:#}"
+        );
+    }
+    bench.agent.release_turns();
+}
+
 /// Nobody but the operator gives the word: the agent claiming its own actor,
 /// a turn claiming the operator, the operator claiming the agent, and anybody
 /// claiming the system are each refused, and nothing is recorded; a reason
@@ -534,7 +607,7 @@ async fn a_policy_counting_no_operator_assertion_never_honours_the_word() {
 #[tokio::test(flavor = "multi_thread")]
 async fn nobody_but_the_operator_gives_the_word() {
     let bench = Bench::start(|_| {}).await;
-    let (turn, agent) = bench.agent_turn().await;
+    let (turn, agent) = bench.agent_turn(TALL).await;
     for (client, actor, who) in [
         (&turn, agent.clone(), "the agent as itself"),
         (&turn, json!("operator"), "a turn as the operator"),
