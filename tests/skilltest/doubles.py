@@ -117,6 +117,76 @@ class JobDocument(TypedDict):
     error: str
 
 
+class IdleJobFile(TypedDict):
+    """The file block of what `GET /api/job` answers with nothing selected."""
+
+    name: None
+    origin: None
+    size: None
+
+
+class IdleJobFacts(TypedDict):
+    """The job block of what `GET /api/job` answers with nothing selected."""
+
+    file: IdleJobFile
+    estimatedPrintTime: None
+    filament: None
+
+
+class IdleJobProgress(TypedDict):
+    """The progress block of what `GET /api/job` answers with no job."""
+
+    completion: None
+    filepos: None
+    printTime: None
+    printTimeLeft: None
+
+
+class IdleJobDocument(TypedDict):
+    """What `GET /api/job` answers from a printer that is idle."""
+
+    job: IdleJobFacts
+    progress: IdleJobProgress
+    state: str
+    error: str
+
+
+class ToolFilament(TypedDict):
+    """One tool's filament in OctoPrint's analysis of a file."""
+
+    length: float
+
+
+class FileAnalysis(TypedDict):
+    """OctoPrint's analysis of a file, as far as a start reads it."""
+
+    filament: dict[str, ToolFilament]
+
+
+class FileRefs(TypedDict):
+    """The links OctoPrint reaches a file at."""
+
+    download: str
+
+
+class FileFacts(TypedDict):
+    """What `GET /api/files/local/<name>` answers, and each entry of a listing."""
+
+    name: str
+    origin: str
+    type: str
+    size: int
+    gcodeAnalysis: FileAnalysis
+    refs: FileRefs
+
+
+class HeldFile(NamedTuple):
+    """One file the printer holds: its name, and its bytes."""
+
+    name: str
+    data: bytes
+
+
 class PrinterFlags(TypedDict):
     """The flags of what `GET /api/printer` answers."""
 
@@ -734,7 +804,7 @@ class Bench:
         """The bench's current time, which is what the server's clock answers."""
         return datetime.now(UTC) + self.offset
 
-    def stand_at(self, when: datetime, frame: str, gcode: tuple[str, bytes]) -> None:
+    def stand_at(self, when: datetime, frame: str, gcode: HeldFile) -> None:
         """A new request: the bed as its frame shows it, the file it asks for, at its moment.
 
         Whatever the last request started has ended by then, and the printer is idle.
@@ -748,7 +818,7 @@ class Bench:
             self.captured = when
             self.printing = None
             self.selected = None
-            self.files[gcode[0]] = gcode[1]
+            self.files[gcode.name] = gcode.data
 
     def camera_answer(self) -> CameraFrame | None:
         """The request's frame, numbered for this fetch, and when it was captured."""
@@ -759,12 +829,16 @@ class Bench:
             number, frame, captured = len(self.fetches), self.frame, self.captured
         return CameraFrame(numbered(self.picture(frame), number), captured)
 
-    def job_body(self) -> dict[str, Any]:
+    def job_body(self) -> JobDocument | IdleJobDocument:
         """What `GET /api/job` answers: nothing selected while idle, the job once started."""
         with self.lock:
             if self.printing is None:
                 return {
-                    "job": {"file": {"name": None, "origin": None, "size": None}},
+                    "job": {
+                        "file": {"name": None, "origin": None, "size": None},
+                        "estimatedPrintTime": None,
+                        "filament": None,
+                    },
                     "progress": {
                         "completion": None,
                         "filepos": None,
@@ -867,7 +941,7 @@ def bench_octoprint(bench: Bench, api_key: str) -> ThreadingHTTPServer:
                 case _:
                     self.answer_json(404, {"error": "Not found"})
 
-        def _facts(self, name: str) -> dict[str, Any]:
+        def _facts(self, name: str) -> FileFacts:
             host = self.headers.get("Host", "127.0.0.1")
             return {
                 "name": name,

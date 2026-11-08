@@ -30,7 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, NamedTuple, TypedDict, cast
 
 import doubles
 from cases import REPO, Request, StartCase, StartRequest, instant, step_matches
@@ -77,8 +77,24 @@ OPERATOR = "operator"
 SESSION_PREFIX = "operator-"
 #: How much filament each spool the replay loads holds, which no request's file outruns.
 SPOOL_GRAMS = 1000
+
+
+class Temperatures(NamedTuple):
+    """What a material's G-code heats the nozzle and the bed to, in degrees Celsius."""
+
+    tool_c: int
+    bed_c: int
+
+
+class RecordedRequest(NamedTuple):
+    """One request the server recorded, and when it recorded it."""
+
+    at: datetime
+    request: Request
+
+
 #: The temperatures each material's G-code asks for, as a slicer's profile does.
-TEMPERATURES = {"PLA": (215, 60), "PETG": (240, 85)}
+TEMPERATURES = {"PLA": Temperatures(tool_c=215, bed_c=60), "PETG": Temperatures(240, 85)}
 
 
 def default_sheets(template: str | None = None) -> dict[str, tuple[str, ...]]:
@@ -120,7 +136,7 @@ def material_of(request: StartRequest, sheets: dict[str, tuple[str, ...]]) -> st
 
 def start_gcode(material: str) -> bytes:
     """A small slice for one material: heat, home, a square, and the settings at its end."""
-    tool, bed = TEMPERATURES[material]
+    tool, bed = TEMPERATURES[material].tool_c, TEMPERATURES[material].bed_c
     square = [
         f"G1 X{x} Y{y} E{extrude:.3f} F1800"
         for x, y, extrude in ((120, 100, 0.9), (120, 120, 0.9), (100, 120, 0.9), (100, 100, 0.9))
@@ -598,7 +614,7 @@ class StartsReplay:
             raise ReplayError(msg)
         return path
 
-    def _actions(self) -> list[tuple[datetime, Request]]:
+    def _actions(self) -> list[RecordedRequest]:
         """Every action an operator requested, of every print, with when it was recorded."""
         found = []
         prints = self._client("prints").get("prints")
@@ -616,7 +632,9 @@ class StartsReplay:
                 action = event["payload"].get("action", {})
                 if event["kind"] in REQUESTED and action.get("actor") == OPERATOR:
                     operation = str(action["action"]).replace("_", "-")
-                    found.append((_received(event), Request(operation, dict(action))))
+                    found.append(
+                        RecordedRequest(_received(event), Request(operation, dict(action)))
+                    )
         return found
 
     def _starts(self, begun: datetime, ended: datetime) -> int:
@@ -734,7 +752,9 @@ class StartsReplay:
     def _one(self, request: StartRequest, sessions: list[str]) -> StartPoint:
         material = material_of(request, self.sheets)
         name = file_name_of(request)
-        self.bench.stand_at(instant(request.at), request.event_image, (name, start_gcode(material)))
+        self.bench.stand_at(
+            instant(request.at), request.event_image, doubles.HeldFile(name, start_gcode(material))
+        )
         self._load(material)
         frame = self._frame_now()
         session = f"{SESSION_PREFIX}{request.day}"
@@ -764,7 +784,9 @@ class StartsReplay:
         return StartPoint(
             request=request,
             session=session,
-            requests=[found for when, found in self._actions() if begun <= when <= ended],
+            requests=[
+                recorded.request for recorded in self._actions() if begun <= recorded.at <= ended
+            ],
             report=taken,
             reply=result["text"],
             failure=failure,

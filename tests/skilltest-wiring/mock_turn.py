@@ -267,9 +267,10 @@ def main(script_path: str, arguments: list[str]) -> int:
         log.write(json.dumps(seen) + "\n")
     time.sleep(scripted.get("stall_s", 0))
     # A run continuing a conversation is handed its id, and one opening it is given a new one.
+    resumed = arguments.index("--resume") + 1 if "--resume" in arguments else len(arguments)
     session = (
-        arguments[arguments.index("--resume") + 1]
-        if "--resume" in arguments
+        arguments[resumed]
+        if resumed < len(arguments)
         else f"mock-session-{script['session']}-{number}"
     )
     usage = scripted.get("usage", {"input_tokens": 10, "output_tokens": 5})
