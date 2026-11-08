@@ -103,7 +103,10 @@ fn a_sink_that_has_enough_stops_the_read() {
     let read = block_on(printer_of(&standin).read_gcode(named("lace-test.gcode"), &mut sink));
 
     assert_eq!(read, Ok(()));
-    assert_eq!(sink.pieces, 1, "the sink was handed a piece after it stopped");
+    assert_eq!(
+        sink.pieces, 1,
+        "the sink was handed a piece after it stopped"
+    );
     assert!(sink.bytes.len() < RECORDED.len());
     assert_eq!(standin.whole_downloads("lace-test.gcode"), 1);
 }

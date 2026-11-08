@@ -200,7 +200,9 @@ and `detector_health_changed`, and recovery's own `recovery_requested`,
 `obico_printer_notification`; `printobserver-vision-api` declares
 `malformed_external_event`; `printobserver-supervisor-api` declares
 `supervision_session_opened` and `supervision_session_closed`; and
-`printobserver-server` writes `startup_reconciliation`. **A reader handles a
+`printobserver-server` writes `startup_reconciliation`. That count and that
+list are held to the checked-in schemas by `crates/printobserver-server/tests/documented.rs`,
+which fails when a kind is declared or removed without them. **A reader handles a
 kind it does not know**: it carries the record through, filters by the kind's
 name, or asks for a typed payload with `payload_as::<P>()` and gets `None` when
 the kind is another's. Nothing matches the log exhaustively, so a kind from a

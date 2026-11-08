@@ -11,7 +11,8 @@
 //! change's; and the heap is counted over the whole build by the counting
 //! global allocator this binary runs under, its read buffer and the built
 //! index included. The context answer is then rendered at the layer naming
-//! the most extrusion types, as the program a turn runs prints it, and the
+//! the most extrusion types, through the labelled rendering the program a turn
+//! runs prints it in (`printobserver_types::labelled`), and the
 //! bytes the plan's facts add are converted to tokens at the ratio the
 //! `spike-check-costs` spike measured.
 //!
@@ -34,6 +35,7 @@ use peak_alloc::PeakAlloc;
 use printobserver_core::{GcodeIndex, IndexBuilder, PrintContext};
 use printobserver_printer_api::GcodeSink as _;
 use printobserver_types::contract::Sample;
+use printobserver_types::labelled::{self, fields};
 use printobserver_types::serde_json::{self, Value, json};
 
 use crate::generator::{FINAL_Z_MM, LAYERS, LongPlate, PIECE, Shape};
@@ -104,41 +106,6 @@ fn figure(count: impl TryInto<u32>) -> f64 {
 fn megabytes(bytes: usize) -> f64 {
     let kilobytes = u32::try_from(bytes / 1_000).unwrap_or(u32::MAX);
     f64::from(kilobytes) * 1_000.0 / MEGABYTE
-}
-
-/// Every leaf of a document as the command-line program's labelled rendering
-/// prints it — the rendering a turn's `printobserver context` answers in, as
-/// `crates/printobserver/src/render.rs` writes it: the leaf's dotted path,
-/// `": "`, its value, and a newline.
-fn labelled(at: &str, value: &Value, lines: &mut Vec<(String, String)>) {
-    let under = |name: &str| {
-        if at.is_empty() {
-            name.to_owned()
-        } else {
-            format!("{at}.{name}")
-        }
-    };
-    match value {
-        Value::Object(entries) if !entries.is_empty() => {
-            for (name, held) in entries {
-                labelled(&under(name), held, lines);
-            }
-        }
-        Value::Array(entries) if !entries.is_empty() => {
-            for (index, held) in entries.iter().enumerate() {
-                labelled(&under(&index.to_string()), held, lines);
-            }
-        }
-        Value::Object(_) => lines.push((at.to_owned(), "{}".to_owned())),
-        Value::Array(_) => lines.push((at.to_owned(), "[]".to_owned())),
-        Value::String(text) => lines.push((at.to_owned(), text.clone())),
-        other => lines.push((at.to_owned(), other.to_string())),
-    }
-}
-
-/// The bytes one rendered line takes.
-fn line_bytes((at, value): &(String, String)) -> usize {
-    at.len() + ": ".len() + value.len() + 1
 }
 
 /// Write one telemetry file.
@@ -226,12 +193,11 @@ fn rendered(index: &GcodeIndex) -> Rendered {
     let layer = plan.layer;
     let mut with_plan = PrintContext::sample_full();
     with_plan.slicer = Some(plan);
-    let mut lines = Vec::new();
-    labelled(
-        "",
-        &json!({ "context": serde_json::to_value(&with_plan).expect("a context renders") }),
-        &mut lines,
-    );
+    // The labelled lines `printobserver context` prints, through the one
+    // rendering the program itself uses.
+    let lines = fields(&json!({
+        "context": serde_json::to_value(&with_plan).expect("a context renders")
+    }));
     let mut per_field = serde_json::Map::new();
     let mut counted = 0_usize;
     let mut every = 0_usize;
@@ -240,7 +206,7 @@ fn rendered(index: &GcodeIndex) -> Rendered {
             continue;
         };
         let field = field.split('.').next().unwrap_or(field);
-        let bytes = line_bytes(line);
+        let bytes = labelled::line(line).len();
         every += bytes;
         if COUNTED_FACTS.contains(&field) {
             counted += bytes;

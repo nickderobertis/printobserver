@@ -210,6 +210,11 @@ pub struct FakePrinter {
     /// The material each tool of a file was sliced for, by file, where a test
     /// declared it; every other file is sliced for [`SLICED_FOR`].
     sliced: Mutex<BTreeMap<String, Vec<Option<String>>>>,
+    /// Each file's G-code, by name, where a test declared it.
+    gcode: Mutex<BTreeMap<String, Vec<u8>>>,
+    /// The file every whole-file read was asked for, in order — counted apart
+    /// from the journal, which records the calls a policy rules on.
+    gcode_reads: Mutex<Vec<String>>,
 }
 
 /// The material a file no test declared otherwise was sliced for: the one
@@ -228,7 +233,28 @@ impl FakePrinter {
             files: Mutex::new(BTreeMap::new()),
             extrusion: Mutex::new(BTreeMap::new()),
             sliced: Mutex::new(BTreeMap::new()),
+            gcode: Mutex::new(BTreeMap::new()),
+            gcode_reads: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Hold this G-code as one file's, which a whole-file read streams.
+    pub fn holds_gcode(&self, file_name: &str, text: &str) {
+        self.gcode
+            .lock()
+            .expect("the printer holds")
+            .insert(file_name.to_owned(), text.as_bytes().to_vec());
+    }
+
+    /// How many whole-file reads one file was asked for.
+    #[must_use]
+    pub fn gcode_reads(&self, file_name: &str) -> usize {
+        self.gcode_reads
+            .lock()
+            .expect("the printer holds")
+            .iter()
+            .filter(|read| read.as_str() == file_name)
+            .count()
     }
 
     /// Answer that a file was sliced for these materials, tool 0 first, a
@@ -354,6 +380,42 @@ impl FakePrinter {
 }
 
 impl PrinterPort for FakePrinter {
+    fn read_gcode<'a>(
+        &'a self,
+        file_name: FileName,
+        sink: &'a mut dyn printobserver_printer_api::GcodeSink,
+    ) -> BoxFuture<'a, Result<(), PrinterError>> {
+        self.gcode_reads
+            .lock()
+            .expect("the printer holds")
+            .push(file_name.as_str().to_owned());
+        let answer = self.induced(PrinterMethod::ReadGcode).map_or_else(
+            || {
+                let held = self
+                    .gcode
+                    .lock()
+                    .expect("the printer holds")
+                    .get(file_name.as_str())
+                    .cloned();
+                let Some(bytes) = held else {
+                    return Err(PrinterError::Refused {
+                        status: 404,
+                        detail: format!("there is no file {file_name}"),
+                    });
+                };
+                // In pieces that cut lines, as a download arrives.
+                for piece in bytes.chunks(7) {
+                    if sink.take(piece).is_break() {
+                        break;
+                    }
+                }
+                Ok(())
+            },
+            Err,
+        );
+        Box::pin(async move { answer })
+    }
+
     fn snapshot(&self) -> BoxFuture<'_, Result<PrinterSnapshot, PrinterError>> {
         self.journal.record(Call::Snapshot);
         let answer = self.induced(PrinterMethod::Snapshot).map_or_else(

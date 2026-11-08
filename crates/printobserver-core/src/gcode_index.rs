@@ -1416,8 +1416,9 @@ impl crate::supervisor::Supervisor {
     /// thing and still stands.
     ///
     /// A change is placed against the file by the position the print had last
-    /// been read to have reached when it was made; a change whose bounded
-    /// intervention has since expired stands no more.
+    /// been read to have reached when it was made, at the file's start when no
+    /// position had been read yet; a change whose bounded intervention has
+    /// since expired stands no more.
     async fn changes_since(
         &self,
         print_id: PrintId,
@@ -1465,13 +1466,13 @@ impl crate::supervisor::Supervisor {
             let standing = executed
                 .intervention_id
                 .is_none_or(|opened| interventions.iter().any(|active| active.id == opened));
-            let after = |set: Option<SetInFile>| {
-                set.is_none_or(|set| {
-                    executed
-                        .file_position_bytes
-                        .is_none_or(|made| u64::try_from(made).is_ok_and(|made| made >= set.at))
-                })
-            };
+            // Where in the file the change was made; one made before any
+            // position was known is placed at the file's start.
+            let made = executed
+                .file_position_bytes
+                .and_then(|made| u64::try_from(made).ok())
+                .unwrap_or(0);
+            let after = |set: Option<SetInFile>| set.is_none_or(|set| made >= set.at);
             match requested.get(&executed.action_id) {
                 Some(PrintAction::SetFlowrateFactor { factor, .. }) if flow.is_none() => {
                     flow = Some((standing && after(index.flow_at(position))).then_some(*factor));

@@ -957,7 +957,9 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
         _ => ("200 OK", 0),
     };
     if request.header("range").is_none() {
-        lock(script).whole_downloads.push(file.name.as_str().to_owned());
+        lock(script)
+            .whole_downloads
+            .push(file.name.as_str().to_owned());
     }
     let delay = lock(script).download_delay;
     thread::sleep(delay);

@@ -60,11 +60,13 @@ const PATIENCE: Duration = Duration::from_secs(90);
 
 /// What the file plans at one position, as worked out from the file.
 struct Planned {
-    /// The job's file position.
+    /// The byte the scripted job reports it has read to: a point inside the
+    /// layer, past its `;LAYER_CHANGE` and short of the next.
     position: i64,
-    /// The layer, counting the first as 1.
+    /// The layer, counting the first as 1, as the `;LAYER_CHANGE` lines
+    /// before the position count it.
     layer: u64,
-    /// Its height.
+    /// The `;Z:` the layer's change states, in millimetres.
     z_mm: f64,
     /// What the layer lays material as, in the order the file first names each.
     types: &'static [&'static str],
@@ -132,10 +134,10 @@ const HIGH_UP: Planned = Planned {
     fan: 100.0,
 };
 
-/// The file's layer count and final height.
+/// How many `;LAYER_CHANGE` lines the file carries.
 const LAYERS: u64 = 732;
 
-/// The final layer's height, in millimetres.
+/// The `;Z:` of the file's last layer change.
 const FINAL_Z_MM: f64 = 142.0;
 
 /// The one object the file labels, and the bed area its material covers.
@@ -172,15 +174,17 @@ const GCODE_TEXT: [&str; 6] = [";LAYER_CHANGE", ";TYPE:", ";Z:", "G1 X", "M73 P"
 /// A server composed as `Server::start` composes it, over the scripted
 /// instance, with the provider process the responder.
 struct Indexing {
-    /// The journey's root.
+    /// The state directory and the responder's records, which outlive a
+    /// restart and are removed with the journey.
     root: TempDir,
     /// The configuration, which a restart starts again from.
     config: ServerConfig,
-    /// The server, serving.
+    /// The server; a restart replaces it over the same state directory.
     server: Running,
-    /// The scripted `OctoPrint`.
+    /// The scripted `OctoPrint`, which outlives a restart, so its count of
+    /// downloads spans every server the journey starts.
     octoprint: ScriptedOctoPrint,
-    /// The operator's client.
+    /// A client presenting the operator's credential.
     client: reqwest::Client,
 }
 
@@ -402,7 +406,9 @@ impl Indexing {
     }
 }
 
-/// The scripted job printing one file at a position.
+/// The scripted job printing one file at a position, ten minutes in: the
+/// running time is fixed so that moving the position alone is one job going
+/// on rather than a new one.
 fn printing(file: &str, bytes: &[u8], position: i64) -> JobScript {
     JobScript::printing(
         file,
@@ -483,7 +489,7 @@ async fn start(config: &ServerConfig, root: &Path) -> Running {
     .expect("the server starts against the scripted instance")
 }
 
-/// When an event was received, as the server recorded it.
+/// When the server received an event, read from the history it answered.
 fn received_at(event: &Value) -> Timestamp {
     printobserver_types::serde_json::from_value(event["received_at"].clone())
         .expect("an event carries when it was received")
