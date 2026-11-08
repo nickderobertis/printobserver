@@ -30,19 +30,32 @@
 //!
 //! # Which print the record names
 //!
-//! The print the record names is matched to an open print exactly as an alert
-//! is ([`crate::events`]): by the provider's own identifier when the print
-//! carries one, and otherwise by its file and a job its start may be
-//! ([`crate::listing::may_have_started_it`]).
+//! By the provider's own identifier when the open print carries one. Otherwise
+//! by its file and its start, held tighter than an alert's: the start the record
+//! names must lie within [`JOB_IDENTITY_TOLERANCE_S`] of the earliest start
+//! this server has sighted for the print's job, on either side.
+//!
+//! The earliest sighting, not the start the print records now, because a
+//! resume moves the recorded start later by the length of the pause — the
+//! printer takes the pause back out of the job's running time — while the
+//! provider keeps the job's own start. The earliest sighting was taken before
+//! any pause this server watched, so it stays at the job's own start; an
+//! earlier job of the same file began long before it, which an alert's rule
+//! (an earlier start is no objection) could not tell apart. A print this
+//! server first sighted only after a pause is matched by nothing until an
+//! alert names its provider identifier: its status then reads no scoring
+//! rather than another print's.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use printobserver_printer_api::BoxFuture;
 use printobserver_types::{EventKind, PrintId, Timestamp};
 use printobserver_vision_api::ProviderPrint;
 
+use crate::clock::seconds_between;
 use crate::error::CoreError;
+use crate::listing::JOB_IDENTITY_TOLERANCE_S;
 use crate::records::PrintRecord;
 use crate::store::HistoryQuery;
 use crate::supervisor::Supervisor;
@@ -105,6 +118,8 @@ pub(crate) struct ScoringState {
     flagged: BTreeSet<PrintId>,
     /// Why the record is not being read, or what the last read failed with.
     unread: Option<String>,
+    /// The earliest start of its job this server has sighted, by print.
+    first_starts: BTreeMap<PrintId, Timestamp>,
 }
 
 impl ScoringState {
@@ -132,19 +147,35 @@ impl ScoringState {
     }
 }
 
-/// Whether the print a record names is one open print.
-fn names(print: &PrintRecord, named: &ProviderPrint) -> bool {
+/// Whether the print a record names is one open print, whose job this server
+/// first sighted starting at `first_start`.
+fn names(print: &PrintRecord, first_start: Option<Timestamp>, named: &ProviderPrint) -> bool {
     match print.provider_print_id {
         Some(id) => id == named.id,
         None => {
             named.file_name.is_some()
                 && print.file_name == named.file_name
-                && crate::listing::may_have_started_it(print, named.started_at)
+                && match (first_start, named.started_at) {
+                    (Some(ours), Some(theirs)) => {
+                        seconds_between(ours, theirs).abs() <= JOB_IDENTITY_TOLERANCE_S
+                    }
+                    _ => true,
+                }
         }
     }
 }
 
 impl Supervisor {
+    /// Note one start a read put a print's job at, keeping the earliest.
+    pub(crate) fn note_sighted_start(&self, print_id: PrintId, started_at: Timestamp) {
+        self.watch_state()
+            .scoring
+            .first_starts
+            .entry(print_id)
+            .and_modify(|held| *held = (*held).min(started_at))
+            .or_insert(started_at);
+    }
+
     /// Note that a failure alert of the detector's own arrived for one print.
     pub(crate) fn note_flagged(&self, print_id: PrintId) {
         self.watch_state().scoring.flagged.insert(print_id);
@@ -177,10 +208,22 @@ impl Supervisor {
             }
             ScoringRead::Read(reading) => reading,
         };
+        for print in active {
+            if let Some(started_at) = print.job_started_at {
+                self.note_sighted_start(print.id, started_at);
+            }
+        }
+        let first_starts = {
+            let mut held = self.watch_state();
+            held.scoring
+                .first_starts
+                .retain(|print_id, _| active.iter().any(|print| print.id == *print_id));
+            held.scoring.first_starts.clone()
+        };
         let named = reading.print.as_ref().and_then(|named| {
             active
                 .iter()
-                .find(|print| names(print, named))
+                .find(|print| names(print, first_starts.get(&print.id).copied(), named))
                 .map(|print| print.id)
         });
         let flagged = match named {

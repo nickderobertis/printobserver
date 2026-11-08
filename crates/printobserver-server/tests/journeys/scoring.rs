@@ -480,13 +480,95 @@ async fn a_record_that_moves_on_ends_the_evidence_at_the_next_read() {
     scoring.store(false, Ordering::SeqCst);
 }
 
-/// A print that carries no `Obico` identifier is matched by its file and its
-/// start, as an alert is: the record of its job reads scoring, and the record
-/// of a later job of the same file does not. An earlier start is no objection
-/// to either, because a resume moves the start a print records later than the
-/// job's own.
+/// Move the snapshot and the score `Obico` holds every quarter second, until
+/// the flag is lowered: both kinds of evidence at once.
+fn keep_scoring_both(rest: &Arc<Host>) -> Arc<AtomicBool> {
+    let going = Arc::new(AtomicBool::new(true));
+    let still = Arc::clone(&going);
+    let host = Arc::clone(rest);
+    tokio::spawn(async move {
+        let mut moved = 0_u32;
+        while still.load(Ordering::SeqCst) {
+            moved += 1;
+            host.scores(u64::from(moved), f64::from(moved % 50) / 100.0);
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    });
+    going
+}
+
+/// The start one print's status says its job began at.
+async fn recorded_start(
+    world: &World,
+    print_id: PrintId,
+) -> Option<printobserver_types::Timestamp> {
+    let (_, status) = world
+        .get(&world.operation_url("/v1/prints/{print_id}/status", print_id))
+        .await;
+    status["print"]["job_started_at"]
+        .as_str()
+        .and_then(|started| started.parse().ok())
+}
+
+/// Over `rounds` of the server's reads, the print never reads a scoring status.
+async fn never_scores_over(world: &World, rest: &Host, print_id: PrintId, rounds: usize) {
+    let until = printer_reads(rest) + rounds;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    while printer_reads(rest) < until {
+        let detector = status_detector(world, print_id).await;
+        assert!(
+            !detector["status"]
+                .as_str()
+                .is_some_and(|status| status.starts_with("scoring")),
+            "an earlier print's record scored this print: {detector}"
+        );
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the record was not read {rounds} more times"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// Hold one print's job paused until the start the print records has moved
+/// past the job-identity tolerance, as it does once the printer takes the
+/// pause back out of the running time.
+async fn pause_past_the_tolerance(
+    world: &World,
+    print_id: PrintId,
+    own_start: printobserver_types::Timestamp,
+) {
+    world
+        .printer
+        .in_state(printobserver_printer_api::PrinterState::Paused);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(240);
+    loop {
+        let moved = recorded_start(world, print_id)
+            .await
+            .map(|now| now.as_utc().timestamp() - own_start.as_utc().timestamp());
+        if moved.is_some_and(|moved| moved > printobserver_core::listing::JOB_IDENTITY_TOLERANCE_S)
+        {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the start the print records never moved past the tolerance: {moved:?}"
+        );
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+/// A print carrying no `Obico` identifier is matched by its file and by the
+/// earliest start this server sighted for its job.
+///
+/// The record of an earlier job of the same file — its snapshot and its score
+/// both moving — never makes the print read scoring, before a pause or after
+/// it. The record of the print's own job does; and after a pause long enough
+/// to move the start the print records past the tolerance, as a resume does,
+/// it still does. Runs a real pause of a little over two minutes, because the
+/// start a print records moves only by more than that tolerance.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_print_with_no_obico_identifier_is_matched_by_its_file_and_start() {
+async fn an_earlier_print_of_the_same_file_never_scores_and_a_resume_keeps_the_match() {
     let token = minted("obico-token");
     let rest = Arc::new(Host::rest(&token).await);
     let rest_url = rest.url();
@@ -499,6 +581,11 @@ async fn a_print_with_no_obico_identifier_is_matched_by_its_file_and_start() {
                 document,
                 "supervisor.observation_interval_s",
                 toml::Value::Integer(i64::try_from(INTERVAL_S).expect("a small interval")),
+            );
+            set(
+                document,
+                "supervisor.printer_poll_s",
+                toml::Value::Integer(5),
             );
             let mut obico = toml::Table::new();
             obico.insert("url".to_owned(), toml::Value::String(rest_url));
@@ -519,30 +606,65 @@ async fn a_print_with_no_obico_identifier_is_matched_by_its_file_and_start() {
         .expect("a print opens")
         .id;
     let deadline = tokio::time::Instant::now() + PATIENCE;
-    let started = loop {
-        let (_, status) = world
-            .get(&world.operation_url("/v1/prints/{print_id}/status", print_id))
-            .await;
-        if let Some(started) = status["print"]["job_started_at"].as_str() {
-            break started.to_owned();
+    let own_start = loop {
+        if let Some(started) = recorded_start(&world, print_id).await {
+            break started;
         }
         assert!(
             tokio::time::Instant::now() < deadline,
-            "the print never took its job's start: {status}"
+            "the print never took its job's start"
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     };
-    rest.answer(|answer| {
-        answer["current_print"]["id"] = json!(9000);
-        answer["current_print"]["started_at"] = json!(started);
-    });
-    let scoring = keep_scoring(&rest);
+    let shifted = |hours: i64| {
+        printobserver_types::Timestamp::from_unix_seconds(
+            own_start.as_utc().timestamp() + hours * 3600,
+        )
+        .expect("an instant")
+        .to_string()
+    };
+    let name_job = |id: i64, started: String| {
+        rest.answer(move |answer| {
+            answer["current_print"]["id"] = json!(id);
+            answer["current_print"]["filename"] = json!("benchy.gcode");
+            answer["current_print"]["started_at"] = json!(started);
+        });
+    };
+    let scoring = keep_scoring_both(&rest);
+
+    // An earlier job of the same file, three hours before this one.
+    name_job(4100, shifted(-3));
+    never_scores_over(&world, &rest, print_id, 6).await;
+
+    // This print's own job.
+    name_job(9000, own_start.to_string());
     until_status(&world, print_id, "scoring_nothing_flagged").await;
 
-    // A job of the same file started long after this print's own.
-    rest.answer(|answer| answer["current_print"]["started_at"] = json!("2999-01-01T00:00:00Z"));
-    let detector = until_not_scoring(&world, print_id).await;
-    assert_eq!(detector["status"], "unchecked", "{detector}");
+    // A pause long enough that the start the print records moves past the
+    // tolerance — the printer takes the pause back out of the running time —
+    // and then the resume.
+    pause_past_the_tolerance(&world, print_id, own_start).await;
+    world
+        .printer
+        .in_state(printobserver_printer_api::PrinterState::Printing);
+    reads(&rest, 2).await;
+    let detector = until_status(&world, print_id, "scoring_nothing_flagged").await;
+    assert!(detector["since"].is_string(), "{detector}");
+
+    // And the earlier job still scores nothing after the resume, from the
+    // first read of its record on: the evidence of this print's own job
+    // stands until a read names another.
+    name_job(4100, shifted(-3));
+    reads(&rest, 1).await;
+    until_not_scoring(&world, print_id).await;
+    never_scores_over(&world, &rest, print_id, 6).await;
+    // Nor does a later job of the same file.
+    name_job(9000, own_start.to_string());
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+    name_job(4300, shifted(3));
+    reads(&rest, 1).await;
+    until_not_scoring(&world, print_id).await;
+    never_scores_over(&world, &rest, print_id, 4).await;
     scoring.store(false, Ordering::SeqCst);
 }
 
