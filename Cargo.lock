@@ -1369,6 +1369,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "peak_alloc"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccc90935a8dd139fdf341762773687a1e361d3f54b396a55d9dd1f7001e484bb"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1448,6 +1454,7 @@ name = "printobserver-core"
 version = "0.11.1"
 dependencies = [
  "jsonschema 0.34.0",
+ "peak_alloc",
  "printobserver-printer-api",
  "printobserver-supervisor-api",
  "printobserver-types",
@@ -2336,7 +2343,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

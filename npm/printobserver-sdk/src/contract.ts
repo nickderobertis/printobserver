@@ -1205,10 +1205,14 @@ export type PlanFact =
 export interface PlannedObject {
   /** Its name, as the file labels it. */
   name?: string | null;
-  /** The least and most X its material reaches, in millimetres. */
-  x_mm: Array<number>;
-  /** The least and most Y its material reaches, in millimetres. */
-  y_mm: Array<number>;
+  /** The most X its material reaches, in millimetres. */
+  x_max_mm: number;
+  /** The least X its material reaches, in millimetres. */
+  x_min_mm: number;
+  /** The most Y its material reaches, in millimetres. */
+  y_max_mm: number;
+  /** The least Y its material reaches, in millimetres. */
+  y_min_mm: number;
 }
 
 /** The decision policy took on one request. */
@@ -1922,13 +1926,13 @@ export interface Reported {
  * a change made through this program since then left it.
  */
 export interface SetValue {
-  /** What the file's own commands set it to, by the current position. */
-  file?: number | null;
   /**
    * What the latest change made through this program set it to, when one
    * was made after the file last set it.
    */
-  printobserver?: number | null;
+  changed?: number | null;
+  /** What the file's own commands set it to, by the current position. */
+  file?: number | null;
 }
 
 /**
@@ -5097,24 +5101,32 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       }
      }
     },
-    "x_mm": {
+    "x_max_mm": {
      "paired_with": "",
      "required": true,
      "shape": {
-      "list": {
-       "scalar": "number"
-      },
-      "non_empty": true
+      "scalar": "number"
      }
     },
-    "y_mm": {
+    "x_min_mm": {
      "paired_with": "",
      "required": true,
      "shape": {
-      "list": {
-       "scalar": "number"
-      },
-      "non_empty": true
+      "scalar": "number"
+     }
+    },
+    "y_max_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y_min_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
      }
     }
    },
@@ -7471,7 +7483,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
  "SetValue": {
   "struct": {
    "fields": {
-    "file": {
+    "changed": {
      "paired_with": "",
      "required": false,
      "shape": {
@@ -7480,7 +7492,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       }
      }
     },
-    "printobserver": {
+    "file": {
      "paired_with": "",
      "required": false,
      "shape": {

@@ -3,16 +3,16 @@
   "additionalProperties": false,
   "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
   "properties": {
-    "file": {
-      "description": "What the file's own commands set it to, by the current position.",
+    "changed": {
+      "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
       "format": "double",
       "type": [
         "number",
         "null"
       ]
     },
-    "printobserver": {
-      "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+    "file": {
+      "description": "What the file's own commands set it to, by the current position.",
       "format": "double",
       "type": [
         "number",

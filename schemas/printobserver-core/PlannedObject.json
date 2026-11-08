@@ -10,30 +10,32 @@
         "null"
       ]
     },
-    "x_mm": {
-      "description": "The least and most X its material reaches, in millimetres.",
-      "items": {
-        "format": "double",
-        "type": "number"
-      },
-      "maxItems": 2,
-      "minItems": 2,
-      "type": "array"
+    "x_max_mm": {
+      "description": "The most X its material reaches, in millimetres.",
+      "format": "double",
+      "type": "number"
     },
-    "y_mm": {
-      "description": "The least and most Y its material reaches, in millimetres.",
-      "items": {
-        "format": "double",
-        "type": "number"
-      },
-      "maxItems": 2,
-      "minItems": 2,
-      "type": "array"
+    "x_min_mm": {
+      "description": "The least X its material reaches, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "y_max_mm": {
+      "description": "The most Y its material reaches, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "y_min_mm": {
+      "description": "The least Y its material reaches, in millimetres.",
+      "format": "double",
+      "type": "number"
     }
   },
   "required": [
-    "x_mm",
-    "y_mm"
+    "x_min_mm",
+    "x_max_mm",
+    "y_min_mm",
+    "y_max_mm"
   ],
   "title": "PlannedObject",
   "type": "object"

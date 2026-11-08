@@ -8903,30 +8903,32 @@ Declared by `printobserver-server`.
             "null"
           ]
         },
-        "x_mm": {
-          "description": "The least and most X its material reaches, in millimetres.",
-          "items": {
-            "format": "double",
-            "type": "number"
-          },
-          "maxItems": 2,
-          "minItems": 2,
-          "type": "array"
+        "x_max_mm": {
+          "description": "The most X its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
         },
-        "y_mm": {
-          "description": "The least and most Y its material reaches, in millimetres.",
-          "items": {
-            "format": "double",
-            "type": "number"
-          },
-          "maxItems": 2,
-          "minItems": 2,
-          "type": "array"
+        "x_min_mm": {
+          "description": "The least X its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "y_max_mm": {
+          "description": "The most Y its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "y_min_mm": {
+          "description": "The least Y its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
         }
       },
       "required": [
-        "x_mm",
-        "y_mm"
+        "x_min_mm",
+        "x_max_mm",
+        "y_min_mm",
+        "y_max_mm"
       ],
       "type": "object"
     },
@@ -9298,16 +9300,16 @@ Declared by `printobserver-server`.
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
       "properties": {
-        "file": {
-          "description": "What the file's own commands set it to, by the current position.",
+        "changed": {
+          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
           "format": "double",
           "type": [
             "number",
             "null"
           ]
         },
-        "printobserver": {
-          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+        "file": {
+          "description": "What the file's own commands set it to, by the current position.",
           "format": "double",
           "type": [
             "number",
@@ -16169,30 +16171,32 @@ Declared by `printobserver-core`.
         "null"
       ]
     },
-    "x_mm": {
-      "description": "The least and most X its material reaches, in millimetres.",
-      "items": {
-        "format": "double",
-        "type": "number"
-      },
-      "maxItems": 2,
-      "minItems": 2,
-      "type": "array"
+    "x_max_mm": {
+      "description": "The most X its material reaches, in millimetres.",
+      "format": "double",
+      "type": "number"
     },
-    "y_mm": {
-      "description": "The least and most Y its material reaches, in millimetres.",
-      "items": {
-        "format": "double",
-        "type": "number"
-      },
-      "maxItems": 2,
-      "minItems": 2,
-      "type": "array"
+    "x_min_mm": {
+      "description": "The least X its material reaches, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "y_max_mm": {
+      "description": "The most Y its material reaches, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "y_min_mm": {
+      "description": "The least Y its material reaches, in millimetres.",
+      "format": "double",
+      "type": "number"
     }
   },
   "required": [
-    "x_mm",
-    "y_mm"
+    "x_min_mm",
+    "x_max_mm",
+    "y_min_mm",
+    "y_max_mm"
   ],
   "title": "PlannedObject",
   "type": "object"
@@ -23652,30 +23656,32 @@ Declared by `printobserver-core`.
             "null"
           ]
         },
-        "x_mm": {
-          "description": "The least and most X its material reaches, in millimetres.",
-          "items": {
-            "format": "double",
-            "type": "number"
-          },
-          "maxItems": 2,
-          "minItems": 2,
-          "type": "array"
+        "x_max_mm": {
+          "description": "The most X its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
         },
-        "y_mm": {
-          "description": "The least and most Y its material reaches, in millimetres.",
-          "items": {
-            "format": "double",
-            "type": "number"
-          },
-          "maxItems": 2,
-          "minItems": 2,
-          "type": "array"
+        "x_min_mm": {
+          "description": "The least X its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "y_max_mm": {
+          "description": "The most Y its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "y_min_mm": {
+          "description": "The least Y its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
         }
       },
       "required": [
-        "x_mm",
-        "y_mm"
+        "x_min_mm",
+        "x_max_mm",
+        "y_min_mm",
+        "y_max_mm"
       ],
       "type": "object"
     },
@@ -23949,16 +23955,16 @@ Declared by `printobserver-core`.
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
       "properties": {
-        "file": {
-          "description": "What the file's own commands set it to, by the current position.",
+        "changed": {
+          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
           "format": "double",
           "type": [
             "number",
             "null"
           ]
         },
-        "printobserver": {
-          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+        "file": {
+          "description": "What the file's own commands set it to, by the current position.",
           "format": "double",
           "type": [
             "number",
@@ -31873,16 +31879,16 @@ Declared by `printobserver-core`.
   "additionalProperties": false,
   "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
   "properties": {
-    "file": {
-      "description": "What the file's own commands set it to, by the current position.",
+    "changed": {
+      "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
       "format": "double",
       "type": [
         "number",
         "null"
       ]
     },
-    "printobserver": {
-      "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+    "file": {
+      "description": "What the file's own commands set it to, by the current position.",
       "format": "double",
       "type": [
         "number",
@@ -32689,30 +32695,32 @@ Declared by `printobserver-core`.
             "null"
           ]
         },
-        "x_mm": {
-          "description": "The least and most X its material reaches, in millimetres.",
-          "items": {
-            "format": "double",
-            "type": "number"
-          },
-          "maxItems": 2,
-          "minItems": 2,
-          "type": "array"
+        "x_max_mm": {
+          "description": "The most X its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
         },
-        "y_mm": {
-          "description": "The least and most Y its material reaches, in millimetres.",
-          "items": {
-            "format": "double",
-            "type": "number"
-          },
-          "maxItems": 2,
-          "minItems": 2,
-          "type": "array"
+        "x_min_mm": {
+          "description": "The least X its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "y_max_mm": {
+          "description": "The most Y its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "y_min_mm": {
+          "description": "The least Y its material reaches, in millimetres.",
+          "format": "double",
+          "type": "number"
         }
       },
       "required": [
-        "x_mm",
-        "y_mm"
+        "x_min_mm",
+        "x_max_mm",
+        "y_min_mm",
+        "y_max_mm"
       ],
       "type": "object"
     },
@@ -32720,16 +32728,16 @@ Declared by `printobserver-core`.
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
       "properties": {
-        "file": {
-          "description": "What the file's own commands set it to, by the current position.",
+        "changed": {
+          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
           "format": "double",
           "type": [
             "number",
             "null"
           ]
         },
-        "printobserver": {
-          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+        "file": {
+          "description": "What the file's own commands set it to, by the current position.",
           "format": "double",
           "type": [
             "number",

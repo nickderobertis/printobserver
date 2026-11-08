@@ -1563,10 +1563,14 @@ class PlannedObject(TypedDict):
 
     # Its name, as the file labels it.
     name: NotRequired[str | None]
-    # The least and most X its material reaches, in millimetres.
-    x_mm: list[float]
-    # The least and most Y its material reaches, in millimetres.
-    y_mm: list[float]
+    # The most X its material reaches, in millimetres.
+    x_max_mm: float
+    # The least X its material reaches, in millimetres.
+    x_min_mm: float
+    # The most Y its material reaches, in millimetres.
+    y_max_mm: float
+    # The least Y its material reaches, in millimetres.
+    y_min_mm: float
 
 
 class PolicyDecisionRejected(TypedDict):
@@ -3135,11 +3139,11 @@ class SetValue(TypedDict):
     a change made through this program since then left it.
     """
 
-    # What the file's own commands set it to, by the current position.
-    file: NotRequired[float | None]
     # What the latest change made through this program set it to, when one
     # was made after the file last set it.
-    printobserver: NotRequired[float | None]
+    changed: NotRequired[float | None]
+    # What the file's own commands set it to, by the current position.
+    file: NotRequired[float | None]
 
 
 # A build sheet's identifier as the sheet table names it, such as
@@ -7026,24 +7030,32 @@ SHAPES: dict[str, object] = json.loads(
       }
      }
     },
-    "x_mm": {
+    "x_max_mm": {
      "paired_with": "",
      "required": true,
      "shape": {
-      "list": {
-       "scalar": "number"
-      },
-      "non_empty": true
+      "scalar": "number"
      }
     },
-    "y_mm": {
+    "x_min_mm": {
      "paired_with": "",
      "required": true,
      "shape": {
-      "list": {
-       "scalar": "number"
-      },
-      "non_empty": true
+      "scalar": "number"
+     }
+    },
+    "y_max_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "y_min_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
      }
     }
    },
@@ -9400,7 +9412,7 @@ SHAPES: dict[str, object] = json.loads(
  "SetValue": {
   "struct": {
    "fields": {
-    "file": {
+    "changed": {
      "paired_with": "",
      "required": false,
      "shape": {
@@ -9409,7 +9421,7 @@ SHAPES: dict[str, object] = json.loads(
       }
      }
     },
-    "printobserver": {
+    "file": {
      "paired_with": "",
      "required": false,
      "shape": {

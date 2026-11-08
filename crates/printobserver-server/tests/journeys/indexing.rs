@@ -142,8 +142,10 @@ const FINAL_Z_MM: f64 = 142.0;
 fn objects() -> Value {
     json!([{
         "name": "bubbler_guard_and_pad.stl",
-        "x_mm": [83.0, 167.3],
-        "y_mm": [86.8, 133.3],
+        "x_min_mm": 83.0,
+        "x_max_mm": 167.3,
+        "y_min_mm": 86.8,
+        "y_max_mm": 133.3,
     }])
 }
 
@@ -533,12 +535,7 @@ async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
         let turn = world
             .checked_at(&print_id, FIRST, BUBBLER, planned.position)
             .await;
-        assert_eq!(
-            turn["slicer"],
-            plan_of(planned),
-            "at {}",
-            planned.position
-        );
+        assert_eq!(turn["slicer"], plan_of(planned), "at {}", planned.position);
         let (read, _, _) = world.context(&print_id).await;
         assert_eq!(read["slicer"], plan_of(planned));
     }
@@ -548,7 +545,7 @@ async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
     let changed = world.operator_sets_the_fan(&print_id, 80.0).await;
     assert_eq!(
         changed["slicer"]["fan_percent"],
-        json!({ "file": IN_BRIDGE.fan, "printobserver": 80.0 })
+        json!({ "file": IN_BRIDGE.fan, "changed": 80.0 })
     );
     let turn = world
         .checked_at(&print_id, FIRST, BUBBLER, HIGH_UP.position)
@@ -615,10 +612,7 @@ async fn a_file_with_no_types_or_estimates_says_so_and_is_checked_all_the_same()
     world.more_checks(&print_id, 2).await;
 
     let plan = &turn["slicer"];
-    assert_eq!(
-        plan["unknown"],
-        json!(["types", "minutes_left"])
-    );
+    assert_eq!(plan["unknown"], json!(["types", "minutes_left"]));
     assert!(plan.get("types").is_none(), "{plan}");
     assert!(plan.get("minutes_left").is_none(), "{plan}");
     assert_eq!(plan["final_z_mm"], json!(FINAL_Z_MM));

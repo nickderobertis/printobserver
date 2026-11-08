@@ -162,14 +162,14 @@ fn the_flow_and_the_fan_are_what_the_file_set_by_the_position() {
         plan.flow_factor,
         Some(SetValue {
             file: Some(1.0),
-            printobserver: Some(1.05)
+            changed: Some(1.05)
         })
     );
     assert_eq!(
         plan.fan_percent,
         Some(SetValue {
             file: Some(0.0),
-            printobserver: None
+            changed: None
         })
     );
     let plan = index.plan_at(last);
@@ -197,13 +197,17 @@ fn each_object_covers_the_bed_area_its_material_reached() {
         vec![
             PlannedObject {
                 name: Some("box.stl".to_owned()),
-                x_mm: [10.0, 22.0],
-                y_mm: [10.0, 20.0],
+                x_min_mm: 10.0,
+                x_max_mm: 22.0,
+                y_min_mm: 10.0,
+                y_max_mm: 20.0,
             },
             PlannedObject {
                 name: Some("tower.stl".to_owned()),
-                x_mm: [50.0, 60.0],
-                y_mm: [50.0, 55.0],
+                x_min_mm: 50.0,
+                x_max_mm: 60.0,
+                y_min_mm: 50.0,
+                y_max_mm: 55.0,
             },
         ]
     );
@@ -289,13 +293,18 @@ M486 S-1
 
     assert_eq!(part.name.as_deref(), Some("part"));
     assert_eq!(
-        (part.x_mm, part.y_mm),
-        ([0.0, 35.0], [-1.0, 10.0]),
+        (part.x_min_mm, part.x_max_mm, part.y_min_mm, part.y_max_mm),
+        (0.0, 35.0, -1.0, 10.0),
         "the half circle below its chord was not reached, or more than it"
     );
     assert_eq!(
-        (plan.objects[1].x_mm, plan.objects[1].y_mm),
-        ([0.0, 0.0], [0.0, 1.0]),
+        (
+            plan.objects[1].x_min_mm,
+            plan.objects[1].x_max_mm,
+            plan.objects[1].y_min_mm,
+            plan.objects[1].y_max_mm
+        ),
+        (0.0, 0.0, 0.0, 1.0),
         "an X beyond any machine's travel was read as a place"
     );
     assert_eq!(
@@ -400,18 +409,25 @@ G3 X0 Y0 I1 J0 E1 ; ending where it began, the whole circle
 M486 S-1
 ";
     let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
-    let covered: Vec<([f64; 2], [f64; 2])> = plan
+    let covered: Vec<(f64, f64, f64, f64)> = plan
         .objects
         .iter()
-        .map(|object| (object.x_mm, object.y_mm))
+        .map(|object| {
+            (
+                object.x_min_mm,
+                object.x_max_mm,
+                object.y_min_mm,
+                object.y_max_mm,
+            )
+        })
         .collect();
 
     assert_eq!(
         covered,
         vec![
-            ([0.0, 10.0], [0.0, 0.0]),
-            ([-1.0, 1.0], [0.0, 2.0]),
-            ([0.0, 2.0], [-1.0, 1.0]),
+            (0.0, 10.0, 0.0, 0.0),
+            (-1.0, 1.0, 0.0, 2.0),
+            (0.0, 2.0, -1.0, 1.0),
         ]
     );
 }

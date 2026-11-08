@@ -1497,12 +1497,14 @@ pub struct PlannedObject {
     /// Its name, as the file labels it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// The least and most X its material reaches, in millimetres.
-    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
-    pub x_mm: Vec<f64>,
-    /// The least and most Y its material reaches, in millimetres.
-    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
-    pub y_mm: Vec<f64>,
+    /// The most X its material reaches, in millimetres.
+    pub x_max_mm: f64,
+    /// The least X its material reaches, in millimetres.
+    pub x_min_mm: f64,
+    /// The most Y its material reaches, in millimetres.
+    pub y_max_mm: f64,
+    /// The least Y its material reaches, in millimetres.
+    pub y_min_mm: f64,
 }
 
 /// The decision policy took on one request.
@@ -2705,13 +2707,13 @@ pub struct Reported {
 /// a change made through this program since then left it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SetValue {
-    /// What the file's own commands set it to, by the current position.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file: Option<f64>,
     /// What the latest change made through this program set it to, when one
     /// was made after the file last set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub printobserver: Option<f64>,
+    pub changed: Option<f64>,
+    /// What the file's own commands set it to, by the current position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<f64>,
 }
 
 /// A build sheet's identifier as the sheet table names it, such as

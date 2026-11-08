@@ -91,7 +91,7 @@ const AXIS_LIMIT: f64 = 1e4;
 const WORD_LIMIT: f64 = 1e7;
 
 /// The most words one command is read as; G-code commands carry a handful.
-const WORD_COUNT: usize = 16;
+const WORD_COUNT: usize = 8;
 
 /// The XY travel below which a move counts as no travel at all.
 const TRAVEL_MM: f64 = 1e-6;
@@ -333,17 +333,14 @@ impl GcodeIndex {
 /// recording the fact as unknown when the file had set nothing.
 fn set_value(
     file: Option<f64>,
-    printobserver: Option<f64>,
+    changed: Option<f64>,
     fact: PlanFact,
     unknown: &mut Vec<PlanFact>,
 ) -> Option<SetValue> {
     if file.is_none() {
         unknown.push(fact);
     }
-    (file.is_some() || printobserver.is_some()).then_some(SetValue {
-        file,
-        printobserver,
-    })
+    (file.is_some() || changed.is_some()).then_some(SetValue { file, changed })
 }
 
 /// Whether a line ending at `at` lies wholly before `position`.
@@ -372,7 +369,7 @@ pub struct SetValue {
     /// What the latest change made through this program set it to, when one
     /// was made after the file last set it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub printobserver: Option<f64>,
+    pub changed: Option<f64>,
 }
 
 /// One object the print's file lays down, and the bed area it covers.
@@ -383,10 +380,14 @@ pub struct PlannedObject {
     /// Its name, as the file labels it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// The least and most X its material reaches, in millimetres.
-    pub x_mm: [f64; 2],
-    /// The least and most Y its material reaches, in millimetres.
-    pub y_mm: [f64; 2],
+    /// The least X its material reaches, in millimetres.
+    pub x_min_mm: f64,
+    /// The most X its material reaches, in millimetres.
+    pub x_max_mm: f64,
+    /// The least Y its material reaches, in millimetres.
+    pub y_min_mm: f64,
+    /// The most Y its material reaches, in millimetres.
+    pub y_max_mm: f64,
 }
 
 /// A fact of the plan the print's file does not state.
@@ -472,16 +473,18 @@ impl Sample for SlicerPlan {
             minutes_left: Some(42),
             flow_factor: Some(SetValue {
                 file: Some(1.0),
-                printobserver: Some(0.95),
+                changed: Some(0.95),
             }),
             fan_percent: Some(SetValue {
                 file: Some(100.0),
-                printobserver: None,
+                changed: None,
             }),
             objects: vec![PlannedObject {
                 name: Some("benchy.stl".to_owned()),
-                x_mm: [100.0, 150.0],
-                y_mm: [99.0, 117.0],
+                x_min_mm: 100.0,
+                x_max_mm: 150.0,
+                y_min_mm: 99.0,
+                y_max_mm: 117.0,
             }],
             unknown: vec![PlanFact::Objects],
         }
@@ -557,14 +560,30 @@ pub struct IndexBuilder {
 
 impl GcodeSink for IndexBuilder {
     fn take(&mut self, piece: &[u8]) -> ControlFlow<()> {
-        let mut rest = piece;
-        while let Some(newline) = rest.iter().position(|byte| *byte == b'\n') {
-            let (head, tail) = rest.split_at(newline);
-            self.hold(head);
-            self.read += u64::try_from(newline + 1).unwrap_or(u64::MAX);
-            self.end_line();
-            rest = &tail[1..];
+        // Plain index loops rather than iterator adaptors throughout this
+        // reader: it runs over every byte of a print, and is as fast in a
+        // build without optimisation as in one with it only written so.
+        let mut start = 0;
+        let mut at = 0;
+        while at < piece.len() {
+            if piece[at] == b'\n' {
+                let head = &piece[start..at];
+                self.read += u64::try_from(at + 1 - start).unwrap_or(u64::MAX);
+                if self.line.is_empty() && !self.overlong {
+                    // The whole line is in this piece: read it where it lies.
+                    self.lines += 1;
+                    if head.len() <= LINE_LIMIT {
+                        self.read_line(head);
+                    }
+                } else {
+                    self.hold(head);
+                    self.end_line();
+                }
+                start = at + 1;
+            }
+            at += 1;
         }
+        let rest = &piece[start..];
         self.hold(rest);
         self.read += u64::try_from(rest.len()).unwrap_or(u64::MAX);
         ControlFlow::Continue(())
@@ -593,8 +612,10 @@ impl IndexBuilder {
                     .bounds
                     .map(|[least_x, least_y, most_x, most_y]| PlannedObject {
                         name: draft.name,
-                        x_mm: [tenth(least_x), tenth(most_x)],
-                        y_mm: [tenth(least_y), tenth(most_y)],
+                        x_min_mm: tenth(least_x),
+                        x_max_mm: tenth(most_x),
+                        y_min_mm: tenth(least_y),
+                        y_max_mm: tenth(most_y),
                     })
             })
             .collect();
@@ -630,37 +651,37 @@ impl IndexBuilder {
         self.lines += 1;
         let line = core::mem::take(&mut self.line);
         if !self.overlong {
-            let text = line.strip_suffix(b"\r").unwrap_or(&line);
-            self.read_line(text);
+            self.read_line(&line);
         }
         self.overlong = false;
         self.line = line;
         self.line.clear();
     }
 
-    /// Read one whole line, without its line ending.
+    /// Read one whole line, without its newline.
     fn read_line(&mut self, raw: &[u8]) {
-        let text = String::from_utf8_lossy(raw);
-        let text = text.trim();
-        if let Some(comment) = text.strip_prefix(';') {
-            self.comment(comment.trim_end());
+        let raw = raw.trim_ascii();
+        if let Some(comment) = raw.strip_prefix(b";") {
+            if let Ok(comment) = core::str::from_utf8(comment) {
+                self.comment(comment.trim_end());
+            }
             return;
         }
-        let command = text.split(';').next().unwrap_or_default().trim();
-        let command = command.split('*').next().unwrap_or_default().trim();
-        if command.is_empty() {
-            return;
-        }
-        let held = words(command);
+        let held = words(raw);
         let mut words = held.as_slice();
         // A leading `N<line number>` numbers the line and is no word of it.
-        if let Some((('N', _), rest)) = words.split_first() {
+        if let Some((Word { letter: b'N', .. }, rest)) = words.split_first() {
             words = rest;
         }
-        let Some((letter, code)) = words.first() else {
+        let Some(first) = words.first() else {
             return;
         };
-        match (*letter, code.parse::<u32>().ok()) {
+        let code = if held.numbered {
+            held.second_code
+        } else {
+            held.first_code
+        };
+        match (char::from(first.letter), code) {
             ('G', Some(code @ 0..=3)) => self.motion(code, &words[1..]),
             ('G', Some(28)) => self.home(&words[1..]),
             ('G', Some(90)) => self.axes = Positioning::Absolute,
@@ -672,7 +693,7 @@ impl IndexBuilder {
             ('M', Some(221)) => self.flow_factor(&words[1..]),
             ('M', Some(106)) => self.fan_speed(&words[1..], false),
             ('M', Some(107)) => self.fan_speed(&words[1..], true),
-            ('M', Some(486)) => self.object(command, &words[1..]),
+            ('M', Some(486)) => self.object(raw, &words[1..]),
             _ => {}
         }
     }
@@ -715,17 +736,36 @@ impl IndexBuilder {
     }
 
     /// A move: where the head goes, and whether it laid material on the way.
-    fn motion(&mut self, code: u32, words: &[(char, &str)]) {
+    fn motion(&mut self, code: u32, words: &[Word]) {
         let start = self.at;
-        for (axis, letter) in ['X', 'Y', 'Z'].into_iter().enumerate() {
-            if let Some(value) = number(words, letter).filter(|value| value.abs() <= AXIS_LIMIT) {
+        // One pass over the words: a move carries a handful, and a print
+        // carries millions of moves.
+        let mut extruded = None;
+        let mut at = 0;
+        while at < words.len() {
+            let Word { letter, value } = words[at];
+            at += 1;
+            if !value.is_finite() {
+                continue;
+            }
+            let axis = match letter {
+                b'X' => 0,
+                b'Y' => 1,
+                b'Z' => 2,
+                b'E' if value.abs() <= WORD_LIMIT => {
+                    extruded = Some(value);
+                    continue;
+                }
+                _ => continue,
+            };
+            if value.abs() <= AXIS_LIMIT {
                 self.at[axis] = match self.axes {
                     Positioning::Absolute => value,
                     Positioning::Relative => self.at[axis] + value,
                 };
             }
         }
-        let fed = number(words, 'E').map_or(0.0, |value| {
+        let fed = extruded.map_or(0.0, |value| {
             if self.axes == Positioning::Relative || self.extruder == Positioning::Relative {
                 self.e += value;
                 value
@@ -758,11 +798,11 @@ impl IndexBuilder {
     }
 
     /// `G28`: the axes it names, or every axis when it names none, go home.
-    fn home(&mut self, words: &[(char, &str)]) {
+    fn home(&mut self, words: &[Word]) {
         let named: Vec<usize> = ['X', 'Y', 'Z']
             .into_iter()
             .enumerate()
-            .filter(|(_, letter)| words.iter().any(|(word, _)| word == letter))
+            .filter(|(_, letter)| words.iter().any(|word| char::from(word.letter) == *letter))
             .map(|(axis, _)| axis)
             .collect();
         if named.is_empty() {
@@ -776,7 +816,7 @@ impl IndexBuilder {
 
     /// `G92`: where the named axes are, without moving them; bare, every axis
     /// and the extruder are at zero.
-    fn declare(&mut self, words: &[(char, &str)]) {
+    fn declare(&mut self, words: &[Word]) {
         if words.is_empty() {
             self.at = [0.0; 3];
             self.e = 0.0;
@@ -793,7 +833,7 @@ impl IndexBuilder {
     }
 
     /// `M73`: the normal mode's estimate of the minutes left, `P` and `R`.
-    fn estimate(&mut self, words: &[(char, &str)]) {
+    fn estimate(&mut self, words: &[Word]) {
         if number(words, 'P').is_none() {
             return;
         }
@@ -806,14 +846,14 @@ impl IndexBuilder {
     }
 
     /// `M221 S<percent>`: the flow factor.
-    fn flow_factor(&mut self, words: &[(char, &str)]) {
+    fn flow_factor(&mut self, words: &[Word]) {
         if let Some(percent) = number(words, 'S').filter(|percent| *percent >= 0.0) {
             push_changed(&mut self.flow, self.read, percent / 100.0);
         }
     }
 
     /// `M106 S<speed>` or `M107`: the part-cooling fan, in percent.
-    fn fan_speed(&mut self, words: &[(char, &str)], off: bool) {
+    fn fan_speed(&mut self, words: &[Word], off: bool) {
         if number(words, 'P').is_some_and(|fan| fan != 0.0) {
             return;
         }
@@ -827,7 +867,9 @@ impl IndexBuilder {
     }
 
     /// `M486`: an object starting, stopping, or being named.
-    fn object(&mut self, command: &str, words: &[(char, &str)]) {
+    fn object(&mut self, raw: &[u8], words: &[Word]) {
+        let command = String::from_utf8_lossy(raw);
+        let command = command.split(';').next().unwrap_or_default();
         if let Some(name) = command
             .strip_prefix("M486")
             .map(str::trim_start)
@@ -908,7 +950,7 @@ fn grow(bounds: &mut Option<[f64; 4]>, x: f64, y: f64) {
 /// clockwise and `G3` counter-clockwise; an arc ending where it began is the
 /// whole circle.
 fn arc_extremes(
-    words: &[(char, &str)],
+    words: &[Word],
     clockwise: bool,
     start: [f64; 3],
     end: [f64; 3],
@@ -972,55 +1014,186 @@ fn centre_of_radius(
     ])
 }
 
-/// The words of a command, each a letter and the text after it, up to
-/// [`WORD_COUNT`] of them.
-fn words(command: &str) -> Words<'_> {
+/// The words of a command, each a letter, the text after it and the number
+/// that text is when it is one, up to [`WORD_COUNT`] of them: up to the `;`
+/// a comment starts at or the `*` a checksum does.
+///
+/// Each number is read as its bytes go by — an optional sign, digits and at
+/// most one point, which is every number a slicer writes — with plain
+/// comparisons rather than calls, because this runs over every byte of every
+/// move of a print and is as fast in a build without optimisation as it is
+/// written to be. The digits are summed exactly and divided once by a power of
+/// ten, which is the correctly rounded value a full parse answers; anything
+/// else a word carries is read by the full parse.
+fn words(command: &[u8]) -> Words {
     let mut found = Words {
-        held: [('\0', ""); WORD_COUNT],
+        held: [Word {
+            letter: 0,
+            value: f64::NAN,
+        }; WORD_COUNT],
         len: 0,
+        first_code: None,
+        second_code: None,
+        numbered: false,
     };
-    let mut rest = command;
-    while let Some(letter) = rest.chars().next() {
-        let after = &rest[letter.len_utf8()..];
-        if !letter.is_ascii_alphabetic() {
-            rest = after.trim_start();
-            continue;
+    let length = command.len();
+    let mut at = 0;
+    while at < length {
+        let letter = command[at];
+        if letter == b';' || letter == b'*' {
+            break;
         }
-        let end = after
-            .find(|character: char| character.is_ascii_alphabetic() || character.is_whitespace())
-            .unwrap_or(after.len());
+        at += 1;
+        let upper = match letter {
+            b'a'..=b'z' => letter - (b'a' - b'A'),
+            b'A'..=b'Z' => letter,
+            _ => continue,
+        };
+        let start = at;
+        let mut negative = false;
+        if at < length && (command[at] == b'-' || command[at] == b'+') {
+            negative = command[at] == b'-';
+            at += 1;
+        }
+        let mut sum = 0.0_f64;
+        let mut digits = 0_usize;
+        let mut fraction = 0_usize;
+        let mut point = false;
+        let mut plain = true;
+        while at < length {
+            let byte = command[at];
+            let digit = match byte {
+                b'0' => 0.0,
+                b'1' => 1.0,
+                b'2' => 2.0,
+                b'3' => 3.0,
+                b'4' => 4.0,
+                b'5' => 5.0,
+                b'6' => 6.0,
+                b'7' => 7.0,
+                b'8' => 8.0,
+                b'9' => 9.0,
+                b'.' if !point => {
+                    point = true;
+                    at += 1;
+                    continue;
+                }
+                b' ' | b'\t' | b';' | b'*' | b'A'..=b'Z' | b'a'..=b'z' => break,
+                _ => {
+                    plain = false;
+                    at += 1;
+                    continue;
+                }
+            };
+            sum = sum * 10.0 + digit;
+            digits += 1;
+            if point {
+                fraction += 1;
+            }
+            at += 1;
+        }
+        let text = &command[start..at];
+        let value = if plain && digits > 0 && digits <= MANTISSA_DIGITS {
+            let value = sum / TENTHS[fraction];
+            if negative { -value } else { value }
+        } else {
+            decimal(text).unwrap_or(f64::NAN)
+        };
+        // A command's code is the first word's, or the second's after a
+        // line number, read as the whole number it is written as.
+        if found.len == 0 {
+            found.first_code = whole_number(text);
+            found.numbered = upper == b'N';
+        } else if found.len == 1 {
+            found.second_code = whole_number(text);
+        }
         if found.len < WORD_COUNT {
-            found.held[found.len] = (letter.to_ascii_uppercase(), &after[..end]);
+            found.held[found.len] = Word {
+                letter: upper,
+                value,
+            };
             found.len += 1;
         }
-        rest = after[end..].trim_start();
     }
     found
 }
 
-/// One command's words, held without allocating.
-struct Words<'a> {
-    /// The words, the first `len` of them read.
-    held: [(char, &'a str); WORD_COUNT],
-    /// How many were read.
-    len: usize,
+/// The most digits a number is summed from exactly: every integer up to
+/// fifteen digits is a `f64` exactly.
+const MANTISSA_DIGITS: usize = 15;
+
+/// One word of a command: its letter, upper-cased, and the number it carries,
+/// not a number when it carries none.
+#[derive(Debug, Clone, Copy)]
+struct Word {
+    /// The letter.
+    letter: u8,
+    /// The number, `NaN` when the word's text is none.
+    value: f64,
 }
 
-impl<'a> Words<'a> {
+/// One command's words, held without allocating.
+struct Words {
+    /// The words, the first `len` of them read.
+    held: [Word; WORD_COUNT],
+    /// How many were read.
+    len: usize,
+    /// The first word's text, as a whole number when it is one.
+    first_code: Option<u32>,
+    /// The second word's text, as a whole number when it is one.
+    second_code: Option<u32>,
+    /// Whether the first word is a line number.
+    numbered: bool,
+}
+
+impl Words {
     /// The words read.
-    fn as_slice(&self) -> &[(char, &'a str)] {
+    fn as_slice(&self) -> &[Word] {
         &self.held[..self.len]
     }
 }
 
+/// The whole number a command's code is, when it is digits alone.
+fn whole_number(text: &[u8]) -> Option<u32> {
+    let mut value: u32 = 0;
+    let mut at = 0;
+    while at < text.len() {
+        let byte = text[at];
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        value = value.checked_mul(10)?.checked_add(u32::from(byte - b'0'))?;
+        at += 1;
+    }
+    (!text.is_empty()).then_some(value)
+}
+
+/// The powers of ten a decimal's fraction is divided by.
+const TENTHS: [f64; 16] = [
+    1.0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
+];
+
+/// The number a word's text is, by the full parse: what a word the fast read
+/// in [`words`] does not take is read by.
+fn decimal(text: &[u8]) -> Option<f64> {
+    core::str::from_utf8(text).ok()?.parse::<f64>().ok()
+}
+
 /// The number one word carries, when the command has that word and it is a
 /// number within reach.
-fn number(words: &[(char, &str)], letter: char) -> Option<f64> {
-    words
-        .iter()
-        .find(|(word, _)| *word == letter)
-        .and_then(|(_, value)| value.parse::<f64>().ok())
-        .filter(|value| value.is_finite() && value.abs() <= WORD_LIMIT)
+fn number(words: &[Word], letter: char) -> Option<f64> {
+    let mut at = 0;
+    while at < words.len() {
+        let Word {
+            letter: word,
+            value,
+        } = words[at];
+        if char::from(word) == letter {
+            return Some(value).filter(|value| value.is_finite() && value.abs() <= WORD_LIMIT);
+        }
+        at += 1;
+    }
+    None
 }
 
 /// Build one file's index from its pieces, in order — what the whole-file
