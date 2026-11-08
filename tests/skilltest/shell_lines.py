@@ -20,8 +20,6 @@ OPERATORS = ("&&", "||", ";", "|", "&", "\n")
 OPENS = {"$(": ")", "`": "`"}
 #: A word assigning a variable for the command after it.
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-#: The programs that run the command after them, which is then the one a piece runs.
-LAUNCHERS = {"env", "sudo", "exec", "time", "nohup", "command", "xargs"}
 
 
 def _redirects(command: str, index: int) -> bool:
@@ -78,16 +76,16 @@ def segments(command: str) -> list[str]:
 
 
 def runs_the_program(piece: str) -> bool:
-    """Whether a piece runs `printobserver`: as its command, after assignments or launchers."""
+    """Whether a piece's command is `printobserver`: its first word after any assignments.
+
+    A program run through another, such as `env` or `sudo`, is that other's command.
+    """
     try:
         words = shlex.split(piece)
     except ValueError:
         words = piece.split()
-    for word in words:
-        if ASSIGNMENT.match(word) or word in LAUNCHERS or word.startswith("-"):
-            continue
-        return Path(word).name.removesuffix(".exe") == "printobserver"
-    return False
+    command = next((word for word in words if not ASSIGNMENT.match(word)), "")
+    return Path(command).name.removesuffix(".exe") == "printobserver"
 
 
 def is_compound(command: str) -> bool:

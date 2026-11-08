@@ -30,7 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, NamedTuple, TypedDict, cast
+from typing import Any, NamedTuple, NewType, TypedDict, cast
 
 import doubles
 from cases import REPO, Request, StartCase, StartRequest, instant, step_matches
@@ -62,6 +62,10 @@ from shell_lines import is_compound
 #: The server's scheduled check of an active print starts a supervision turn, which
 #: is no part of a request to start one: an interval no conversation outlasts.
 START_REPLAY_INTERVAL_S = 3600
+#: A conversation's name: `operator-` and the calendar day its requests were made on.
+SessionName = NewType("SessionName", str)
+#: A spool the server registered, by the identifier it minted.
+SpoolId = NewType("SpoolId", str)
 #: The tools a conversation has, and the ones of them allowed outright, as the
 #: supervisor port grants a supervision turn's: `printobserver-oneharness`'s own.
 TOOLS = ("Read", "Grep", "Glob", "Bash")
@@ -228,7 +232,7 @@ class StartRecord(TypedDict):
     usage: dict[str, Any] | None
     models: list[str]
     compacted: bool
-    session: str
+    session: SessionName
     session_phase: str
     reply: str | None
 
@@ -239,16 +243,16 @@ class StartsTestRecord(TypedDict):
     test: str
     passed: bool
     turns: int
-    sessions: list[str]
+    sessions: list[SessionName]
     #: Each `printobserver` command a conversation ran beside another, by conversation.
-    compound_commands: dict[str, list[str]]
+    compound_commands: dict[SessionName, list[str]]
     decision_points: list[StartRecord]
 
 
 class HarnessSession(TypedDict):
     """The conversation oneharness ran a message in, as far as the replay reads it."""
 
-    name: str
+    name: SessionName
     #: `create` for a message opening the conversation, `continue` for one carrying it on.
     phase: str
 
@@ -296,7 +300,7 @@ def is_harness_report(report: object) -> bool:
 class LoadedSpool:
     """The spool the replay put on tool 0."""
 
-    id: str
+    id: SpoolId
     material: str
 
 
@@ -305,7 +309,7 @@ class StartPoint:
     """One request, and what became of it."""
 
     request: StartRequest
-    session: str
+    session: SessionName
     requests: list[Request]
     report: RunReport
     reply: str | None
@@ -386,7 +390,7 @@ class StartsReplayed:
     case: StartCase
     points: list[StartPoint]
     #: Each conversation's name, in the order it was opened.
-    sessions: list[str]
+    sessions: list[SessionName]
     transcript: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -394,9 +398,9 @@ class StartsReplayed:
         """Whether every request's decision passed, which is what passing the test is."""
         return all(point.why_not is None for point in self.points)
 
-    def compound_commands(self) -> dict[str, list[str]]:
+    def compound_commands(self) -> dict[SessionName, list[str]]:
         """Each `printobserver` command a conversation ran beside another, by conversation."""
-        found: dict[str, list[str]] = {session: [] for session in self.sessions}
+        found: dict[SessionName, list[str]] = {session: [] for session in self.sessions}
         for point in self.points:
             found[point.session].extend(
                 command for command in point.report.commands if is_compound(command)
@@ -603,7 +607,7 @@ class StartsReplay:
             msg = f"registering a {material} spool answered no spool: {registered}"
             raise ReplayError(msg)
         self._client("load-spool", "--spool-id", spool["id"], "--tool", "0", *said)
-        self.loaded = LoadedSpool(spool["id"], material)
+        self.loaded = LoadedSpool(SpoolId(spool["id"]), material)
 
     def _frame_now(self) -> str:
         """The camera's frame as the server stored it, from a look at the printer."""
@@ -657,7 +661,7 @@ class StartsReplay:
             raise ReplayError(msg)
         return len(events)
 
-    def _converse(self, session: str, message: str) -> tuple[HarnessReport, int]:
+    def _converse(self, session: SessionName, message: str) -> tuple[HarnessReport, int]:
         """One message of one conversation, through `oneharness run --session`."""
         suffix = self._suffix()
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
@@ -749,7 +753,7 @@ class StartsReplay:
         finally:
             self.stop()
 
-    def _one(self, request: StartRequest, sessions: list[str]) -> StartPoint:
+    def _one(self, request: StartRequest, sessions: list[SessionName]) -> StartPoint:
         material = material_of(request, self.sheets)
         name = file_name_of(request)
         self.bench.stand_at(
@@ -757,7 +761,7 @@ class StartsReplay:
         )
         self._load(material)
         frame = self._frame_now()
-        session = f"{SESSION_PREFIX}{request.day}"
+        session = SessionName(f"{SESSION_PREFIX}{request.day}")
         if session not in sessions:
             sessions.append(session)
         looked_before = len(self.bench.fetches)

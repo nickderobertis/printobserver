@@ -15,7 +15,6 @@ import json
 import shlex
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 import record
@@ -24,6 +23,7 @@ from mock_turn import ScriptedRun, Seen
 from replay import program
 from repo_checks.expect import contains, equal, truth
 from starts import (
+    SessionName,
     StartsReplay,
     StartsReplayed,
     agent_rules,
@@ -41,7 +41,7 @@ LOOK = ["printobserver", "look", "--json"]
 
 def manifest(material: str, sheet: str | None) -> str:
     """The manifest a scripted start declares, naming a sheet or none."""
-    declared: dict[str, Any] = {**MANIFEST, "file_name": "{file}", "material": material}
+    declared: dict[str, object] = {**MANIFEST, "file_name": "{file}", "material": material}
     if sheet is not None:
         declared["sheet"] = sheet
     return json.dumps(declared)
@@ -252,9 +252,10 @@ def test_a_compound_command_is_refused_by_the_conversations_permissions_and_repo
     equal(point.requests, [], describing="what reached the server")
     contains(str(point.why_not), "started no print")
     reported = done.replayed.compound_commands()
-    equal(list(reported), ["operator-2026-09-27"])
-    equal(len(reported["operator-2026-09-27"]), 1)
-    contains(reported["operator-2026-09-27"][0], "cd /tmp && printobserver start-print")
+    day = SessionName("operator-2026-09-27")
+    equal(list(reported), [day])
+    equal(len(reported[day]), 1)
+    contains(reported[day][0], "cd /tmp && printobserver start-print")
     equal(done.replayed.as_record()["compound_commands"], reported)
 
 
@@ -281,7 +282,7 @@ def test_a_compound_command_is_refused_by_the_conversations_permissions_and_repo
         ('printobserver start-print --reason "clear (smooth PEI)"', False),
         ("printobserver look --reason 'a `b` c'", False),
         ("find / -name x 2>/dev/null; which printobserver", False),
-        ("env X=1 printobserver prints && echo done", True),
+        ("env X=1 printobserver prints && echo done", False),
     ],
 )
 def test_a_compound_command_is_one_chaining_the_program_to_another(
