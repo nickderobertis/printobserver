@@ -34,6 +34,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use printobserver_types::serde_json::Value;
+
 use crate::world::{CREDENTIAL, World};
 
 /// The fence a runnable example is written in.
@@ -47,6 +49,27 @@ const EXIT_READ: &str = "echo $?";
 
 /// The variable that makes this walk write the examples rather than check them.
 const WRITING: &str = "PRINTOBSERVER_DOCS";
+
+/// Wait until this world's supervisor has asked its detector whether it is
+/// answering, so every example reads the status the check found.
+///
+/// # Panics
+///
+/// Panics when no check is found within half a minute.
+pub fn until_the_detector_was_checked(world: &World) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let read = super::running::read(world, &["status", "--print-id", &world.print_id()]);
+        if read.pointer("/detector/status").and_then(Value::as_str) != Some("unchecked") {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the detector was never checked: {read}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
 
 /// One command of one example, and what it printed.
 #[derive(Debug, Clone, PartialEq, Eq)]

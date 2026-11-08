@@ -7,11 +7,12 @@
 //! [`SpoolCommand`](printobserver_core::SpoolCommand) and of
 //! [`RecoveryAction`](printobserver_core::RecoveryAction) the contracts
 //! declare, and the recovery read beside the last ([`RECOVERY_STATUS`]),
-//! plus fourteen operations beside them — the prints listing, status, context,
+//! plus fifteen operations beside them — the prints listing, status, context,
 //! image materialization, history, the event log followed in the order it was
 //! stored, a fresh look at a print and one at the printer, the manifest's read
-//! and write, and the four reads of the spool ledger: the spools, one spool,
-//! the printer's own history and a filament check — and nothing else. The router is built by folding
+//! and write, the four reads of the spool ledger: the spools, one spool, the
+//! printer's own history and a filament check — and the operator's word that
+//! the bed is clear, and nothing else. The router is built by folding
 //! over this array rather than by writing routes out, so the set served and the
 //! set declared are one thing; and this crate's own tier derives the required
 //! set from the contracts' own `PrintAction` rather than from a list of its
@@ -542,6 +543,7 @@ impl Operation {
             ("events", _) => schema_for!(crate::wire::EventsAnswer),
             ("look" | "printer_look", _) => schema_for!(crate::wire::LookAnswer),
             ("manifest_get" | "manifest_set", _) => schema_for!(crate::wire::ManifestAnswer),
+            (BED_CLEAR, _) => schema_for!(crate::wire::BedClearAnswer),
             (name, _) => panic!("the operation `{name}` has no declared answer shape"),
         };
         schema.to_value()
@@ -906,7 +908,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 38] = [
+pub const OPERATIONS: [Operation; 39] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -1132,21 +1134,47 @@ pub const OPERATIONS: [Operation; 38] = [
         "/printer/recovery/recover_home_z",
         RecoveryActionKind::RecoverHomeZ,
     ),
+    // The operator's word that the bed is clear, which every recovery needing
+    // the bed or the nozzle clear is decided on until the next print starts.
+    // The printer's rather than a print's, and asks nothing of the machine.
+    Operation {
+        name: BED_CLEAR,
+        method: Method::Post,
+        path: "/printer/bed_clear",
+        effect: Effect::Write,
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[
+            Declared {
+                shape: Some("Actor"),
+                ..Declared::once("actor", true, ValueKind::Structured)
+            },
+            Declared::once("reason", true, ValueKind::Text),
+        ],
+        image_path_field: None,
+        printer_wide: None,
+    },
 ];
+
+/// The operator's word that the bed is clear, recorded beside the recovery
+/// vocabulary it is decided into.
+pub const BED_CLEAR: &str = "bed_clear";
 
 /// The read beside the recovery vocabulary: what every recovery action is
 /// checked against now, and what each would meet.
 pub const RECOVERY_STATUS: &str = "recover_status";
 
-/// The fourteen operations this server serves beside the vocabularies.
+/// The fifteen operations this server serves beside the vocabularies.
 ///
-/// Thirteen of them read and one writes a manifest, which asks nothing of the
-/// machine; what they have in common is that none of them is an action or a
-/// spool command the contracts declare. A look writes its own record into the
+/// Thirteen of them read, one writes a manifest and one records the operator's
+/// word that the bed is clear, neither of which asks anything of the machine;
+/// what they have in common is that none of them is an action, a spool command
+/// or a recovery action the contracts declare. A look writes its own record into the
 /// print's history — or the printer's, for a look at the printer — as every
 /// read of the camera is kept, and asks nothing of the machine either; a
 /// filament check records nothing at all.
-pub const BESIDE_THE_ACTIONS: [&str; 14] = [
+pub const BESIDE_THE_ACTIONS: [&str; 15] = [
     "prints",
     "status",
     "context",
@@ -1161,6 +1189,7 @@ pub const BESIDE_THE_ACTIONS: [&str; 14] = [
     "spool",
     "printer_history",
     "preflight",
+    BED_CLEAR,
 ];
 
 /// The look at the printer with no print named, which `look` is asked as when

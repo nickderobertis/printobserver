@@ -2377,6 +2377,49 @@ fn recover_home_z_makes_no_request_when_the_reason_is_empty() {
     assert_eq!(host.requests(), 0, "this call reached the server");
 }
 
+/// `bed_clear` sends what it declares and answers what the server sent.
+#[test]
+fn bed_clear_sends_what_it_declares_and_answers_what_the_server_sent() {
+    let answer: Value = serde_json::from_str(r#"{"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "event": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}"#)
+        .expect("a generated answer is a document");
+    let host = Host::answering(200, &answer.to_string());
+    let client = Client::new(host.address(), actor());
+
+    let answered = client
+        .bed_clear("a generated walk is asking")
+        .expect("`bed_clear` is answered");
+
+    let received = host.received();
+    assert_eq!(received.method, "POST");
+    assert_eq!(received.target, "/v1/printer/bed_clear");
+    let sent: Value = serde_json::from_str(r#"{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking"}"#)
+        .expect("a generated body is a document");
+    assert_eq!(
+        serde_json::from_str::<Value>(&received.body).expect("a body"),
+        sent,
+        "this call sent something other than what its operation declares"
+    );
+    assert_eq!(
+        serde_json::to_value(&answered).expect("an answer is a document"),
+        answer,
+        "this call answered something other than what the server sent"
+    );
+}
+
+/// `bed_clear` makes no request at all when the reason is empty.
+#[test]
+fn bed_clear_makes_no_request_when_the_reason_is_empty() {
+    let host = Host::answering(200, "{}");
+    let client = Client::new(host.address(), actor());
+
+    let refused = client
+        .bed_clear("   ")
+        .expect_err("a call with no reason is refused");
+
+    assert!(matches!(refused, ClientError::NoReason));
+    assert_eq!(host.requests(), 0, "this call reached the server");
+}
+
 /// `history` carries every event through, and the kind table reads a
 /// known kind's payload as its type and answers nothing for a kind no client knows.
 #[test]

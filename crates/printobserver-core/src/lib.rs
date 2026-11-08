@@ -102,17 +102,18 @@ pub use filament::{
 pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, ChargePendedPayload,
-    DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
-    InterventionExpiredPayload, OperatorAcknowledgementPayload, PeriodicObservationPayload,
-    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload,
-    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
-    PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
-    RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
-    SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
-    SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
-    UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
+    BedClearAssertedPayload, CameraDegradedPayload, CameraLookPayload, CameraRetryPayload,
+    ChargePendedPayload, DetectorHealthChangedPayload, DetectorStatus,
+    FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
+    FrameCause, HeatedTool, InterventionExpiredPayload, OperatorAcknowledgementPayload,
+    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PositionFreshness,
+    PreflightCheckedPayload, PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload,
+    PrinterConnectionChangedPayload, PrinterResetPayload, RebaselineDisposition,
+    RecoveryExecutedPayload, RecoveryRejectedPayload, RecoveryRequestedPayload, SignalPosition,
+    SpoolAdjustedPayload, SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload,
+    SpoolRetiredPayload, SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS,
+    UnaccountedPrintPayload, UnattendedPrinterActivityPayload, agent_source, operator_source,
+    system_source,
 };
 pub use look::{CameraRetry, DEFAULT_CAMERA_RETRIES, DEFAULT_CAMERA_RETRY_BACKOFF, Look};
 pub use observation::Observed;

@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "Actor": {
+      "description": "Who asked for something.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The supervising agent, naming its session.",
+          "properties": {
+            "agent": {
+              "additionalProperties": false,
+              "properties": {
+                "session_name": {
+                  "description": "The supervision session the agent is acting in.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "session_name"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "operator",
+          "description": "A person.",
+          "type": "string"
+        },
+        {
+          "const": "system",
+          "description": "The supervisor itself.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The operator's word that the bed is clear: nothing is on it that homing Z\ncould crush or a move over the part could strike.\n\nThe printer's rather than any print's, so it is written with no print. It\nstands until the next `print_started`, whichever way that print started,\nand while it stands a recovery that needs the bed or the nozzle clear is\ndecided as though it carried the operator's assertion — read back out of\nthe event log, so a server started again holds it as the one before did.\nOnly the operator records one: an assertion is a person's word for what\nthey can see.",
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "Who said so: the operator, always."
+    },
+    "reason": {
+      "description": "Why they say so.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "actor",
+    "reason"
+  ],
+  "title": "BedClearAssertedPayload",
+  "type": "object",
+  "x-event-kind": "bed_clear_asserted"
+}

@@ -332,6 +332,29 @@ fn step_recover_status(client: &Client, world: &supervisor::Supervisor, proxy: &
     live::same("recover_status", &answered, &seen.answer);
 }
 
+/// `bed_clear`, answered by a real supervisor.
+fn step_bed_clear(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "operational");
+
+    let answered = client
+        .bed_clear(REASON)
+        .expect("`bed_clear` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`bed_clear`");
+    assert_eq!(seen.target, "/v1/printer/bed_clear", "`bed_clear`");
+    assert_eq!(seen.status, 200, "`bed_clear`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(sent["actor"], serde_json::json!("operator"), "`bed_clear`");
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`bed_clear` sent another `reason`"
+    );
+    live::same("bed_clear", &answered, &seen.answer);
+}
+
 /// `recover_lift`, answered by a real supervisor.
 fn step_recover_lift(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
     ready(client, &world.print_id, "operational");
@@ -1910,6 +1933,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_printer_look(&client, &world, &proxy);
     step_cancel(&client, &world, &proxy);
     step_recover_status(&client, &world, &proxy);
+    step_bed_clear(&client, &world, &proxy);
     step_recover_lift(&client, &world, &proxy);
     step_recover_fan(&client, &world, &proxy);
     step_recover_home_z(&client, &world, &proxy);
@@ -1938,7 +1962,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_retire_spool(&client, &world, &proxy);
     step_prints(&client, &world, &proxy);
 
-    assert!(proxy.calls() >= 38, "every call went through the proxy");
+    assert!(proxy.calls() >= 39, "every call went through the proxy");
     standing.stop();
 }
 

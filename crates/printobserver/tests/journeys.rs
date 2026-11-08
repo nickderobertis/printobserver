@@ -57,6 +57,8 @@ mod world;
 mod announcing;
 #[path = "journeys/answers.rs"]
 mod answers;
+#[path = "journeys/bed_clearing.rs"]
+mod bed_clearing;
 #[path = "journeys/carrying.rs"]
 mod carrying;
 #[path = "journeys/closing.rs"]
@@ -124,6 +126,18 @@ fn a_print_started_at_the_printer_is_found_and_joined_by_its_alert() {
     let world = World::open(world::STOOD_IN);
 
     finding::a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(&world);
+}
+
+/// An operator says once that the bed is clear, and recovery honours it until
+/// the next print starts.
+///
+/// A world of its own, because the journey starts a print and leaves a word
+/// recorded that every other journey's recovery would otherwise be decided on.
+#[test]
+fn the_operators_word_that_the_bed_is_clear_is_honoured_until_a_print_starts() {
+    let world = World::open(world::STOOD_IN);
+
+    bed_clearing::the_operators_word_is_honoured_until_a_print_starts(&world);
 }
 
 /// An operator keeps the spool ledger through this program, and reads all of
@@ -391,9 +405,27 @@ fn the_server_says_it_skipped_the_tallies_it_could_not_read_and_serves() {
 /// document cannot pass by showing something nothing here executes.
 #[test]
 fn every_documented_example_prints_what_the_document_shows() {
-    let world = World::open(world::STOOD_IN);
+    // The documents show a configured detector, as an installed host's is: its
+    // health check asked at a loopback `ml_api` before the first example runs.
+    let detector = host::Host::answering(host::Answer {
+        status: "200 OK",
+        content_type: "text/plain",
+        body: b"ok".to_vec(),
+    });
+    let ml_api_url = detector.url("");
+    let world = World::configured(
+        world::STOOD_IN,
+        &world::committed_skill(),
+        None,
+        move |document| {
+            document["obico"] =
+                printobserver_types::serde_json::json!({ "ml_api_url": ml_api_url });
+        },
+    );
+    documenting::until_the_detector_was_checked(&world);
 
     documenting::accepts_the_committed_documentation(&world);
+    drop(detector);
 }
 
 /// The documented operator workflow, carried out from the documentation alone,

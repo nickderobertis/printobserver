@@ -134,6 +134,32 @@ pub fn reason_of(reason: Option<&str>) -> Result<String, BodyRefusal> {
     }
 }
 
+/// One request recording the operator's word that the bed is clear.
+///
+/// It names its actor as every request does, and the one actor it is admitted
+/// for is the operator: an assertion is a person's word for what they can see.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+pub struct BedClearBody {
+    /// Who says so.
+    pub actor: Actor,
+    /// Why they say so.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// What recording the operator's word that the bed is clear answers: the event
+/// it was recorded as, which every recovery decided on it names.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct BedClearAnswer {
+    /// The `bed_clear_asserted` event.
+    pub event: EventRecord,
+    /// What it means from now on, in a sentence for a person.
+    pub detail: String,
+}
+
 /// One request to replace a print's manifest.
 ///
 /// It carries a reason for the same reason every action does: a manifest

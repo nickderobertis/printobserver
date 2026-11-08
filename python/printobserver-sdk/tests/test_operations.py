@@ -3350,6 +3350,64 @@ def test_recover_home_z_makes_no_request_when_the_reason_is_empty() -> None:
         equal(host.requests(), 0, describing="what a blank reason sent")
 
 
+def test_bed_clear_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`bed_clear` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "event": '
+        '{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id'
+        '": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0'
+        'a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed",'
+        ' "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "r'
+        'aw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": '
+        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.bed_clear("a generated walk is asking")
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/bed_clear")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "reason": "a generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_bed_clear_makes_no_request_when_the_reason_is_empty() -> None:
+    """`bed_clear` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.bed_clear("")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.bed_clear("   ")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
 def test_history_carries_a_known_and_an_unknown_kind_through_the_kind_table() -> None:
     """`history` drives the kind table over a known and an unknown kind.
 

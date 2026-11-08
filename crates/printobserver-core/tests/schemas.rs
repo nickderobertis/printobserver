@@ -24,13 +24,14 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, ChargePendedPayload,
-    DetectorHealth, DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
-    InterventionExpiredPayload, Look, OperatorAcknowledgementPayload, PeriodicObservationPayload,
-    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
-    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
-    PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
+    BedClearAssertedPayload, CameraDegradedPayload, CameraLookPayload, CameraRetryPayload,
+    ChargePendedPayload, DetectorHealth, DetectorHealthChangedPayload, DetectorStatus,
+    FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
+    FrameCause, HeatedTool, InterventionExpiredPayload, Look, OperatorAcknowledgementPayload,
+    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PositionFreshness,
+    PreflightCheckedPayload, PrintContext, PrintEndedPayload, PrintStartedPayload,
+    PrintUntrackedPayload, PrinterConnectionChangedPayload, PrinterResetPayload,
+    RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
     RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
     SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
     SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
@@ -136,6 +137,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<RecoveryRequestedPayload>("RecoveryRequestedPayload"),
         kind_of::<RecoveryExecutedPayload>("RecoveryExecutedPayload"),
         kind_of::<RecoveryRejectedPayload>("RecoveryRejectedPayload"),
+        kind_of::<BedClearAssertedPayload>("BedClearAssertedPayload"),
     ]
 }
 
@@ -250,6 +252,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("RecoveryRequestedPayload", "recovery_requested"),
             ("RecoveryExecutedPayload", "recovery_executed"),
             ("RecoveryRejectedPayload", "recovery_rejected"),
+            ("BedClearAssertedPayload", "bed_clear_asserted"),
         ]
     );
     for declared in declared_kinds() {
@@ -268,7 +271,7 @@ fn each_kind_is_written_under_its_own_name() {
     }
 }
 
-/// The printer timeline is exactly the twenty-three kinds the ledger, the
+/// The printer timeline is exactly the twenty-four kinds the ledger, the
 /// printer watch and recovery declare, in the order the contract lists them,
 /// each written under its payload's own kind.
 #[test]
@@ -305,6 +308,7 @@ fn the_timeline_is_exactly_the_ledgers_the_watchs_and_recoverys_kinds() {
             "recovery_requested",
             "recovery_executed",
             "recovery_rejected",
+            "bed_clear_asserted",
         ]
     );
 }

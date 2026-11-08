@@ -102,6 +102,7 @@ OPERATION_NAMES: tuple[str, ...] = (
     "recover_park",
     "recover_home_xy",
     "recover_home_z",
+    "bed_clear",
 )
 
 
@@ -311,6 +312,48 @@ class AgentAssessmentPayload(TypedDict):
     assessment: AgentAssessment
     # The session the turn ran in.
     session_name: str
+
+
+class BedClearAnswer(TypedDict):
+    """`BedClearAnswer`, as the contracts declare it.
+
+    What recording the operator's word that the bed is clear answers: the
+    event
+    it was recorded as, which every recovery decided on it names.
+    """
+
+    # What it means from now on, in a sentence for a person.
+    detail: str
+    # The `bed_clear_asserted` event.
+    event: EventRecord
+
+
+class BedClearAssertedPayload(TypedDict):
+    """`BedClearAssertedPayload`, as the contracts declare it.
+
+    The operator's word that the bed is clear: nothing is on it that
+    homing Z
+    could crush or a move over the part could strike.
+
+    The printer's rather than any print's, so it is written with no print.
+    It
+    stands until the next `print_started`, whichever way that print
+    started,
+    and while it stands a recovery that needs the bed or the nozzle clear
+    is
+    decided as though it carried the operator's assertion — read back out
+    of
+    the event log, so a server started again holds it as the one before
+    did.
+    Only the operator records one: an assertion is a person's word for
+    what
+    they can see.
+    """
+
+    # Who said so: the operator, always.
+    actor: Actor
+    # Why they say so.
+    reason: str
 
 
 class BedTemperature(TypedDict):
@@ -2541,6 +2584,10 @@ class RecoveryExecutedPayload(TypedDict):
     action: RecoveryAction
     # Who asked.
     actor: Actor
+    # The operator's standing word that the bed is clear this action was
+    # carried out on in place of an assertion of its own, when it was: the
+    # `bed_clear_asserted` event recording it. Absent otherwise.
+    bed_clear: NotRequired[EventId | None]
     # What the printer made of it.
     outcome: ExecutionOutcome
     # Why.
@@ -2738,6 +2785,10 @@ class RecoveryRequestedPayload(TypedDict):
     action: RecoveryAction
     # Who asked.
     actor: Actor
+    # The operator's standing word that the bed is clear this request is
+    # decided on in place of an assertion of its own, when it is: the
+    # `bed_clear_asserted` event recording it. Absent otherwise.
+    bed_clear: NotRequired[EventId | None]
     # Why.
     reason: str
 
@@ -4151,6 +4202,7 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "action_rejected": ActionRejectedPayload,
     "action_requested": ActionRequestedPayload,
     "agent_assessment": AgentAssessmentPayload,
+    "bed_clear_asserted": BedClearAssertedPayload,
     "camera_degraded": CameraDegradedPayload,
     "camera_look": CameraLookPayload,
     "camera_retry": CameraRetryPayload,
@@ -4212,6 +4264,12 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["agent_assessment"]
 ) -> AgentAssessmentPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["bed_clear_asserted"]
+) -> BedClearAssertedPayload | None: ...
 
 
 @overload
@@ -4797,6 +4855,50 @@ SHAPES: dict[str, object] = json.loads(
      }
     },
     "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearAnswer": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearAssertedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
      "paired_with": "",
      "required": true,
      "shape": {
@@ -8613,6 +8715,15 @@ SHAPES: dict[str, object] = json.loads(
       "ref": "Actor"
      }
     },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
     "outcome": {
      "paired_with": "",
      "required": true,
@@ -8857,6 +8968,15 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "ref": "Actor"
+     }
+    },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
      }
     },
     "reason": {
@@ -12105,3 +12225,29 @@ class GeneratedClient(GeneratedSurface):
         # `call` has held the answer to the type `operations.json` declares
         # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
+
+    def bed_clear(self, reason: str) -> BedClearAnswer:
+        """Call `bed_clear` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/bed_clear"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "BedClearAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(BedClearAnswer, answered)

@@ -2230,6 +2230,53 @@ test("recover_home_z makes no request when the reason is empty", async () => {
   }
 });
 
+test("bed_clear sends what it declares and answers what the server sent", async () => {
+  const answer = JSON.parse(
+    '{"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "event": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}',
+  );
+  await using host = Host.answering(200, answer);
+  const client = new Client({ server: host.address, actor: ACTOR });
+
+  const answered = await client.bedClear("a generated walk is asking");
+
+  const received = host.received();
+  expect(received.method).toBe("POST");
+  expect(received.target).toBe("/v1/printer/bed_clear");
+  expect(JSON.parse(received.body)).toEqual(
+    JSON.parse(
+      '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}}, "reason": "a generated walk is asking"}',
+    ),
+  );
+  expect(answered).toEqual(answer);
+});
+
+test("bed_clear makes no request when the reason is empty", async () => {
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.bedClear("");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+  {
+    await using host = Host.answering(200, {});
+    const client = new Client({ server: host.address, actor: ACTOR });
+    let refused: unknown;
+    try {
+      await client.bedClear("   ");
+    } catch (raised) {
+      refused = raised;
+    }
+    expect(refused).toBeInstanceOf(NoReason);
+    expect(host.requests()).toBe(0);
+  }
+});
+
 test("history carries a known and an unknown kind through the kind table", async () => {
   const answer = JSON.parse(
     '{"events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "kind_from_a_newer_server", "payload": {"anything": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}',

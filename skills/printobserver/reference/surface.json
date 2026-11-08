@@ -1591,6 +1591,40 @@
       "path": "/v1/printer/recovery/recover_home_z"
     },
     {
+      "answers": [
+        "success"
+      ],
+      "command": "bed-clear",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "bed_clear",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/bed_clear"
+    },
+    {
       "command": "watch",
       "operation": null,
       "options": [

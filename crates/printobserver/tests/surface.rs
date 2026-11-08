@@ -42,14 +42,15 @@ use printobserver_types::serde_json::Value;
 /// The reads this program has beside the two vocabularies, as its own tasks
 /// name them: the prints listing, status, context, the image read and
 /// materialization, history, the event log after a cursor, a fresh look at a
-/// print and one at the printer, the manifest's read and write, and the spool
+/// print and one at the printer, the manifest's read and write, the spool
 /// ledger's four reads — the spools, one spool, the printer's own history and
-/// a filament check.
+/// a filament check — and the one write beside the manifest's, the operator's
+/// word that the bed is clear.
 ///
 /// Written out here rather than read from the server, and then held against
 /// what the server declares — so a server that grew another read would fail
 /// this rather than quietly grow this program's surface.
-const READS: [&str; 14] = [
+const READS: [&str; 15] = [
     "prints",
     "status",
     "context",
@@ -64,6 +65,7 @@ const READS: [&str; 14] = [
     "spool",
     "printer_history",
     "preflight",
+    "bed_clear",
 ];
 
 /// Every option `watch` takes of its own, as its task fixes them: the print

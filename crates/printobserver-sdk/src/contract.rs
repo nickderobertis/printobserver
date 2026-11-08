@@ -19,7 +19,7 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 38] = [
+pub const OPERATION_NAMES: [&str; 39] = [
     "prints",
     "status",
     "context",
@@ -58,6 +58,7 @@ pub const OPERATION_NAMES: [&str; 38] = [
     "recover_park",
     "recover_home_xy",
     "recover_home_z",
+    "bed_clear",
 ];
 
 /// A field that was sent, null included, as what was sent.
@@ -357,6 +358,35 @@ pub struct AgentAssessmentPayload {
     pub assessment: AgentAssessment,
     /// The session the turn ran in.
     pub session_name: String,
+}
+
+/// What recording the operator's word that the bed is clear answers: the
+/// event
+/// it was recorded as, which every recovery decided on it names.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BedClearAnswer {
+    /// What it means from now on, in a sentence for a person.
+    pub detail: String,
+    /// The `bed_clear_asserted` event.
+    pub event: EventRecord,
+}
+
+/// The operator's word that the bed is clear: nothing is on it that homing Z
+/// could crush or a move over the part could strike.
+///
+/// The printer's rather than any print's, so it is written with no print. It
+/// stands until the next `print_started`, whichever way that print started,
+/// and while it stands a recovery that needs the bed or the nozzle clear is
+/// decided as though it carried the operator's assertion — read back out of
+/// the event log, so a server started again holds it as the one before did.
+/// Only the operator records one: an assertion is a person's word for what
+/// they can see.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BedClearAssertedPayload {
+    /// Who said so: the operator, always.
+    pub actor: Actor,
+    /// Why they say so.
+    pub reason: String,
 }
 
 /// The bed heater, as a recovery read reports it.
@@ -2365,6 +2395,11 @@ pub struct RecoveryExecutedPayload {
     pub action: RecoveryAction,
     /// Who asked.
     pub actor: Actor,
+    /// The operator's standing word that the bed is clear this action was
+    /// carried out on in place of an assertion of its own, when it was: the
+    /// `bed_clear_asserted` event recording it. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed_clear: Option<EventId>,
     /// What the printer made of it.
     pub outcome: ExecutionOutcome,
     /// Why.
@@ -2493,6 +2528,11 @@ pub struct RecoveryRequestedPayload {
     pub action: RecoveryAction,
     /// Who asked.
     pub actor: Actor,
+    /// The operator's standing word that the bed is clear this request is
+    /// decided on in place of an assertion of its own, when it is: the
+    /// `bed_clear_asserted` event recording it. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed_clear: Option<EventId>,
     /// Why.
     pub reason: String,
 }
@@ -3504,6 +3544,10 @@ impl EventPayloadKind for AgentAssessmentPayload {
     const KIND: &'static str = "agent_assessment";
 }
 
+impl EventPayloadKind for BedClearAssertedPayload {
+    const KIND: &'static str = "bed_clear_asserted";
+}
+
 impl EventPayloadKind for CameraDegradedPayload {
     const KIND: &'static str = "camera_degraded";
 }
@@ -3649,11 +3693,12 @@ impl EventPayloadKind for UnattendedPrinterActivityPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 40] = [
+pub const EVENT_KINDS: [&str; 41] = [
     "action_executed",
     "action_rejected",
     "action_requested",
     "agent_assessment",
+    "bed_clear_asserted",
     "camera_degraded",
     "camera_look",
     "camera_retry",
@@ -4658,6 +4703,27 @@ impl Client {
         if let Some(value) = bed_clear_asserted {
             sending.insert("bed_clear_asserted".to_owned(), crate::as_value(&value)?);
         }
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `bed_clear` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn bed_clear(&self, reason: &str) -> Result<BedClearAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/bed_clear");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
         sending.insert("reason".to_owned(), crate::as_value(&reason)?);
         let sending = Some(serde_json::Value::Object(sending));
         self.call("POST", &target, &asked, sending.as_ref())

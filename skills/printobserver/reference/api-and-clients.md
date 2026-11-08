@@ -152,7 +152,16 @@ What the print and the machine are doing right now.
 
 `GET /v1/prints/{print_id}/status` — answers success.
 
-Takes `print_id` (path).
+Takes `print_id` (path). Its `detector` — and the context's — is one of five
+statuses, evidence that the detector is scoring the print coming first:
+`scoring_nothing_flagged` and `scoring_flagged`, read from Obico's own record of
+the printer moving between two of the server's reads within two observation
+intervals, the second once an Obico failure alert has arrived for the print;
+then `available` and `unavailable`, from the detector's health check; and
+`unchecked`, with no evidence of any kind. A scoring status carries a failing
+health check as `probe_failure`; any other carries why Obico's record is not
+being read as `scoring_unread`. The two scoring statuses and both fields are
+new, so a client that knew only the three health statuses reads it afresh.
 
 ### context
 
@@ -527,7 +536,12 @@ printobserver started, lost on a disconnect, an error, a reset, an
 `interrupted` or `failed` ending, a Z home or a lift the printer failed, or a
 restart — and the nozzle
 `recovery.clearance_margin_mm` above the last print's tallest part, or the
-operator's `clearance_asserted`. The agent's assertion never counts, and the
+operator's `clearance_asserted`. A Z home needs the operator's
+`bed_clear_asserted`. The operator's word that the bed is clear, recorded by
+`bed_clear`, stands in for both until the next `print_started`, wherever
+`[policy.recovery] asserting` counts the operator's word, and a request decided
+on it names that event as `bed_clear` in its `recovery_requested` and
+`recovery_executed`. The agent's assertion never counts, and the
 agent holds no recovery unless `[policy.recovery]` grants one. Any recovery
 executed while a print is paused makes that print's `resume` refused
 `print_not_resumable`, naming the `recovery_executed` event. A refusal is a
@@ -539,6 +553,14 @@ would let it go ahead. Each request writes `recovery_requested` and then
 `recovery_executed` or `recovery_rejected`, with no print. A body carrying a
 field no action declares, raw G-code included, or no reason, is refused `400`
 and recorded nowhere.
+
+### bed_clear
+
+The operator's word that the bed is clear, recorded once and honoured by every recovery that needs the bed or the nozzle clear until the next print starts.
+
+`POST /v1/printer/bed_clear` — answers success.
+
+Takes `actor` (body), `reason` (body). It answers `BedClearAnswer`: the `bed_clear_asserted` event, with no print, and a `detail` sentence. The one actor admitted is `operator`: the agent's own word, a turn claiming the operator and any claim to the system are refused `403`, and a reason that is absent or blank `400`, each recorded nowhere. The word is read back out of the event log, so it stands across a restart.
 
 ## The clients
 
@@ -782,6 +804,11 @@ and returns `RecoveryAnswer`.
 
 `client.recover_home_z(reason, bed_clear_asserted)` homes Z and returns
 `RecoveryAnswer`.
+
+#### bed_clear
+
+`client.bed_clear(reason)` records the operator's word that the bed is clear and
+returns `BedClearAnswer`.
 
 #### call
 

@@ -106,6 +106,7 @@ export const OPERATION_NAMES = [
   "recover_park",
   "recover_home_xy",
   "recover_home_z",
+  "bed_clear",
 ] as const;
 
 /** What an operator's acknowledgement of a failure event asks for next. */
@@ -260,6 +261,37 @@ export interface AgentAssessmentPayload {
   assessment: AgentAssessment;
   /** The session the turn ran in. */
   session_name: string;
+}
+
+/**
+ * What recording the operator's word that the bed is clear answers: the
+ * event
+ * it was recorded as, which every recovery decided on it names.
+ */
+export interface BedClearAnswer {
+  /** What it means from now on, in a sentence for a person. */
+  detail: string;
+  /** The `bed_clear_asserted` event. */
+  event: EventRecord;
+}
+
+/**
+ * The operator's word that the bed is clear: nothing is on it that homing Z
+ * could crush or a move over the part could strike.
+ *
+ * The printer's rather than any print's, so it is written with no print. It
+ * stands until the next `print_started`, whichever way that print started,
+ * and while it stands a recovery that needs the bed or the nozzle clear is
+ * decided as though it carried the operator's assertion — read back out of
+ * the event log, so a server started again holds it as the one before did.
+ * Only the operator records one: an assertion is a person's word for what
+ * they can see.
+ */
+export interface BedClearAssertedPayload {
+  /** Who said so: the operator, always. */
+  actor: Actor;
+  /** Why they say so. */
+  reason: string;
 }
 
 /** The bed heater, as a recovery read reports it. */
@@ -1715,6 +1747,12 @@ export interface RecoveryExecutedPayload {
   action: RecoveryAction;
   /** Who asked. */
   actor: Actor;
+  /**
+   * The operator's standing word that the bed is clear this action was
+   * carried out on in place of an assertion of its own, when it was: the
+   * `bed_clear_asserted` event recording it. Absent otherwise.
+   */
+  bed_clear?: EventId | null;
   /** What the printer made of it. */
   outcome: ExecutionOutcome;
   /** Why. */
@@ -1777,6 +1815,12 @@ export interface RecoveryRequestedPayload {
   action: RecoveryAction;
   /** Who asked. */
   actor: Actor;
+  /**
+   * The operator's standing word that the bed is clear this request is
+   * decided on in place of an assertion of its own, when it is: the
+   * `bed_clear_asserted` event recording it. Absent otherwise.
+   */
+  bed_clear?: EventId | null;
   /** Why. */
   reason: string;
 }
@@ -2368,6 +2412,7 @@ export interface EventPayloads {
   action_rejected: ActionRejectedPayload;
   action_requested: ActionRequestedPayload;
   agent_assessment: AgentAssessmentPayload;
+  bed_clear_asserted: BedClearAssertedPayload;
   camera_degraded: CameraDegradedPayload;
   camera_look: CameraLookPayload;
   camera_retry: CameraRetryPayload;
@@ -2412,6 +2457,7 @@ export const EVENT_KINDS = [
   "action_rejected",
   "action_requested",
   "agent_assessment",
+  "bed_clear_asserted",
   "camera_degraded",
   "camera_look",
   "camera_retry",
@@ -2828,6 +2874,50 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearAnswer": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearAssertedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Actor"
+     }
+    },
+    "reason": {
      "paired_with": "",
      "required": true,
      "shape": {
@@ -6644,6 +6734,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "ref": "Actor"
      }
     },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
     "outcome": {
      "paired_with": "",
      "required": true,
@@ -6888,6 +6987,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "Actor"
+     }
+    },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
      }
     },
     "reason": {
@@ -9974,5 +10082,24 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.reason = reason;
     return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `bed_clear` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async bedClear(reason: string): Promise<BedClearAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/bed_clear`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    return await this.call<BedClearAnswer>("POST", target, asked, sending, "BedClearAnswer");
   }
 }

@@ -276,6 +276,27 @@ def step_recover_status(client: Client, world: Supervisor, proxy: Proxy) -> None
     same("recover_status", answered, seen.answer)
 
 
+def step_bed_clear(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`bed_clear`, answered by a real supervisor."""
+    ready(client, world.print_id, "operational")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.bed_clear(REASON)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`bed_clear`")
+    equal(seen.target, "/v1/printer/bed_clear", describing="`bed_clear`")
+    equal(seen.status, 200, describing="`bed_clear`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `bed_clear` acted as")
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `bed_clear` sent",
+    )
+    same("bed_clear", answered, seen.answer)
+
+
 def step_recover_lift(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`recover_lift`, answered by a real supervisor."""
     ready(client, world.print_id, "operational")
@@ -1095,6 +1116,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_printer_look(client, world, proxy)
         step_cancel(client, world, proxy)
         step_recover_status(client, world, proxy)
+        step_bed_clear(client, world, proxy)
         step_recover_lift(client, world, proxy)
         step_recover_fan(client, world, proxy)
         step_recover_home_z(client, world, proxy)
@@ -1124,7 +1146,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 38,
+            proxy.calls() >= 39,
             describing="every call to have gone through the proxy",
         )
 

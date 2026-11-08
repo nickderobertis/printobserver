@@ -38,6 +38,13 @@
         }
       ]
     },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
     "ExecutionOutcome": {
       "description": "What happened when an accepted action reached the printer.",
       "oneOf": [
@@ -234,6 +241,17 @@
     "actor": {
       "$ref": "#/$defs/Actor",
       "description": "Who asked."
+    },
+    "bed_clear": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The operator's standing word that the bed is clear this action was\ncarried out on in place of an assertion of its own, when it was: the\n`bed_clear_asserted` event recording it. Absent otherwise."
     },
     "outcome": {
       "$ref": "#/$defs/ExecutionOutcome",

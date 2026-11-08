@@ -34,6 +34,8 @@ mod world;
 
 #[path = "journeys/authenticating.rs"]
 mod authenticating;
+#[path = "journeys/bed_clear.rs"]
+mod bed_clear;
 #[path = "journeys/binding.rs"]
 mod binding;
 #[path = "journeys/coherent_ledger.rs"]
