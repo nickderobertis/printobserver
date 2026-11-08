@@ -59,6 +59,7 @@ pub mod frame;
 pub mod health;
 mod ingress;
 mod normalize;
+pub mod scoring;
 mod vision;
 pub mod wire;
 
@@ -72,6 +73,7 @@ pub use frame::{
 };
 pub use health::{DetectorHealthCheck, HEALTH_PATH, HEALTH_TIMEOUT};
 pub use ingress::{IngressError, ObicoIngress, Receipt};
+pub use scoring::{KnownPrinter, ObicoScoring};
 pub use vision::{
     AccessToken, DEFAULT_FETCH_TIMEOUT, DEFAULT_MAX_IMAGE_BYTES, HANDLED_OVERWRITE, ObicoApi,
     ObicoVision, ObicoVisionConfig, ObicoVisionError,

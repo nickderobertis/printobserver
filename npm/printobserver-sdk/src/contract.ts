@@ -432,13 +432,16 @@ export interface ContextAnswer {
 }
 
 /**
- * The failure detector's health, and since when it has been so: `since` is
- * `null` exactly while the status is `unchecked`.
+ * The failure detector's status, and since when it has been so: `since` is
+ * `null` exactly while the status is `unchecked`. Evidence that the detector
+ * is scoring the print comes before its health check.
  */
 export type DetectorHealth =
-  | { status: "unchecked"; since: null }
-  | { status: "available"; since: Timestamp }
-  | { status: "unavailable"; since: Timestamp };
+  | { status: "scoring_nothing_flagged"; probe_failure?: string; since: Timestamp }
+  | { status: "scoring_flagged"; probe_failure?: string; since: Timestamp }
+  | { status: "available"; scoring_unread?: string; since: Timestamp }
+  | { status: "unavailable"; scoring_unread?: string; since: Timestamp }
+  | { status: "unchecked"; scoring_unread?: string; since: null };
 
 /**
  * The failure detector's own health changed.
@@ -1210,7 +1213,9 @@ export type PortFailureSite =
   | "image_write"
   | "supervision_turn"
   | "camera_look"
-  | "detector_acknowledgement";
+  | "detector_acknowledgement"
+  | "detector_health_check"
+  | "detector_scoring_read";
 
 /** How fresh the position a filament change charged up to is. */
 export type PositionFreshness = "read_at_signal" | "last_recorded";
@@ -3173,6 +3178,53 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {
     "available": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_nothing_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -3186,6 +3238,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     },
     "unavailable": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -3199,6 +3258,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     },
     "unchecked": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -4987,7 +5053,9 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "image_write",
    "supervision_turn",
    "camera_look",
-   "detector_acknowledgement"
+   "detector_acknowledgement",
+   "detector_health_check",
+   "detector_scoring_read"
   ]
  },
  "PositionFreshness": {

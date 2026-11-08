@@ -72,6 +72,11 @@ pub struct ObicoVisionError {
 }
 
 impl ObicoVisionError {
+    /// The error one failure to build a client is.
+    pub(crate) const fn of(detail: String) -> Self {
+        Self { detail }
+    }
+
     /// What went wrong building the client.
     #[must_use]
     pub fn detail(&self) -> &str {
@@ -162,6 +167,12 @@ impl ObicoApi {
     pub const fn url(&self) -> &WebAddress {
         &self.url
     }
+
+    /// The token's text, for the one place it is read: the request it
+    /// authenticates.
+    pub(crate) fn token_text(&self) -> &str {
+        &self.access_token.0
+    }
 }
 
 /// The alert overwrite a handled detection is acknowledged with.
@@ -191,6 +202,8 @@ pub struct ObicoVision {
     config: ObicoVisionConfig,
     /// Obico's own API, when this adapter was given a way to reach it.
     api: Option<ObicoApi>,
+    /// The printer the last body Obico posted named.
+    known: crate::scoring::KnownPrinter,
 }
 
 impl ObicoVision {
@@ -212,6 +225,7 @@ impl ObicoVision {
             client,
             config,
             api: None,
+            known: crate::scoring::KnownPrinter::new(),
         })
     }
 
@@ -220,6 +234,13 @@ impl ObicoVision {
     pub fn with_api(mut self, api: Option<ObicoApi>) -> Self {
         self.api = api;
         self
+    }
+
+    /// The printer the last body this adapter read named, which the reader of
+    /// Obico's printer record reads when no printer is configured.
+    #[must_use]
+    pub fn known_printer(&self) -> crate::scoring::KnownPrinter {
+        self.known.clone()
     }
 
     /// The bounds this adapter runs under.
@@ -310,6 +331,9 @@ impl VisionPort for ObicoVision {
         // Reading a body reaches nothing and waits on nothing, so it is done
         // here and the future answers what it produced.
         let read = normalize::read(&body, content_type.as_deref(), Timestamp::now());
+        if read.is_ok() {
+            self.known.note_body(body.as_slice());
+        }
         Box::pin(async move { read })
     }
 

@@ -477,30 +477,65 @@ fn the_history_query_carries_exactly_the_stated_fields() {
     assert_eq!(wire_fields(&schema_of::<HistoryQuery>()), expected);
 }
 
-/// The detector's health is three states on the wire, as the status and
+/// The detector's status is five states on the wire, as the status and
 /// context reads answer it: `since` is `null` exactly when the status is
-/// `unchecked`. Each state round-trips to that object and back, and an object
-/// pairing them any other way is refused rather than read.
+/// `unchecked`; a scoring status may name its failing health check beside it,
+/// and any other may say why scoring is not read. Each state round-trips to
+/// that object and back, an object the old three statuses wrote still reads,
+/// and an object pairing them any other way is refused rather than read.
 #[test]
-fn the_detectors_health_round_trips_its_three_states_and_refuses_any_other() {
+fn the_detectors_health_round_trips_its_five_states_and_refuses_any_other() {
     use printobserver_types::serde_json::{self, json};
     let since = printobserver_types::Timestamp::sample_full();
     let at = serde_json::to_value(since).expect("an instant renders");
     for (health, wire) in [
         (
-            DetectorHealth::Unchecked,
+            DetectorHealth::Unchecked {
+                scoring_unread: None,
+            },
             json!({ "status": "unchecked", "since": null }),
         ),
         (
-            DetectorHealth::Available { since },
+            DetectorHealth::Unchecked {
+                scoring_unread: Some("no API".to_owned()),
+            },
+            json!({ "status": "unchecked", "since": null, "scoring_unread": "no API" }),
+        ),
+        (
+            DetectorHealth::Available {
+                since,
+                scoring_unread: None,
+            },
             json!({ "status": "available", "since": at }),
         ),
         (
-            DetectorHealth::Unavailable { since },
-            json!({ "status": "unavailable", "since": at }),
+            DetectorHealth::Unavailable {
+                since,
+                scoring_unread: Some("no printer".to_owned()),
+            },
+            json!({ "status": "unavailable", "since": at, "scoring_unread": "no printer" }),
+        ),
+        (
+            DetectorHealth::Scoring {
+                since,
+                flagged: false,
+                probe_failure: None,
+            },
+            json!({ "status": "scoring_nothing_flagged", "since": at }),
+        ),
+        (
+            DetectorHealth::Scoring {
+                since,
+                flagged: true,
+                probe_failure: Some("answered 503".to_owned()),
+            },
+            json!({ "status": "scoring_flagged", "since": at, "probe_failure": "answered 503" }),
         ),
     ] {
-        assert_eq!(serde_json::to_value(health).expect("it renders"), wire);
+        assert_eq!(
+            serde_json::to_value(health.clone()).expect("it renders"),
+            wire
+        );
         let read: DetectorHealth = serde_json::from_value(wire).expect("it reads back");
         assert_eq!(read, health);
     }
@@ -509,6 +544,9 @@ fn the_detectors_health_round_trips_its_three_states_and_refuses_any_other() {
         json!({ "status": "available", "since": null }),
         json!({ "status": "unavailable" }),
         json!({ "status": "unchecked" }),
+        json!({ "status": "scoring_flagged", "since": null }),
+        json!({ "status": "available", "since": at, "probe_failure": "answered 503" }),
+        json!({ "status": "scoring_nothing_flagged", "since": at, "scoring_unread": "x" }),
     ] {
         assert!(
             serde_json::from_value::<DetectorHealth>(refused.clone()).is_err(),

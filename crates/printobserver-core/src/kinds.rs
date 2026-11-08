@@ -472,6 +472,12 @@ pub enum PortFailureSite {
     CameraLook,
     /// Telling the detector that paused the print its detection was handled.
     DetectorAcknowledgement,
+    /// Asking the failure detector whether it is answering, while it was
+    /// scoring the print all the same.
+    DetectorHealthCheck,
+    /// Reading the failure detector's own record of the print's live
+    /// prediction.
+    DetectorScoringRead,
 }
 
 impl Sample for PortFailureSite {

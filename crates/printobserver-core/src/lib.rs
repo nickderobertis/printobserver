@@ -70,6 +70,7 @@ pub mod observation;
 pub mod preflight;
 pub mod records;
 pub mod recovery;
+pub mod scoring;
 pub mod spools;
 pub mod store;
 pub mod supervisor;
@@ -135,6 +136,7 @@ pub use records::{
     RecoveryField, RecoveryGrants, RecoveryPosition, RecoveryRejection, RecoveryStatus,
     RecoveryTemperatures, ToolTemperature, ZHome, ZTrust,
 };
+pub use scoring::{EVIDENCE_INTERVALS, ScoringProbe, ScoringRead, ScoringReading};
 pub use spools::SpoolCommandOutcome;
 pub use store::{
     ActionStore, AuditPage, Charge, ChargeIdentity, ChargeRecord, DEFAULT_HISTORY_WINDOW,

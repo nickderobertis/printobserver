@@ -338,17 +338,24 @@ async fn a_detector_outage_is_recorded_once_each_way_and_read_with_its_start() {
     }
 }
 
-/// With no detector address configured nothing checks it: the status read
-/// answers it unchecked, and no change is ever recorded.
+/// With no detector address configured nothing checks it, and with no
+/// `Obico` printer known its record of the print is not read either: the
+/// status read answers it unchecked, saying why the record is not read, and
+/// no change is ever recorded.
 #[tokio::test(flavor = "multi_thread")]
 async fn with_no_detector_address_the_detector_reads_unchecked() {
     let web = Host::serving("application/json", br#"{"version":"1.0.0"}"#.to_vec()).await;
     let (world, print_id) = watching(None, &web.url()).await;
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    assert_eq!(
-        status_health(&world, print_id).await,
-        json!({ "status": "unchecked", "since": null })
+    let health = status_health(&world, print_id).await;
+    assert_eq!(health["status"], "unchecked", "{health}");
+    assert_eq!(health["since"], Value::Null, "{health}");
+    assert!(
+        health["scoring_unread"]
+            .as_str()
+            .is_some_and(|why| why.contains("no Obico printer is known yet")),
+        "{health}"
     );
     assert!(changes(&world).await.is_empty());
 }

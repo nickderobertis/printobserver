@@ -534,25 +534,48 @@ class ContextAnswer(TypedDict):
     image_path: NotRequired[str | None]
 
 
-class DetectorHealthUnchecked(TypedDict):
-    """The `unchecked` arm of `DetectorHealth`.
+class DetectorHealthScoringNothingFlagged(TypedDict):
+    """The `scoring_nothing_flagged` arm of `DetectorHealth`.
 
-    Nothing checks it: no detector health address is configured, or no
-    check has been made yet.
+    The detector is scoring the print, from `since` on, and no failure
+    alert of its own has arrived for it.
     """
 
-    status: Literal["unchecked"]
-    # Nothing: an unchecked detector has no instant it became so.
-    since: None
+    status: Literal["scoring_nothing_flagged"]
+    # What the detector's health check answered, when it is failing while
+    # the detector scores the print.
+    probe_failure: NotRequired[str]
+    # One shape of the contracts, which say nothing more about it.
+    since: Timestamp
+
+
+class DetectorHealthScoringFlagged(TypedDict):
+    """The `scoring_flagged` arm of `DetectorHealth`.
+
+    The detector is scoring the print, from `since` on, and a failure
+    alert of its own has arrived for it.
+    """
+
+    status: Literal["scoring_flagged"]
+    # What the detector's health check answered, when it is failing while
+    # the detector scores the print.
+    probe_failure: NotRequired[str]
+    # One shape of the contracts, which say nothing more about it.
+    since: Timestamp
 
 
 class DetectorHealthAvailable(TypedDict):
     """The `available` arm of `DetectorHealth`.
 
-    It answered its health check, from `since` on.
+    No evidence that the detector is scoring the print, and it answered
+    its health check, from `since` on: available, with no scores yet.
     """
 
     status: Literal["available"]
+    # Why the detector's scoring of the print is not being read, when it is
+    # not: no Obico API is configured, no Obico printer is known yet, or the
+    # last read failed.
+    scoring_unread: NotRequired[str]
     # One shape of the contracts, which say nothing more about it.
     since: Timestamp
 
@@ -560,18 +583,44 @@ class DetectorHealthAvailable(TypedDict):
 class DetectorHealthUnavailable(TypedDict):
     """The `unavailable` arm of `DetectorHealth`.
 
-    It did not answer its health check, from `since` on.
+    No evidence that the detector is scoring the print, and it did not
+    answer its health check, from `since` on.
     """
 
     status: Literal["unavailable"]
+    # Why the detector's scoring of the print is not being read, when it is
+    # not: no Obico API is configured, no Obico printer is known yet, or the
+    # last read failed.
+    scoring_unread: NotRequired[str]
     # One shape of the contracts, which say nothing more about it.
     since: Timestamp
 
 
-# The failure detector's health, and since when it has been so: `since` is
-# `null` exactly while the status is `unchecked`.
+class DetectorHealthUnchecked(TypedDict):
+    """The `unchecked` arm of `DetectorHealth`.
+
+    No evidence of any kind: no detector health address is configured, or
+    no check has been made yet, and nothing shows the detector scoring.
+    """
+
+    status: Literal["unchecked"]
+    # Why the detector's scoring of the print is not being read, when it is
+    # not: no Obico API is configured, no Obico printer is known yet, or the
+    # last read failed.
+    scoring_unread: NotRequired[str]
+    # Nothing: an unchecked detector has no instant it became so.
+    since: None
+
+
+# The failure detector's status, and since when it has been so: `since` is
+# `null` exactly while the status is `unchecked`. Evidence that the detector
+# is scoring the print comes before its health check.
 DetectorHealth: TypeAlias = (
-    DetectorHealthUnchecked | DetectorHealthAvailable | DetectorHealthUnavailable
+    DetectorHealthScoringNothingFlagged
+    | DetectorHealthScoringFlagged
+    | DetectorHealthAvailable
+    | DetectorHealthUnavailable
+    | DetectorHealthUnchecked
 )
 
 
@@ -1579,6 +1628,8 @@ PortFailureSite: TypeAlias = Literal[
     "supervision_turn",
     "camera_look",
     "detector_acknowledgement",
+    "detector_health_check",
+    "detector_scoring_read",
 ]
 
 
@@ -5096,6 +5147,53 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {
     "available": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_nothing_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -5109,6 +5207,13 @@ SHAPES: dict[str, object] = json.loads(
     },
     "unavailable": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -5122,6 +5227,13 @@ SHAPES: dict[str, object] = json.loads(
     },
     "unchecked": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -6910,7 +7022,9 @@ SHAPES: dict[str, object] = json.loads(
    "image_write",
    "supervision_turn",
    "camera_look",
-   "detector_acknowledgement"
+   "detector_acknowledgement",
+   "detector_health_check",
+   "detector_scoring_read"
   ]
  },
  "PositionFreshness": {

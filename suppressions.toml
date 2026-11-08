@@ -208,6 +208,12 @@ reason = "Obico's alert acknowledgement — `POST /api/v1/printers/<id>/acknowle
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "format!(\"/api/v1/printers/{printer_id}/\")"
+reason = "Obico's printer record — `GET /api/v1/printers/<id>/` under the configured bearer token, carrying `current_print`, `pic` and `normalized_p` — is a third-party REST route Obico publishes no machine-readable source for. Its fields were read off a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins by the check-costs spike, and the server's journeys drive this read against a loopback double serving those fields. The scheduled Obico tier (`tools/obico-env/obico_tier.py`) reconciles the webhook payload only; extending it to read this route from the live stack under a minted bearer token is drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-obico/src/health.rs"
 site = "pub const HEALTH_PATH: &str = \"hc/\";"
 reason = "Obico's detector service (`ml_api`) answers its own unauthenticated health route `GET /hc/`, which Obico publishes no machine-readable source for. The route was measured against the self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins, by the observability spike that settled this check: `ok` while the detector is up and refused once it is stopped, while the credentialed web API stays up. The server's journeys drive it against a stand-in on a real socket; the scheduled Obico tier (`tools/obico-env/obico_tier.py`) reconciles the webhook payload only, and extending it to ask the live stack's `ml_api` for this route is drafted as a follow-up."

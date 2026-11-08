@@ -8261,18 +8261,21 @@ Declared by `printobserver-server`.
       "type": "string"
     },
     "DetectorHealth": {
-      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "description": "The failure detector's status, and since when it has been so: `since` is `null` exactly while the status is `unchecked`. Evidence that the detector is scoring the print comes before its health check.",
       "oneOf": [
         {
           "additionalProperties": false,
-          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "description": "The detector is scoring the print, from `since` on, and no failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
             "since": {
-              "description": "Nothing: an unchecked detector has no instant it became so.",
-              "type": "null"
+              "$ref": "#/$defs/Timestamp"
             },
             "status": {
-              "const": "unchecked",
+              "const": "scoring_nothing_flagged",
               "type": "string"
             }
           },
@@ -8284,8 +8287,34 @@ Declared by `printobserver-server`.
         },
         {
           "additionalProperties": false,
-          "description": "It answered its health check, from `since` on.",
+          "description": "The detector is scoring the print, from `since` on, and a failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "scoring_flagged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence that the detector is scoring the print, and it answered its health check, from `since` on: available, with no scores yet.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
@@ -8302,13 +8331,40 @@ Declared by `printobserver-server`.
         },
         {
           "additionalProperties": false,
-          "description": "It did not answer its health check, from `since` on.",
+          "description": "No evidence that the detector is scoring the print, and it did not answer its health check, from `since` on.",
           "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
             "status": {
               "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence of any kind: no detector health address is configured, or no check has been made yet, and nothing shows the detector scoring.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
               "type": "string"
             }
           },
@@ -9305,18 +9361,21 @@ Declared by `printobserver-core`.
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+  "description": "The failure detector's status, and since when it has been so: `since` is `null` exactly while the status is `unchecked`. Evidence that the detector is scoring the print comes before its health check.",
   "oneOf": [
     {
       "additionalProperties": false,
-      "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+      "description": "The detector is scoring the print, from `since` on, and no failure alert of its own has arrived for it.",
       "properties": {
+        "probe_failure": {
+          "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+          "type": "string"
+        },
         "since": {
-          "description": "Nothing: an unchecked detector has no instant it became so.",
-          "type": "null"
+          "$ref": "#/$defs/Timestamp"
         },
         "status": {
-          "const": "unchecked",
+          "const": "scoring_nothing_flagged",
           "type": "string"
         }
       },
@@ -9328,8 +9387,34 @@ Declared by `printobserver-core`.
     },
     {
       "additionalProperties": false,
-      "description": "It answered its health check, from `since` on.",
+      "description": "The detector is scoring the print, from `since` on, and a failure alert of its own has arrived for it.",
       "properties": {
+        "probe_failure": {
+          "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+          "type": "string"
+        },
+        "since": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "status": {
+          "const": "scoring_flagged",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No evidence that the detector is scoring the print, and it answered its health check, from `since` on: available, with no scores yet.",
+      "properties": {
+        "scoring_unread": {
+          "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+          "type": "string"
+        },
         "since": {
           "$ref": "#/$defs/Timestamp"
         },
@@ -9346,13 +9431,40 @@ Declared by `printobserver-core`.
     },
     {
       "additionalProperties": false,
-      "description": "It did not answer its health check, from `since` on.",
+      "description": "No evidence that the detector is scoring the print, and it did not answer its health check, from `since` on.",
       "properties": {
+        "scoring_unread": {
+          "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+          "type": "string"
+        },
         "since": {
           "$ref": "#/$defs/Timestamp"
         },
         "status": {
           "const": "unavailable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No evidence of any kind: no detector health address is configured, or no check has been made yet, and nothing shows the detector scoring.",
+      "properties": {
+        "scoring_unread": {
+          "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+          "type": "string"
+        },
+        "since": {
+          "description": "Nothing: an unchecked detector has no instant it became so.",
+          "type": "null"
+        },
+        "status": {
+          "const": "unchecked",
           "type": "string"
         }
       },
@@ -17217,6 +17329,16 @@ Declared by `printobserver-core`.
           "const": "detector_acknowledgement",
           "description": "Telling the detector that paused the print its detection was handled.",
           "type": "string"
+        },
+        {
+          "const": "detector_health_check",
+          "description": "Asking the failure detector whether it is answering, while it was\nscoring the print all the same.",
+          "type": "string"
+        },
+        {
+          "const": "detector_scoring_read",
+          "description": "Reading the failure detector's own record of the print's live\nprediction.",
+          "type": "string"
         }
       ]
     }
@@ -17286,6 +17408,16 @@ Declared by `printobserver-core`.
     {
       "const": "detector_acknowledgement",
       "description": "Telling the detector that paused the print its detection was handled.",
+      "type": "string"
+    },
+    {
+      "const": "detector_health_check",
+      "description": "Asking the failure detector whether it is answering, while it was\nscoring the print all the same.",
+      "type": "string"
+    },
+    {
+      "const": "detector_scoring_read",
+      "description": "Reading the failure detector's own record of the print's live\nprediction.",
       "type": "string"
     }
   ],
@@ -22672,18 +22804,21 @@ Declared by `printobserver-core`.
       "type": "string"
     },
     "DetectorHealth": {
-      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "description": "The failure detector's status, and since when it has been so: `since` is `null` exactly while the status is `unchecked`. Evidence that the detector is scoring the print comes before its health check.",
       "oneOf": [
         {
           "additionalProperties": false,
-          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "description": "The detector is scoring the print, from `since` on, and no failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
             "since": {
-              "description": "Nothing: an unchecked detector has no instant it became so.",
-              "type": "null"
+              "$ref": "#/$defs/Timestamp"
             },
             "status": {
-              "const": "unchecked",
+              "const": "scoring_nothing_flagged",
               "type": "string"
             }
           },
@@ -22695,8 +22830,34 @@ Declared by `printobserver-core`.
         },
         {
           "additionalProperties": false,
-          "description": "It answered its health check, from `since` on.",
+          "description": "The detector is scoring the print, from `since` on, and a failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "scoring_flagged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence that the detector is scoring the print, and it answered its health check, from `since` on: available, with no scores yet.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
@@ -22713,13 +22874,40 @@ Declared by `printobserver-core`.
         },
         {
           "additionalProperties": false,
-          "description": "It did not answer its health check, from `since` on.",
+          "description": "No evidence that the detector is scoring the print, and it did not answer its health check, from `since` on.",
           "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
             "status": {
               "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence of any kind: no detector health address is configured, or no check has been made yet, and nothing shows the detector scoring.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
               "type": "string"
             }
           },
@@ -39361,18 +39549,21 @@ Declared by `printobserver-server`.
       "type": "string"
     },
     "DetectorHealth": {
-      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "description": "The failure detector's status, and since when it has been so: `since` is `null` exactly while the status is `unchecked`. Evidence that the detector is scoring the print comes before its health check.",
       "oneOf": [
         {
           "additionalProperties": false,
-          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "description": "The detector is scoring the print, from `since` on, and no failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
             "since": {
-              "description": "Nothing: an unchecked detector has no instant it became so.",
-              "type": "null"
+              "$ref": "#/$defs/Timestamp"
             },
             "status": {
-              "const": "unchecked",
+              "const": "scoring_nothing_flagged",
               "type": "string"
             }
           },
@@ -39384,8 +39575,34 @@ Declared by `printobserver-server`.
         },
         {
           "additionalProperties": false,
-          "description": "It answered its health check, from `since` on.",
+          "description": "The detector is scoring the print, from `since` on, and a failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "scoring_flagged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence that the detector is scoring the print, and it answered its health check, from `since` on: available, with no scores yet.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
@@ -39402,13 +39619,40 @@ Declared by `printobserver-server`.
         },
         {
           "additionalProperties": false,
-          "description": "It did not answer its health check, from `since` on.",
+          "description": "No evidence that the detector is scoring the print, and it did not answer its health check, from `since` on.",
           "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
             "status": {
               "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence of any kind: no detector health address is configured, or no check has been made yet, and nothing shows the detector scoring.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
               "type": "string"
             }
           },

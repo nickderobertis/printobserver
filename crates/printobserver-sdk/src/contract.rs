@@ -562,29 +562,69 @@ pub struct ContextAnswer {
     pub image_path: Option<String>,
 }
 
-/// The failure detector's health, and since when it has been so: `since` is
-/// `null` exactly while the status is `unchecked`.
+/// The failure detector's status, and since when it has been so: `since` is
+/// `null` exactly while the status is `unchecked`. Evidence that the detector
+/// is scoring the print comes before its health check.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status")]
 pub enum DetectorHealth {
-    /// Nothing checks it: no detector health address is configured, or no
-    /// check has been made yet.
-    #[serde(rename = "unchecked")]
-    Unchecked {
-        /// Nothing: an unchecked detector has no instant it became so.
-        since: (),
+    /// The detector is scoring the print, from `since` on, and no failure
+    /// alert of its own has arrived for it.
+    #[serde(rename = "scoring_nothing_flagged")]
+    ScoringNothingFlagged {
+        /// What the detector's health check answered, when it is failing
+        /// while the detector scores the print.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        probe_failure: Option<String>,
+        /// One shape of the contracts, which say nothing more about it.
+        since: Timestamp,
     },
-    /// It answered its health check, from `since` on.
+    /// The detector is scoring the print, from `since` on, and a failure
+    /// alert of its own has arrived for it.
+    #[serde(rename = "scoring_flagged")]
+    ScoringFlagged {
+        /// What the detector's health check answered, when it is failing
+        /// while the detector scores the print.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        probe_failure: Option<String>,
+        /// One shape of the contracts, which say nothing more about it.
+        since: Timestamp,
+    },
+    /// No evidence that the detector is scoring the print, and it answered
+    /// its health check, from `since` on: available, with no scores yet.
     #[serde(rename = "available")]
     Available {
+        /// Why the detector's scoring of the print is not being read, when it
+        /// is not: no Obico API is configured, no Obico printer is known yet,
+        /// or the last read failed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scoring_unread: Option<String>,
         /// One shape of the contracts, which say nothing more about it.
         since: Timestamp,
     },
-    /// It did not answer its health check, from `since` on.
+    /// No evidence that the detector is scoring the print, and it did not
+    /// answer its health check, from `since` on.
     #[serde(rename = "unavailable")]
     Unavailable {
+        /// Why the detector's scoring of the print is not being read, when it
+        /// is not: no Obico API is configured, no Obico printer is known yet,
+        /// or the last read failed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scoring_unread: Option<String>,
         /// One shape of the contracts, which say nothing more about it.
         since: Timestamp,
+    },
+    /// No evidence of any kind: no detector health address is configured, or
+    /// no check has been made yet, and nothing shows the detector scoring.
+    #[serde(rename = "unchecked")]
+    Unchecked {
+        /// Why the detector's scoring of the print is not being read, when it
+        /// is not: no Obico API is configured, no Obico printer is known yet,
+        /// or the last read failed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scoring_unread: Option<String>,
+        /// Nothing: an unchecked detector has no instant it became so.
+        since: (),
     },
 }
 
@@ -1505,6 +1545,14 @@ pub enum PortFailureSite {
     /// Telling the detector that paused the print its detection was handled.
     #[serde(rename = "detector_acknowledgement")]
     DetectorAcknowledgement,
+    /// Asking the failure detector whether it is answering, while it was
+    /// scoring the print all the same.
+    #[serde(rename = "detector_health_check")]
+    DetectorHealthCheck,
+    /// Reading the failure detector's own record of the print's live
+    /// prediction.
+    #[serde(rename = "detector_scoring_read")]
+    DetectorScoringRead,
 }
 
 /// How fresh the position a filament change charged up to is.

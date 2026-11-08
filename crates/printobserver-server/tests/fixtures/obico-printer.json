@@ -1,0 +1,78 @@
+{
+  "id": 17,
+  "name": "Prusa MK4",
+  "created_at": "2026-02-27T09:14:02.118344Z",
+  "archived_at": null,
+  "action_on_failure": "PAUSE",
+  "tools_off_on_pause": true,
+  "bed_off_on_pause": false,
+  "retract_on_pause": 6.5,
+  "lift_z_on_pause": 2.5,
+  "detective_sensitivity": 1.0,
+  "watching_enabled": true,
+  "not_watching_reason": "",
+  "min_timelapse_secs_on_finish": 600,
+  "min_timelapse_secs_on_cancel": 300,
+  "auth_token": "SENTINEL-obico-printer-auth-token-0b6f3c",
+  "agent_name": "octoprint_obico",
+  "agent_version": "2.5.2",
+  "settings": {
+    "webcam_flipV": false,
+    "webcam_flipH": false,
+    "webcam_rotation": 0,
+    "ratio169": false
+  },
+  "status": {
+    "state": {
+      "text": "Printing",
+      "flags": {
+        "operational": true,
+        "printing": true,
+        "paused": false,
+        "cancelling": false,
+        "error": false
+      }
+    },
+    "job": {
+      "file": {
+        "name": "benchy.gcode",
+        "display": "benchy.gcode"
+      }
+    },
+    "progress": {
+      "completion": 12.5,
+      "printTime": 900,
+      "printTimeLeft": 6300
+    },
+    "_ts": 1772367300
+  },
+  "pic": {
+    "img_url": "http://127.0.0.1:3334/media/tsd-pics/snapshots/17/latest_unrotated.jpg?digest=1772367300"
+  },
+  "normalized_p": 0.0,
+  "current_print": {
+    "id": 4211,
+    "printer": 17,
+    "filename": "benchy.gcode",
+    "started_at": "2026-03-01T12:00:00.500000Z",
+    "finished_at": null,
+    "cancelled_at": null,
+    "ended_at": null,
+    "uploaded_at": null,
+    "alerted_at": null,
+    "alert_acknowledged_at": null,
+    "alert_muted_at": null,
+    "paused_at": null,
+    "alert_overwrite": null,
+    "access_consented_at": null,
+    "video_archived_at": null,
+    "video_url": null,
+    "tagged_video_url": null,
+    "poster_url": null,
+    "print_time": 900,
+    "filament_used": null,
+    "need_alert_overwrite": false,
+    "need_print_shot_feedback": false,
+    "g_code_file": null
+  }
+}

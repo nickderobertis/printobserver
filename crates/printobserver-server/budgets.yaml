@@ -1,0 +1,40 @@
+schema_version: 1
+budgets:
+  - id: obico-reads-per-print-hour
+    description: >-
+      Obico requests per hour of an active print: the Obico REST requests the
+      server makes per hour of one active print for the detector status — the
+      requests the test counts per observation interval, times the intervals in
+      an hour at the default 120 s interval. Detail: requests per interval by
+      endpoint, the intervals counted, and the interval. Workload: one active
+      print at the default 120 s observation interval, 30 intervals per hour,
+      with one `GET /api/v1/printers/{id}/` per interval and no other Obico
+      REST read for the status. Basis: design — against a real self-hosted
+      Obico at revision 49c0bc70 with one running print, the live score and
+      current print come from one `GET /api/v1/printers/{id}/` per check
+      (median 23.5 ms, max 193.7 ms, 1,880 B), while
+      `GET /api/v1/prints/{id}/prediction_json/` answers `[]` for a running
+      print, so the status needs one read per interval, 30 reads per print hour
+      at the default interval; Obico applies no throttle to that viewset. The
+      threshold has no margin, because it is an exact count by design and any
+      extra read is the regression it guards. Read from the telemetry the
+      `scoring::the_reads_per_print_hour_are_recorded` journey of
+      `printobserver-server:test` records; the command changes to the
+      repository root first, because onebudgetspec runs it in this file's
+      directory.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - crates/printobserver-server/telemetry/obico-reads.json
+      - requests_per_hour
+    unit: requests
+    direction: max
+    threshold: 30
+    timeout_seconds: 60
