@@ -22,6 +22,7 @@ from cases import StartCase, read_case, read_start_case
 from mock_turn import ScriptedRun, Seen
 from replay import program
 from repo_checks.expect import contains, equal, truth
+from shell_lines import commands
 from starts import (
     SessionName,
     StartsReplay,
@@ -244,25 +245,23 @@ def test_no_start_and_no_word_fails_a_request_the_case_refuses(scratch: Path) ->
     "written",
     ["cd /tmp && {start}", "echo $({start})", "env X=1 {start}"],
 )
-def test_a_compound_start_is_refused_by_the_stand_ins_rules_and_reported(
+def test_a_compound_start_the_rules_refuse_reaches_no_server_and_is_reported(
     written: str, scratch: Path
 ) -> None:
-    """A start the stand-in refuses under the conversation's rules is reported, and starts nothing.
+    """A start written beside another command reaches no server here, and its line is reported.
 
-    The refusal here is the mock harness's: it applies the rules the conversation was
-    started with as Claude Code's `dontAsk` mode is documented to, refusing a line any
-    of whose commands no rule allows. What this proves is that the conversation is
-    started with those rules, that a refused start reaches no server, and that the
-    record names the line. Whether the real harness refuses a given line is shown by
-    the live suite only: on Claude Code 2.1.319 it ran chained lines whose every part
-    was an allowed or read-only command, so the suite fails any compound command at
-    all, refused or not.
+    The refusal is the mock harness's own application of the rules the conversation was
+    started with, so this proves no refusal by the real harness: it proves that a start
+    those rules refuse reaches no server and that the record reports the line. Whether
+    the real harness refuses a line is the live suite's to show, and on Claude Code
+    2.1.319 it refused some compound lines and ran others, so the live test fails a
+    conversation that ran any compound `printobserver` line, refused or not.
     """
     case = requests_of("bed-clear-check", "clear-01-bed-lowered-1727")
     line = written.format(start=shlex.join(start("PLA", "smooth-pei")))
     done = conversed(case, [{"commands": [LOOK, line], "reply": "started"}], scratch)
     point = done.replayed.points[0]
-    equal(done.runs[0]["ran"][1]["status"], -1, describing="the stand-in refusing the line")
+    equal(done.runs[0]["ran"][1]["status"], -1, describing="the mock refusing the line")
     equal(done.runs[0]["ran"][1]["err"], "permission denied")
     equal(point.requests, [], describing="what reached the server")
     contains(str(point.why_not), "started no print")
@@ -308,6 +307,8 @@ def test_a_compound_start_is_refused_by_the_stand_ins_rules_and_reported(
         ("sh -c 'printobserver prints'", True),
         ('bash -c "printobserver prints"', True),
         ("X=1 printobserver prints", False),
+        ("bash -lc 'printobserver prints'", True),
+        ("env FOO=1 nice -n 5 printobserver prints", True),
         ("printobserver look 2>&1", False),
         ("printobserver look &> out", False),
         ("X=1 printobserver prints; echo done", True),
@@ -322,11 +323,19 @@ def test_a_compound_start_is_refused_by_the_stand_ins_rules_and_reported(
         ("env X=1 printobserver prints && echo done", True),
     ],
 )
-def test_a_compound_command_is_one_chaining_the_program_to_another(
+def test_a_compound_command_runs_the_program_beside_or_inside_another(
     line: str, *, compound: bool
 ) -> None:
     """Operators, substitutions and wrappers run another command; literal quoted text does not."""
     equal(is_compound(line), compound, describing=line)
+
+
+def test_every_command_a_line_runs_is_read_wrappers_and_substitutions_included() -> None:
+    """A wrapper's program is read as the command it runs, as is a shell's line."""
+    equal(commands("env echo hello"), [["env"], ["echo", "hello"]])
+    equal(commands("timeout 30 ls -l"), [["timeout", "30"], ["ls", "-l"]])
+    equal(commands("sh -c 'ls; pwd'"), [["sh", "-c", "ls; pwd"], ["ls"], ["pwd"]])
+    equal(commands("echo `ls`"), [["echo", "__substitution__"], ["ls"]])
 
 
 def test_a_frame_recording_no_material_asks_for_the_one_its_sheet_suits() -> None:

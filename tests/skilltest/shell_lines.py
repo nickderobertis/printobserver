@@ -157,26 +157,45 @@ def _program(word: str) -> str:
     return Path(word).name.removesuffix(".exe")
 
 
+#: A shell option cluster carrying `-c`, after which the shell runs the next word as a line.
+LINE_OPTION = re.compile(r"^-[A-Za-z]*c[A-Za-z]*$")
+#: A word a wrapper reads as its own argument rather than as the program it runs.
+WRAPPER_ARGUMENT = re.compile(r"^(-.*|[A-Za-z_][A-Za-z0-9_]*=.*|\d+(\.\d+)?[smhd]?)$")
+
+
 def _unwrapped(words: list[str]) -> list[list[str]]:
-    """The commands one command's words run: itself, and what it runs as a wrapper or a shell."""
+    """The commands one command's words run: itself, and what it runs as a wrapper or a shell.
+
+    A shell with a `-c` option, alone or in a cluster such as `-lc`, runs the word after
+    it as a line. A wrapper runs `printobserver` when that is among its words, and
+    otherwise the first word that is none of its options, assignments or durations.
+    """
     named = _named(words)
     if not named:
         return []
     program = _program(named[0])
-    if program in SHELLS and "-c" in named[:-1]:
-        return [named, *commands(named[named.index("-c") + 1])]
+    if program in SHELLS:
+        option = next((at for at, word in enumerate(named) if LINE_OPTION.match(word)), None)
+        if option is not None and option + 1 < len(named):
+            return [named, *commands(named[option + 1])]
     if program in WRAPPERS:
+        rest = named[1:]
         wrapped = next(
-            (at for at, word in enumerate(named[1:], 1) if _program(word) == "printobserver"),
-            None,
+            (at for at, word in enumerate(rest) if _program(word) == "printobserver"),
+            next((at for at, word in enumerate(rest) if not WRAPPER_ARGUMENT.match(word)), None),
         )
         if wrapped is not None:
-            return [named[:wrapped], named[wrapped:]]
+            return [named[: wrapped + 1], *_unwrapped(rest[wrapped:])]
     return [named]
 
 
 def commands(line: str) -> list[list[str]]:
-    """The words of every command a line runs: its own, its substitutions' and its wrappers'."""
+    """The words of each command a line runs, as far as the reading above goes.
+
+    Its own commands, those its substitutions run, and those its wrappers and shells
+    run. A wrapper's own option that takes an argument may be read as the program it
+    runs, unless that program is `printobserver`, which is always found.
+    """
     outer, read = substitutions(line)
     found = [command for words in pieces(outer) for command in _unwrapped(words)]
     for inner in read:

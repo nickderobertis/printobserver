@@ -471,16 +471,37 @@ fn every_documented_start_is_translated_as_the_program_translates_it() {
     }
 }
 
-/// One command line split into words as a POSIX shell splits it: single quotes
-/// keep everything, double quotes keep everything but themselves.
+/// One command line split into words as a POSIX shell splits a line holding
+/// no expansion: single quotes keep everything; a backslash keeps the character
+/// after it outside quotes, and inside double quotes keeps `$`, a backquote, `"`,
+/// a backslash or a line break after it and is kept itself before anything
+/// else. A documented line using an expansion is refused rather than read.
 fn shell_words(line: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut word: Option<String> = None;
     let mut quote: Option<char> = None;
-    for character in line.chars() {
+    let mut characters = line.chars().peekable();
+    while let Some(character) = characters.next() {
+        assert!(
+            quote == Some('\'') || !matches!(character, '$' | '`'),
+            "`{line}` uses an expansion, which this reading does not follow"
+        );
         match (quote, character) {
-            (Some(open), close) if open == close => quote = None,
+            (Some('\''), '\'') | (Some('"'), '"') => quote = None,
+            (Some('"'), '\\') => {
+                let next = characters.next().unwrap_or('\\');
+                let kept = word.get_or_insert_with(String::new);
+                if !matches!(next, '$' | '`' | '"' | '\\' | '\n') {
+                    kept.push('\\');
+                }
+                kept.push(next);
+            }
             (Some(_), inside) => word.get_or_insert_with(String::new).push(inside),
+            (None, '\\') => {
+                if let Some(next) = characters.next() {
+                    word.get_or_insert_with(String::new).push(next);
+                }
+            }
             (None, '\'' | '"') => {
                 quote = Some(character);
                 word.get_or_insert_with(String::new);
@@ -492,6 +513,15 @@ fn shell_words(line: &str) -> Vec<String> {
     assert!(quote.is_none(), "`{line}` leaves a quote open");
     words.extend(word);
     words
+}
+
+/// The splitting reads quotes and escapes as a shell does.
+#[test]
+fn a_documented_line_is_split_as_a_shell_splits_it() {
+    assert_eq!(
+        shell_words(r#"a 'b c' "d \"e\" \\ \x" f\ g"#),
+        ["a", "b c", r#"d "e" \ \x"#, "f g"]
+    );
 }
 
 /// The request a documented start makes: the operation its command names, the
