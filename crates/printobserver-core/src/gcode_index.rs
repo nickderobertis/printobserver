@@ -26,8 +26,10 @@
 //!   is not the part-cooling fan.
 //! * `M486 S<n>` starts laying down object `n`, `M486 S-1` stops, and
 //!   `M486 A<name>` names the object last started. An object's bed area is the
-//!   rectangle every move laying material for it reached — an arc's whole
-//!   circle, as a footprint must never be smaller than what was laid.
+//!   rectangle every move laying material for it reached — an arc's the
+//!   extremes of the part of its circle it sweeps, so a footprint is never
+//!   smaller than what was laid and a nearly straight arc about a far centre
+//!   is no larger than the line it nearly is.
 //!
 //! Everything else is a move or nothing to this reader: `G0`–`G3` with
 //! `G90`/`G91`, `M82`/`M83`, `G92` and `G28` are followed so that what laid
@@ -753,12 +755,14 @@ impl IndexBuilder {
         let Some(object) = self.current_object else {
             return;
         };
-        let circle = (code >= 2).then(|| circle_of(words, start, self.at));
+        let end = self.at;
         if let Some(draft) = self.objects.get_mut(&object) {
             grow(&mut draft.bounds, start[0], start[1]);
-            grow(&mut draft.bounds, self.at[0], self.at[1]);
-            for [x, y] in circle.into_iter().flatten() {
-                grow(&mut draft.bounds, x, y);
+            grow(&mut draft.bounds, end[0], end[1]);
+            if code >= 2 {
+                for [x, y] in arc_extremes(words, code == 2, start, end) {
+                    grow(&mut draft.bounds, x, y);
+                }
             }
         }
     }
@@ -905,25 +909,77 @@ fn grow(bounds: &mut Option<[f64; 4]>, x: f64, y: f64) {
     });
 }
 
-/// The corners of the box an arc's whole circle fits in: about the centre its
-/// `I` and `J` name, or within twice the radius `R` names of where it began.
-fn circle_of(words: &[(char, &str)], start: [f64; 3], end: [f64; 3]) -> [[f64; 2]; 2] {
-    if let Some(radius) = number(words, 'R') {
-        let reach = radius.abs() * 2.0;
-        return [
-            [start[0] - reach, start[1] - reach],
-            [start[0] + reach, start[1] + reach],
-        ];
+/// The points of an arc's circle at which it reaches furthest along X or Y,
+/// of the part of the circle the arc sweeps: what an arc lays beyond its two
+/// ends.
+///
+/// The centre is the one `I` and `J` name, or for the `R` form the one on the
+/// side of the chord the direction and the radius's sign choose. `G2` sweeps
+/// clockwise and `G3` counter-clockwise; an arc ending where it began is the
+/// whole circle.
+fn arc_extremes(
+    words: &[(char, &str)],
+    clockwise: bool,
+    start: [f64; 3],
+    end: [f64; 3],
+) -> impl Iterator<Item = [f64; 2]> {
+    let centre = number(words, 'R').map_or_else(
+        || {
+            Some([
+                start[0] + number(words, 'I').unwrap_or(0.0),
+                start[1] + number(words, 'J').unwrap_or(0.0),
+            ])
+        },
+        |radius| centre_of_radius(radius, clockwise, start, end),
+    );
+    let reach = centre.map(|centre| {
+        let radius = (start[0] - centre[0]).hypot(start[1] - centre[1]);
+        let from = (start[1] - centre[1]).atan2(start[0] - centre[0]);
+        let to = (end[1] - centre[1]).atan2(end[0] - centre[0]);
+        let tau = core::f64::consts::TAU;
+        // How far the arc turns, counter-clockwise from `from`, as a positive
+        // sweep: a clockwise arc is the same sweep taken from its end.
+        let (base, sweep) = if clockwise {
+            (to, (from - to).rem_euclid(tau))
+        } else {
+            (from, (to - from).rem_euclid(tau))
+        };
+        let sweep = if sweep < 1e-9 { tau } else { sweep };
+        (0..4).filter_map(move |quarter| {
+            let angle = core::f64::consts::FRAC_PI_2 * f64::from(quarter);
+            ((angle - base).rem_euclid(tau) <= sweep + 1e-9).then(|| {
+                [
+                    centre[0] + radius * angle.cos(),
+                    centre[1] + radius * angle.sin(),
+                ]
+            })
+        })
+    });
+    reach.into_iter().flatten()
+}
+
+/// The centre of an `R`-form arc: on the chord's perpendicular, on the side a
+/// clockwise or counter-clockwise turn of a short arc puts it, and on the other
+/// side for a negative radius, which asks for the long way round. Nothing when
+/// the chord is longer than the circle allows, or the arc ends where it began.
+fn centre_of_radius(
+    radius: f64,
+    clockwise: bool,
+    start: [f64; 3],
+    end: [f64; 3],
+) -> Option<[f64; 2]> {
+    let chord = [end[0] - start[0], end[1] - start[1]];
+    let length = chord[0].hypot(chord[1]);
+    if length <= TRAVEL_MM || length > 2.0 * radius.abs() {
+        return None;
     }
-    let centre = [
-        start[0] + number(words, 'I').unwrap_or(0.0),
-        start[1] + number(words, 'J').unwrap_or(0.0),
-    ];
-    let radius = (end[0] - centre[0]).hypot(end[1] - centre[1]);
-    [
-        [centre[0] - radius, centre[1] - radius],
-        [centre[0] + radius, centre[1] + radius],
-    ]
+    let rise = (radius * radius - length * length / 4.0).max(0.0).sqrt();
+    let left = if clockwise { -1.0 } else { 1.0 };
+    let side = left * radius.signum() * rise / length;
+    Some([
+        start[0] + chord[0] / 2.0 - chord[1] * side,
+        start[1] + chord[1] / 2.0 + chord[0] * side,
+    ])
 }
 
 /// The words of a command, each a letter and the text after it, up to

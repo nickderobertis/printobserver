@@ -37,7 +37,9 @@ const LOG: &str = "PRINTOBSERVER_RESPONDER_LOG";
 
 /// The variable naming the actions to issue, as a JSON array of
 /// `{"operation": ..., "body": ...}` — the operation by the name this server
-/// declares it under, and the body exactly as a caller sends it.
+/// declares it under, and the body exactly as a caller sends it. A read, the
+/// `context` a turn is told to run above all, is sent as a `GET` and its body
+/// ignored, and what it answered is written down like any other.
 const ACTIONS: &str = "PRINTOBSERVER_RESPONDER_ACTIONS";
 
 /// The variable naming the file this responder writes what it was started with
@@ -159,16 +161,27 @@ fn issue(turn: &Turn, operation: &str, body: &str) -> serde_json::Value {
     {
         return refused("this responder could not bound its own request");
     }
-    if write!(
-        stream,
-        "POST {path} HTTP/1.1\r\nHost: {authority}\r\nContent-Type: {}\r\n\
-         Content-Length: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n{body}",
-        printobserver_server::MEDIA_TYPE,
-        body.len(),
-        turn.credential.0
-    )
-    .is_err()
-    {
+    // A read is sent as one, with no body: the context a turn reads is a
+    // `GET`, and what it answers is what this turn was given to reason about.
+    let sent = if declared.method == printobserver_server::Method::Get {
+        write!(
+            stream,
+            "GET {path} HTTP/1.1\r\nHost: {authority}\r\nAuthorization: Bearer {}\r\n\
+             Connection: close\r\n\r\n",
+            turn.credential.0
+        )
+    } else {
+        write!(
+            stream,
+            "{} {path} HTTP/1.1\r\nHost: {authority}\r\nContent-Type: {}\r\n\
+             Content-Length: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n{body}",
+            declared.method.as_str(),
+            printobserver_server::MEDIA_TYPE,
+            body.len(),
+            turn.credential.0
+        )
+    };
+    if sent.is_err() {
         return refused("the request could not be sent");
     }
     let mut answer = String::new();
@@ -220,7 +233,9 @@ fn act() {
         // the harness names it for the print — so the action the server records
         // carries the same session the assessment beside it does.
         let mut body = action["body"].clone();
-        if let Some(object) = body.as_object_mut() {
+        let reading = printobserver_server::operation(operation)
+            .is_some_and(|declared| declared.method == printobserver_server::Method::Get);
+        if !reading && let Some(object) = body.as_object_mut() {
             object.insert(
                 "actor".to_owned(),
                 serde_json::json!({ "agent": { "session_name": format!("print-{}", turn.print) } }),

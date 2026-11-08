@@ -164,6 +164,9 @@ struct Script {
     /// The name of every file whose download it answered from the first byte,
     /// asked for with no `Range`, in the order it answered them.
     whole_downloads: Vec<String>,
+    /// How long it holds every download before it answers, as a slow link or
+    /// a busy instance would.
+    download_delay: core::time::Duration,
 }
 
 /// One file the stand-in holds.
@@ -247,6 +250,7 @@ impl ScriptedOctoPrint {
             selected: None,
             download_bytes: 0,
             whole_downloads: Vec::new(),
+            download_delay: core::time::Duration::ZERO,
         }));
         let sockets = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
@@ -343,6 +347,11 @@ impl ScriptedOctoPrint {
     #[must_use]
     pub fn download_bytes(&self) -> usize {
         self.held().download_bytes
+    }
+
+    /// Hold every download this long before answering it.
+    pub fn delays_downloads(&self, delay: core::time::Duration) {
+        self.held().download_delay = delay;
     }
 
     /// How many downloads of one held file it answered from the file's first
@@ -950,6 +959,8 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
     if request.header("range").is_none() {
         lock(script).whole_downloads.push(file.name.as_str().to_owned());
     }
+    let delay = lock(script).download_delay;
+    thread::sleep(delay);
     let body = &file.bytes[from..];
     let range = if from > 0 {
         format!("Content-Range: bytes {from}-{}/{size}\r\n", size - 1)

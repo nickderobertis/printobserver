@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One object the print's file lays down, and the bed area it covers.",
+  "properties": {
+    "name": {
+      "description": "Its name, as the file labels it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "x_mm": {
+      "description": "The least and most X its material reaches, in millimetres.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "y_mm": {
+      "description": "The least and most Y its material reaches, in millimetres.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    }
+  },
+  "required": [
+    "x_mm",
+    "y_mm"
+  ],
+  "title": "PlannedObject",
+  "type": "object"
+}

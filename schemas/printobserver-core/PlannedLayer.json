@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One layer of the plan, as the context answers it.",
+  "properties": {
+    "number": {
+      "description": "The layer the print is in, counting the first as 1.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "of": {
+      "description": "How many layers the file plans.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "z_mm": {
+      "description": "The layer's height, in millimetres, when the file states it.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "number",
+    "of"
+  ],
+  "title": "PlannedLayer",
+  "type": "object"
+}

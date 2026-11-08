@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-190 types. The set is every type any crate declares under
+196 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -2589,6 +2589,14 @@ Declared by `printobserver-core`.
     "action_id": {
       "$ref": "#/$defs/ActionId",
       "description": "The action's identifier."
+    },
+    "file_position_bytes": {
+      "description": "How far into its file the print had last been read to have got when\nthe action was taken, in bytes, when that was known: what places a\nchange against the commands the file sets the same thing with.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "intervention_id": {
       "anyOf": [
@@ -8844,6 +8852,115 @@ Declared by `printobserver-server`.
       ],
       "type": "object"
     },
+    "PlanFact": {
+      "description": "A fact of the plan the print's file does not state.",
+      "oneOf": [
+        {
+          "const": "layer",
+          "description": "The file marks no layers.",
+          "type": "string"
+        },
+        {
+          "const": "final_z",
+          "description": "The file states no final height.",
+          "type": "string"
+        },
+        {
+          "const": "extrusion_types",
+          "description": "The file labels no extrusion types.",
+          "type": "string"
+        },
+        {
+          "const": "slicer_time_left",
+          "description": "The file carries no estimate of the time left, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "flow_factor",
+          "description": "The file sets no flow factor, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "fan_percent",
+          "description": "The file sets no part-cooling fan speed, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "objects",
+          "description": "The file labels no objects.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedLayer": {
+      "additionalProperties": false,
+      "description": "One layer of the plan, as the context answers it.",
+      "properties": {
+        "number": {
+          "description": "The layer the print is in, counting the first as 1.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "of": {
+          "description": "How many layers the file plans.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "The layer's height, in millimetres, when the file states it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "number",
+        "of"
+      ],
+      "type": "object"
+    },
+    "PlannedObject": {
+      "additionalProperties": false,
+      "description": "One object the print's file lays down, and the bed area it covers.",
+      "properties": {
+        "name": {
+          "description": "Its name, as the file labels it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "x_mm": {
+          "description": "The least and most X its material reaches, in millimetres.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "y_mm": {
+          "description": "The least and most Y its material reaches, in millimetres.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "x_mm",
+        "y_mm"
+      ],
+      "type": "object"
+    },
     "PrintContext": {
       "additionalProperties": false,
       "description": "Everything a supervision turn is given about one print.",
@@ -8921,6 +9038,17 @@ Declared by `printobserver-server`.
             "$ref": "#/$defs/EventRecord"
           },
           "type": "array"
+        },
+        "slicer_plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SlicerPlan"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the slicer planned at the job's current file position, read from\nthe print's own G-code: absent when the file could not be read, or the\njob is not this print's."
         }
       },
       "required": [
@@ -9195,6 +9323,106 @@ Declared by `printobserver-server`.
         "out_of_range"
       ],
       "title": "Reported",
+      "type": "object"
+    },
+    "SetValue": {
+      "additionalProperties": false,
+      "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
+      "properties": {
+        "file": {
+          "description": "What the file's own commands set it to, by the current position.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "printobserver": {
+          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SlicerPlan": {
+      "additionalProperties": false,
+      "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
+      "properties": {
+        "extrusion_types": {
+          "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "fan_percent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SetValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The part-cooling fan speed, in percent."
+        },
+        "final_z_mm": {
+          "description": "The final layer's height, in millimetres.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "flow_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SetValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The flow factor, one meaning one hundred percent."
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedLayer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The layer the print is in and its height; absent before the first."
+        },
+        "objects": {
+          "description": "Every object the file lays down, each with the bed area it covers.",
+          "items": {
+            "$ref": "#/$defs/PlannedObject"
+          },
+          "type": "array"
+        },
+        "slicer_time_left_min": {
+          "description": "The slicer's own estimate of the minutes left, at the current position.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "unknown": {
+          "description": "The facts the file does not state, which are therefore unknown rather\nthan absent.",
+          "items": {
+            "$ref": "#/$defs/PlanFact"
+          },
+          "type": "array"
+        }
+      },
       "type": "object"
     },
     "Timestamp": {
@@ -11192,6 +11420,44 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "FrameCause"
+}
+```
+
+### GcodeIndexedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print's G-code was read and indexed: what the slicer planned at each\nfile position is now known for it, without reading the file again.\n\nWritten once per index built, which is once per print for as long as the\nserver runs.",
+  "properties": {
+    "bytes": {
+      "description": "How many bytes of it were read.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "file_name": {
+      "description": "The file that was indexed.",
+      "type": "string"
+    },
+    "layers": {
+      "description": "How many layers it plans.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "file_name",
+    "bytes",
+    "layers"
+  ],
+  "title": "GcodeIndexedPayload",
+  "type": "object",
+  "x-event-kind": "gcode_indexed"
 }
 ```
 
@@ -15850,6 +16116,142 @@ Declared by `printobserver-core`.
   "title": "PeriodicObservationPayload",
   "type": "object",
   "x-event-kind": "periodic_observation"
+}
+```
+
+### PlanFact
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A fact of the plan the print's file does not state.",
+  "oneOf": [
+    {
+      "const": "layer",
+      "description": "The file marks no layers.",
+      "type": "string"
+    },
+    {
+      "const": "final_z",
+      "description": "The file states no final height.",
+      "type": "string"
+    },
+    {
+      "const": "extrusion_types",
+      "description": "The file labels no extrusion types.",
+      "type": "string"
+    },
+    {
+      "const": "slicer_time_left",
+      "description": "The file carries no estimate of the time left, by the current position.",
+      "type": "string"
+    },
+    {
+      "const": "flow_factor",
+      "description": "The file sets no flow factor, by the current position.",
+      "type": "string"
+    },
+    {
+      "const": "fan_percent",
+      "description": "The file sets no part-cooling fan speed, by the current position.",
+      "type": "string"
+    },
+    {
+      "const": "objects",
+      "description": "The file labels no objects.",
+      "type": "string"
+    }
+  ],
+  "title": "PlanFact"
+}
+```
+
+### PlannedLayer
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One layer of the plan, as the context answers it.",
+  "properties": {
+    "number": {
+      "description": "The layer the print is in, counting the first as 1.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "of": {
+      "description": "How many layers the file plans.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "z_mm": {
+      "description": "The layer's height, in millimetres, when the file states it.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "number",
+    "of"
+  ],
+  "title": "PlannedLayer",
+  "type": "object"
+}
+```
+
+### PlannedObject
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One object the print's file lays down, and the bed area it covers.",
+  "properties": {
+    "name": {
+      "description": "Its name, as the file labels it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "x_mm": {
+      "description": "The least and most X its material reaches, in millimetres.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "y_mm": {
+      "description": "The least and most Y its material reaches, in millimetres.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    }
+  },
+  "required": [
+    "x_mm",
+    "y_mm"
+  ],
+  "title": "PlannedObject",
+  "type": "object"
 }
 ```
 
@@ -23255,6 +23657,115 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "PlanFact": {
+      "description": "A fact of the plan the print's file does not state.",
+      "oneOf": [
+        {
+          "const": "layer",
+          "description": "The file marks no layers.",
+          "type": "string"
+        },
+        {
+          "const": "final_z",
+          "description": "The file states no final height.",
+          "type": "string"
+        },
+        {
+          "const": "extrusion_types",
+          "description": "The file labels no extrusion types.",
+          "type": "string"
+        },
+        {
+          "const": "slicer_time_left",
+          "description": "The file carries no estimate of the time left, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "flow_factor",
+          "description": "The file sets no flow factor, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "fan_percent",
+          "description": "The file sets no part-cooling fan speed, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "objects",
+          "description": "The file labels no objects.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedLayer": {
+      "additionalProperties": false,
+      "description": "One layer of the plan, as the context answers it.",
+      "properties": {
+        "number": {
+          "description": "The layer the print is in, counting the first as 1.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "of": {
+          "description": "How many layers the file plans.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "The layer's height, in millimetres, when the file states it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "number",
+        "of"
+      ],
+      "type": "object"
+    },
+    "PlannedObject": {
+      "additionalProperties": false,
+      "description": "One object the print's file lays down, and the bed area it covers.",
+      "properties": {
+        "name": {
+          "description": "Its name, as the file labels it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "x_mm": {
+          "description": "The least and most X its material reaches, in millimetres.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "y_mm": {
+          "description": "The least and most Y its material reaches, in millimetres.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "x_mm",
+        "y_mm"
+      ],
+      "type": "object"
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -23521,6 +24032,106 @@ Declared by `printobserver-core`.
       "title": "Reported",
       "type": "object"
     },
+    "SetValue": {
+      "additionalProperties": false,
+      "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
+      "properties": {
+        "file": {
+          "description": "What the file's own commands set it to, by the current position.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "printobserver": {
+          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SlicerPlan": {
+      "additionalProperties": false,
+      "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
+      "properties": {
+        "extrusion_types": {
+          "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "fan_percent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SetValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The part-cooling fan speed, in percent."
+        },
+        "final_z_mm": {
+          "description": "The final layer's height, in millimetres.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "flow_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SetValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The flow factor, one meaning one hundred percent."
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedLayer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The layer the print is in and its height; absent before the first."
+        },
+        "objects": {
+          "description": "Every object the file lays down, each with the bed area it covers.",
+          "items": {
+            "$ref": "#/$defs/PlannedObject"
+          },
+          "type": "array"
+        },
+        "slicer_time_left_min": {
+          "description": "The slicer's own estimate of the minutes left, at the current position.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "unknown": {
+          "description": "The facts the file does not state, which are therefore unknown rather\nthan absent.",
+          "items": {
+            "$ref": "#/$defs/PlanFact"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
       "format": "date-time",
@@ -23634,6 +24245,17 @@ Declared by `printobserver-core`.
         "$ref": "#/$defs/EventRecord"
       },
       "type": "array"
+    },
+    "slicer_plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SlicerPlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the slicer planned at the job's current file position, read from\nthe print's own G-code: absent when the file could not be read, or the\njob is not this print's."
     }
   },
   "required": [
@@ -31313,6 +31935,38 @@ Declared by `printobserver-supervisor-api`.
 }
 ```
 
+### SetValue
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
+  "properties": {
+    "file": {
+      "description": "What the file's own commands set it to, by the current position.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "printobserver": {
+      "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "title": "SetValue",
+  "type": "object"
+}
+```
+
 ### SheetComparison
 
 Declared by `printobserver-core`.
@@ -32045,6 +32699,226 @@ Declared by `printobserver-core`.
     "freshness"
   ],
   "title": "SignalPosition",
+  "type": "object"
+}
+```
+
+### SlicerPlan
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PlanFact": {
+      "description": "A fact of the plan the print's file does not state.",
+      "oneOf": [
+        {
+          "const": "layer",
+          "description": "The file marks no layers.",
+          "type": "string"
+        },
+        {
+          "const": "final_z",
+          "description": "The file states no final height.",
+          "type": "string"
+        },
+        {
+          "const": "extrusion_types",
+          "description": "The file labels no extrusion types.",
+          "type": "string"
+        },
+        {
+          "const": "slicer_time_left",
+          "description": "The file carries no estimate of the time left, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "flow_factor",
+          "description": "The file sets no flow factor, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "fan_percent",
+          "description": "The file sets no part-cooling fan speed, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "objects",
+          "description": "The file labels no objects.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedLayer": {
+      "additionalProperties": false,
+      "description": "One layer of the plan, as the context answers it.",
+      "properties": {
+        "number": {
+          "description": "The layer the print is in, counting the first as 1.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "of": {
+          "description": "How many layers the file plans.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "The layer's height, in millimetres, when the file states it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "number",
+        "of"
+      ],
+      "type": "object"
+    },
+    "PlannedObject": {
+      "additionalProperties": false,
+      "description": "One object the print's file lays down, and the bed area it covers.",
+      "properties": {
+        "name": {
+          "description": "Its name, as the file labels it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "x_mm": {
+          "description": "The least and most X its material reaches, in millimetres.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "y_mm": {
+          "description": "The least and most Y its material reaches, in millimetres.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "x_mm",
+        "y_mm"
+      ],
+      "type": "object"
+    },
+    "SetValue": {
+      "additionalProperties": false,
+      "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
+      "properties": {
+        "file": {
+          "description": "What the file's own commands set it to, by the current position.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "printobserver": {
+          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
+  "properties": {
+    "extrusion_types": {
+      "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "fan_percent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SetValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The part-cooling fan speed, in percent."
+    },
+    "final_z_mm": {
+      "description": "The final layer's height, in millimetres.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "flow_factor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SetValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The flow factor, one meaning one hundred percent."
+    },
+    "layer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlannedLayer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The layer the print is in and its height; absent before the first."
+    },
+    "objects": {
+      "description": "Every object the file lays down, each with the bed area it covers.",
+      "items": {
+        "$ref": "#/$defs/PlannedObject"
+      },
+      "type": "array"
+    },
+    "slicer_time_left_min": {
+      "description": "The slicer's own estimate of the minutes left, at the current position.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "unknown": {
+      "description": "The facts the file does not state, which are therefore unknown rather\nthan absent.",
+      "items": {
+        "$ref": "#/$defs/PlanFact"
+      },
+      "type": "array"
+    }
+  },
+  "title": "SlicerPlan",
   "type": "object"
 }
 ```

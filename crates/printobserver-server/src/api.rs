@@ -925,9 +925,9 @@ async fn status(
         }
         Err(error) => return refusal(store_status(&error), error),
     }
-    let context = match state.supervisor.context(print_id).await {
+    let context = match context_of(&state, print_id).await {
         Ok(context) => context,
-        Err(error) => return refusal(core_status(&error), error),
+        Err(refused) => return refused,
     };
     let session = match state.sessions.session(print_id).await {
         Ok(session) => session,
@@ -946,6 +946,29 @@ async fn status(
     )
 }
 
+/// One print's context, read off the request's own thread.
+///
+/// The first read of a print's context after it starts reads the print's
+/// whole G-code to index it, through a printer port that blocks while it
+/// reads, so it is taken on a blocking thread, as a look is: a request that
+/// held an asynchronous worker for the length of a download would hold every
+/// task queued behind it there too.
+async fn context_of(
+    state: &ApiState,
+    print_id: PrintId,
+) -> Result<printobserver_core::PrintContext, Response> {
+    let supervisor = Arc::clone(&state.supervisor);
+    let read = tokio::task::spawn_blocking(move || {
+        printobserver_core::block_on(supervisor.context(print_id))
+    })
+    .await;
+    match read {
+        Ok(Ok(context)) => Ok(context),
+        Ok(Err(error)) => Err(refusal(core_status(&error), error)),
+        Err(error) => Err(refusal(StatusCode::INTERNAL_SERVER_ERROR, error)),
+    }
+}
+
 /// Read everything a supervision turn is given about one print, with the
 /// latest image materialized.
 ///
@@ -961,9 +984,9 @@ async fn context(
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
-    let context = match state.supervisor.context(print_id).await {
+    let context = match context_of(&state, print_id).await {
         Ok(context) => context,
-        Err(error) => return refusal(core_status(&error), error),
+        Err(refused) => return refused,
     };
     let mut image_path = None;
     if let Some(latest) = context.latest_image.as_ref() {

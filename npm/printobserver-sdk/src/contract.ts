@@ -142,6 +142,12 @@ export interface ActionAnswer {
 export interface ActionExecutedPayload {
   /** The action's identifier. */
   action_id: ActionId;
+  /**
+   * How far into its file the print had last been read to have got when
+   * the action was taken, in bytes, when that was known: what places a
+   * change against the commands the file sets the same thing with.
+   */
+  file_position_bytes?: number | null;
   /** The bounded intervention it opened, when it opened one. */
   intervention_id?: InterventionId | null;
 }
@@ -652,6 +658,22 @@ export interface Footprint {
 
 /** Why a camera frame was not one to hand the agent. */
 export type FrameCause = "blank" | "undecodable";
+
+/**
+ * A print's G-code was read and indexed: what the slicer planned at each
+ * file position is now known for it, without reading the file again.
+ *
+ * Written once per index built, which is once per print for as long as the
+ * server runs.
+ */
+export interface GcodeIndexedPayload {
+  /** How many bytes of it were read. */
+  bytes: number;
+  /** The file that was indexed. */
+  file_name: string;
+  /** How many layers it plans. */
+  layers: number;
+}
 
 /** One tool heater whose target was above zero. */
 export interface HeatedTool {
@@ -1169,6 +1191,36 @@ export interface PeriodicObservationPayload {
   printer?: PrinterSnapshot | null;
 }
 
+/** A fact of the plan the print's file does not state. */
+export type PlanFact =
+  | "layer"
+  | "final_z"
+  | "extrusion_types"
+  | "slicer_time_left"
+  | "flow_factor"
+  | "fan_percent"
+  | "objects";
+
+/** One layer of the plan, as the context answers it. */
+export interface PlannedLayer {
+  /** The layer the print is in, counting the first as 1. */
+  number: number;
+  /** How many layers the file plans. */
+  of: number;
+  /** The layer's height, in millimetres, when the file states it. */
+  z_mm?: number | null;
+}
+
+/** One object the print's file lays down, and the bed area it covers. */
+export interface PlannedObject {
+  /** Its name, as the file labels it. */
+  name?: string | null;
+  /** The least and most X its material reaches, in millimetres. */
+  x_mm: Array<number>;
+  /** The least and most Y its material reaches, in millimetres. */
+  y_mm: Array<number>;
+}
+
 /** The decision policy took on one request. */
 export type PolicyDecision = "accepted" | { rejected: RejectionReason };
 
@@ -1424,6 +1476,12 @@ export interface PrintContext {
   printer?: PrinterSnapshot | null;
   /** A bounded list of this print's events, newest first. */
   recent_events: Array<EventRecord>;
+  /**
+   * What the slicer planned at the job's current file position, read from
+   * the print's own G-code: absent when the file could not be read, or the
+   * job is not this print's.
+   */
+  slicer_plan?: SlicerPlan | null;
 }
 
 /** One print's end, as its `print_ended` event stored it. */
@@ -1870,6 +1928,20 @@ export interface Reported {
 }
 
 /**
+ * One adjustable as the print's file set it at the current position, and as
+ * a change made through this program since then left it.
+ */
+export interface SetValue {
+  /** What the file's own commands set it to, by the current position. */
+  file?: number | null;
+  /**
+   * What the latest change made through this program set it to, when one
+   * was made after the file last set it.
+   */
+  printobserver?: number | null;
+}
+
+/**
  * A build sheet's identifier as the sheet table names it, such as
  * `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
  */
@@ -1902,6 +1974,39 @@ export interface SignalPosition {
   freshness: PositionFreshness;
   /** The position. */
   position: FilePosition;
+}
+
+/**
+ * What the slicer planned at the print's current file position: the shape
+ * and place of what should be printing, read from the print's own G-code.
+ *
+ * These are the slicer's plan rather than an observation: a feature named
+ * here is part of the design at this height, and nothing here says how well
+ * it printed.
+ */
+export interface SlicerPlan {
+  /**
+   * What the current layer lays material as, in the order the file first
+   * names each: `Perimeter`, `Support material`, `Bridge infill`.
+   */
+  extrusion_types?: Array<string>;
+  /** The part-cooling fan speed, in percent. */
+  fan_percent?: SetValue | null;
+  /** The final layer's height, in millimetres. */
+  final_z_mm?: number | null;
+  /** The flow factor, one meaning one hundred percent. */
+  flow_factor?: SetValue | null;
+  /** The layer the print is in and its height; absent before the first. */
+  layer?: PlannedLayer | null;
+  /** Every object the file lays down, each with the bed area it covers. */
+  objects?: Array<PlannedObject>;
+  /** The slicer's own estimate of the minutes left, at the current position. */
+  slicer_time_left_min?: number | null;
+  /**
+   * The facts the file does not state, which are therefore unknown rather
+   * than absent.
+   */
+  unknown?: Array<PlanFact>;
 }
 
 /** A spool's remaining figure was corrected. */
@@ -2371,6 +2476,7 @@ export interface EventPayloads {
   filament_change_signalled: FilamentChangeSignalledPayload;
   filament_consumed: FilamentConsumedPayload;
   file_tally_rebaselined: FileTallyRebaselinedPayload;
+  gcode_indexed: GcodeIndexedPayload;
   intervention_expired: InterventionExpiredPayload;
   malformed_external_event: MalformedExternalEventPayload;
   obico_failure_alert: ObicoFailureAlertPayload;
@@ -2415,6 +2521,7 @@ export const EVENT_KINDS = [
   "filament_change_signalled",
   "filament_consumed",
   "file_tally_rebaselined",
+  "gcode_indexed",
   "intervention_expired",
   "malformed_external_event",
   "obico_failure_alert",
@@ -2545,6 +2652,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "ActionId"
+     }
+    },
+    "file_position_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
      }
     },
     "intervention_id": {
@@ -3687,6 +3803,35 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "blank",
    "undecodable"
   ]
+ },
+ "GcodeIndexedPayload": {
+  "struct": {
+   "fields": {
+    "bytes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "layers": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
  },
  "HeatedTool": {
   "struct": {
@@ -4932,6 +5077,85 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "PlanFact": {
+  "enum": [
+   "layer",
+   "final_z",
+   "extrusion_types",
+   "slicer_time_left",
+   "flow_factor",
+   "fan_percent",
+   "objects"
+  ]
+ },
+ "PlannedLayer": {
+  "struct": {
+   "fields": {
+    "number": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "of": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PlannedObject": {
+  "struct": {
+   "fields": {
+    "name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "x_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "number"
+      },
+      "non_empty": true
+     }
+    },
+    "y_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "number"
+      },
+      "non_empty": true
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "PolicyDecision": {
   "union": {
    "tag_field": "",
@@ -5881,6 +6105,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "ref": "EventRecord"
       },
       "non_empty": false
+     }
+    },
+    "slicer_plan": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SlicerPlan"
+      }
      }
     }
    },
@@ -7269,6 +7502,32 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "SetValue": {
+  "struct": {
+   "fields": {
+    "file": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "printobserver": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "SheetId": {
   "alias": {
    "scalar": "string"
@@ -7462,6 +7721,89 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "FilePosition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SlicerPlan": {
+  "struct": {
+   "fields": {
+    "extrusion_types": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
+     }
+    },
+    "fan_percent": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SetValue"
+      }
+     }
+    },
+    "final_z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "flow_factor": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SetValue"
+      }
+     }
+    },
+    "layer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PlannedLayer"
+      }
+     }
+    },
+    "objects": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlannedObject"
+      },
+      "non_empty": false
+     }
+    },
+    "slicer_time_left_min": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "unknown": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlanFact"
+      },
+      "non_empty": false
      }
     }
    },

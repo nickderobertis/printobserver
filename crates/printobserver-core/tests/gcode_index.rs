@@ -191,8 +191,8 @@ fn the_flow_and_the_fan_are_what_the_file_set_by_the_position() {
 }
 
 /// Each labelled object is named once and covers the rectangle its material
-/// reached, an arc's whole circle included; moves outside any object, and
-/// moves that lay nothing, reach none.
+/// reached, the top of a clockwise half circle included; moves outside any
+/// object, and moves that lay nothing, reach none.
 #[test]
 fn each_object_covers_the_bed_area_its_material_reached() {
     let index = indexed(PLATE);
@@ -204,7 +204,7 @@ fn each_object_covers_the_bed_area_its_material_reached() {
             PlannedObject {
                 name: Some("box.stl".to_owned()),
                 x_mm: [10.0, 22.0],
-                y_mm: [5.0, 20.0],
+                y_mm: [10.0, 20.0],
             },
             PlannedObject {
                 name: Some("tower.stl".to_owned()),
@@ -261,7 +261,7 @@ fn silent_mode_estimates_alone_leave_the_time_left_unknown() {
 
 /// Absolute extrusion and absolute or relative axes are followed, `G92` and
 /// `G28` move the reckoning without laying anything, and a radius arc reaches
-/// twice its radius about where it began.
+/// the side of its chord its direction sweeps.
 #[test]
 fn the_reckoning_follows_every_mode_a_slicer_writes() {
     let text = "\
@@ -294,7 +294,11 @@ M486 S-1
     let part = &plan.objects[0];
 
     assert_eq!(part.name.as_deref(), Some("part"));
-    assert_eq!((part.x_mm, part.y_mm), ([-2.0, 35.0], [-2.0, 10.0]));
+    assert_eq!(
+        (part.x_mm, part.y_mm),
+        ([0.0, 35.0], [-1.0, 10.0]),
+        "the half circle below its chord was not reached, or more than it"
+    );
     assert_eq!(
         (plan.objects[1].x_mm, plan.objects[1].y_mm),
         ([0.0, 0.0], [0.0, 1.0]),
@@ -383,4 +387,41 @@ fn one_caller_builds_a_prints_index_and_the_others_wait_for_it() {
     assert_eq!(index, built);
     assert_eq!(indexes.built(print_id), Some(built));
     assert_eq!(indexes.built(PrintId::new()), None);
+}
+
+/// A nearly straight arc about a far centre covers about what its line does,
+/// rather than the whole of its circle, and a negative radius goes the long
+/// way round.
+#[test]
+fn an_arc_covers_the_part_of_its_circle_it_sweeps() {
+    let text = "\
+M83
+M486 S0
+G1 X0 Y0
+G2 X10 Y0 I5 J-1000 E1
+M486 S-1
+M486 S1
+G1 X0 Y0
+G2 X1 Y1 R-1 E1 ; three quarters of the circle about (0, 1)
+M486 S-1
+M486 S2
+G1 X0 Y0
+G3 X0 Y0 I1 J0 E1 ; ending where it began, the whole circle
+M486 S-1
+";
+    let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
+    let covered: Vec<([f64; 2], [f64; 2])> = plan
+        .objects
+        .iter()
+        .map(|object| (object.x_mm, object.y_mm))
+        .collect();
+
+    assert_eq!(
+        covered,
+        vec![
+            ([0.0, 10.0], [0.0, 0.0]),
+            ([-1.0, 1.0], [0.0, 2.0]),
+            ([0.0, 2.0], [-1.0, 1.0]),
+        ]
+    );
 }
