@@ -704,6 +704,54 @@ async fn an_ended_print_takes_its_evidence_with_it() {
     scoring.store(false, Ordering::SeqCst);
 }
 
+/// A print carrying no `Obico` identifier is never matched on its file alone:
+/// a record naming no start, and a print whose job reports no running time to
+/// put a start at, each leave the print reading no scoring, however the record
+/// moves.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unidentified_print_is_never_matched_on_its_file_alone() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, _) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let print_id = world
+        .stores
+        .prints
+        .open_print(None, Some("benchy.gcode".to_owned()))
+        .await
+        .expect("a print opens")
+        .id;
+    rest.answer(|answer| {
+        answer["current_print"]["id"] = json!(9000);
+        answer["current_print"]["started_at"] = Value::Null;
+    });
+    let scoring = keep_scoring_both(&rest);
+    never_scores_over(&world, &rest, print_id, 5).await;
+
+    // A job whose printer reports no running time puts no start on the print.
+    world.printer.runs_job(
+        "unstarted.gcode",
+        printobserver_printer_api::PrinterState::Printing,
+        None,
+    );
+    let unstarted = world
+        .stores
+        .prints
+        .open_print(None, Some("unstarted.gcode".to_owned()))
+        .await
+        .expect("a print opens")
+        .id;
+    rest.answer(|answer| {
+        answer["current_print"]["filename"] = json!("unstarted.gcode");
+        answer["current_print"]["started_at"] = json!("2026-03-01T12:00:00Z");
+    });
+    never_scores_over(&world, &rest, unstarted, 5).await;
+    let (_, status) = world
+        .get(&world.operation_url("/v1/prints/{print_id}/status", unstarted))
+        .await;
+    assert_eq!(status["print"]["job_started_at"], Value::Null, "{status}");
+    scoring.store(false, Ordering::SeqCst);
+}
+
 /// One print's status never reads another print's evidence: while the active
 /// print reads scoring, a print the record does not name reads no scoring.
 #[tokio::test(flavor = "multi_thread")]

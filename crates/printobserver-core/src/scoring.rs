@@ -44,7 +44,8 @@
 //! (an earlier start is no objection) could not tell apart. A print this
 //! server first sighted only after a pause is matched by nothing until an
 //! alert names its provider identifier: its status then reads no scoring
-//! rather than another print's.
+//! rather than another print's. Nor is a print matched with either start
+//! missing: a file name alone names every job of that file.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
@@ -159,7 +160,8 @@ fn names(print: &PrintRecord, first_start: Option<Timestamp>, named: &ProviderPr
                     (Some(ours), Some(theirs)) => {
                         seconds_between(ours, theirs).abs() <= JOB_IDENTITY_TOLERANCE_S
                     }
-                    _ => true,
+                    // A file name alone names any job of that file.
+                    _ => false,
                 }
         }
     }
