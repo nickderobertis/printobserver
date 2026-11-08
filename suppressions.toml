@@ -4629,7 +4629,7 @@ reason = "A one-shot local program run through `repo_checks.shell.run`, the repo
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest-wiring/mock_turn.py"
-site = "done = run(words, timeout=TIMEOUT_S)"
+site = "done = run(argv, timeout=TIMEOUT_S)"
 reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
 
 [[suppression]]
@@ -4661,3 +4661,21 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/repo-checks/src/repo_checks/checks_real_prints.py"
 site = "listing = run("
 reason = "One blocking `git ls-files` a synchronous repository check reads its answer from before it goes on, through `repo_checks.shell.run`, the one subprocess path this repository allows. There is nothing to overlap it with, and git's command line is the interface, so no typed client applies."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case \"Skill\", {\"skill\": str(skill)}:"
+reason = "Claude Code publishes no schema for its transcript's tool calls. A moved skill call only drops a `skill:` entry from what a turn opened, which the record shows rather than any assertion relying on it."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/starts.py"
+site = "return sorted(self.config_dir.glob(\"projects/*/*.jsonl\"))"
+reason = "Where Claude Code keeps its transcripts has no published contract. `test_replay.py` is the drift gate: it fails any start request whose conversation reports no commands, which is what a moved directory reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/starts.py"
+site = "\"CLAUDE_CONFIG_DIR\": str(self.config_dir),"
+reason = "The variable Claude Code reads its configuration directory from has no published contract; it is the same one the supervisor port's sign-in table names. A move of it puts the skill and the transcripts where the harness does not look, which `test_replay.py` fails on as commands and usage reported empty."

@@ -676,6 +676,9 @@ class RunReport:
                         self.commands.append(command)
                     case "Read", {"file_path": str(path)}:
                         self.opened.append(Path(path).name)
+                    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
+                    case "Skill", {"skill": str(skill)}:
+                        self.opened.append(f"skill:{skill}")
                     case _:
                         pass
             case _:

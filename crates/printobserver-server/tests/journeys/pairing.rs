@@ -32,9 +32,9 @@ const RECORDED: &[u8] = include_bytes!(
 const SLICED_FOR_PLA: &str = "; filament_type = PLA\n";
 
 /// The file sliced for PLA, for PETG, and naming no material.
-const PLA_FILE: &str = "bridge-pla.gcode";
+pub(crate) const PLA_FILE: &str = "bridge-pla.gcode";
 /// The same file, sliced for PETG.
-const PETG_FILE: &str = "bridge-petg.gcode";
+pub(crate) const PETG_FILE: &str = "bridge-petg.gcode";
 /// The same file, its `filament_type` line gone.
 const UNNAMED_FILE: &str = "bridge-unnamed.gcode";
 
@@ -50,7 +50,7 @@ fn recorded_as(line: &str) -> Vec<u8> {
 
 /// A server watching a scripted `OctoPrint` that holds the three files, its
 /// configuration edited by a journey.
-async fn watching(edit: impl FnOnce(&mut toml::Value)) -> Watch {
+pub(crate) async fn watching(edit: impl FnOnce(&mut toml::Value)) -> Watch {
     let watch = Watch::start(edit, |config| {
         config.printer_poll = core::time::Duration::from_millis(200);
     })
@@ -68,7 +68,7 @@ async fn watching(edit: impl FnOnce(&mut toml::Value)) -> Watch {
 }
 
 /// One URL of an operation, with its path's identifier filled in.
-fn url_of(watch: &Watch, operation: &str, id: Option<(&str, &str)>) -> String {
+pub(crate) fn url_of(watch: &Watch, operation: &str, id: Option<(&str, &str)>) -> String {
     let mut path = printobserver_server::operation(operation)
         .expect("the operation is declared")
         .full_path();
@@ -79,7 +79,11 @@ fn url_of(watch: &Watch, operation: &str, id: Option<(&str, &str)>) -> String {
 }
 
 /// Post one body, answering the status and the answer.
-async fn posted(client: &reqwest::Client, url: &str, body: &Value) -> (reqwest::StatusCode, Value) {
+pub(crate) async fn posted(
+    client: &reqwest::Client,
+    url: &str,
+    body: &Value,
+) -> (reqwest::StatusCode, Value) {
     let response = client
         .post(url)
         .json(body)
@@ -91,7 +95,7 @@ async fn posted(client: &reqwest::Client, url: &str, body: &Value) -> (reqwest::
 }
 
 /// Register a full roll of one material and load it onto tool 0.
-async fn loaded_with(watch: &Watch, material: &str) {
+pub(crate) async fn loaded_with(watch: &Watch, material: &str) {
     let (status, registered) = posted(
         &watch.client,
         &url_of(watch, "register_spool", None),
@@ -162,7 +166,7 @@ async fn started_by_operator(watch: &Watch, body: &Value) -> (reqwest::StatusCod
 }
 
 /// How many times `OctoPrint` was told to start a job.
-fn starts(watch: &Watch) -> usize {
+pub(crate) fn starts(watch: &Watch) -> usize {
     watch
         .octoprint
         .job_commands()
@@ -172,12 +176,12 @@ fn starts(watch: &Watch) -> usize {
 }
 
 /// The rejection an answer carries.
-fn rejection(answer: &Value) -> &Value {
+pub(crate) fn rejection(answer: &Value) -> &Value {
     &answer["record"]["decision"]["rejected"]
 }
 
 /// One kind of event in one print's history.
-async fn events_of(watch: &Watch, print_id: &str, kind: &str) -> Vec<Value> {
+pub(crate) async fn events_of(watch: &Watch, print_id: &str, kind: &str) -> Vec<Value> {
     watch
         .get(&format!("/prints/{print_id}/history?limit=500"))
         .await["events"]
