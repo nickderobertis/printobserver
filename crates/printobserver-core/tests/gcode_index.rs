@@ -463,3 +463,104 @@ G1 X50 Y50 E1
         "a malformed number moved the reader off object 2, or past its stop"
     );
 }
+
+/// `M106` with no speed is full speed, and a speed past full is read as full.
+#[test]
+fn a_fan_with_no_speed_or_past_full_is_read_as_full() {
+    let text = "M106\nG4\nM106 S900\n";
+    let index = indexed(text);
+    assert_eq!(
+        index.fan_at(past_in(text, "G4")).map(|set| set.value),
+        Some(100.0)
+    );
+    assert_eq!(
+        index
+            .fan_at(i64::try_from(text.len()).expect("small"))
+            .map(|set| set.value),
+        Some(100.0)
+    );
+}
+
+/// An object's name is held to a bound counted in characters, so a name of
+/// many-byte characters is cut on a character rather than a byte.
+#[test]
+fn an_object_name_is_held_to_a_bound_in_characters() {
+    let text = format!(
+        "M83\nM486 S0\nM486 A{}\nG1 X0 Y0\nG1 X1 Y0 E1\nM486 S-1\n",
+        "é".repeat(200)
+    );
+    let plan = indexed(&text).plan_at(i64::try_from(text.len()).expect("small"));
+
+    let name = plan.objects[0].name.clone().expect("the object is named");
+    assert_eq!(name.chars().count(), 120);
+    assert!(name.chars().all(|character| character == 'é'));
+}
+
+/// An arc whose radius cannot reach its end, and one ending where it began,
+/// reach no further than their ends.
+#[test]
+fn a_radius_arc_with_no_circle_reaches_its_ends_alone() {
+    let text = "\
+M83
+M486 S0
+G1 X0 Y0
+G2 X10 Y0 R1 E1 ; the radius cannot span the chord
+M486 S-1
+M486 S1
+G1 X5 Y5
+G2 X5 Y5 R2 E1 ; ending where it began
+M486 S-1
+";
+    let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
+    let covered: Vec<(f64, f64, f64, f64)> = plan
+        .objects
+        .iter()
+        .map(|object| {
+            (
+                object.x_min_mm,
+                object.x_max_mm,
+                object.y_min_mm,
+                object.y_max_mm,
+            )
+        })
+        .collect();
+
+    assert_eq!(covered, vec![(0.0, 10.0, 0.0, 0.0), (5.0, 5.0, 5.0, 5.0)]);
+}
+
+/// A number written with more digits than are summed exactly is read by a
+/// full parse, and a word that is no number is no coordinate.
+#[test]
+fn a_long_or_unusual_number_is_read_by_a_full_parse() {
+    let text = "\
+M83
+M486 S0
+G1 X0.0000000000000001 Y0
+G1 X5.000000000000000001 Y1 E1
+G1 X--5 Y0 E1
+G1 X10.00000000000000000001 Y2 E1
+M486 S-1
+";
+    let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
+    let object = &plan.objects[0];
+
+    assert_eq!(
+        (
+            object.x_min_mm,
+            object.x_max_mm,
+            object.y_min_mm,
+            object.y_max_mm
+        ),
+        (0.0, 10.0, 0.0, 2.0),
+        "an unusual number was misread, or a word that is no number moved the head"
+    );
+}
+
+/// The offset just past the first line carrying `needle` in `text`.
+fn past_in(text: &str, needle: &str) -> i64 {
+    let at = text.find(needle).expect("the file carries the line");
+    let end = text[at..]
+        .find('\n')
+        .map_or(text.len(), |newline| at + newline + 1);
+    i64::try_from(end).expect("a small offset")
+}
