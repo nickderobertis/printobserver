@@ -10,6 +10,7 @@
 //! responder this crate ships. What is asserted is read off that process: the
 //! directory it ran in, and the system prompt it was handed.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use printobserver_core::Actor;
@@ -368,9 +369,27 @@ const COMMON_OPERATIONS: &str = "reference/common-operations.md";
 /// The heading of that document's worked start.
 const START_HEADING: &str = "### start_print";
 
-/// Every `start-print` command line the skill's documents show under the
-/// worked start, as written.
-fn documented_starts() -> Vec<String> {
+/// One documented start: its command line, and the request the document shows
+/// the real program made of it.
+struct DocumentedStart {
+    /// The command line, as written.
+    line: String,
+    /// Each `record.request.action.<field>: <value>` line its output shows, by
+    /// the field's dotted path under the action.
+    requested: BTreeMap<String, String>,
+}
+
+/// The output prefix under which a start's answer shows the request it made.
+const REQUESTED: &str = "record.request.action.";
+
+/// Every `start-print` command the skill's documents show under the worked
+/// start, with the request each one's shown output says it made.
+///
+/// That output is what the command-line program printed against a real server:
+/// `printobserver`'s documented-examples journey runs each example and refuses
+/// a document showing anything else, so it is the program's own translation of
+/// the line, held here against this journey's.
+fn documented_starts() -> Vec<DocumentedStart> {
     let path = committed_skill()
         .parent()
         .expect("the skill sits in a directory")
@@ -381,12 +400,75 @@ fn documented_starts() -> Vec<String> {
         .split_once(START_HEADING)
         .unwrap_or_else(|| panic!("{COMMON_OPERATIONS} carries no `{START_HEADING}`"));
     let section = after.split("\n### ").next().unwrap_or_default();
-    section
-        .lines()
-        .filter_map(|line| line.strip_prefix("$ "))
-        .filter(|command| command.starts_with("printobserver start-print "))
-        .map(str::to_owned)
-        .collect()
+    let mut found: Vec<DocumentedStart> = Vec::new();
+    let mut reading = false;
+    for line in section.lines() {
+        if let Some(command) = line.strip_prefix("$ ") {
+            reading = command.starts_with("printobserver start-print ");
+            if reading {
+                found.push(DocumentedStart {
+                    line: command.to_owned(),
+                    requested: BTreeMap::new(),
+                });
+            }
+        } else if line.starts_with("```") {
+            reading = false;
+        } else if reading
+            && let Some((field, value)) = line
+                .strip_prefix(REQUESTED)
+                .and_then(|shown| shown.split_once(": "))
+            && let Some(start) = found.last_mut()
+        {
+            start.requested.insert(field.to_owned(), value.to_owned());
+        }
+    }
+    found
+}
+
+/// A request body's fields by dotted path, each value written as the program's
+/// output writes it: a string bare, an empty document as `{}`, anything else
+/// as JSON.
+fn flattened(prefix: &str, value: &Value, into: &mut BTreeMap<String, String>) {
+    match value {
+        Value::Object(fields) if !fields.is_empty() => {
+            for (name, field) in fields {
+                let path = if prefix.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{prefix}.{name}")
+                };
+                flattened(&path, field, into);
+            }
+        }
+        Value::String(text) => {
+            into.insert(prefix.to_owned(), text.clone());
+        }
+        other => {
+            into.insert(prefix.to_owned(), other.to_string());
+        }
+    }
+}
+
+/// This journey's translation of a documented start is the one the program
+/// made of it: the operation it names and every field of the body it sends,
+/// as the document shows the program's own answer recording them.
+#[test]
+fn every_documented_start_is_translated_as_the_program_translates_it() {
+    let documented = documented_starts();
+    assert!(
+        !documented.is_empty(),
+        "{COMMON_OPERATIONS} shows no start under `{START_HEADING}`"
+    );
+    for start in &documented {
+        let (operation, _, body) = request_of(&start.line, "PRINT_ID", "FILE");
+        let mut translated = BTreeMap::from([("action".to_owned(), operation)]);
+        flattened("", &body, &mut translated);
+        assert_eq!(
+            translated, start.requested,
+            "`{}` is translated otherwise than the program's own answer records it",
+            start.line
+        );
+    }
 }
 
 /// One command line split into words as a POSIX shell splits it: single quotes
@@ -462,7 +544,7 @@ async fn every_documented_start_starts_on_the_sheet_it_declares_and_only_for_its
         !documented.is_empty(),
         "{COMMON_OPERATIONS} shows no start under `{START_HEADING}`"
     );
-    for line in &documented {
+    for DocumentedStart { line, .. } in &documented {
         for (material, file, accepted) in [
             ("PLA", crate::pairing::PLA_FILE, true),
             ("PETG", crate::pairing::PETG_FILE, false),
