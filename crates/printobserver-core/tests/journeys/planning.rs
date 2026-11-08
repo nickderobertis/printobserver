@@ -365,3 +365,174 @@ fn the_core_keeps_a_bounded_number_of_indexes() {
         "seventeen prints were all held, past the bound"
     );
 }
+
+/// A plan that sets the fan to full, off, and to full again.
+const REPEATED: &str = "\
+M83
+M106 S255
+;LAYER_CHANGE
+;Z:0.2
+;TYPE:Perimeter
+G1 X10 Y10
+G1 X20 Y10 E1
+M106 S255
+G1 X20 Y20 E1
+";
+
+/// A file setting the same value again after a change through this program
+/// puts its value back over the change, which no longer stands.
+#[test]
+fn a_file_repeating_a_value_takes_over_from_a_change_made_before_it() {
+    let world = World::new();
+    world.printer.holds_gcode(FILE, REPEATED);
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Printing);
+    world.printer.reports_state(PrinterState::Printing);
+    let first = REPEATED.find("G1 X20 Y10 E1").expect("the move") + "G1 X20 Y10 E1\n".len();
+    world
+        .printer
+        .reports_position(Some(i64::try_from(first).expect("small")), None);
+    let print = world.open_print(7);
+    world.context(print.id).expect("the context reads");
+    world
+        .request(print.id, fan(40.0, None))
+        .expect("the fan change is recorded");
+    let plan = world.context(print.id).expect("the context reads").slicer;
+    assert_eq!(
+        plan.and_then(|plan| plan.fan_percent),
+        Some(SetValue {
+            file: Some(100.0),
+            changed: Some(40.0)
+        })
+    );
+
+    world
+        .printer
+        .reports_position(Some(i64::try_from(REPEATED.len()).expect("small")), None);
+    let plan = world.context(print.id).expect("the context reads").slicer;
+    assert_eq!(
+        plan.and_then(|plan| plan.fan_percent),
+        Some(SetValue {
+            file: Some(100.0),
+            changed: None
+        }),
+        "the file's repeated command did not take over from the change"
+    );
+}
+
+/// A store that cannot say where the print had got leaves the action taken,
+/// and the change is placed at the file's start: whatever the file set since
+/// takes over from it.
+#[test]
+fn an_action_whose_place_cannot_be_read_is_placed_at_the_files_start() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.context(print.id).expect("the context reads");
+    world.store.fails(
+        crate::fakes::StoreMethod::FilePosition,
+        printobserver_core::store::StoreError::Database {
+            detail: "the ledger is locked".to_owned(),
+        },
+    );
+    let outcome = world
+        .request(print.id, flow(1.05))
+        .expect("the flow change is recorded");
+    assert!(outcome.executed.is_some_and(|executed| executed.is_ok()));
+    world.store.heals();
+
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(
+        plan.flow_factor,
+        Some(SetValue {
+            file: Some(1.0),
+            changed: None
+        })
+    );
+}
+
+/// An executed action whose payload is unreadable, or whose request is not in
+/// the print's history, changes nothing the plan answers.
+#[test]
+fn an_unreadable_or_unmatched_action_record_changes_nothing() {
+    use printobserver_core::store::{EventDraft, EventStore as _};
+    use printobserver_types::{EventBody, EventKind, EventSource, serde_json::json};
+
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    for payload in [
+        json!({ "not": "an action" }),
+        json!({ "action_id": printobserver_core::ActionId::new() }),
+    ] {
+        printobserver_core::block_on(world.store.append_event(EventDraft {
+            print_id: Some(print.id),
+            source: EventSource::new("system"),
+            received_at: printobserver_core::Clock::now(world.clock.as_ref()),
+            body: EventBody {
+                kind: EventKind::new("action_executed").expect("a kind"),
+                payload,
+            },
+            raw: None,
+        }))
+        .expect("the store takes the record");
+    }
+
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(
+        (plan.flow_factor, plan.fan_percent),
+        (
+            Some(SetValue {
+                file: Some(1.0),
+                changed: None
+            }),
+            Some(SetValue {
+                file: Some(0.0),
+                changed: None
+            })
+        )
+    );
+}
+
+/// A store that cannot read the print's history fails the context read, as
+/// every store read of the context does, rather than answering a plan that
+/// quietly leaves the print's changes out.
+#[test]
+fn a_history_the_store_cannot_read_fails_the_context_read() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.store.fails(
+        crate::fakes::StoreMethod::History,
+        printobserver_core::store::StoreError::Database {
+            detail: "the log is locked".to_owned(),
+        },
+    );
+    assert!(world.context(print.id).is_err());
+}
+
+/// A print whose file is named with a name no file could carry is planned
+/// with nothing, and nothing is read.
+#[test]
+fn a_print_whose_file_name_is_no_file_is_not_planned() {
+    let world = World::new();
+    world.printer.reports_state(PrinterState::Printing);
+    world
+        .printer
+        .reports_job(Some("a/b.gcode"), PrinterState::Printing);
+    world.printer.reports_position(Some(64), None);
+    let print = printobserver_core::block_on(
+        world
+            .store
+            .open_print(Some(9), Some("a/b.gcode".to_owned())),
+    )
+    .expect("the store opens a print");
+
+    let context = world.context(print.id).expect("the context reads");
+
+    assert_eq!(context.slicer, None);
+    assert_eq!(world.printer.gcode_reads("a/b.gcode"), 0);
+}

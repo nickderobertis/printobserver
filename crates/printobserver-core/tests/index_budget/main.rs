@@ -214,6 +214,14 @@ fn rendered(index: &GcodeIndex) -> Rendered {
         let held = per_field.entry(field).or_insert(json!(0));
         *held = json!(held.as_u64().unwrap_or(0) + u64::try_from(bytes).expect("a count"));
     }
+    // Every counted fact is one the plan answers at that layer: a field
+    // renamed or dropped would otherwise leave the count short in silence.
+    for fact in COUNTED_FACTS {
+        assert!(
+            per_field.contains_key(fact),
+            "the plan answers no {fact} at the layer measured: {per_field:?}"
+        );
+    }
     Rendered {
         layer,
         most_types,

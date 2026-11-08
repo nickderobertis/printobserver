@@ -848,7 +848,7 @@ class GcodeIndexedPayload(TypedDict):
     # How many bytes of it were read.
     bytes: int
     # The file that was indexed.
-    file_name: str
+    file_name: FileName
     # How many layers it plans.
     layers: int
 
@@ -5748,7 +5748,7 @@ SHAPES: dict[str, object] = json.loads(
      "paired_with": "",
      "required": true,
      "shape": {
-      "scalar": "string"
+      "ref": "FileName"
      }
     },
     "layers": {

@@ -670,7 +670,7 @@ export interface GcodeIndexedPayload {
   /** How many bytes of it were read. */
   bytes: number;
   /** The file that was indexed. */
-  file_name: string;
+  file_name: FileName;
   /** How many layers it plans. */
   layers: number;
 }
@@ -3819,7 +3819,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "paired_with": "",
      "required": true,
      "shape": {
-      "scalar": "string"
+      "ref": "FileName"
      }
     },
     "layers": {

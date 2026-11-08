@@ -823,7 +823,7 @@ impl IndexBuilder {
             return;
         }
         for (axis, letter) in ['X', 'Y', 'Z'].into_iter().enumerate() {
-            if let Some(value) = number(words, letter) {
+            if let Some(value) = number(words, letter).filter(|value| value.abs() <= AXIS_LIMIT) {
                 self.at[axis] = value;
             }
         }
@@ -908,14 +908,10 @@ impl IndexBuilder {
     }
 }
 
-/// Record a value a file set, unless it is the value already in force.
+/// Record a value a file set, where it set it — every time, the same value
+/// included, because a command repeating a value still puts it back over a
+/// change made since.
 fn push_changed(marks: &mut Vec<Mark<f64>>, at: u64, value: f64) {
-    if marks
-        .last()
-        .is_some_and(|last| (last.value - value).abs() < f64::EPSILON)
-    {
-        return;
-    }
     marks.push(Mark { at, value });
 }
 
@@ -1390,17 +1386,20 @@ impl crate::supervisor::Supervisor {
 
     /// One print's index, built from its file when there is none yet.
     async fn index_of(&self, print_id: PrintId, file: &str) -> Option<Arc<GcodeIndex>> {
+        // A name no file could carry is no file to read.
+        let file_name = printobserver_types::FileName::new(file).ok()?;
         let claim = match self.gcode_indexes().claim(print_id).await {
             Claimed::Ready(index) => return Some(index),
             Claimed::Build(claim) => claim,
         };
-        let file_name = printobserver_types::FileName::new(file).ok()?;
         let mut builder = IndexBuilder::new();
-        self.read_gcode(file_name, &mut builder).await.ok()?;
+        self.read_gcode(file_name.clone(), &mut builder)
+            .await
+            .ok()?;
         let index = claim.finish(builder.finish());
         self.gcode_indexes().trim(print_id);
         if let Ok(body) = printobserver_types::EventBody::of(&crate::kinds::GcodeIndexedPayload {
-            file_name: file.to_owned(),
+            file_name,
             bytes: index.bytes(),
             layers: u64::try_from(index.layer_count()).unwrap_or(u64::MAX),
         }) {

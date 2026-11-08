@@ -853,7 +853,7 @@ pub struct GcodeIndexedPayload {
     /// How many bytes of it were read.
     pub bytes: i64,
     /// The file that was indexed.
-    pub file_name: String,
+    pub file_name: FileName,
     /// How many layers it plans.
     pub layers: i64,
 }

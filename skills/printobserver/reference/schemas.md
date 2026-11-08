@@ -11415,6 +11415,18 @@ Declared by `printobserver-core`.
 
 ```json
 {
+  "$defs": {
+    "FileName": {
+      "description": "A file name a printer's own file API can be asked for: no path separator, no NUL byte, no `.` or `..` segment, no drive prefix, and not empty.",
+      "minLength": 1,
+      "not": {
+        "pattern": "^([.]{1,2}$|[A-Za-z]:)"
+      },
+      "pattern": "^[^/\\\\\u0000]+$",
+      "title": "FileName",
+      "type": "string"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "A print's G-code was read and indexed: what the slicer planned at each\nfile position is now known for it, without reading the file again.\n\nWritten once per index built, which is once per print for as long as the\nserver runs.",
@@ -11426,8 +11438,8 @@ Declared by `printobserver-core`.
       "type": "integer"
     },
     "file_name": {
-      "description": "The file that was indexed.",
-      "type": "string"
+      "$ref": "#/$defs/FileName",
+      "description": "The file that was indexed."
     },
     "layers": {
       "description": "How many layers it plans.",

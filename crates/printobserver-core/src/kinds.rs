@@ -33,7 +33,9 @@ use printobserver_supervisor_api::AgentAssessment;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventId, EventKind, EventPayload, EventSource, PrintId, Timestamp};
+use printobserver_types::{
+    EventId, EventKind, EventPayload, EventSource, FileName, PrintId, Timestamp,
+};
 
 /// The source name of an event the supervisor raised itself.
 pub const SYSTEM_SOURCE: &str = "system";
@@ -460,7 +462,7 @@ impl Sample for CameraDegradedPayload {
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct GcodeIndexedPayload {
     /// The file that was indexed.
-    pub file_name: String,
+    pub file_name: FileName,
     /// How many bytes of it were read.
     pub bytes: u64,
     /// How many layers it plans.
@@ -474,7 +476,7 @@ impl EventPayload for GcodeIndexedPayload {
 impl Sample for GcodeIndexedPayload {
     fn sample_full() -> Self {
         Self {
-            file_name: "benchy.gcode".to_owned(),
+            file_name: FileName::sample_full(),
             bytes: 440_608,
             layers: 150,
         }

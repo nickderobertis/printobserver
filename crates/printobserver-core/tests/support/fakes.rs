@@ -600,6 +600,9 @@ pub enum StoreMethod {
     AccountTallies,
     /// `record_file_position`.
     RecordFilePosition,
+    /// `file_position`, which an executed action reads its place in the file
+    /// from.
+    FilePosition,
     /// `history`, which the agent's interval is read back from.
     History,
     /// `due_interventions`, which the interventions left active are read by.
@@ -2422,6 +2425,9 @@ impl FilamentStore for FakeStore {
         &self,
         print_id: PrintId,
     ) -> printobserver_core::store::BoxFuture<'_, Result<Option<FilePosition>, StoreError>> {
+        if let Some(error) = self.induced(StoreMethod::FilePosition) {
+            return ready(Err(error));
+        }
         ready(Ok(self.read_ledger(|ledger| ledger.position(print_id))))
     }
 
