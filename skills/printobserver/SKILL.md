@@ -20,7 +20,7 @@ Six steps, in order, every turn. The commands are in
 [common operations](reference/common-operations.md) works each. Read them with your file tools.
 
 1. **Read the context.** The printer, the job, the bounds, recent events, the
-   latest picture.
+   latest picture. Read all of it, however long: never piped.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    and neither is a picture too dark, blurred or aimed at nothing: say so: it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
@@ -98,9 +98,9 @@ not. Not starting, ask nothing; tell a person what stops it. Never set an overri
 - **A refusal says what was allowed:** ask again inside it.
 - **The vocabulary is closed: no path in this system sends a command to the
   printer.**
-- **One command per shell call,** in full: never chained by `;`, `&&` or a pipe,
-  not after `cd`, not two of this program's; no variable, no usage listing. A
-  refusal says nothing of the command: write it so.
+- **One command per shell call,** in full: never piped, chained by `;` or `&&`, or
+  after `cd`; no variable, no usage listing. A refusal says nothing of it: write it
+  so.
 
 ## When to escalate instead
 
