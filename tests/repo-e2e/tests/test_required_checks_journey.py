@@ -15,7 +15,7 @@ from repo_checks.expect import failing, passing
 
 AGENTS = "AGENTS.md"
 CI = ".github/workflows/ci.yml"
-QUALIFIED = "    name: gate (${{ matrix.platform.id }})\n"
+QUALIFIED = "    name: integration (${{ matrix.platform.id }})\n"
 X86 = "- `gate (linux-x86_64)`\n"
 AARCH64 = "- `gate (linux-aarch64)`\n"
 
@@ -34,7 +34,7 @@ def test_the_committed_record_is_accepted(
 def test_a_stale_bare_matrix_job_name_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """`gate` is the job's key; its cells report under names carrying the platform."""
+    """`gate` names no job; each platform's aggregator reports a name carrying the platform."""
     broken = gate_copy()
     broken.edit(AGENTS, X86 + AARCH64, "- `gate`\n")
 
@@ -48,8 +48,8 @@ def test_a_record_naming_only_some_of_a_jobs_cells_is_refused(
 ) -> None:
     """A tier required on one platform is a merge path the other never blocked.
 
-    The integration job is the one whose cells span several platforms: the
-    gate's `linux-x86_64` cell is sharded, leaving its job one cell.
+    The integration job is the one whose cells span several platforms: every
+    gate is sharded, each platform's context reported by its own aggregator.
     """
     broken = gate_copy()
     broken.edit(AGENTS, "- `integration (linux-aarch64)`\n", "")
@@ -95,16 +95,20 @@ def test_a_required_name_several_cells_report_under_is_refused(
     for a second runner and left under the first one's id.
     """
     broken = gate_copy()
+    # The integration job's cells: every gate is sharded, and a shard cell is
+    # followed by its shard rather than by the next platform.
     broken.edit(
         CI,
-        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
-        "          - id: linux-x86_64\n            runner: ubuntu-24.04-arm\n",
+        "          - id: windows-x86_64\n",
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
+        "          - id: linux-x86_64\n            runner: ubuntu-24.04-arm\n"
+        "          - id: windows-x86_64\n",
     )
 
     result = broken.just("check-repo")
 
-    failing(result, naming="2 matrix cells of job `gate` report under that one name")
+    failing(result, naming="2 matrix cells of job `integration` report under that one name")
 
 
 def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
@@ -112,7 +116,7 @@ def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
 ) -> None:
     """A typo there would derive a context nothing reports, silently."""
     broken = gate_copy()
-    broken.edit(CI, QUALIFIED, "    name: gate (${{ matrix.platform.arch }})\n")
+    broken.edit(CI, QUALIFIED, "    name: integration (${{ matrix.platform.arch }})\n")
 
     result = broken.just("check-repo")
 

@@ -37,8 +37,6 @@ on:
         required: true
         type: choice
         options:
-          # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-          - gate
           - integration
           - prove-registry-pypi
           - prove-registry-npm

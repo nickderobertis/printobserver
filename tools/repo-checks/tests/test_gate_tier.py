@@ -280,7 +280,7 @@ def test_a_release_configuration_naming_no_prefix_is_refused(tree: Callable[[], 
 @pytest.mark.parametrize(
     ("key", "command"),
     [
-        ("gate", 'just check "$(just gate-tier)"'),
+        ("gate-shard-linux-aarch64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
         ("gate-shard-linux-x86_64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
         ("gate-shard-windows-x86_64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
         ("gate-shard-windows-aarch64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
@@ -291,7 +291,8 @@ def test_the_gate_job_runs_check_at_the_selected_tier_against_a_derived_base(
 ) -> None:
     """The half of the selection only a forge runs, read off the committed workflow.
 
-    A shard of a sharded gate is held to it as the unsharded gate is.
+    Every platform's gate is sharded, and each shard is held to it as the
+    unsharded gate was.
     """
     gate = jobs_of(load_workflow(REPO_ROOT / ".github/workflows/ci.yml"))[key]
     uses = [str(step.get("uses", "")) for step in steps_of(gate)]

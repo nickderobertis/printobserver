@@ -1837,8 +1837,12 @@ def test_under_the_gates_setting_a_case_it_cannot_run_fails_rather_than_skipping
     A setting that is neither unset nor the gate's own fails before that question arises.
     """
     workflow = yaml.safe_load(GATE_WORKFLOW.read_text(encoding="utf-8"))
-    setting = workflow["jobs"]["gate"].get("env", {}).get(REQUIRED)
-    equal(setting, REQUIRED_VALUE, describing=f"the gate job's `{REQUIRED}` in {GATE_WORKFLOW}")
+    # Every platform's gate is sharded, so its setting is each shard job's.
+    shards = {key: job for key, job in workflow["jobs"].items() if key.startswith("gate-shard-")}
+    equal(len(shards), 5, describing=f"the gate shard jobs of {GATE_WORKFLOW}")
+    for key, job in shards.items():
+        setting = job.get("env", {}).get(REQUIRED)
+        equal(setting, REQUIRED_VALUE, describing=f"`{key}`'s `{REQUIRED}` in {GATE_WORKFLOW}")
     prerequisite = PREREQUISITES[adapter]
     program = prerequisite.program
     unanswering = tmp_path / "bin"

@@ -86,7 +86,14 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: just macos-classify "$GITHUB_EVENT_PATH" "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
 
-  gate:
+  # `linux-aarch64`'s gate reaches past 1,800 s on one 4-processor runner once a
+  # change reaches `printobserver-core`, and so nearly the whole graph — 1,967 s
+  # and 2,050 s on two pull requests, against about 1,490 s warm on `main` —
+  # because its `test` and `test-e2e` tiers run side by side on the same
+  # processors. Five shards, as on Windows: every tier but the measured and
+  # end-to-end ones beside the Rust crates' tests, every other project's tests
+  # on a runner of their own, and the end-to-end tier in three parts.
+  gate-shard-linux-aarch64:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
       # The service-manager journey skips a case whose prerequisite a host lacks
@@ -94,33 +101,39 @@ jobs:
       # runner here has its own, so on the merge path a missing one fails the
       # journey rather than skipping it.
       PRINTOBSERVER_SERVICE_JOURNEY: required
-      # What the `gate-time` step reads this run's jobs with. At job level
-      # because a dispatch by hand carries a step's literal environment alone,
-      # and leaves this out: that run reads the public jobs API unauthenticated.
-      GITHUB_TOKEN: ${{ github.token }}
-    # The cell's platform is in the name because that name is the status context
-    # a branch-protection rule names: two cells reporting under one name are two
-    # check runs the rule cannot tell apart, so it cannot require both.
-    # `macos-aarch64` is sharded below, `gate-macos` reporting its context.
-    name: gate (${{ matrix.platform.id }})
+    # The shard is in the name beside the platform, and the required context
+    # is `gate-linux-aarch64`'s below.
+    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
     strategy:
       fail-fast: false
       matrix:
         platform:
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          # The `linux-x86_64` and the two Windows gates are sharded:
-          # `gate-shard-<platform>` runs each one's work and `gate-<platform>`
-          # reports its context.
+            shard: 1
+            shards: 5
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+            shard: 2
+            shards: 5
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+            shard: 3
+            shards: 5
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+            shard: 4
+            shards: 5
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+            shard: 5
+            shards: 5
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
       # `nx-set-shas` reads this workflow's own runs on `main` to find the last
       # commit the gate passed on, which is the base a push is diffed against.
       actions: read
-    # Git's own bash on the Windows runners rather than PowerShell, so that
-    # every cell runs its steps, and `just` finds the bash its recipes name, the
-    # same way.
     defaults:
       run:
         shell: bash
@@ -135,11 +148,15 @@ jobs:
       # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
+      # A cache per shard: each compiles different things — the first the
+      # Rust crates' instrumented test builds, the lints, the debug program
+      # the Python suites run and the build tier's, the last three the debug
+      # program the end-to-end tier runs — and one key shared by all would hold
+      # whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
-      # `just` from the same action as the cargo tools: `extractions/setup-just`
-      # has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
@@ -152,19 +169,40 @@ jobs:
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check "$(just gate-tier)"
-      # Only the release pull request pays for the two-build maintenance
-      # workload, and only on `linux-x86_64`, whose gate is sharded below: on
-      # this job's cells the recipe does nothing, and a dispatch of `gate` on
-      # `linux-x86_64` runs it here.
-      - run: just budgets-release-pr
+      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
+        env:
+          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
       - if: always()
         run: just runner-temp cleanup
-      # The `gate-time` budget, last so that the span it reads ends here.
+
+  # The required `gate (linux-aarch64)` context: it waits on every shard
+  # whatever each concluded, and fails unless each succeeded.
+  gate-linux-aarch64:
+    name: gate (linux-aarch64)
+    needs: [gate-shard-linux-aarch64]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # The `gate-time` step reads this run's jobs.
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+      - uses: extractions/setup-just@v3
+      - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - run: just shard-verdict gate linux-aarch64
+        env:
+          NEEDS: ${{ toJSON(needs) }}
       - name: gate-time
         run: just gate-time
         env:
           GATE_TIME_KIND: gate
+          PRINTOBSERVER_PLATFORM: linux-aarch64
+          GITHUB_TOKEN: ${{ github.token }}
 
   # `linux-x86_64`'s gate reaches past 1,800 s on one 4-processor runner once a
   # change reaches the whole graph — 1,980 s on run 41558713748 and 2,006 s on

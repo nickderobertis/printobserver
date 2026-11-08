@@ -314,8 +314,9 @@ def test_every_required_job_ends_with_the_gate_time_step(
     now_jobs, before_jobs = jobs_of(now_workflow), jobs_of(before_workflow)
     reporting = reporting_jobs(committed_repo)
     # A job new since the baseline is held to the permissions of the job that
-    # reported its context then: `gate-linux-x86_64` to the gate job's, whose
-    # cell reported `gate (linux-x86_64)` before that platform was sharded.
+    # reported its context then: `gate-linux-x86_64` and `gate-linux-aarch64`
+    # to the gate job's, whose cells reported their contexts before those
+    # platforms were sharded.
     reported_before = {
         context.name: context.job
         for context in status_contexts(baseline)
@@ -331,7 +332,7 @@ def test_every_required_job_ends_with_the_gate_time_step(
         sorted(reporting),
         sorted(
             [
-                "gate",
+                "gate-linux-aarch64",
                 "gate-linux-x86_64",
                 "gate-windows-aarch64",
                 "gate-windows-x86_64",

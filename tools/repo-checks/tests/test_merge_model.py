@@ -27,9 +27,21 @@ CLOSURE = closure("merge-model")
 BLOCK_START = "[//]: # (BEGIN required-checks)"
 BLOCK_END = "[//]: # (END required-checks)"
 CI = ".github/workflows/ci.yml"
-QUALIFIED = "    name: gate (${{ matrix.platform.id }})\n"
-# The two contexts the gate reports, which is what the record has to name.
+#: The one matrixed job reporting a required context, its name as declared:
+#: every platform's gate is sharded, so its contexts are its aggregators'.
+QUALIFIED = "    name: integration (${{ matrix.platform.id }})\n"
+#: The integration job's matrix, from its header on.
+INTEGRATION = "\n  integration:\n"
+# Two of the gate's contexts, each reported by its platform's aggregator.
 GATE_CELLS = ("gate (linux-x86_64)", "gate (linux-aarch64)")
+
+
+def _edit_integration(tree: Tree, old: str, new: str) -> None:
+    """Replace one fragment of the integration job, the matrixed job a context is named by."""
+    text = tree.read(CI)
+    at = text.index(INTEGRATION)
+    truth(old in text[at:], describing=f"the integration job carrying {old!r}")
+    tree.write(CI, text[:at] + text[at:].replace(old, new, 1))
 
 
 def _required(repo: Repo) -> list[str]:
@@ -207,17 +219,16 @@ def test_a_matrix_job_whose_cells_share_one_name_is_refused(
     a matrix entry copied for a second runner and left under the first one's id.
     """
     broken = tree()
-    broken.edit(
-        CI,
+    _edit_integration(
+        broken,
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
         "          - id: linux-x86_64\n            runner: ubuntu-24.04-arm\n",
     )
-    _replace_required(broken, [*GATE_CELLS, "llmlint", "pr-title"])
 
     findings = merge_model(broken.repo)
 
-    refused_naming(findings, "2 matrix cells of job `gate`", "which of them was green")
+    refused_naming(findings, "2 matrix cells of job `integration`", "which of them was green")
 
 
 def test_an_appended_field_no_name_can_be_built_from_is_refused(
@@ -225,9 +236,9 @@ def test_an_appended_field_no_name_can_be_built_from_is_refused(
 ) -> None:
     """GitHub appends something for that field, so deriving nothing for it would lie."""
     broken = tree()
-    broken.edit(CI, QUALIFIED, "    name: gate\n")
-    broken.edit(
-        CI,
+    broken.edit(CI, QUALIFIED, "    name: integration\n")
+    _edit_integration(
+        broken,
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
         "          - id: linux-aarch64\n            runner: [ubuntu, 24.04-arm]\n",
     )
@@ -242,7 +253,7 @@ def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
 ) -> None:
     """An empty substitution would derive a context nothing reports."""
     broken = tree()
-    broken.edit(CI, QUALIFIED, "    name: gate (${{ matrix.platform.arch }})\n")
+    broken.edit(CI, QUALIFIED, "    name: integration (${{ matrix.platform.arch }})\n")
 
     findings = merge_model(broken.repo)
 
@@ -275,7 +286,7 @@ def test_the_derived_contexts_follow_the_names_the_workflow_declares(
     reported = {context.name for context in status_contexts(renamed.repo)}
 
     contains(reported, "build-linux-aarch64", describing="the derived contexts")
-    absent(reported, "gate (linux-aarch64)", describing="the derived contexts")
+    absent(reported, "integration (linux-aarch64)", describing="the derived contexts")
 
 
 def _replace_required(tree: Tree, names: list[str]) -> None:
@@ -306,6 +317,35 @@ def test_a_record_naming_no_required_job_is_refused(tree: Callable[[], Tree]) ->
     findings = merge_model(broken.repo)
 
     refused(findings, "records no required check at all")
+
+
+def test_a_sharded_gates_aggregated_context_is_the_complete_gates(
+    tree: Callable[[], Tree],
+) -> None:
+    """A sharded gate's required context is its aggregator's, and it is the complete gate.
+
+    The aggregator runs the shards' verdict rather than the gate, so it is the
+    shards it needs, not its own steps, that make its context the gate's.
+    """
+    sharded = tree()
+    _replace_required(sharded, [*GATE_CELLS, "llmlint", "pr-title"])
+
+    absent(
+        "\n".join(merge_model(sharded.repo)),
+        "complete-gate",
+        describing="the findings over a record requiring only aggregated gate contexts",
+    )
+
+    unshard = tree()
+    _replace_required(unshard, [*GATE_CELLS, "llmlint", "pr-title"])
+    for platform in ("linux-x86_64", "linux-aarch64"):
+        unshard.edit(
+            CI,
+            f"    needs: [gate-shard-{platform}]\n",
+            "    needs: [classify]\n",
+        )
+
+    refused(merge_model(unshard.repo), "omit the complete-gate job")
 
 
 def test_a_record_omitting_the_gate_job_is_refused(tree: Callable[[], Tree]) -> None:

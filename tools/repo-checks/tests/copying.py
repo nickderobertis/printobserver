@@ -47,7 +47,8 @@ SCHEMAS = Closure(("schemas/",))
 
 #: The workflow file the breaking processes break, and the step each adds to.
 CI = ".github/workflows/ci.yml"
-GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+#: A gate shard job's bootstrap step: every platform's gate is sharded.
+GATE_STEP = "      - run: just bootstrap\n"
 
 
 @dataclass(frozen=True, slots=True)

@@ -21,6 +21,8 @@ import re
 import subprocess
 from collections import Counter
 from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
 import pytest
 from closures import closure
@@ -39,6 +41,7 @@ from repo_checks.gate_shards import main as gate_shards_main
 from repo_checks.gate_tier import PROJECTS_VARIABLE, REFUSED, command
 from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
+from repo_checks.parsing import jobs_of, load_workflow, run_commands, steps_of
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
 
@@ -643,17 +646,44 @@ def test_a_shard_job_that_is_not_every_shard_of_one_platform_is_refused(
 
 @pytest.mark.parametrize(
     ("platform", "runner"),
-    [("windows-aarch64", "windows-11-arm"), ("linux-x86_64", "ubuntu-24.04")],
+    [
+        ("windows-aarch64", "windows-11-arm"),
+        ("linux-x86_64", "ubuntu-24.04"),
+        ("linux-aarch64", "ubuntu-24.04-arm"),
+    ],
 )
-def test_a_sharded_platform_the_gate_job_also_carries_is_refused(
+def test_a_sharded_platform_an_unsharded_gate_job_also_carries_is_refused(
     tree: Callable[[], Tree], platform: str, runner: str
 ) -> None:
-    """Two jobs reporting one sharded platform's `gate` are two answers to one required context."""
+    """Two jobs reporting one sharded platform's `gate` are two answers to one required context.
+
+    No committed job runs the gate unsharded, so the copy gains one carrying the
+    platform beside its shards.
+    """
     copy = tree()
-    anchor = "          # The `linux-x86_64` and the two Windows gates are sharded"
-    copy.edit(CI, anchor, f"          - id: {platform}\n            runner: {runner}\n{anchor}")
+    anchor = "  gate-shard-linux-x86_64:\n"
+    copy.edit(CI, anchor, unsharded_gate_job(platform, runner) + anchor)
 
     refused(sharded_jobs(copy.repo), "the unsharded job's matrix leaves a sharded platform out")
+
+
+def unsharded_gate_job(platform: str, runner: str) -> str:
+    """A job running the whole gate on one platform's runner, as one did before sharding."""
+    return (
+        "  gate:\n"
+        "    name: gate (${{ matrix.platform.id }})\n"
+        "    strategy:\n"
+        "      fail-fast: false\n"
+        "      matrix:\n"
+        "        platform:\n"
+        f"          - id: {platform}\n"
+        f"            runner: {runner}\n"
+        "    runs-on: ${{ matrix.platform.runner }}\n"
+        "    steps:\n"
+        "      - run: just bootstrap\n"
+        '      - run: just check "$(just gate-tier)"\n'
+        "\n"
+    )
 
 
 def test_an_integration_shard_is_refused_while_no_selector_splits_it(
@@ -668,3 +698,217 @@ def test_an_integration_shard_is_refused_while_no_selector_splits_it(
     )
 
     refused(sharded_jobs(copy.repo), "shards the integration tier, which no selector splits")
+
+
+#: The platform the newest split is of, its shard job and its aggregating job.
+AARCH64 = "linux-aarch64"
+AARCH64_SHARDS = "gate-shard-linux-aarch64"
+AARCH64_GATE = "gate-linux-aarch64"
+#: The recipe an unsharded gate runs the whole of the gate by.
+WHOLE_GATE = "check"
+
+
+def platform_cells(workflow: dict[str, Any], platform: str) -> list[tuple[str, dict[str, Any]]]:
+    """Every job of `workflow` running a cell on `platform`, with that cell's matrix values."""
+    found: list[tuple[str, dict[str, Any]]] = []
+    for key, job in jobs_of(workflow).items():
+        strategy = job.get("strategy")
+        matrix = strategy.get("matrix") if isinstance(strategy, dict) else None
+        entries = matrix.get("platform") if isinstance(matrix, dict) else None
+        found.extend(
+            (key, entry)
+            for entry in entries or []
+            if isinstance(entry, dict) and entry.get("id") == platform
+        )
+    return found
+
+
+def dispatched_shards(workflow: dict[str, Any], platform: str) -> list[str]:
+    """The `k/n` each of `platform`'s gate cells hands its shard step, as CI renders it."""
+    shards: list[str] = []
+    for key, cell in platform_cells(workflow, platform):
+        for step in steps_of(jobs_of(workflow)[key]):
+            if str(step.get("run", "")).split()[:2] == ["just", "check-shard"]:
+                handed = str(step.get("env", {}).get("GATE_SHARD", ""))
+                shards.append(
+                    re.sub(
+                        r"\$\{\{\s*matrix\.platform\.(\w+)\s*\}\}",
+                        lambda found, cell=cell: str(cell.get(found[1], "")),
+                        handed,
+                    )
+                )
+    return shards
+
+
+def coverage_findings(selected: list[str], unsharded: set[tuple[str, ...]]) -> list[str]:
+    """How the commands a split runs differ from the unsharded gate's: omitted, or run twice.
+
+    A recipe is run whole by one command, or in parts that together are all of
+    it: both sides of one project tag, or every part `k/n` of the end-to-end tier.
+    """
+    findings = [f"`{one}` is run twice" for one, seen in Counter(selected).items() if seen > 1]
+    by_recipe: dict[tuple[str, ...], set[str]] = {}
+    for line in selected:
+        handed = " ".join(word for word in line.split() if "=" in word)
+        by_recipe.setdefault(invoked(line), set()).add(handed)
+    findings.extend(f"`just {' '.join(one)}` is omitted" for one in unsharded - by_recipe.keys())
+    findings.extend(
+        f"`just {' '.join(one)}` is run by no shard of the unsharded gate"
+        for one in by_recipe.keys() - unsharded
+    )
+    for recipe, parts in by_recipe.items():
+        sides = {part.split("=", 1)[1] for part in parts if part.startswith(PROJECTS_VARIABLE)}
+        thirds = {
+            part.split("=", 1)[1] for part in parts if part.startswith(END_TO_END_PART_VARIABLE)
+        }
+        whole = "" in parts
+        counts = {int(part.split("/")[1]) for part in thirds}
+        if whole and len(parts) > 1:
+            findings.append(f"`just {' '.join(recipe)}` is run whole and in parts")
+        elif sides and sides != {"lang:rust", "!lang:rust"}:
+            findings.append(
+                f"`just {' '.join(recipe)}` is omitted for a side: run for {sorted(sides)}"
+            )
+        elif thirds and (
+            len(counts) != 1 or thirds != {f"{k}/{n}" for n in counts for k in range(1, n + 1)}
+        ):
+            findings.append(
+                f"`just {' '.join(recipe)}` is omitted for a part: run for {sorted(thirds)}"
+            )
+    return findings
+
+
+def aarch64_work(
+    capsys: pytest.CaptureFixture[str], workflow: dict[str, Any], tier: str
+) -> list[str]:
+    """Every command `linux-aarch64`'s dispatched shards run at `tier`, by the real selector."""
+    return [
+        command
+        for shard in dispatched_shards(workflow, AARCH64)
+        for command in shard_commands(capsys, tier, shard)
+    ]
+
+
+def test_linux_aarch64_runs_no_unsharded_gate() -> None:
+    """Its every gate cell runs a shard, and its context is its aggregator's alone."""
+    workflow = load_workflow(REPO_ROOT / CI)
+    cells = platform_cells(workflow, AARCH64)
+    gate_cells = [
+        key
+        for key, _ in cells
+        if any(
+            command.split()[:2] in (["just", WHOLE_GATE], ["just", "check-shard"])
+            for command in run_commands(jobs_of(workflow)[key])
+        )
+    ]
+
+    equal(sorted(set(gate_cells)), [AARCH64_SHARDS], describing="the jobs running its gate")
+    equal(
+        [
+            key
+            for key, job in jobs_of(workflow).items()
+            if job.get("name") == f"gate ({AARCH64})"
+            or any(command.split()[:2] == ["just", WHOLE_GATE] for command in run_commands(job))
+        ],
+        [AARCH64_GATE],
+        describing="the jobs reporting its context or running the whole gate",
+    )
+
+
+def test_linux_aarch64_dispatches_exactly_the_planners_shards() -> None:
+    """Each cell hands its shard step its own `k/n`, and the cells are every shard of one plan."""
+    workflow = load_workflow(REPO_ROOT / CI)
+    shards = dispatched_shards(workflow, AARCH64)
+    count = len(shards)
+
+    equal(shards, [f"{index}/{count}" for index in range(1, count + 1)])
+    equal(
+        len(plan(Repo(REPO_ROOT), count)),
+        count,
+        describing=f"the planner's {count}-way split of the gate",
+    )
+
+
+@pytest.mark.parametrize("tier", ["affected", "all"])
+def test_linux_aarch64_shards_run_exactly_the_unsharded_gates_work(
+    capsys: pytest.CaptureFixture[str], tier: str
+) -> None:
+    """What its dispatched shards run, through the real selector, is `just check` once over."""
+    work = aarch64_work(capsys, load_workflow(REPO_ROOT / CI), tier)
+
+    equal(coverage_findings(work, dry_run_check(tier)), [], describing="omitted or doubled work")
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "naming"),
+    [
+        pytest.param(
+            "            shard: 5\n            shards: 5\n",
+            "            shard: 4\n            shards: 5\n",
+            "is run twice",
+            id="a-shard-run-twice",
+        ),
+        pytest.param(
+            "            shard: 2\n            shards: 5\n",
+            "            shard: 1\n            shards: 5\n",
+            "is omitted for a side",
+            id="the-non-rust-tests-omitted",
+        ),
+        pytest.param(
+            "            shard: 4\n            shards: 5\n",
+            "            shard: 3\n            shards: 5\n",
+            "is omitted for a part",
+            id="an-end-to-end-part-omitted",
+        ),
+    ],
+)
+def test_linux_aarch64_shards_omitting_or_doubling_work_are_found(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, old: str, new: str, naming: str
+) -> None:
+    """A cell handed another cell's shard leaves one part unrun and runs another twice."""
+    text = (REPO_ROOT / CI).read_text(encoding="utf-8")
+    at = text.index(f"  {AARCH64_SHARDS}:\n")
+    broken = tmp_path / "ci.yml"
+    broken.write_text(text[:at] + text[at:].replace(old, new, 1), encoding="utf-8")
+
+    work = aarch64_work(capsys, load_workflow(broken), "all")
+
+    contains("\n".join(coverage_findings(work, dry_run_check("all"))), naming)
+
+
+def aggregator_verdict(result: str) -> subprocess.CompletedProcess[str]:
+    """`gate (linux-aarch64)`'s own verdict step, as committed, over its shards' `result`.
+
+    The `needs` document is built from the jobs the aggregator declares it
+    needs, as `${{ toJSON(needs) }}` renders it: a matrix job's one result.
+    """
+    job = jobs_of(load_workflow(REPO_ROOT / CI))[AARCH64_GATE]
+    step = next(one for one in steps_of(job) if "NEEDS" in (one.get("env") or {}))
+    handed = needs(**{need.replace("-", "_"): result for need in job["needs"]})
+    return run(
+        str(step["run"]).split(),
+        cwd=REPO_ROOT,
+        env={**os.environ, "NEEDS": handed},
+        timeout=120,
+    )
+
+
+def test_linux_aarch64_s_context_passes_when_every_shard_succeeded() -> None:
+    """The aggregator's verdict passes, naming the shard job it needs."""
+    ran = aggregator_verdict("success")
+
+    passing(ran)
+    contains(ran.stdout, f"gate ({AARCH64}): every shard succeeded ({AARCH64_SHARDS})")
+
+
+@pytest.mark.parametrize("result", ["failure", "cancelled", "skipped"])
+def test_linux_aarch64_s_context_fails_when_a_shard_failed_or_never_ran(result: str) -> None:
+    """A shard that failed, or was cancelled or skipped before it ran, fails `gate (linux-aarch64)`.
+
+    The aggregator runs `if: always()`, so it reaches this verdict whatever its
+    shards concluded; the `sharded-jobs` check holds it to that.
+    """
+    job = jobs_of(load_workflow(REPO_ROOT / CI))[AARCH64_GATE]
+    equal(job.get("if"), "always()", describing="the aggregator's condition")
+
+    failing(aggregator_verdict(result), naming=f'`{AARCH64_SHARDS}` concluded "{result}"')

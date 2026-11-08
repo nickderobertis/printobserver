@@ -255,19 +255,22 @@ describe("the macOS jobs", () => {
 describe("the macOS jobs run what the two macOS cells ran", () => {
   const ci = workflows.get("ci.yml");
 
-  test("every command of the gate cell, and every command of the integration cell", () => {
+  test("every command of the other gate shards, and every command of the integration cell", () => {
     // The release pull request's maintenance measurement runs on linux-x86_64
     // alone; on every other cell, macOS's included, the recipe does nothing.
-    // The gate cell's `just check` is the shards' `just check-shard`, which
-    // `just check-repo`'s `sharded-jobs` holds to running all of it, and its
-    // `gate-time` budget is the aggregator's.
-    const own = ["just budgets-release-pr", "just gate-time", 'just check "$(just gate-tier)"'];
-    const gate = commands(ci.jobs.gate).filter((command) => !own.includes(command));
+    const own = ["just budgets-release-pr"];
+    const shards = Object.entries(ci.jobs).filter(
+      ([key]) => key.startsWith("gate-shard-") && key !== MACOS_JOBS.gate,
+    );
+    assert.equal(shards.length, 4, "every other platform's gate shard job");
     const integration = commands(ci.jobs.integration).filter(
       (command) => command !== "just gate-time",
     );
     for (const [cell, key] of [
-      [gate, MACOS_JOBS.gate],
+      ...shards.map(([, job]) => [
+        commands(job).filter((one) => !own.includes(one)),
+        MACOS_JOBS.gate,
+      ]),
       [integration, MACOS_JOBS.integration],
     ]) {
       const ran = new Set(commands(ci.jobs[key]));
@@ -275,21 +278,19 @@ describe("the macOS jobs run what the two macOS cells ran", () => {
         assert.ok(ran.has(command), `${key} runs \`${command}\``);
       }
     }
-    assert.ok(
-      commands(ci.jobs[MACOS_JOBS.gate]).includes(
-        'just check-shard "$(just gate-tier)" "$GATE_SHARD"',
-      ),
-    );
-    assert.equal(
-      ci.jobs[MACOS_JOBS.gate].env.PRINTOBSERVER_SERVICE_JOURNEY,
-      ci.jobs.gate.env.PRINTOBSERVER_SERVICE_JOURNEY,
-    );
-    // The Windows-target lint reads the committed tree alone, and is left to the Linux cells.
+    for (const [key, job] of shards) {
+      assert.equal(
+        ci.jobs[MACOS_JOBS.gate].env.PRINTOBSERVER_SERVICE_JOURNEY,
+        job.env.PRINTOBSERVER_SERVICE_JOURNEY,
+        `${key}'s service-journey setting`,
+      );
+      // The Windows-target lint reads the committed tree alone, and is left to the Linux cells.
+      assert.equal(job.env.PRINTOBSERVER_HOST_INDEPENDENT, undefined, key);
+    }
     assert.equal(ci.jobs[MACOS_JOBS.gate].env.PRINTOBSERVER_HOST_INDEPENDENT, "elsewhere");
-    assert.equal(ci.jobs.gate.env.PRINTOBSERVER_HOST_INDEPENDENT, undefined);
   });
 
-  test("the gate and integration matrices are every other platform the list names", () => {
+  test("the gate shards and integration matrix are every other platform the list names", () => {
     const others = PLATFORMS.filter((platform) => platform !== MACOS);
     assert.deepEqual(ci.jobs.integration.strategy.matrix.platform, others);
     // A sharded gate's platform is carried by its shard job's cells, each on
@@ -299,10 +300,9 @@ describe("the macOS jobs run what the two macOS cells ran", () => {
       .flatMap((job) => job.strategy.matrix.platform)
       .map(({ id, runner }) => ({ id, runner }));
     const sharded = PLATFORMS.filter((platform) => shards.some(({ id }) => id === platform.id));
-    assert.deepEqual(
-      ci.jobs.gate.strategy.matrix.platform,
-      PLATFORMS.filter((platform) => !sharded.includes(platform)),
-    );
+    // Every platform's gate is sharded, so no unsharded gate job is left.
+    assert.deepEqual(sharded, PLATFORMS);
+    assert.equal(ci.jobs.gate, undefined);
     for (const cell of shards) {
       assert.deepEqual(
         cell,
@@ -500,7 +500,7 @@ describe("the downstream proof and the schedules", () => {
 
 describe("the manual diagnostic", () => {
   test("defaults off macOS", () => {
-    const inputs = { job: "gate" };
+    const inputs = { job: "integration" };
     const run = plan(workflows, "platform-dispatch.yml", {
       event: {
         name: "workflow_dispatch",
@@ -508,7 +508,7 @@ describe("the manual diagnostic", () => {
         payload: fixture("workflow_dispatch.default"),
       },
       inputs,
-      outputs: { select: { runner: dispatchRunner("gate", "linux-x86_64") } },
+      outputs: { select: { runner: dispatchRunner("integration", "linux-x86_64") } },
     });
     assert.deepEqual(
       run.jobs.filter((job) => job.macos),
@@ -746,11 +746,16 @@ describe("the macOS jobs' own steps, walked as the forge runs them", () => {
   function walk(key, failing) {
     const ran = [];
     let failed = false;
-    for (const [index, step] of workflows.get("ci.yml").jobs[key].steps.entries()) {
+    const steps = workflows.get("ci.yml").jobs[key].steps;
+    // A pull request's run, whose every cache lookup missed: a save step reads
+    // the ref and its restore's answer.
+    const ids = steps.filter((step) => step.id).map((step) => step.id);
+    for (const [index, step] of steps.entries()) {
       const contexts = {
-        github: { event_name: "pull_request" },
+        github: { event_name: "pull_request", ref: "refs/pull/1/merge" },
         inputs: null,
         needs: {},
+        steps: Object.fromEntries(ids.map((id) => [id, { outputs: { "cache-hit": "false" } }])),
         vars: {},
       };
       const runs = condition(

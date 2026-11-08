@@ -30,7 +30,7 @@ WINDOWS = (
 )
 # The integration job's own copy of that entry: the one whose checkout takes
 # nothing but `lfs: false` and is followed directly by the Rust toolchain, which
-# is what tells it apart from the gate's.
+# is what tells it apart from the shard jobs' cells.
 INTEGRATION_AARCH64 = (
     AARCH64
     + WINDOWS
@@ -56,19 +56,21 @@ INSTALL_ROUTE_AARCH64 = (
         "      - uses: actions/setup-python@v5\n"
     )
 )
-# The gate's whole matrix, down to the line that reads a cell out of it. Its
-# `linux-x86_64` and two Windows gates are sharded, so their shard jobs carry
-# those cells instead.
-GATE_MATRIX = (
+RELEASE = ".github/workflows/release-plz.yml"
+# The release workflow's `artifacts` matrix, down to the line that reads a cell
+# out of it: one build per platform. Every gate is sharded, and a shard job's
+# cells are held by the `sharded-jobs` check instead.
+ARTIFACTS_MATRIX = (
     """    strategy:
       fail-fast: false
       matrix:
         platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
 """
     + AARCH64
-    + "          # The `linux-x86_64` and the two Windows gates are sharded:\n"
-    + "          # `gate-shard-<platform>` runs each one's work and `gate-<platform>`\n"
-    + "          # reports its context.\n"
+    + "          - id: macos-aarch64\n            runner: macos-15\n"
+    + WINDOWS
     + "    runs-on: ${{ matrix.platform.runner }}\n"
 )
 NO_LIST = "declares no non-empty `workflows.platform_dependent_kinds` list"
@@ -96,17 +98,13 @@ def test_the_tier_accepts_the_committed_configuration(
 def test_a_platform_dependent_job_narrowed_away_from_the_list_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """`gate` compiles the artifact, so dropping a platform drops what proves it.
-
-    The gate's one unsharded cell is swapped for another platform's rather than
-    deleted, so its matrix is narrowed rather than emptied.
-    """
+    """`artifacts` builds the program, so dropping a platform drops what ships for it."""
     broken = gate_copy()
-    broken.edit(CI, AARCH64, "          - id: linux-x86_64\n            runner: ubuntu-24.04\n")
+    broken.edit(RELEASE, AARCH64, "")
 
     result = broken.just("check-repo")
 
-    failing(result, naming="job `gate`'s matrix omits platform `linux-aarch64`")
+    failing(result, naming="job `artifacts`'s matrix omits platform `linux-aarch64`")
 
 
 def test_a_platform_dependent_job_that_dropped_its_matrix_is_refused(
@@ -114,11 +112,11 @@ def test_a_platform_dependent_job_that_dropped_its_matrix_is_refused(
 ) -> None:
     """Narrowing a build to one platform by deleting its matrix is still narrowing."""
     broken = gate_copy()
-    broken.edit(CI, GATE_MATRIX, "    runs-on: ubuntu-24.04\n")
+    broken.edit(RELEASE, ARTIFACTS_MATRIX, "    runs-on: ubuntu-24.04\n")
 
     result = broken.just("check-repo")
 
-    failing(result, naming="job `gate` is a gate job but declares no platform matrix")
+    failing(result, naming="job `artifacts` is a artifact job but declares no platform matrix")
 
 
 def test_the_integration_jobs_matrix_is_still_held_to_the_list(

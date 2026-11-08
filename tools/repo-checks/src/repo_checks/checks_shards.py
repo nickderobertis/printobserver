@@ -110,7 +110,7 @@ def _whole(value: object) -> TypeIs[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _needs(job: dict[str, Any]) -> list[str]:
+def needs_of(job: dict[str, Any]) -> list[str]:
     """The job keys a job `needs`, in either of the shapes a workflow writes them."""
     match job.get("needs"):
         case str(one):
@@ -181,7 +181,7 @@ def _aggregator_findings(
 ) -> list[str]:
     """The aggregating job waits on every shard and reaches its verdict over them alone."""
     findings: list[str] = []
-    if key not in _needs(job):
+    if key not in needs_of(job):
         findings.append(f"{where} does not `needs` the shard job `{key}`")
     condition = " ".join(str(job.get("if", "")).removeprefix("${{").removesuffix("}}").split())
     allowed = {ALWAYS}
@@ -230,7 +230,7 @@ def sharded_jobs(repo: Repo) -> list[str]:
             where = f"{path.name}: job `{key}`"
             if not is_shard_job(job):
                 if VERDICT_RECIPE in " ".join(run_commands(job)) and not any(
-                    is_shard_job(jobs.get(need, {})) for need in _needs(job)
+                    is_shard_job(jobs.get(need, {})) for need in needs_of(job)
                 ):
                     findings.append(f"{where} runs `just {VERDICT_RECIPE}` and needs no shard job")
                 continue

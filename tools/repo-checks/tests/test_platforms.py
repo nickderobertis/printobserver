@@ -47,16 +47,26 @@ MATRIX = """    strategy:
 
 # The gate's own matrix: its `linux-x86_64` and two Windows gates are sharded,
 # and carried by their shard jobs instead, so `linux-aarch64` is its one cell.
-GATE_MATRIX = """    strategy:
+# The release workflow's `artifacts` job's whole matrix: one build per
+# platform, the platform-dependent job every platform's own cell is held in now
+# that every gate is sharded.
+RELEASE = ".github/workflows/release-plz.yml"
+ARTIFACTS_MATRIX = """    strategy:
       fail-fast: false
       matrix:
         platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          # The `linux-x86_64` and the two Windows gates are sharded:
-          # `gate-shard-<platform>` runs each one's work and `gate-<platform>`
-          # reports its context.
+          - id: macos-aarch64
+            runner: macos-15
+          - id: windows-x86_64
+            runner: windows-2025
+          - id: windows-aarch64
+            runner: windows-11-arm
 """
+ARTIFACTS_AARCH64 = "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
 
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
@@ -116,14 +126,14 @@ def test_a_matrix_cell_whose_id_is_not_a_platform_name_is_refused(
     """It is reported, rather than aborting the tier on an unhashable key."""
     broken = tree()
     broken.edit(
-        ".github/workflows/ci.yml",
-        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
+        RELEASE,
+        ARTIFACTS_AARCH64,
         "          - id: [linux, aarch64]\n            runner: ubuntu-24.04-arm\n",
     )
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "whose `id` is not a platform name")
+    refused_naming(findings, "job `artifacts`", "whose `id` is not a platform name")
 
 
 def test_a_policy_declaring_no_platform_dependent_kinds_is_refused(
@@ -245,21 +255,13 @@ def test_a_matrix_naming_an_undeclared_platform_is_refused(
 def test_a_matrix_omitting_a_declared_platform_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """Neither matrix can be narrowed independently of the list.
-
-    The gate's one unsharded cell is swapped for another platform's rather than
-    deleted, so its matrix is narrowed rather than emptied.
-    """
+    """No matrix can be narrowed independently of the list."""
     broken = tree()
-    broken.edit(
-        ".github/workflows/ci.yml",
-        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
-        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
-    )
+    broken.edit(RELEASE, ARTIFACTS_AARCH64, "")
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "omits platform `linux-aarch64`")
+    refused_naming(findings, "job `artifacts`", "omits platform `linux-aarch64`")
 
 
 def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
@@ -280,7 +282,7 @@ def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "omits platform `linux-riscv64`")
+    refused_naming(findings, "job `artifacts`", "omits platform `linux-riscv64`")
     refused_naming(findings, "job `install-route-pypi`", "omits platform `linux-riscv64`")
 
 
@@ -290,14 +292,14 @@ def test_a_platform_dependent_job_that_dropped_its_matrix_is_refused(
     """Narrowing a build to one platform by deleting its matrix is still narrowing."""
     broken = tree()
     broken.edit(
-        ".github/workflows/ci.yml",
-        GATE_MATRIX + "    runs-on: ${{ matrix.platform.runner }}\n",
+        RELEASE,
+        ARTIFACTS_MATRIX + "    runs-on: ${{ matrix.platform.runner }}\n",
         "    runs-on: ubuntu-24.04\n",
     )
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "declares no platform matrix")
+    refused_naming(findings, "job `artifacts`", "declares no platform matrix")
 
 
 def test_an_install_jobs_matrix_is_held_to_the_list_too(

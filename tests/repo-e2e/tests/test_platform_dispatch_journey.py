@@ -10,11 +10,8 @@ running the committed workflow under the forge's rules (`actions.py`) as a
     script over the copy, and its answer is the runner the `run` job lands on;
   * `run` runs the real `just dispatch-run`, which runs the source job's own
     `run:` steps off the copy's committed source workflow;
-  * `just gate-tier`, which only reads the event the run was started with, is
-    run for real too, so the gate's step reaches the tier a dispatched cell
-    takes;
   * every OTHER recipe those steps reach — `just bootstrap`, the OctoPrint
-    bring-up, the tier, the bring-down, the gate — is written to a record
+    bring-up, the tier, the bring-down, the budget step — is written to a record
     rather than run, because the question is which commands the dispatch runs
     and where, and running the printer tier to answer it would prove nothing
     more.
@@ -39,10 +36,10 @@ CI = ".github/workflows/ci.yml"
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 JUST_STANDIN = """#!/bin/sh
-# The real `just` for the two dispatch recipes and the tier selection; every
-# other recipe is written to DISPATCH_STANDIN_RECORD instead of run.
+# The real `just` for the two dispatch recipes; every other recipe is written
+# to DISPATCH_STANDIN_RECORD instead of run.
 case "$1" in
-  dispatch-resolve|dispatch-run|gate-tier) exec "$DISPATCH_STANDIN_REAL_JUST" "$@" ;;
+  dispatch-resolve|dispatch-run) exec "$DISPATCH_STANDIN_REAL_JUST" "$@" ;;
 esac
 printf 'just %s\\n' "$*" >> "$DISPATCH_STANDIN_RECORD"
 """
@@ -125,27 +122,25 @@ def test_a_dispatch_runs_exactly_that_job_on_that_platforms_runner(
     )
 
 
-def test_a_dispatch_of_another_job_runs_that_job_alone(
+def test_a_dispatch_on_another_platform_runs_on_that_platforms_runner(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
-    """The gate on Linux ARM: the gate's commands on its runner, none of the integration tier's.
+    """The integration tier on Linux ARM: the same commands, on that platform's runner.
 
-    A dispatched cell is no pull request and no push, so the tier it selects is
-    the full sweep.
+    Every gate is sharded, and a shard job is no job a dispatch can name.
     """
-    run, reached = dispatched(gate_copy, tmp_path, "gate", "linux-aarch64")
+    run, reached = dispatched(gate_copy, tmp_path, "integration", "linux-aarch64")
 
+    equal(run.result("run"), Result.SUCCESS, describing=f"the running job: {run.jobs['run'].steps}")
     equal(run.jobs["run"].runners, ["ubuntu-24.04-arm"], describing="the runner `run` landed on")
-    swept = [command.replace('"$(just gate-tier)"', "all") for command in source_commands("gate")]
-    contains(" ".join(source_commands("gate")), "$(just gate-tier)", describing="the gate's step")
-    equal(reached, swept, describing="every recipe the dispatch reached")
+    equal(reached, source_commands("integration"), describing="every recipe the dispatch reached")
 
 
 def test_an_unknown_pair_is_refused_before_anything_runs(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
     """A platform the list does not name fails `select`, skips `run`, and reaches nothing."""
-    run, reached = dispatched(gate_copy, tmp_path, "gate", "linux-riscv64")
+    run, reached = dispatched(gate_copy, tmp_path, "integration", "linux-riscv64")
 
     equal(run.result("select"), Result.FAILURE, describing="the resolving job")
     contains(

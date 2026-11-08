@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 from closures import closure
 from repo_checks.checks_ci import continuous_integration
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, refused, truth
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -72,8 +72,16 @@ brew install printobserver
 ```
 """
 
-#: The gate job's step that runs the gate, as the committed workflow spells it.
-GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+#: A gate shard job's step that runs its shard of the gate, as the committed
+#: workflow spells it: every platform's gate is sharded, so no job runs
+#: `just check` whole.
+GATE_STEP = (
+    '      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"\n'
+    "        env:\n"
+    "          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}\n"
+)
+#: The step an unsharded gate job runs the whole gate by.
+WHOLE_GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
 
 
 def test_the_committed_configuration_is_accepted(committed: Repo) -> None:
@@ -81,10 +89,25 @@ def test_the_committed_configuration_is_accepted(committed: Repo) -> None:
     accepted(continuous_integration(committed))
 
 
+def test_a_gate_run_only_as_shards_is_the_complete_gate(committed: Repo) -> None:
+    """Every platform's gate is sharded, and their shard jobs are the complete gate.
+
+    No committed job runs `just check` whole; the `sharded-jobs` check holds each
+    platform's shards to exactly what it runs.
+    """
+    for workflow in committed.workflow_paths:
+        truth(
+            WHOLE_GATE_STEP not in workflow.read_text(encoding="utf-8"),
+            describing=f"{workflow.name} running no unsharded gate",
+        )
+
+    accepted(continuous_integration(committed))
+
+
 def test_a_missing_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
     """A configuration with no complete-gate job proves nothing.
 
-    The gate's cells and the macOS gate each run it, so it is taken from every one.
+    Every shard job runs its shard, so it is taken from every one.
     """
     broken = tree()
     while GATE_STEP in broken.read(CI):

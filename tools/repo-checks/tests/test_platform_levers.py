@@ -30,6 +30,7 @@ AARCH64 = (
 )
 EXCLUSIONS_BEGIN = "[//]: # (BEGIN platform-exclusions)"
 INSTALL = ".github/workflows/install-path.yml"
+RELEASE = ".github/workflows/release-plz.yml"
 EXCLUSIONS_END = "[//]: # (END platform-exclusions)"
 
 #: The matrix every platform-dependent job of this repository carries.
@@ -127,24 +128,21 @@ def test_an_install_route_job_carrying_a_platform_answered_no_is_refused(
 def test_a_job_that_does_not_take_a_route_still_carries_a_platform_answered_no(
     tree: Callable[[], Tree],
 ) -> None:
-    """The lever reaches the install tiers and nothing else: the gate still owes both cells."""
+    """The lever reaches the install tiers and nothing else: the release build still owes it."""
     broken = tree()
     broken.edit(
         "AGENTS.md",
         AARCH64,
         AARCH64.replace("install path: yes", "install path: no — no runner has been proven yet"),
     )
-    # Swapped for another platform's cell rather than deleted: it is the gate
-    # job's one unsharded cell, and an empty matrix is a different refusal.
-    broken.edit(
-        ".github/workflows/ci.yml",
-        MATRIX_AARCH64,
-        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
-    )
+    # The release workflow's `artifacts` job builds every platform's program and
+    # takes no route: every gate is sharded, and a shard job's cells are held
+    # by the `sharded-jobs` check instead.
+    broken.edit(RELEASE, MATRIX_AARCH64, "")
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "omits platform `linux-aarch64`")
+    refused_naming(findings, "job `artifacts`", "omits platform `linux-aarch64`")
 
 
 def test_an_install_route_job_omitting_a_platform_answered_yes_is_refused(
@@ -320,11 +318,11 @@ def test_a_matrix_naming_one_platform_in_two_cells_is_refused(
 ) -> None:
     """The second is a check run repeating the first under the same name."""
     broken = tree()
-    broken.edit(".github/workflows/ci.yml", MATRIX_AARCH64, MATRIX_AARCH64 + MATRIX_AARCH64)
+    broken.edit(RELEASE, MATRIX_AARCH64, MATRIX_AARCH64 + MATRIX_AARCH64)
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "`linux-aarch64` in more than one cell")
+    refused_naming(findings, "job `artifacts`", "`linux-aarch64` in more than one cell")
 
 
 def test_an_entry_whose_identifier_is_not_shaped_like_one_is_refused(

@@ -415,11 +415,9 @@ def test_ci_reports_its_gate_and_integration_jobs_under_the_formats(committed: R
 
 
 def test_a_job_name_that_parts_ways_with_the_formats_is_drift(tree: Callable[[], Tree]) -> None:
-    """Renaming the gate's cells is found from both sides: unread, and the required name gone."""
+    """Renaming a gate's context is found from both sides: unread, and the required name gone."""
     copy = tree()
-    copy.edit(
-        CI, "name: gate (${{ matrix.platform.id }})", "name: gate [${{ matrix.platform.id }}]"
-    )
+    copy.edit(CI, "name: gate (linux-aarch64)", "name: gate [linux-aarch64]")
 
     findings = drifted(copy.repo)
 

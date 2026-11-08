@@ -18,8 +18,8 @@ CLOSURE = closure("workflows")
 
 CI = ".github/workflows/ci.yml"
 
-#: The gate job's step that runs the gate, as the committed workflow spells it.
-GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+#: A gate shard job's bootstrap step: every platform's gate is sharded.
+GATE_STEP = "      - run: just bootstrap\n"
 
 
 def test_the_committed_workflows_are_accepted(committed: Repo) -> None:

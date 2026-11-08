@@ -13,8 +13,8 @@ from repo_checks import install_path as ip
 from repo_checks import release_declaration
 from repo_checks.checks_release import Workflow
 from repo_checks.checks_service import service_management_scripts
-from repo_checks.checks_shards import is_shard_job, sharded_platforms
-from repo_checks.gate_shards import SHARD_RECIPE
+from repo_checks.checks_shards import is_shard_job, needs_of, sharded_platforms
+from repo_checks.gate_shards import SHARD_RECIPE, VERDICT_RECIPE
 from repo_checks.model import (
     PolicyValueError,
     Repo,
@@ -1154,15 +1154,19 @@ def continuous_integration(repo: Repo) -> list[str]:
             elif kind == JobKind.INSTALL:
                 install.append((file_name, job_name, job))
 
-    # A shard of a sharded gate is a gate job too, held to every rule below;
-    # the complete gate is the job running `just check` itself.
+    # A shard of a sharded gate is a gate job too, held to every rule below.
+    # The complete gate is the job running `just check` itself, or a platform's
+    # shard jobs, whose union the `sharded-jobs` check holds to exactly what
+    # `just check` runs and whose aggregator reports the platform's context.
     if not any(
-        any(command.split()[:2] == ["just", "check"] for command in run_commands(job))
+        is_shard_job(job)
+        or any(command.split()[:2] == ["just", "check"] for command in run_commands(job))
         for _, _, job in gates
     ):
         return [
             "the committed configuration declares no complete-gate job "
-            "(a job whose steps run both `just bootstrap` and `just check`)"
+            "(a job whose steps run both `just bootstrap` and `just check`, "
+            "or the shard jobs of a sharded gate)"
         ]
     for file_name, job_name, job in gates:
         gate_commands = run_commands(job)
@@ -1405,6 +1409,24 @@ def _checked_findings(
     return findings
 
 
+def _gate_aggregators(repo: Repo) -> set[tuple[str, str]]:
+    """Each (workflow, job) reaching a sharded gate's verdict over shard jobs it needs.
+
+    Which of them is a sound aggregator is the `sharded-jobs` check's to say;
+    this reads only which jobs report a sharded gate's context.
+    """
+    found: set[tuple[str, str]] = set()
+    for file_name, workflow in _workflows(repo).items():
+        jobs = jobs_of(workflow)
+        for job_name, job in jobs.items():
+            if any(
+                command.split()[:3] == ["just", VERDICT_RECIPE, "gate"]
+                for command in run_commands(job)
+            ) and any(is_shard_job(jobs.get(need, {})) for need in needs_of(job)):
+                found.add((file_name, job_name))
+    return found
+
+
 def merge_model(repo: Repo) -> list[str]:
     """Every check `AGENTS.md` records as required is one the configuration reports."""
     try:
@@ -1453,11 +1475,19 @@ def merge_model(repo: Repo) -> list[str]:
         for context in sorted(set(reported), key=lambda one: one.name)
         if (context.file, context.job) in required_jobs and context.name not in required
     )
+    # A sharded gate's context is its aggregator's, whose kind is its verdict's
+    # rather than the gate's: it is the complete gate's context all the same.
+    aggregators = _gate_aggregators(repo)
     for kind, label in (
         (JobKind.GATE, "complete-gate"),
         (JobKind.LLMLINT, "judged-lint"),
     ):
-        if not any(context.kind == kind for name in required for context in by_name.get(name, [])):
+        if not any(
+            context.kind == kind
+            or (kind == JobKind.GATE and (context.file, context.job) in aggregators)
+            for name in required
+            for context in by_name.get(name, [])
+        ):
             findings.append(f"AGENTS.md's required checks omit the {label} job")
 
     if "takes no direct push" not in repo.agents_md:
