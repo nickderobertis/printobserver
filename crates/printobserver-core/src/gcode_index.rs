@@ -890,7 +890,11 @@ impl IndexBuilder {
             }
             return;
         }
-        let Some(number) = number(words, 'S') else {
+        // An object is a whole number, and `-1` alone stops laying one down;
+        // any other number names no object and changes nothing.
+        let Some(number) = number(words, 'S')
+            .filter(|number| (number - number.round()).abs() < f64::EPSILON && *number >= -1.0)
+        else {
             return;
         };
         self.labelled_objects = true;

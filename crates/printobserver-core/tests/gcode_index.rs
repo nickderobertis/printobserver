@@ -431,3 +431,35 @@ M486 S-1
         ]
     );
 }
+
+/// An object is named by a whole number, and `-1` alone stops one: a fraction
+/// or another negative number names no object and leaves the one being laid
+/// down as it was.
+#[test]
+fn only_a_whole_object_number_or_minus_one_moves_between_objects() {
+    let text = "\
+M83
+M486 S2
+G1 X0 Y0
+G1 X10 Y0 E1
+M486 S2.5
+M486 S-3
+G1 X10 Y10 E1
+M486 S-1
+G1 X50 Y50 E1
+";
+    let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
+
+    assert_eq!(plan.objects.len(), 1, "{:?}", plan.objects);
+    let object = &plan.objects[0];
+    assert_eq!(
+        (
+            object.x_min_mm,
+            object.x_max_mm,
+            object.y_min_mm,
+            object.y_max_mm
+        ),
+        (0.0, 10.0, 0.0, 10.0),
+        "a malformed number moved the reader off object 2, or past its stop"
+    );
+}

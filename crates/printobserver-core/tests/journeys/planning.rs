@@ -366,7 +366,8 @@ fn the_core_keeps_a_bounded_number_of_indexes() {
     );
 }
 
-/// A plan that sets the fan to full, off, and to full again.
+/// A plan that sets the fan to full before its first layer, and to full again
+/// part-way through it.
 const REPEATED: &str = "\
 M83
 M106 S255
