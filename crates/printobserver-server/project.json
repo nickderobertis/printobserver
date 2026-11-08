@@ -25,7 +25,7 @@
       "command": "cargo fmt -p printobserver-server -- --check"
     },
     "lint": {
-      "command": "cargo clippy -p printobserver-server --all-targets --features test-responder --locked -- -D warnings"
+      "command": "cargo clippy -p printobserver-server --all-targets --features operator-harness --locked -- -D warnings"
     },
     "test": {
       "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-server-%p-%m.profraw; fi; exec cargo llvm-cov nextest -p printobserver-server --features test-responder --no-report --no-tests=pass -E \"not binary(integration) and not binary(check_delay_budget)\"'"

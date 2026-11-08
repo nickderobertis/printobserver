@@ -13,7 +13,12 @@ authors.workspace = true
 # own integration tier points a run at so `OneHarness` replaces the paid
 # provider process with its own published deterministic responder. Off by
 # default, so nothing an ordinary consumer installs carries it.
-test-responder = ["dep:oneharness", "dep:clap"]
+test-responder = ["dep:oneharness"]
+# Test-only. Builds `printobserver-server-oneharness`, the `oneharness` command
+# line the real-print replay's operator conversation runs. Its own feature, so
+# this crate's test, coverage and integration builds, which never run it, do not
+# link it; the real-print suite's build and this crate's lint enable it.
+operator-harness = ["test-responder", "dep:clap"]
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
@@ -81,7 +86,7 @@ required-features = ["test-responder"]
 [[bin]]
 name = "printobserver-server-oneharness"
 path = "src/bin/oneharness.rs"
-required-features = ["test-responder"]
+required-features = ["operator-harness"]
 
 # The real-print replay's pass-through in front of the harness; see its source.
 [[bin]]

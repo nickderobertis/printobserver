@@ -12,7 +12,7 @@
       "command": "uv run -q ty check tests/skilltest && uv run -q ty check --python-platform win32 tests/skilltest"
     },
     "build-programs": {
-      "command": "cargo build -p printobserver -p printobserver-server -p printobserver-types --features printobserver-server/test-responder,printobserver-types/replay-clock --bins --locked && uv run -q python tests/skilltest/keep_programs.py"
+      "command": "cargo build -p printobserver -p printobserver-server -p printobserver-types --features printobserver-server/operator-harness,printobserver-types/replay-clock --bins --locked && uv run -q python tests/skilltest/keep_programs.py"
     },
     "skilltest": { "metadata": { "description": "llmlint: ignore[new_projects_keep_the_graph_uniform] suppressions.toml has the reason." },
       "command": "uv run -q pytest tests/skilltest/test_replay.py -n 4",
