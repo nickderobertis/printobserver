@@ -240,22 +240,37 @@ def test_no_start_and_no_word_fails_a_request_the_case_refuses(scratch: Path) ->
     contains(str(done.replayed.points[0].why_not), "told nobody what stops it")
 
 
-def test_a_compound_command_is_refused_by_the_conversations_permissions_and_reported(
-    scratch: Path,
+@pytest.mark.parametrize(
+    "written",
+    ["cd /tmp && {start}", "echo $({start})", "env X=1 {start}"],
+)
+def test_a_compound_start_is_refused_by_the_stand_ins_rules_and_reported(
+    written: str, scratch: Path
 ) -> None:
-    """A start written after `cd` never reaches the server, and the record names it."""
+    """A start the stand-in refuses under the conversation's rules is reported, and starts nothing.
+
+    The refusal here is the mock harness's: it applies the rules the conversation was
+    started with as Claude Code's `dontAsk` mode is documented to, refusing a line any
+    of whose commands no rule allows. What this proves is that the conversation is
+    started with those rules, that a refused start reaches no server, and that the
+    record names the line. Whether the real harness refuses a given line is shown by
+    the live suite only: on Claude Code 2.1.319 it ran chained lines whose every part
+    was an allowed or read-only command, so the suite fails any compound command at
+    all, refused or not.
+    """
     case = requests_of("bed-clear-check", "clear-01-bed-lowered-1727")
-    chained = f"cd /tmp && {shlex.join(start('PLA', 'smooth-pei'))}"
-    done = conversed(case, [{"commands": [LOOK, chained], "reply": "started"}], scratch)
+    line = written.format(start=shlex.join(start("PLA", "smooth-pei")))
+    done = conversed(case, [{"commands": [LOOK, line], "reply": "started"}], scratch)
     point = done.replayed.points[0]
-    equal(done.runs[0]["ran"][1]["status"], -1, describing="the shell refusing the line")
+    equal(done.runs[0]["ran"][1]["status"], -1, describing="the stand-in refusing the line")
+    equal(done.runs[0]["ran"][1]["err"], "permission denied")
     equal(point.requests, [], describing="what reached the server")
     contains(str(point.why_not), "started no print")
     reported = done.replayed.compound_commands()
     day = SessionName("operator-2026-09-27")
     equal(list(reported), [day])
     equal(len(reported[day]), 1)
-    contains(reported[day][0], "cd /tmp && printobserver start-print")
+    contains(reported[day][0], "printobserver start-print")
     equal(done.replayed.as_record()["compound_commands"], reported)
 
 
@@ -272,8 +287,27 @@ def test_a_compound_command_is_refused_by_the_conversations_permissions_and_repo
         ("printobserver start-print --reason a\\;b", False),
         ('"printobserver" look; echo done', True),
         ("echo $(printobserver prints)", True),
-        ("echo `printobserver prints`", False),
-        ('echo "$(printobserver prints)"', False),
+        # A substitution runs its command inside the one around it, quoted or not.
+        ("echo `printobserver prints`", True),
+        ('echo "$(printobserver prints)"', True),
+        ('echo "`printobserver prints`"', True),
+        ("echo $(echo x; printobserver prints)", True),
+        ('printobserver start-print --reason "the `smooth-pei` sheet"', True),
+        # The same words as literal text run nothing.
+        ("echo 'printobserver prints'", False),
+        ('echo "printobserver prints"', False),
+        ("echo '`printobserver prints`'", False),
+        ("echo '$(printobserver prints)'", False),
+        ('echo "\\`printobserver prints\\`"', False),
+        ("grep printobserver notes.txt", False),
+        # A program run through another is run inside that other command.
+        ("env X=1 printobserver prints", True),
+        ("sudo -u root printobserver prints", True),
+        ("nohup printobserver prints", True),
+        ("timeout 30 printobserver look", True),
+        ("sh -c 'printobserver prints'", True),
+        ('bash -c "printobserver prints"', True),
+        ("X=1 printobserver prints", False),
         ("printobserver look 2>&1", False),
         ("printobserver look &> out", False),
         ("X=1 printobserver prints; echo done", True),
@@ -285,13 +319,13 @@ def test_a_compound_command_is_refused_by_the_conversations_permissions_and_repo
         ("(printobserver prints); echo done", True),
         ("printobserver look # ; echo done", False),
         ("printobserver look --reason 'unclosed", False),
-        ("env X=1 printobserver prints && echo done", False),
+        ("env X=1 printobserver prints && echo done", True),
     ],
 )
 def test_a_compound_command_is_one_chaining_the_program_to_another(
     line: str, *, compound: bool
 ) -> None:
-    """Operators outside quotes chain; inside a quoted reason they are words."""
+    """Operators, substitutions and wrappers run another command; literal quoted text does not."""
     equal(is_compound(line), compound, describing=line)
 
 

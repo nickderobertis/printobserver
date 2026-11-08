@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "repo-che
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "skilltest"))
 
 from repo_checks.shell import run
-from shell_lines import pieces
+from shell_lines import commands as run_by
 
 Confidence = Literal["low", "medium", "high"]
 
@@ -145,10 +145,10 @@ def _allowed_prefixes(arguments: list[str]) -> list[str] | None:
 
 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 def _allowed(line: str, prefixes: list[str] | None) -> bool:
-    """Whether every command a shell line chains begins with a command a rule allows."""
+    """Whether every command a shell line runs begins with a command a rule allows."""
     if prefixes is None:
         return True
-    commands = [" ".join(words) for words in pieces(line)]
+    commands = [" ".join(words) for words in run_by(line)]
     return bool(commands) and all(
         any(command == prefix or command.startswith(f"{prefix} ") for prefix in prefixes)
         for command in commands
@@ -215,8 +215,8 @@ def _ran(command: list[str] | str, prompt: str, prefixes: list[str] | None) -> C
     if not _allowed(line, prefixes):
         return {"words": words, "status": REFUSED, "out": "", "err": "permission denied"}
     argv = words
-    if isinstance(command, str) and len(pieces(line)) > 1:
-        # A chained line every command of which a rule allows is the shell's to run.
+    if isinstance(command, str) and len(run_by(line)) > 1:
+        # A line running several commands, every one of them allowed, is the shell's to run.
         shell = shutil.which("sh")
         if shell is None:
             return {"words": words, "status": REFUSED, "out": "", "err": "no shell to run it"}

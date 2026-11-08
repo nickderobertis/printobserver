@@ -1,18 +1,21 @@
 """How one shell line an agent wrote splits into the commands it runs.
 
 Its own module, importing nothing of the suite's, because two sides read lines by it:
-the suite, which reports a `printobserver` command chained to another, and the wiring
-tests' stand-in for the harness, which refuses a chained line the way the harness's
-permission rules do. One reading keeps the two from disagreeing about a line.
+the suite, which reports a `printobserver` command run beside another, and the wiring
+tests' stand-in for the harness, which refuses a line running a command no rule
+allows. One reading keeps the two from disagreeing about a line.
 
-The reading is Python's own POSIX shell lexer, `shlex`, told which characters are the
-shell's operators: quotes, escapes and comments are its to read, and nothing here
-restates them. What it does not look into, this does not either: a substitution inside
-double quotes or between backquotes is one word to it.
+Splitting a command line into its commands is Python's own POSIX shell lexer, `shlex`,
+told which characters are the shell's operators: quotes, escapes and comments are its
+to read. Two things the lexer reads as plain words run commands all the same, and are
+read here: a command substitution, `$(...)` or between backquotes, which runs outside
+single quotes whether or not double quotes surround it; and a program another one runs,
+through a wrapper such as `env`, `sudo` or `timeout`, or as a shell's `-c` line.
 """
 
 from __future__ import annotations
 
+import itertools
 import re
 import shlex
 from pathlib import Path
@@ -60,22 +63,139 @@ def pieces(line: str) -> list[list[str]]:
     return [words for words in found if words]
 
 
-def runs_the_program(words: list[str]) -> bool:
-    """Whether a command's words run `printobserver`: its first word after any assignments.
+#: The shells that run the line after their `-c` option.
+SHELLS = {"sh", "bash", "dash", "zsh", "ksh"}
+#: The programs that run another program named among their arguments.
+WRAPPERS = {
+    "env",
+    "sudo",
+    "doas",
+    "nohup",
+    "time",
+    "exec",
+    "command",
+    "nice",
+    "timeout",
+    "stdbuf",
+    "setsid",
+    "xargs",
+    "watch",
+}
+#: The word a substitution leaves in the command around it once it is read out.
+SUBSTITUTED = "__substitution__"
 
-    A program run through another, such as `env` or `sudo`, is that other's command.
+
+def _closing(line: str, start: int, close: str) -> int:
+    """Where the substitution opened just before `start` closes, or the line's end.
+
+    Quotes and escapes inside it are skipped, and a `$(` inside a `$(` nests.
     """
-    command = next((word for word in words if not ASSIGNMENT.match(word)), "")
-    return Path(command).name.removesuffix(".exe") == "printobserver"
+    depth, quote, index = 1, "", start
+    while index < len(line):
+        character = line[index]
+        if character == "\\" and quote != "'":
+            index += 2
+            continue
+        if quote:
+            quote = "" if character == quote else quote
+        elif character in {"'", '"'} and close == ")":
+            quote = character
+        elif close == ")" and line.startswith("$(", index):
+            depth += 1
+            index += 1
+        elif character == close:
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return len(line)
+
+
+def substitutions(line: str) -> tuple[str, list[str]]:
+    """The line with each command substitution its shell runs read out, and their lines.
+
+    A substitution runs outside single quotes, inside double quotes or not; an escaped
+    `$` or backquote is a literal one. Each is left in the line as one plain word.
+    """
+    kept, read, quote, index = [], [], "", 0
+    while index < len(line):
+        character = line[index]
+        if character == "\\" and quote != "'":
+            kept.append(line[index : index + 2])
+            index += 2
+            continue
+        if quote == "'":
+            quote = "" if character == "'" else quote
+            kept.append(character)
+            index += 1
+            continue
+        if not quote and character == "'":
+            quote = "'"
+            kept.append(character)
+            index += 1
+            continue
+        if character == '"':
+            quote = "" if quote == '"' else '"'
+        elif line.startswith("$(", index) or character == "`":
+            opened = 2 if character == "$" else 1
+            end = _closing(line, index + opened, ")" if opened == 2 else "`")
+            read.append(line[index + opened : end].replace("\\`", "`"))
+            kept.append(SUBSTITUTED)
+            index = end + 1
+            continue
+        kept.append(character)
+        index += 1
+    return "".join(kept), read
+
+
+def _named(words: list[str]) -> list[str]:
+    """A command's words from its program on, the variable assignments before it left out."""
+    return [*itertools.dropwhile(lambda word: ASSIGNMENT.match(word) is not None, words)]
+
+
+def _program(word: str) -> str:
+    return Path(word).name.removesuffix(".exe")
+
+
+def _unwrapped(words: list[str]) -> list[list[str]]:
+    """The commands one command's words run: itself, and what it runs as a wrapper or a shell."""
+    named = _named(words)
+    if not named:
+        return []
+    program = _program(named[0])
+    if program in SHELLS and "-c" in named[:-1]:
+        return [named, *commands(named[named.index("-c") + 1])]
+    if program in WRAPPERS:
+        wrapped = next(
+            (at for at, word in enumerate(named[1:], 1) if _program(word) == "printobserver"),
+            None,
+        )
+        if wrapped is not None:
+            return [named[:wrapped], named[wrapped:]]
+    return [named]
+
+
+def commands(line: str) -> list[list[str]]:
+    """The words of every command a line runs: its own, its substitutions' and its wrappers'."""
+    outer, read = substitutions(line)
+    found = [command for words in pieces(outer) for command in _unwrapped(words)]
+    for inner in read:
+        found.extend(commands(inner))
+    return found
+
+
+def runs_the_program(words: list[str]) -> bool:
+    """Whether a command's words run `printobserver`: its first word after any assignments."""
+    named = _named(words)
+    return bool(named) and _program(named[0]) == "printobserver"
 
 
 def is_compound(line: str) -> bool:
-    """Whether a line runs a `printobserver` command beside another command.
+    """Whether a line runs a `printobserver` command beside or inside another command.
 
-    Chained to another in one line, run after `cd`, or run in a group or a substitution
-    the lexer reads as its own command. The harness refuses such a line whenever one of
-    its commands is not one a permission rule allows, which costs the action it carried,
-    so the skill asks for one command per call.
+    Chained to another in one line, run after `cd`, run in a group or a substitution,
+    or run through a wrapper or a shell's `-c`. The harness's permission rules allow a
+    command by how it begins, so the skill asks for one command per call.
     """
-    commands = pieces(line)
-    return len(commands) > 1 and any(runs_the_program(words) for words in commands)
+    run = commands(line)
+    return len(run) > 1 and any(runs_the_program(words) for words in run)
