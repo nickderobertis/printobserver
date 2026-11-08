@@ -816,6 +816,44 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         server.server_close()
 
 
+def _detectors_read(done: Scripted) -> list[str]:
+    """The detector's status each turn's context read answered, in turn order."""
+    return [
+        json.loads(entry["out"])["context"]["detector"]["status"]
+        for seen in done.turns
+        for entry in seen["ran"]
+        if entry["words"][1] == "context"
+    ]
+
+
+def test_the_real_supervisor_reads_the_replays_detector_through_obicos_record(
+    scratch: Path,
+) -> None:
+    """The real server reads the double's printer record over HTTP into every turn's context.
+
+    A case recording the detector is one Obico watched, so once two of the server's
+    reads apart have seen its snapshot move, a turn reads it scoring with nothing
+    flagged; the same case with no detector recorded never reads scoring.
+    """
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    truth(len(case.moments) >= 2, describing="two turns, so two reads lie between them")
+    for directory in ("watched", "unwatched"):
+        (scratch / directory).mkdir()
+    watched = _detectors_read(mock_replay(case, [{"commands": [CONTEXT]}], scratch / "watched"))
+    equal(len(watched), len(case.moments))
+    equal(watched[-1], "scoring_nothing_flagged")
+
+    unrecorded = dataclasses.replace(case, detector_recorded=False)
+    unwatched = _detectors_read(
+        mock_replay(unrecorded, [{"commands": [CONTEXT]}], scratch / "unwatched")
+    )
+    equal(len(unwatched), len(case.moments))
+    truth(
+        not any(status.startswith("scoring") for status in unwatched),
+        describing=f"no scoring read for a case recording no detector: {unwatched}",
+    )
+
+
 def test_the_obico_doubles_printer_record_is_the_cases_recorded_detector(scratch: Path) -> None:
     """A case recording the detector names its print and a snapshot that moves; none, no print.
 
