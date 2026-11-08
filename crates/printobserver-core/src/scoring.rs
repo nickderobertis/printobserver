@@ -57,7 +57,7 @@ pub trait ScoringProbe: Send + Sync {
 
     /// The kind the detector's own failure alerts are written down under, so
     /// a print's history says whether one has arrived for it.
-    fn alert_kind(&self) -> &str;
+    fn alert_kind(&self) -> EventKind;
 }
 
 /// What one read of the detector's record answered.
@@ -218,10 +218,11 @@ impl Supervisor {
     }
 
     /// Whether a print's history holds a failure alert of the detector's own.
-    async fn flagged_in_history(&self, print_id: PrintId, kind: &str) -> Result<bool, CoreError> {
-        let Ok(kind) = EventKind::new(kind) else {
-            return Ok(false);
-        };
+    async fn flagged_in_history(
+        &self,
+        print_id: PrintId,
+        kind: EventKind,
+    ) -> Result<bool, CoreError> {
         Ok(!self
             .stores()
             .events

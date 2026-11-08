@@ -32,9 +32,9 @@ use std::hash::{Hash as _, Hasher as _};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use printobserver_core::{ScoringProbe, ScoringRead, ScoringReading};
-use printobserver_types::Timestamp;
 use printobserver_types::serde::Deserialize;
 use printobserver_types::serde_json::Value;
+use printobserver_types::{EventKind, Timestamp};
 use printobserver_vision_api::{BoxFuture, ProviderPrint};
 
 use crate::events::ObicoFailureAlertPayload;
@@ -131,6 +131,7 @@ struct PrinterAnswer {
 /// new snapshot moves.
 #[derive(Deserialize)]
 #[serde(crate = "printobserver_types::serde")]
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 struct Snapshot {
     /// Where Obico keeps it.
     img_url: String,
@@ -140,6 +141,7 @@ struct Snapshot {
 /// system's.
 #[derive(Deserialize)]
 #[serde(crate = "printobserver_types::serde")]
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 struct CurrentPrint {
     /// Obico's own identifier for it.
     id: i64,
@@ -244,10 +246,13 @@ impl ObicoScoring {
         })
     }
 
-    /// Read the record once, wherever this is polled: on the caller's own
-    /// runtime when it is inside one, and on one of its own otherwise, as an
-    /// acknowledgement is.
-    async fn read_anywhere(&self) -> ScoringRead {
+    /// Read the record once, of the printer configured or, failing that, the
+    /// one Obico last named.
+    ///
+    /// Polled where the observation that asks for it is, inside the server's
+    /// runtime, as a frame's fetch is: the client's connections are that
+    /// runtime's.
+    async fn read_known(&self) -> ScoringRead {
         let Some(printer_id) = self.configured.or_else(|| self.known.get()) else {
             return ScoringRead::NotRead(
                 "no Obico printer is known yet: no [obico] printer_id is configured and Obico \
@@ -255,36 +260,18 @@ impl ObicoScoring {
                     .to_owned(),
             );
         };
-        if tokio::runtime::Handle::try_current().is_ok() {
-            return self.read(&self.client, printer_id).await;
-        }
-        let built = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| error.to_string())
-            .and_then(|runtime| {
-                reqwest::Client::builder()
-                    .timeout(DEFAULT_FETCH_TIMEOUT)
-                    .build()
-                    .map(|client| (runtime, client))
-                    .map_err(|error| error.to_string())
-            });
-        match built {
-            Ok((runtime, client)) => runtime.block_on(self.read(&client, printer_id)),
-            Err(error) => ScoringRead::Failed(format!(
-                "no runtime could be built to reach Obico on: {error}"
-            )),
-        }
+        self.read(printer_id).await
     }
 
     /// Read one printer's record.
-    async fn read(&self, client: &reqwest::Client, printer_id: ObicoPrinterId) -> ScoringRead {
+    async fn read(&self, printer_id: ObicoPrinterId) -> ScoringRead {
         let url = format!(
             "{}{}",
             self.api.url().as_str().trim_end_matches('/'),
             printer_path(printer_id)
         );
-        let response = match client
+        let response = match self
+            .client
             .get(&url)
             .bearer_auth(self.api.token_text())
             .send()
@@ -326,10 +313,10 @@ impl ObicoScoring {
 
 impl ScoringProbe for ObicoScoring {
     fn read_scoring(&self) -> BoxFuture<'_, ScoringRead> {
-        Box::pin(self.read_anywhere())
+        Box::pin(self.read_known())
     }
 
-    fn alert_kind(&self) -> &str {
-        ObicoFailureAlertPayload::KIND
+    fn alert_kind(&self) -> EventKind {
+        ObicoFailureAlertPayload::kind()
     }
 }

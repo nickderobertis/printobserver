@@ -144,6 +144,9 @@ pub enum Mood {
 struct Held {
     /// How it answers a printer read.
     mood: Mood,
+    /// Whether it answers its one record at every printer's path, as a
+    /// misrouted host would.
+    any_printer: bool,
     /// The answer it serves.
     answer: Value,
     /// The status `/hc/` answers.
@@ -182,6 +185,7 @@ impl Host {
         let address = listener.local_addr().expect("the bound address");
         let held = Arc::new(Mutex::new(Held {
             mood: Mood::Answering,
+            any_printer: false,
             answer: serde_json::from_str(RECORDED_PRINTER).expect("the recording is JSON"),
             health: "200 OK",
             received: Vec::new(),
@@ -232,6 +236,11 @@ impl Host {
     /// Answer a printer read this way from now on.
     pub fn answers(&self, mood: Mood) {
         self.held.lock().expect("the host holds").mood = mood;
+    }
+
+    /// Answer its one record at every printer's path from now on.
+    pub fn answers_every_printer(&self) {
+        self.held.lock().expect("the host holds").any_printer = true;
     }
 
     /// Stop listening, so a connection is refused.
@@ -297,7 +306,7 @@ async fn respond(mut stream: TcpStream, held: &Mutex<Held>, token: Option<&str>)
                     )
                 } else if line.starts_with("GET ") && path.starts_with("/api/v1/printers/") {
                     let id = held.answer["id"].as_i64().unwrap_or_default();
-                    if path == format!("/api/v1/printers/{id}/") {
+                    if held.any_printer || path == format!("/api/v1/printers/{id}/") {
                         ("200 OK", held.answer.to_string().into_bytes())
                     } else {
                         ("404 Not Found", br#"{"detail":"Not found."}"#.to_vec())

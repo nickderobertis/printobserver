@@ -84,6 +84,7 @@ def numbered(jpeg: bytes, number: int) -> bytes:
 ACKNOWLEDGEMENT = re.compile(r"/api/v1/printers/\d+/acknowledge_alert/")
 
 #: The read of Obico's own record of the printer the detector's status is built from.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 PRINTER_RECORD = re.compile(r"/api/v1/printers/\d+/")
 
 #: The printer Obico's record names, which the replay's configuration names too.
@@ -93,12 +94,14 @@ OBICO_PRINTER = 1
 UNNAMED_OBICO_PRINT = 1
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 class ObicoSnapshot(TypedDict):
     """The latest snapshot Obico's record of the printer names."""
 
     img_url: str
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 class ObicoPrint(TypedDict):
     """The print Obico's record of the printer says it is watching."""
 
@@ -107,6 +110,7 @@ class ObicoPrint(TypedDict):
     started_at: str
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 class ObicoPrinterRecord(TypedDict):
     """Obico's record of the printer, as far as the server reads one."""
 

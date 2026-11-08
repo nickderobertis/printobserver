@@ -371,6 +371,70 @@ async fn a_read_that_cannot_complete_is_a_port_failure_saying_why() {
     );
 }
 
+/// What a failed read of one unreadable record says, and the change to the
+/// recorded answer that makes it unreadable.
+type Unreadable = (&'static str, fn(&mut Value));
+
+/// How many failed reads of Obico's record the print's history at `history`
+/// holds whose detail says `said`.
+async fn failures_saying(world: &World, history: &str, said: &str) -> usize {
+    let (_, answer) = world.get(&format!("{history}?limit=500")).await;
+    answer["events"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|event| {
+            event["kind"] == "port_failure"
+                && event["payload"]["site"] == "detector_scoring_read"
+                && event["payload"]["detail"]
+                    .as_str()
+                    .is_some_and(|detail| detail.contains(said))
+        })
+        .count()
+}
+
+/// A record Obico would not send refuses the read, as a port failure saying
+/// so, rather than being read as a printer watching nothing: a start that is
+/// not an instant, a field left out, and the record of a printer other than
+/// the one asked for. None of them reads as scoring.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_record_obico_would_not_send_refuses_the_read() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    rest.answers_every_printer();
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let history = world.operation_url("/v1/prints/{print_id}/history", print_id);
+    let unreadable: [Unreadable; 3] = [
+        ("not Obico's printer record", |answer| {
+            answer["current_print"]["started_at"] = json!("yesterday");
+        }),
+        ("not Obico's printer record", |answer| {
+            answer.as_object_mut().expect("a record").remove("pic");
+        }),
+        ("the record of another printer", |answer| {
+            answer["id"] = json!(PRINTER_ID + 1);
+        }),
+    ];
+    for (said, change) in unreadable {
+        rest.answer(|answer| {
+            *answer = printobserver_types::serde_json::from_str(crate::obico_api::RECORDED_PRINTER)
+                .expect("the recording is JSON");
+            change(answer);
+        });
+        let seen_before = failures_saying(&world, &history, said).await;
+        let deadline = tokio::time::Instant::now() + PATIENCE;
+        while failures_saying(&world, &history, said).await <= seen_before {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "no further failed read saying {said:?} was recorded"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let detector = status_detector(&world, print_id).await;
+        assert_eq!(detector["status"], "unchecked", "{said}: {detector}");
+    }
+}
+
 /// The detector's health check is asked as the server starts, not one
 /// observation interval later: with an interval of a minute and a print open,
 /// a server started again reads the detector `available` within seconds.
