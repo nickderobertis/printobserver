@@ -23,6 +23,19 @@
 # as carried by `integration-macos`, the gate's cell is reported by its
 # aggregator `gate-macos`, and AGENTS.md's "The consolidated macOS lanes" says
 # why.
+#
+# Every run restores the caches a run on `main` saved, and only a run on `main`
+# saves one: the Rust toolchain's through `cache-save-if`, uv's through
+# `save-cache`, and the release program's through a save step conditioned on
+# the ref. A pull request's cache is scoped to its merge ref, which no other
+# run restores, so three open pull requests saving theirs filled the
+# repository's 10 GB quota and evicted `main`'s, and every pull request after
+# ran cold. Bun's own cache cannot be split that way — the action saves on any
+# ref whose key missed — and holds one 33 MB download, so it is off. The one
+# cache a pull request saves is the real-print suite's LFS store, keyed on the
+# cases' content and saved only when that misses: only a pull request changing
+# the cases saves one, and restoring it alone would download them again on
+# every push.
 
 name: ci
 
@@ -65,6 +78,8 @@ jobs:
           fetch-depth: 0
       - uses: extractions/setup-just@v3
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - id: classify
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -121,13 +136,19 @@ jobs:
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       # `just` from the same action as the cargo tools: `extractions/setup-just`
       # has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -202,11 +223,16 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -237,6 +263,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just shard-verdict gate linux-x86_64
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -307,13 +335,18 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       # `just` from the same action as the cargo tools: `extractions/setup-just`
       # has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -341,6 +374,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just shard-verdict gate windows-aarch64
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -406,13 +441,18 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       # `just` from the same action as the cargo tools, as every gate cell takes
       # it, so the two Windows shard jobs set their hosts up alike.
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -440,6 +480,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just shard-verdict gate windows-x86_64
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -494,25 +536,40 @@ jobs:
         with:
           lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
       # The release program every client's world carries, in a cache of its
       # own: keyed on the source, toolchain and profile it is built from, and
       # saved only when that key missed, so it holds one program and nothing of
       # the Rust toolchain's cache. A restored program whose key no longer
-      # holds is built over rather than used.
+      # holds is built over rather than used. Saved by a run on `main` alone,
+      # as every cache here is: a pull request's cache is scoped to its own
+      # merge ref, which no other run restores, and filling the repository's
+      # quota with those evicts `main`'s, the ones every pull request restores.
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - id: release-program-cache
+        uses: actions/cache/restore@v4
         with:
           path: .release-program
           key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
       - run: just release-program
+      - if: github.ref == 'refs/heads/main' && steps.release-program-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .release-program
+          key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
       - run: just octoprint-up
       - run: just test-integration
       # Both teardowns run after failure: stop the printer environment, then
@@ -587,11 +644,16 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -619,6 +681,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just shard-verdict gate macos-aarch64
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -651,20 +715,32 @@ jobs:
         with:
           lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - id: release-program-cache
+        uses: actions/cache/restore@v4
         with:
           path: .release-program
           key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
       - run: just release-program
+      - if: github.ref == 'refs/heads/main' && steps.release-program-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .release-program
+          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
       - run: just octoprint-up
       - run: just test-integration
       - if: always()
@@ -698,6 +774,8 @@ jobs:
           fetch-depth: 0
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just setup-llmlint
       # The deterministic half runs first: a config, plugin or suppression slip
       # fails here without spending a harness call.
@@ -721,7 +799,11 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       # The release `repo-policy.toml` holds gh at, installed from that
       # release's own archive once its published checksums vouch for it, ahead
       # of the runner's own gh on PATH.
@@ -749,6 +831,8 @@ jobs:
           fetch-depth: 0
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - id: classify
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -776,8 +860,14 @@ jobs:
       # Before anything costs anything: a run with no credential fails saying so.
       - run: just skilltest-credential
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - uses: actions/setup-node@v4
       - run: just bootstrap
       # The steps `tests/real-prints-lfs/ci-steps.yml` holds, verbatim.
@@ -819,8 +909,12 @@ jobs:
         with:
           lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       # The releases `repo-policy.toml` holds the two tools at, installed
       # prebuilt, so the recipe's own install finds them held and compiles
       # nothing.
@@ -845,6 +939,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just check-pr-title
         env:
           # Passed through the environment rather than interpolated into the
