@@ -3,8 +3,9 @@
 The OctoPrint stand-in serves the case's G-code and moves the job's file position
 to each event's; the camera answers each fetch with the case's latest frame
 captured at or before the replay's current time; the Obico double serves its
-health, takes acknowledgements and hands over the alert images it delivers. All
-of them read one [`Timeline`], which is what "the replay's current time" is.
+health, takes acknowledgements, hands over the alert images it delivers and
+answers its record of the printer from the case's own recorded detector state.
+All of them read one [`Timeline`], which is what "the replay's current time" is.
 
 # Why the timeline moves when the harness process exits
 
@@ -79,8 +80,17 @@ def numbered(jpeg: bytes, number: int) -> bytes:
     return jpeg[:2] + b"\xff\xfe" + (len(comment) + 2).to_bytes(2, "big") + comment + jpeg[2:]
 
 
-#: The one request the Obico adapter makes of Obico's API.
+#: The request the Obico adapter makes of Obico's API when a detection was handled.
 ACKNOWLEDGEMENT = re.compile(r"/api/v1/printers/\d+/acknowledge_alert/")
+
+#: The read of Obico's own record of the printer the detector's status is built from.
+PRINTER_RECORD = re.compile(r"/api/v1/printers/\d+/")
+
+#: The printer Obico's record names, which the replay's configuration names too.
+OBICO_PRINTER = 1
+
+#: Obico's identifier for a print no recorded alert names.
+UNNAMED_OBICO_PRINT = 1
 
 
 class JobFile(TypedDict):
@@ -318,6 +328,32 @@ class Timeline:
             name = self.case.frames[shown].file
             self.fetches.append(name)
             return FrameDue(name, self.frame_times[shown])
+
+    def obico_printer(self) -> dict[str, object]:
+        """Obico's record of the printer, from the case's own recorded detector state.
+
+        A case recording what the detector did is one whose print Obico was watching,
+        so the record names that print as its current one and carries the snapshot
+        Obico last took, which a watching Obico replaces every few seconds: it is
+        named by the replay's clock, so two reads apart never share one. A case
+        recording no detector names no current print. The score is not kept by any
+        case frame by frame, so it is the zero a score of nothing flagged reads as.
+        """
+        if not self.case.detector_recorded:
+            return {"id": OBICO_PRINTER, "current_print": None, "pic": None, "normalized_p": 0.0}
+        taken = int(self.now().timestamp())
+        return {
+            "id": OBICO_PRINTER,
+            "current_print": {
+                "id": self.case.obico_print_id() or UNNAMED_OBICO_PRINT,
+                "filename": self.case.gcode.name,
+                "started_at": self.case.job_started().isoformat().replace("+00:00", "Z"),
+            },
+            "pic": {
+                "img_url": f"/media/tsd-pics/snapshots/{OBICO_PRINTER}/latest.jpg?digest={taken}"
+            },
+            "normalized_p": 0.0,
+        }
 
     def camera_answer(self) -> CameraFrame | None:
         """The bytes this fetch answers, and when they were captured.
@@ -609,11 +645,14 @@ def camera(timeline: Timeline) -> ThreadingHTTPServer:
 
 
 def obico(timeline: Timeline) -> ThreadingHTTPServer:
-    """The Obico double: its health, its acknowledgements and its alert images."""
+    """The Obico double: its health, its acknowledgements, its alert images and its printer."""
 
     class Handler(_Quiet):
         def do_GET(self) -> None:
             path = urlsplit(self.path).path
+            if PRINTER_RECORD.fullmatch(path):
+                self.answer_json(200, timeline.obico_printer())
+                return
             if path.startswith("/media/"):
                 name = unquote(path.rsplit("/", 1)[1])
                 if name not in {moment.event_image for moment in timeline.case.moments}:

@@ -135,7 +135,7 @@ def service_config(
     text += (
         f'\n[camera]\nsnapshot_url = "{camera}/api/frame.jpeg"\n'
         f'\n[obico]\nurl = "{obico}"\naccess_token = "{minted.obico_token}"\n'
-        f'ml_api_url = "{obico}/ml/"\n'
+        f'ml_api_url = "{obico}/ml/"\nprinter_id = {doubles.OBICO_PRINTER}\n'
     )
     tomllib.loads(text)
     return text
