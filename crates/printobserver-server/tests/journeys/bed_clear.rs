@@ -438,6 +438,17 @@ async fn the_bed_said_clear_once_lets_every_recovery_needing_it_go_ahead() {
 
     bench.octoprint.moves_head_to([50.0, 50.0, 4.0]);
     every_one_is_carried_out_on_the_word(&bench, &word).await;
+    // A request carrying its own word is decided on that, and names no other.
+    let (status, own) = bench
+        .recover("recover_home_z", json!({ "bed_clear_asserted": true }))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{own:#}");
+    for event in own["events"].as_array().expect("the audit") {
+        assert!(
+            event["payload"].get("bed_clear").is_none(),
+            "a Z home asserting the bed clear itself named the standing word: {event:#}"
+        );
+    }
     let recovery = bench
         .client
         .get(format!("{}/printer/recovery", bench.server.base_url()))

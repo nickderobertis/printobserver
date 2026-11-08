@@ -499,6 +499,24 @@ async fn a_failing_health_check_while_scoring_is_named_beside_it_and_recorded() 
     let named = detector["probe_failure"].as_str().unwrap_or_default();
     assert!(named.contains("503"), "{detector}");
     assert_eq!(context_detector(&world, print_id).await, detector);
+    // Still failing, but answered otherwise: the failure named is the latest.
+    ml_api.health("500 Internal Server Error");
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    loop {
+        let now = status_detector(&world, print_id).await;
+        if now["probe_failure"]
+            .as_str()
+            .is_some_and(|failure| failure.contains("500"))
+        {
+            assert_eq!(now["status"], "scoring_nothing_flagged", "{now}");
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the failing check named beside the status never moved on: {now}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     assert!(
         !world
             .agent
@@ -522,7 +540,7 @@ async fn a_failing_health_check_while_scoring_is_named_beside_it_and_recorded() 
 /// and the record does not move, `unavailable` once it fails; with no
 /// `ml_api_url` and no evidence, `unchecked`.
 #[tokio::test(flavor = "multi_thread")]
-async fn without_evidence_the_health_check_decides_and_nothing_is_unchecked() {
+async fn without_evidence_the_health_check_decides_and_no_evidence_is_unchecked() {
     let token = minted("obico-token");
     let rest = Host::rest(&token).await;
     let ml_api = Host::ml_api().await;
@@ -700,6 +718,36 @@ async fn the_printer_is_learned_from_what_obico_posts() {
     post(&world, &notification).await;
     until_status(&world, print_id, "scoring_nothing_flagged").await;
     assert!(printer_reads(&rest) > 0);
+    scoring.store(false, Ordering::SeqCst);
+}
+
+/// A printer `[obico] printer_id` names wins over one a body Obico posted
+/// named: every read is of the configured printer's record.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_configured_printer_wins_over_the_one_obico_names() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let scoring = keep_scoring(&rest);
+    let mut notification: Value = printobserver_types::serde_json::from_str(include_str!(
+        "../../../printobserver-obico/samples/obico/printer-notification-about-a-print.json"
+    ))
+    .expect("the committed sample is JSON");
+    notification["printer"]["id"] = json!(PRINTER_ID + 82);
+    post(&world, &notification).await;
+    let read_before = rest.received().len();
+    reads(&rest, 3).await;
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+    let read: Vec<String> = rest
+        .received()
+        .into_iter()
+        .skip(read_before)
+        .map(|request| request.path().to_owned())
+        .collect();
+    assert!(
+        !read.is_empty() && read.iter().all(|path| path == PRINTER_PATH),
+        "a read was of a printer other than the configured one: {read:?}"
+    );
     scoring.store(false, Ordering::SeqCst);
 }
 
