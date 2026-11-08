@@ -16,7 +16,9 @@
 //! nothing. The evidence is a change: the detector is scoring the active print
 //! when the print its record names is that print, and its snapshot or its
 //! score moved between two of this server's reads within the last
-//! [`EVIDENCE_INTERVALS`] observation intervals. A read naming another print,
+//! [`EVIDENCE_INTERVALS`] observation intervals — both reads inside that
+//! window, so a read after reads failed for longer is compared with nothing
+//! and begins anew. A read naming another print,
 //! or an earlier one, is evidence that it is not, and ends any evidence held.
 //! A read that fails is recorded as a port failure against each observation
 //! the round writes, and leaves the evidence standing until it is older than
@@ -110,8 +112,9 @@ pub(crate) struct Scoring {
 /// What the reads of the detector's record have found, held between them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ScoringState {
-    /// The last read's fingerprint, and the open print it named.
-    last: Option<(PrintId, u64)>,
+    /// The last successful read's fingerprint, the open print it named, and
+    /// when on the elapsed clock it was read.
+    last: Option<(PrintId, u64, Duration)>,
     /// The evidence held: the print, when on the elapsed clock it last moved,
     /// and the instant the evidence began.
     evidence: Option<(PrintId, Duration, Timestamp)>,
@@ -264,10 +267,14 @@ impl Supervisor {
         if flagged {
             state.flagged.insert(print_id);
         }
-        let moved = state
-            .last
-            .is_some_and(|(last, evidence)| last == print_id && evidence != reading.evidence);
-        state.last = Some((print_id, reading.evidence));
+        // Two reads compared are both inside the window: one taken before an
+        // outage longer than that says nothing about what moved since.
+        let moved = state.last.is_some_and(|(last, evidence, read_at)| {
+            last == print_id
+                && evidence != reading.evidence
+                && now.saturating_sub(read_at) <= window
+        });
+        state.last = Some((print_id, reading.evidence, now));
         if moved {
             // A stretch of evidence goes on only while it stands; one that
             // expired before this read is over, and this read begins another.

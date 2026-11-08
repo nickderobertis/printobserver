@@ -873,6 +873,57 @@ async fn a_history_that_cannot_say_whether_it_was_flagged_takes_nothing() {
     scoring.store(false, Ordering::SeqCst);
 }
 
+/// A read that succeeds after reads failed for longer than the evidence
+/// window is compared with nothing stale: the first changed answer after the
+/// outage reads no scoring, in the status or the context, and only a second
+/// read that sees the record move again restores it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_read_after_an_outage_is_not_compared_with_one_from_before_it() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let scoring = keep_scoring(&rest);
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+    scoring.store(false, Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Every read fails for longer than the two intervals evidence stands for.
+    rest.answers(Mood::BreakingOff);
+    until_not_scoring(&world, print_id).await;
+    reads(&rest, 3).await;
+
+    // The record comes back changed, and then holds still.
+    rest.scores(1_000_000, 0.0);
+    rest.answers(Mood::Answering);
+    let history = world.operation_url("/v1/prints/{print_id}/history", print_id);
+    let failed = failures_saying(&world, &history, "broke off").await;
+    reads(&rest, 1).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    for _ in 0..2 {
+        for (read, detector) in [
+            ("status", status_detector(&world, print_id).await),
+            ("context", context_detector(&world, print_id).await),
+        ] {
+            assert!(
+                !detector["status"]
+                    .as_str()
+                    .is_some_and(|status| status.starts_with("scoring")),
+                "the {read} read took one read after an outage as evidence: {detector}"
+            );
+        }
+        reads(&rest, 1).await;
+    }
+    assert_eq!(
+        failures_saying(&world, &history, "broke off").await,
+        failed,
+        "a read failed after the record came back"
+    );
+
+    // A second recent read sees it move: that is evidence again.
+    rest.scores(1_000_001, 0.0);
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+}
+
 /// The detector's health check is asked as the server starts, not one
 /// observation interval later: with an interval of a minute and a print open,
 /// a server started again reads the detector `available` within seconds.
