@@ -78,8 +78,15 @@ fn template(installer: &str, state: &Path) -> String {
         .expect("the configuration closes");
     let skills = state.join("skills");
     let skill = skills.join("printobserver").join("SKILL.md");
+    // The shell installers write the state directory into a TOML basic
+    // string, where a backslash is an escape; the PowerShell ones write every
+    // path into a literal string, where it is not. A shell installer runs only
+    // on a host whose paths carry none, but this journey's own root is a
+    // Windows path on a Windows host, so it is escaped as a basic string's
+    // contents rather than written as one no shell installer would write.
+    let shell_state = state.display().to_string().replace('\\', "\\\\");
     script[start..start + length]
-        .replace("$RUNTIME_STATE", &state.display().to_string())
+        .replace("$RUNTIME_STATE", &shell_state)
         .replace("$RUNTIME_CONFIG", "config.toml")
         .replace("$INTERVAL_LINE", "# observation_interval_s = 120")
         .replace("$InstalledSkills", &skills.display().to_string())
