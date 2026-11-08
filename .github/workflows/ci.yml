@@ -318,6 +318,11 @@ jobs:
   # gate tiers `just gate-shards <shards>` hands that shard, and an aggregating
   # job carrying the required name. AGENTS.md's "Commits, releases, and merging"
   # records which platform is split and the run that measured it over.
+  #
+  # `windows-aarch64` is split seven ways: in five, its non-Rust tests and its
+  # second end-to-end part reached 1,825 s and 1,793 s on a warm run on `main`
+  # (42429008618), so the non-Rust side is split again on `lang:python` and the
+  # end-to-end tier runs in four parts.
   gate-shard-windows-aarch64:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
@@ -330,23 +335,31 @@ jobs:
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 1
-            shards: 5
+            shards: 7
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 2
-            shards: 5
+            shards: 7
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 3
-            shards: 5
+            shards: 7
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 4
-            shards: 5
+            shards: 7
           - id: windows-aarch64
             runner: windows-11-arm
             shard: 5
-            shards: 5
+            shards: 7
+          - id: windows-aarch64
+            runner: windows-11-arm
+            shard: 6
+            shards: 7
+          - id: windows-aarch64
+            runner: windows-11-arm
+            shard: 7
+            shards: 7
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -366,8 +379,8 @@ jobs:
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
       # A cache per shard: each compiles different things — the first the
-      # Rust crates' instrumented test builds, the second the lints, the debug
-      # program the Python suites run and the build tier, the last three the
+      # Rust crates' instrumented test builds, the lints and the build tier,
+      # the next two the debug program their suites run, the last four the
       # debug program the end-to-end tier runs — and one key shared by all
       # would hold whichever shard saved first.
       - uses: actions-rust-lang/setup-rust-toolchain@v1

@@ -26,7 +26,11 @@ halves of that split, so the workflow carries no selection of its own:
   end-to-end tier runs in three parts instead, `test-e2e[1/3]` to
   `test-e2e[3/3]`: `END_TO_END_THIRD_PART` takes its files from both halves,
   and each half keeps the rest of its own. That tier measures no coverage, so
-  its split moves no coverage figure.
+  its split moves no coverage figure. Split seven ways, the five-way split's
+  non-Rust measurement is split again on `lang:python` — the Python projects,
+  whose tests alone measure the Python sources, on one runner, and the rest,
+  which measure none, on another — and the end-to-end tier runs in four parts,
+  `END_TO_END_FOURTH_PART` taking its files from the second.
 * `commands TIER SHARD` prints the recipe invocations shard `SHARD` (`k/n`) of
   the gate at `TIER` runs, one a line, and runs none of them.
 * `run TIER SHARD` runs shard `SHARD` (`k/n`) of the gate at `TIER`: each of its
@@ -124,10 +128,30 @@ END_TO_END_THIRD_PART = frozenset(
     }
 )
 
+#: The end-to-end tier's test files its fourth part collects when it is split in
+#: four, taken from the second part, which the other three keep as they are.
+#: Chosen from a warm Windows ARM run on `main`, 42429008618, whose parts' shards
+#: took 1,306 s, 1,793 s and 1,451 s: the second part's release-build group stays
+#: where it is, and its files that share no build with it move here.
+END_TO_END_FOURTH_PART = frozenset(
+    {
+        "test_windows_lint_journey.py",
+        "test_windows_service_installer_journey.py",
+        "test_bootstrap_journey.py",
+        "test_cargo_build_contract_journey.py",
+        "test_commit_msg_journey.py",
+        "test_fresh_clone_journey.py",
+        "test_platform_matrix_journey.py",
+        "test_release_workflow_journey.py",
+        "test_workflow_validation.py",
+    }
+)
+
 #: How many parts the end-to-end tier's test files split into in a four-way
-#: plan, and in a five-way one.
+#: plan, a five-way one and a seven-way one.
 END_TO_END_PARTS = 2
 END_TO_END_THIRDS = 3
+END_TO_END_QUARTERS = 4
 #: The variables a step names its part in. Each step is handed only those it
 #: names, so a tier the plan runs whole is never narrowed by one a caller left set.
 PARTS = (END_TO_END_PART_VARIABLE, PROJECTS_VARIABLE)
@@ -137,6 +161,9 @@ PARTS = (END_TO_END_PART_VARIABLE, PROJECTS_VARIABLE)
 #: its own ecosystem's floor over the code that side's tests measured.
 MEASURED = ("test", "coverage")
 SPLIT_ON = ProjectFilter("lang:rust", negated=False)
+#: The tag a seven-way split carves the non-Rust side by: the Python projects,
+#: the only ones whose tests measure the Python sources, and every other.
+SPLIT_AGAIN_ON = ProjectFilter("lang:python", negated=False)
 #: The parameter a tier recipe takes its tier through.
 TIER_PARAMETER = "tier"
 #: The kinds of required job a verdict is reached for.
@@ -244,6 +271,10 @@ def plan(repo: Repo, count: int) -> tuple[tuple[Step, ...], ...]:
     """
     tiers = gate_tiers(repo)
     rust, others = SPLIT_ON, ProjectFilter(SPLIT_ON.tag, negated=True)
+    python = ProjectFilter(others.tag, others.negated, (SPLIT_AGAIN_ON,))
+    rest = ProjectFilter(
+        others.tag, others.negated, (ProjectFilter(SPLIT_AGAIN_ON.tag, negated=True),)
+    )
     plans = {
         1: (tuple(Step(tier) for tier in tiers),),
         4: (
@@ -268,6 +299,19 @@ def plan(repo: Repo, count: int) -> tuple[tuple[Step, ...], ...]:
             tuple(Step(tier, projects=others) for tier in tiers if tier in MEASURED),
             *((Step(END_TO_END, Shard(part, END_TO_END_THIRDS)),) for part in (1, 2, 3)),
         ),
+        7: (
+            tuple(
+                Step(tier, projects=rust if tier in MEASURED else None)
+                for tier in tiers
+                if tier != END_TO_END
+            ),
+            tuple(Step(tier, projects=python) for tier in tiers if tier in MEASURED),
+            tuple(Step(tier, projects=rest) for tier in tiers if tier in MEASURED),
+            *(
+                (Step(END_TO_END, Shard(part, END_TO_END_QUARTERS)),)
+                for part in range(1, END_TO_END_QUARTERS + 1)
+            ),
+        ),
     }
     if count not in plans:
         msg = (
@@ -289,14 +333,16 @@ def end_to_end_part(file_name: str, parts: int) -> int:
             return 1
         case 2:
             return 2 if file_name in END_TO_END_SECOND_PART else 1
-        case 3 if file_name in END_TO_END_THIRD_PART:
+        case 3 | 4 if file_name in END_TO_END_THIRD_PART:
             return 3
-        case 3:
+        case 4 if file_name in END_TO_END_FOURTH_PART:
+            return 4
+        case 3 | 4:
             return 2 if file_name in END_TO_END_SECOND_PART else 1
         case _:
             msg = (
-                f"the end-to-end tier's test files are split into one, two or three parts, "
-                f"not {parts}"
+                f"the end-to-end tier's test files are split into one, two, three or four "
+                f"parts, not {parts}"
             )
             raise ShardError(msg)
 

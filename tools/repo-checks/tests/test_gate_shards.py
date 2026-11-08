@@ -31,6 +31,7 @@ from repo_checks.checks_shards import sharded_jobs
 from repo_checks.commands import measured_for, measured_sources
 from repo_checks.expect import accepted, contains, equal, failing, passing, refused, truth
 from repo_checks.gate_shards import (
+    END_TO_END_FOURTH_PART,
     END_TO_END_PART_VARIABLE,
     END_TO_END_SECOND_PART,
     END_TO_END_THIRD_PART,
@@ -38,7 +39,7 @@ from repo_checks.gate_shards import (
 )
 from repo_checks.gate_shards import REFUSED as REFUSED_SHARD
 from repo_checks.gate_shards import main as gate_shards_main
-from repo_checks.gate_tier import PROJECTS_VARIABLE, REFUSED, command
+from repo_checks.gate_tier import PROJECTS_VARIABLE, REFUSED, ProjectFilter, command
 from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
 from repo_checks.parsing import jobs_of, load_workflow, run_commands, steps_of
@@ -52,13 +53,17 @@ CI = ".github/workflows/ci.yml"
 #: The committed sharded platform.
 SHARDED = "windows-aarch64"
 #: The committed split.
-SHARDS = 5
+SHARDS = 7
 #: Each split a plan makes, and how many parts its end-to-end tier runs in.
-SPLITS = ((4, 2), (5, 3))
+SPLITS = ((4, 2), (5, 3), (7, 4))
 #: One `just <recipe> ['<tier>']` invocation, as `just --dry-run` prints one.
 INVOCATION = re.compile(r"just (?P<recipe>[a-z][a-z0-9-]*)(?: '(?P<tier>[a-z]+)')?")
 RUST = f"{PROJECTS_VARIABLE}=lang:rust"
 OTHERS = f"{PROJECTS_VARIABLE}=!lang:rust"
+PYTHON = f"{PROJECTS_VARIABLE}=!lang:rust,lang:python"
+REST = f"{PROJECTS_VARIABLE}=!lang:rust,!lang:python"
+#: The sides of the test tier each split measures on, one shard each.
+MEASURED_SIDES = {4: (RUST, OTHERS), 5: (RUST, OTHERS), 7: (RUST, PYTHON, REST)}
 
 
 def dry_run_check(tier: str) -> set[tuple[str, ...]]:
@@ -91,9 +96,9 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
 ) -> None:
     """Every invocation `just check` makes is made by the shards, each part of it once.
 
-    The `test` tier and its `coverage` run on each side of `lang:rust`, side by
-    side in the first two shards, and the end-to-end tier's parts are the
-    remaining shards', one each.
+    The `test` tier and its `coverage` run on each side of `lang:rust` — the
+    seven-way split's other side again on each side of `lang:python` — one
+    side a shard, and the end-to-end tier's parts are the remaining shards'.
     """
     shards = [shard_commands(capsys, tier, f"{index}/{count}") for index in range(1, count + 1)]
     selected = [command for shard in shards for command in shard]
@@ -112,8 +117,10 @@ def test_the_shards_together_run_the_unsharded_gate_and_nothing_twice(
     equal(
         [[one for one in shard if invoked(one)[0] in measured] for shard in shards],
         [
-            [f"{RUST} just test {tier}", f"{RUST} just coverage {tier}"],
-            [f"{OTHERS} just test {tier}", f"{OTHERS} just coverage {tier}"],
+            *(
+                [f"{side} just test {tier}", f"{side} just coverage {tier}"]
+                for side in MEASURED_SIDES[count]
+            ),
             *(
                 [f"{END_TO_END_PART_VARIABLE}={part}/{parts} just test-e2e {tier}"]
                 for part in range(1, parts + 1)
@@ -137,6 +144,25 @@ def test_five_shards_leave_non_rust_measurement_on_its_own_runner(
             recipe,
             describing="tiers moved beside Rust measurement",
         )
+
+
+@pytest.mark.parametrize("tier", ["affected", "all"])
+def test_seven_shards_split_the_non_rust_measurement_on_python(
+    capsys: pytest.CaptureFixture[str], tier: str
+) -> None:
+    """The Python projects' tests and every other non-Rust project's run on runners of their own.
+
+    The first shard is the five-way split's first, unchanged.
+    """
+    equal(
+        shard_commands(capsys, tier, "2/7"),
+        [f"{PYTHON} just test {tier}", f"{PYTHON} just coverage {tier}"],
+    )
+    equal(
+        shard_commands(capsys, tier, "3/7"),
+        [f"{REST} just test {tier}", f"{REST} just coverage {tier}"],
+    )
+    equal(shard_commands(capsys, tier, "1/7"), shard_commands(capsys, tier, "1/5"))
 
 
 @pytest.mark.parametrize("tier", ["affected", "all"])
@@ -225,6 +251,14 @@ def test_the_two_sides_of_the_test_tier_are_its_nx_tasks_none_twice() -> None:
 
     equal(rust & others, set(), describing="tasks both sides run")
     equal(rust | others, whole, describing="the two sides against the unsharded tier")
+    python, rest = nx_tasks("!lang:rust,lang:python"), nx_tasks("!lang:rust,!lang:python")
+    equal(python & rest, set(), describing="tasks both parts of the non-Rust side run")
+    equal(python | rest, others, describing="its two parts against the non-Rust side")
+    truth(
+        {task for task in python if task.endswith(":test")}
+        and {task for task in rest if task.endswith(":test")},
+        describing="each part of the non-Rust side running tests of its own",
+    )
     contains(rust, "printobserver-types:schemas")
     contains(others, "printobserver:build")
     equal(
@@ -238,7 +272,9 @@ def test_the_two_sides_of_the_test_tier_are_its_nx_tasks_none_twice() -> None:
     )
 
 
-@pytest.mark.parametrize("named", ["rust", "lang:", "!!lang:rust", "lang:rust,lang:python"])
+@pytest.mark.parametrize(
+    "named", ["rust", "lang:", "!!lang:rust", "lang:rust,", ",lang:rust", "lang:rust;lang:python"]
+)
 def test_a_side_that_names_no_tag_is_refused_before_nx_runs(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], named: str
 ) -> None:
@@ -257,7 +293,13 @@ def test_a_side_that_names_no_tag_is_refused_before_nx_runs(
 
 @pytest.mark.parametrize(
     ("narrowed", "rust", "python"),
-    [("lang:rust", True, False), ("!lang:rust", False, True), ("", None, None)],
+    [
+        ("lang:rust", True, False),
+        ("!lang:rust", False, True),
+        ("!lang:rust,lang:python", False, True),
+        ("!lang:rust,!lang:python", False, False),
+        ("", None, None),
+    ],
 )
 def test_each_side_s_coverage_is_over_its_own_ecosystem_alone(
     monkeypatch: pytest.MonkeyPatch, narrowed: str, rust: bool | None, python: bool | None
@@ -346,11 +388,14 @@ def test_a_shard_runs_its_tiers_in_order_handing_each_its_tier(tree: Callable[[]
             "build all",
             "lint-workflows",
             "check-repo",
-            "test all !lang:rust",
-            "coverage all !lang:rust",
-            "test-e2e all 1/3",
-            "test-e2e all 2/3",
-            "test-e2e all 3/3",
+            "test all !lang:rust,lang:python",
+            "coverage all !lang:rust,lang:python",
+            "test all !lang:rust,!lang:python",
+            "coverage all !lang:rust,!lang:python",
+            "test-e2e all 1/4",
+            "test-e2e all 2/4",
+            "test-e2e all 3/4",
+            "test-e2e all 4/4",
         ],
     )
 
@@ -460,6 +505,44 @@ def test_the_three_end_to_end_parts_collect_the_whole_tier_and_no_test_twice(
         )
         truth(
             not files[0] & (END_TO_END_SECOND_PART | END_TO_END_THIRD_PART),
+            describing="the first part collecting no file another part names",
+        )
+
+
+@pytest.mark.parametrize("selection", [(), ("-m", "not alone"), ("-m", "alone")])
+def test_the_four_end_to_end_parts_collect_the_whole_tier_and_no_test_twice(
+    selection: tuple[str, ...],
+) -> None:
+    """Split in four, the parts are the tier's whole collection, disjoint, each part non-empty.
+
+    The fourth collects exactly its own files, taken from the second, and the
+    other three keep what they collected of the three-way split.
+    """
+    whole = collected("", *selection)
+    parts = [collected(f"{index}/4", *selection) for index in (1, 2, 3, 4)]
+
+    equal(whole[0], 0, describing="the unsharded collection's exit")
+    equal([exited for exited, _ in parts], [0, 0, 0, 0], describing="each part's exit")
+    together = [test for _, tests in parts for test in tests]
+    equal(
+        [test for test, seen in Counter(together).items() if seen > 1],
+        [],
+        describing="tests two parts collect",
+    )
+    equal(sorted(together), sorted(whole[1]), describing="the parts' union against the tier")
+    if not selection:
+        files = [{test.split("::")[0].rsplit("/", 1)[-1] for test in tests} for _, tests in parts]
+        equal([bool(one) for one in files], [True] * 4, describing="each part's share")
+        equal(files[3], set(END_TO_END_FOURTH_PART), describing="the files the fourth collects")
+        equal(files[2], set(END_TO_END_THIRD_PART), describing="the files the third collects")
+        equal(
+            files[1],
+            set(END_TO_END_SECOND_PART) - END_TO_END_THIRD_PART - END_TO_END_FOURTH_PART,
+            describing="the files the second part keeps",
+        )
+        truth(
+            not files[0]
+            & (END_TO_END_SECOND_PART | END_TO_END_THIRD_PART | END_TO_END_FOURTH_PART),
             describing="the first part collecting no file another part names",
         )
 
@@ -740,6 +823,15 @@ def dispatched_shards(workflow: dict[str, Any], platform: str) -> list[str]:
     return shards
 
 
+def partitions(sides: set[str]) -> bool:
+    """Whether `sides` admit every project exactly once between them."""
+    filters = [ProjectFilter.named(side) for side in sides]
+    return all(
+        sum(one.admits(project.tags) for one in filters) == 1
+        for project in projects(Repo(REPO_ROOT))
+    )
+
+
 def coverage_findings(selected: list[str], unsharded: set[tuple[str, ...]]) -> list[str]:
     """How the commands a split runs differ from the unsharded gate's: omitted, or run twice.
 
@@ -765,7 +857,7 @@ def coverage_findings(selected: list[str], unsharded: set[tuple[str, ...]]) -> l
         counts = {int(part.split("/")[1]) for part in thirds}
         if whole and len(parts) > 1:
             findings.append(f"`just {' '.join(recipe)}` is run whole and in parts")
-        elif sides and sides != {"lang:rust", "!lang:rust"}:
+        elif sides and not partitions(sides):
             findings.append(
                 f"`just {' '.join(recipe)}` is omitted for a side: run for {sorted(sides)}"
             )

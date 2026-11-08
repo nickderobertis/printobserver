@@ -132,34 +132,47 @@ class Scope:
 
 @dataclass(frozen=True, slots=True)
 class ProjectFilter:
-    """One side of a project tag: the projects carrying it, or those carrying none of it."""
+    """One side of a project tag: the projects carrying it, or those carrying none of it.
+
+    `also` narrows it further, to the projects every one of those sides admits
+    too, so a split can carve a side of one tag by another: `!lang:rust` into
+    `!lang:rust,lang:python` and `!lang:rust,!lang:python`.
+    """
 
     tag: str
     negated: bool
+    also: tuple[ProjectFilter, ...] = ()
 
     @classmethod
     def named(cls, named: str) -> ProjectFilter:
-        """The side a caller named, as `<tag>` or `!<tag>`.
+        """The side a caller named, as `<tag>` or `!<tag>`, or several joined by `,`.
 
         Raises:
-            TierError: If it is neither, so no project could be told apart by it.
+            TierError: If any part is neither, so no project could be told apart by it.
         """
-        found = TAG_FILTER.match(named)
-        if found is None:
+        found = [TAG_FILTER.match(part) for part in named.split(",")]
+        if not all(found):
             msg = (
                 f"{PROJECTS_VARIABLE}={named!r} is not a project tag such as `lang:rust`, "
-                f"or one with `!` in front for the projects carrying none of it"
+                f"or one with `!` in front for the projects carrying none of it, or "
+                f"several of those joined by `,` for the projects every one admits"
             )
             raise TierError(msg)
-        return cls(found["tag"], found["negated"] is not None)
+        sides = [cls(one["tag"], one["negated"] is not None) for one in found if one]
+        return cls(sides[0].tag, sides[0].negated, tuple(sides[1:]))
 
     def admits(self, tags: Iterable[str]) -> bool:
         """Whether a project carrying `tags` is on this side."""
-        return (self.tag in tags) != self.negated
+        carried = set(tags)
+        return (self.tag in carried) != self.negated and all(
+            side.admits(carried) for side in self.also
+        )
 
     def __str__(self) -> str:
         """As a caller names it."""
-        return f"{'!' if self.negated else ''}{self.tag}"
+        return ",".join(
+            [f"{'!' if self.negated else ''}{self.tag}", *(str(side) for side in self.also)]
+        )
 
 
 def project_filter(environ: Mapping[str, str] | None = None) -> ProjectFilter | None:

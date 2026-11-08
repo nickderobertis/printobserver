@@ -438,7 +438,10 @@ def measured_for(repo: Repo, tier: str) -> Measured:
     tier beside it was, the report is over that side's projects alone. A sharded
     gate splits on `lang:rust`, which every Rust crate carries and no Python
     source's project does, so each side's report holds one ecosystem's whole
-    figure at its own floor, measured by the only tests that measure it.
+    figure at its own floor, measured by the only tests that measure it. A
+    seven-way split carves the other side on `lang:python`: every Python source
+    lies under a project carrying it, so the Python side's report is that whole
+    figure still, and the rest measures nothing.
 
     Raises:
         TierError: If the tier or the base it is resolved against is refused,
