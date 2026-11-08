@@ -4679,3 +4679,22 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest/starts.py"
 site = "\"CLAUDE_CONFIG_DIR\": str(self.config_dir),"
 reason = "The variable Claude Code reads its configuration directory from has no published contract; it is the same one the supervisor port's sign-in table names. A move of it puts the skill and the transcripts where the harness does not look, which `test_replay.py` fails on as commands and usage reported empty."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "def _allowed(line: str, prefixes: list[str] | None) -> bool:"
+reason = "This stands in for Claude Code's permission enforcement, which publishes no contract to reconcile with: the mock only has to refuse what a rule plainly does not allow, splitting a line with the suite's own `shell_lines`. The drift gate is the live suite, which runs the real harness under the same arguments and fails any conversation that ran a compound command, refused or not."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/starts.py"
+site = "done = run("
+reason = "Both sites run one local program to completion through `repo_checks.shell.run`, the repository's one subprocess site: the operator's `printobserver` command, whose answer each caller holds to the shape it reads before reading it, and `oneharness run`, whose report `is_harness_report` holds to its shape. The replay waits on each by design, one request at a time, so an async client would add a runtime for nothing."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/starts.py"
+site = "self.server = start("
+reason = "The server under test, started once per replay through `repo_checks.shell.start` as `replay.py` starts it; nothing is exchanged with the process itself, which the replay reaches over its real HTTP API through the program a person runs."
+

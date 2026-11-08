@@ -33,8 +33,10 @@ from typing import Any, Literal, NotRequired, TypedDict
 
 # Started with the environment a turn is given, which names nothing of this tree.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "repo-checks" / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "skilltest"))
 
 from repo_checks.shell import run
+from shell_lines import segments
 
 Confidence = Literal["low", "medium", "high"]
 
@@ -119,8 +121,6 @@ def _run_is_whole(run_of: object) -> bool:
 NEW_PRINT = "01900000-0000-7000-8000-000000000000"
 #: A Claude Code shell rule allowing every command that begins with its prefix.
 SHELL_RULE = re.compile(r"^Bash\((?P<prefix>[^:()*]+):\*\)$")
-#: What chains one shell command to the next, as Claude Code splits a line to judge it.
-CHAINS = re.compile(r"&&|\|\||;|\||&|\n")
 
 
 def _prompt(arguments: list[str]) -> str:
@@ -142,11 +142,12 @@ def _allowed_prefixes(arguments: list[str]) -> list[str] | None:
     return [found["prefix"] for rule in rules if (found := SHELL_RULE.match(rule))]
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 def _allowed(line: str, prefixes: list[str] | None) -> bool:
     """Whether every command a shell line chains begins with a command a rule allows."""
     if prefixes is None:
         return True
-    commands = [part.strip() for part in CHAINS.split(line) if part.strip()]
+    commands = segments(line)
     return bool(commands) and all(
         any(command == prefix or command.startswith(f"{prefix} ") for prefix in prefixes)
         for command in commands
@@ -213,8 +214,7 @@ def _ran(command: list[str] | str, prompt: str, prefixes: list[str] | None) -> C
     if not _allowed(line, prefixes):
         return {"words": words, "status": REFUSED, "out": "", "err": "permission denied"}
     status, out, err = 0, "", ""
-    # A line every chained command of which a rule allows runs each in turn.
-    for part in CHAINS.split(line) if isinstance(command, str) else [None]:
+    for part in segments(line) if isinstance(command, str) else [None]:
         argv = words if part is None else shlex.split(part)
         if not argv:
             continue

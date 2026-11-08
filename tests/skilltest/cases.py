@@ -474,32 +474,47 @@ class StartCase:
         return self.name
 
 
-def _scenarios_and_frames(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
+class CaseDocument(NamedTuple):
+    """One case's `case.json`, once it holds what its schema declares, indexed for reading.
+
+    Its scenarios and frames stay the JSON objects the schema holds them to: the
+    schema leaves a frame's fields open, so a type here would only restate it.
+    """
+
+    replay: tuple[str, ...]
+    #: Each scenario, by its id.
+    scenarios: dict[str, dict[str, Any]]
+    #: Each frame, by its file's name.
+    frames: dict[str, dict[str, Any]]
+
+
+def _case_document(name: str) -> CaseDocument:
     document = _valid_document(CASES / name / "case.json", CASES / "case.schema.json")
-    scenarios = {scenario["id"]: scenario for scenario in document["assertions"]["scenarios"]}
-    frames = {frame["file"]: frame for frame in document["frames"]}
-    return document, {"scenarios": scenarios, "frames": frames}
+    return CaseDocument(
+        replay=tuple(document["assertions"].get("replay", ())),
+        scenarios={scenario["id"]: scenario for scenario in document["assertions"]["scenarios"]},
+        frames={frame["file"]: frame for frame in document["frames"]},
+    )
 
 
 def is_start_case(name: str) -> bool:
     """Whether every entry of a case's `replay` is a request to start a print."""
-    document, held = _scenarios_and_frames(name)
-    entries = document["assertions"].get("replay", ())
-    return bool(entries) and all(
-        held["scenarios"][entry]["trigger"] == Trigger.START_REQUEST for entry in entries
+    held = _case_document(name)
+    return bool(held.replay) and all(
+        held.scenarios[entry]["trigger"] == Trigger.START_REQUEST for entry in held.replay
     )
 
 
 def read_start_case(name: str) -> StartCase:
     """One case of `tests/real-prints` whose `replay` is start requests, by its directory's name."""
-    document, held = _scenarios_and_frames(name)
+    held = _case_document(name)
     requests = []
-    for entry in document["assertions"].get("replay", ()):
-        scenario = held["scenarios"][entry]
+    for entry in held.replay:
+        scenario = held.scenarios[entry]
         if scenario["trigger"] != Trigger.START_REQUEST:
             msg = f"{name}'s replay mixes {entry}, a {scenario['trigger']}, into start requests"
             raise ValueError(msg)
-        frame = held["frames"].get(scenario["event_image"], {})
+        frame = held.frames.get(scenario["event_image"], {})
         material = frame.get("sliced_material")
         request = StartRequest(
             id=ScenarioId(entry),

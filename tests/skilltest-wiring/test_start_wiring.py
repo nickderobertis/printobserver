@@ -49,11 +49,13 @@ def manifest(material: str, sheet: str | None) -> str:
 
 def start(material: str, sheet: str | None) -> list[str]:
     """A scripted start of the requested file, as the operator."""
-    return [
-        "printobserver", "start-print", "--print-id", "{new_print}", "--actor", "operator",
-        "--file-name", "{file}", "--manifest", manifest(material, sheet), "--reason",
-        "the bed is clear",
-    ]  # fmt: skip
+    words = "printobserver start-print --print-id {new_print} --actor operator --file-name {file}"
+    return [*words.split(), "--manifest", manifest(material, sheet), "--reason", "a clear bed"]
+
+
+def resumed_session(arguments: list[str]) -> str | None:
+    """The native conversation a harness run was handed to continue, if it was handed one."""
+    return arguments[arguments.index("--resume") + 1] if "--resume" in arguments else None
 
 
 @dataclasses.dataclass
@@ -133,8 +135,7 @@ def test_requests_of_one_day_continue_one_conversation_and_the_next_day_opens_an
         ],
     )
     # The harness was handed the day's conversation to continue, and a new day none.
-    resumed = [run["arguments"][run["arguments"].index("--resume") + 1] if "--resume" in
-               run["arguments"] else None for run in done.runs]  # fmt: skip
+    resumed = [resumed_session(run["arguments"]) for run in done.runs]
     equal(resumed, [None, "mock-session-bed-clear-check-0", None])
 
 
@@ -189,11 +190,11 @@ def test_the_conversation_has_the_skill_and_a_supervision_turns_permissions(
         [rule for rule in granted if rule != "Skill(printobserver)"],
         supervision_granted[: len(granted) - 1],
     )
+    supervision_tools = supervision[supervision.index("--tools") + 1 :]
     equal(
         tail[1 : tail.index("--allowedTools")],
-        [*supervision[supervision.index("--tools") + 1 : supervision.index("--allowedTools")],
-         "Skill"],
-    )  # fmt: skip
+        [*supervision_tools[: supervision_tools.index("--allowedTools")], "Skill"],
+    )
 
 
 def test_a_start_is_judged_by_the_sheet_its_manifest_declares(scratch: Path) -> None:

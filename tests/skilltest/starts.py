@@ -30,12 +30,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 import doubles
 from cases import REPO, Request, StartCase, StartRequest, instant, step_matches
 from replay import (
     INSTALLER,
+    REQUESTED,
     SKILL,
     START_DEADLINE_S,
     TURN_DEADLINE_S,
@@ -44,7 +45,9 @@ from replay import (
     Secrets,
     _free_port,
     _json_lines,
-    is_compound,
+    _received,
+    is_event,
+    is_held_print,
     keep_the_log,
     neutral_environment,
     program,
@@ -54,6 +57,7 @@ from replay import (
 from repo_checks import platforms
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
+from shell_lines import is_compound
 
 #: The server's scheduled check of an active print starts a supervision turn, which
 #: is no part of a request to start one: an interval no conversation outlasts.
@@ -178,9 +182,14 @@ def harness_arguments() -> list[str]:
     A supervision turn's, and the skill tool for the one skill installed.
     """
     return [
-        "--tools", *TOOLS, SKILL_TOOL, "--allowedTools", *READ_TOOLS, SKILL_RULE,
+        "--tools",
+        *TOOLS,
+        SKILL_TOOL,
+        "--allowedTools",
+        *READ_TOOLS,
+        SKILL_RULE,
         *agent_rules(),
-    ]  # fmt: skip
+    ]
 
 
 class StartRecord(TypedDict):
@@ -200,8 +209,74 @@ class StartRecord(TypedDict):
     models: list[str]
     compacted: bool
     session: str
-    session_phase: str | None
+    session_phase: str
     reply: str | None
+
+
+class StartsTestRecord(TypedDict):
+    """One test of start requests as `results/latest.json` carries it."""
+
+    test: str
+    passed: bool
+    turns: int
+    sessions: list[str]
+    #: Each `printobserver` command a conversation ran beside another, by conversation.
+    compound_commands: dict[str, list[str]]
+    decision_points: list[StartRecord]
+
+
+class HarnessSession(TypedDict):
+    """The conversation oneharness ran a message in, as far as the replay reads it."""
+
+    name: str
+    #: `create` for a message opening the conversation, `continue` for one carrying it on.
+    phase: str
+
+
+class HarnessResult(TypedDict):
+    """What one harness answered, as far as the replay reads it."""
+
+    status: str
+    text: str | None
+    error: str | None
+    stderr: str
+
+
+class HarnessReport(TypedDict):
+    """What `oneharness run` reports, as far as the replay reads it."""
+
+    session: HarnessSession
+    results: list[HarnessResult]
+
+
+def is_harness_report(report: object) -> bool:
+    """Whether oneharness's report has the shapes the replay reads from it."""
+    if not isinstance(report, dict):
+        return False
+    session, results = report.get("session"), report.get("results")
+    return (
+        isinstance(session, dict)
+        and isinstance(session.get("name"), str)
+        and isinstance(session.get("phase"), str)
+        and isinstance(results, list)
+        and len(results) == 1
+        and all(
+            isinstance(result, dict)
+            and isinstance(result.get("status"), str)
+            and isinstance(result.get("text"), str | None)
+            and isinstance(result.get("error"), str | None)
+            and isinstance(result.get("stderr"), str)
+            for result in results
+        )
+    )
+
+
+@dataclass(frozen=True)
+class LoadedSpool:
+    """The spool the replay put on tool 0."""
+
+    id: str
+    material: str
 
 
 @dataclass
@@ -218,7 +293,7 @@ class StartPoint:
     #: How many prints the printer's history says started while the conversation ran.
     started: int
     #: Whether oneharness opened the conversation with this message or continued it.
-    phase: str | None = None
+    phase: str
 
     @property
     def why_not(self) -> str | None:
@@ -317,7 +392,7 @@ class StartsReplayed:
             if point.why_not
         )
 
-    def as_record(self) -> dict[str, Any]:
+    def as_record(self) -> StartsTestRecord:
         """The replay as `results/latest.json` carries it."""
         return {
             "test": self.case.name,
@@ -376,7 +451,7 @@ class StartsReplay:
         ]
         self.port = _free_port()
         self.server: subprocess.Popen[str] | None = None
-        self.loaded: tuple[str, str] | None = None
+        self.loaded: LoadedSpool | None = None
 
     def _real_picture(self, name: str) -> bytes:
         return refuse_a_pointer((self.case.directory / name).read_bytes(), self.case.name, name)
@@ -466,7 +541,11 @@ class StartsReplay:
         }
 
     def _client(self, *arguments: str) -> dict[str, Any]:
-        """One operator command through the installed program, its answer parsed."""
+        """One operator command through the installed program, its answer parsed.
+
+        Each caller holds the answer to the shape it reads before reading it.
+        """
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         done = run(
             [str(self.bin / f"printobserver{self._suffix()}"), *arguments, "--json"],
             env=self._environment(),
@@ -483,27 +562,27 @@ class StartsReplay:
 
     def _load(self, material: str) -> None:
         """A full spool of one material on tool 0, the last one taken off first."""
-        if self.loaded is not None and self.loaded[1] == material:
+        if self.loaded is not None and self.loaded.material == material:
             return
-        reason = f"the {material} roll goes on for the next print"
+        said = ["--actor", OPERATOR, "--reason", f"the {material} roll goes on for the next print"]
         if self.loaded is not None:
-            self._client(
-                "unload-spool", "--spool-id", self.loaded[0], "--actor", OPERATOR,
-                "--reason", reason,
-            )  # fmt: skip
+            self._client("unload-spool", "--spool-id", self.loaded.id, *said)
         registered = self._client(
-            "register-spool", "--name", f"{material} roll", "--material", material,
-            "--initial-g", str(SPOOL_GRAMS), "--actor", OPERATOR, "--reason", reason,
-        )  # fmt: skip
-        spool = registered.get("spool", {}).get("id")
-        if not isinstance(spool, str):
+            "register-spool",
+            "--name",
+            f"{material} roll",
+            "--material",
+            material,
+            "--initial-g",
+            str(SPOOL_GRAMS),
+            *said,
+        )
+        spool = registered.get("spool")
+        if not isinstance(spool, dict) or not isinstance(spool.get("id"), str):
             msg = f"registering a {material} spool answered no spool: {registered}"
             raise ReplayError(msg)
-        self._client(
-            "load-spool", "--spool-id", spool, "--tool", "0", "--actor", OPERATOR,
-            "--reason", reason,
-        )  # fmt: skip
-        self.loaded = (spool, material)
+        self._client("load-spool", "--spool-id", spool["id"], "--tool", "0", *said)
+        self.loaded = LoadedSpool(spool["id"], material)
 
     def _frame_now(self) -> str:
         """The camera's frame as the server stored it, from a look at the printer."""
@@ -517,35 +596,48 @@ class StartsReplay:
     def _actions(self) -> list[tuple[datetime, Request]]:
         """Every action an operator requested, of every print, with when it was recorded."""
         found = []
-        prints = self._client("prints").get("prints", [])
-        for held in prints if isinstance(prints, list) else []:
-            history = self._client("history", "--print-id", held["id"], "--limit", "1000")
-            for event in history.get("events", []):
-                action = event.get("payload", {}).get("action", {})
-                if event.get("kind") != "action_requested" or action.get("actor") != OPERATOR:
-                    continue
-                found.append(
-                    (
-                        datetime.fromisoformat(
-                            re.sub(r"(\.\d{6})\d*Z$", r"\1+00:00", event["received_at"])
-                        ),
-                        Request(str(action.get("action", "")).replace("_", "-"), dict(action)),
-                    )
-                )
+        prints = self._client("prints").get("prints")
+        if not isinstance(prints, list) or not all(map(is_held_print, prints)):
+            msg = "the server's prints answered no list of prints"
+            raise ReplayError(msg)
+        for held in prints:
+            events = self._client("history", "--print-id", held["id"], "--limit", "1000").get(
+                "events"
+            )
+            if not isinstance(events, list) or not all(map(is_event, events)):
+                msg = f"the history of print {held['id']} answered no list of events"
+                raise ReplayError(msg)
+            for event in events:
+                action = event["payload"].get("action", {})
+                if event["kind"] in REQUESTED and action.get("actor") == OPERATOR:
+                    operation = str(action["action"]).replace("_", "-")
+                    found.append((_received(event), Request(operation, dict(action))))
         return found
 
     def _starts(self, begun: datetime, ended: datetime) -> int:
         """How many prints the printer's own history says started between two instants."""
-        history = self._client(
-            "printer-history", "--kinds", "print_started", "--since", _rfc3339(begun),
-            "--until", _rfc3339(ended), "--limit", "1000",
-        )  # fmt: skip
-        events = history.get("events", [])
-        return len(events) if isinstance(events, list) else 0
+        events = self._client(
+            "printer-history",
+            "--kinds",
+            "print_started",
+            "--since",
+            _rfc3339(begun),
+            "--until",
+            _rfc3339(ended),
+            "--limit",
+            "1000",
+        ).get("events")
+        if not isinstance(events, list) or not all(
+            isinstance(event, dict) and event.get("kind") == "print_started" for event in events
+        ):
+            msg = "the printer's history answered no list of the starts it was asked for"
+            raise ReplayError(msg)
+        return len(events)
 
-    def _converse(self, session: str, message: str) -> tuple[dict[str, Any], int]:
+    def _converse(self, session: str, message: str) -> tuple[HarnessReport, int]:
         """One message of one conversation, through `oneharness run --session`."""
         suffix = self._suffix()
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         done = run(
             [
                 str(program("printobserver-server-oneharness")),
@@ -579,10 +671,10 @@ class StartsReplay:
             report = json.loads(done.stdout)
         except ValueError:
             report = None
-        if not isinstance(report, dict) or not isinstance(report.get("results"), list):
+        if not is_harness_report(report):
             msg = f"oneharness answered {done.returncode} with no report: {done.stderr}"
             raise ReplayError(msg)
-        return report, done.returncode
+        return cast("HarnessReport", report), done.returncode
 
     def _wait_for_server(self) -> None:
         deadline = time.monotonic() + START_DEADLINE_S
@@ -602,6 +694,7 @@ class StartsReplay:
     def run(self) -> StartsReplayed:
         """Feed every request in order, and judge each from the server's record."""
         config = self._install()
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         self.server = start(
             [str(self.bin / f"printobserver{self._suffix()}"), "server", "--config", str(config)],
             cwd=self.state,
@@ -656,26 +749,23 @@ class StartsReplay:
             if conversation.record.is_file():
                 lines.extend(_json_lines(conversation.record.read_text("utf-8", "replace")))
             taken.take(lines)
-        result = report["results"][0] if report["results"] else {}
+        result = report["results"][0]
         failure = None
         if not mine:
-            failure = f"the harness never ran: {result.get('error')}"
-        elif status != 0 or result.get("status") != "ok":
-            said = result.get("error") or str(result.get("stderr", ""))[-2000:]
-            failure = f"the run ended {result.get('status')}: {said}"
-        reply = result.get("text")
+            failure = f"the harness never ran: {result['error']}"
+        elif status != 0 or result["status"] != "ok":
+            said = result["error"] or result["stderr"][-2000:]
+            failure = f"the run ended {result['status']}: {said}"
         return StartPoint(
             request=request,
             session=session,
             requests=[found for when, found in self._actions() if begun <= when <= ended],
             report=taken,
-            reply=reply if isinstance(reply, str) else None,
+            reply=result["text"],
             failure=failure,
             looks=len(self.bench.fetches) - looked_before,
             started=self._starts(begun, ended),
-            phase=phase
-            if isinstance(phase := (report.get("session") or {}).get("phase"), str)
-            else None,
+            phase=report["session"]["phase"],
         )
 
     def stop(self) -> None:
