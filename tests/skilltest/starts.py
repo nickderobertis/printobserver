@@ -647,8 +647,11 @@ class StartsReplay:
                 msg = f"the history of print {held['id']} answered no list of events"
                 raise ReplayError(msg)
             for event in events:
-                action = event["payload"].get("action", {})
-                if event["kind"] in REQUESTED and action.get("actor") == OPERATOR:
+                if event["kind"] not in REQUESTED:
+                    continue
+                # `is_event` holds a requested action to the server's own schema.
+                action = event["payload"]["action"]
+                if action["actor"] == OPERATOR:
                     operation = str(action["action"]).replace("_", "-")
                     found.append(
                         RecordedRequest(_received(event), Request(operation, dict(action)))

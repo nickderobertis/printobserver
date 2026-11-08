@@ -4704,3 +4704,15 @@ file = "tests/skilltest/starts.py"
 site = "return ["
 reason = "The task this replay was written for requires the operator's conversation to run under the permissions the server's supervision turns run with: the read tools, and one shell rule per command the server's operations make, which is exactly this list. Narrowing it to a start's reads would test the agent under permissions production never hands it; the wiring tests hold this list equal to the one a supervision turn's harness is started with."
 
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class IdleJobFile(TypedDict):"
+reason = "The idle printer's and a held file's answers, typed as the stand-in sends them, are copies of OctoPrint's read by the real adapter, as this file's other answers are: `printobserver-octoprint` parses them as it parses a real instance's, its integration tier holds that parser to a real OctoPrint on every change, and the start wiring tests run the real server's start through the adapter against this stand-in, so a shape the adapter cannot read fails them."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "def bench_octoprint(bench: Bench, api_key: str) -> ThreadingHTTPServer:"
+reason = "The paths and commands of an idle printer's start, as OctoPrint serves them, held the same way as this file's other stand-in: the real adapter is the one source of what it sends, `printobserver-octoprint`'s integration tier holds that adapter to a real OctoPrint, and a request this stand-in does not answer as OctoPrint does fails the start wiring tests, which drive a real start through it."
+

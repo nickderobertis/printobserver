@@ -117,6 +117,7 @@ class JobDocument(TypedDict):
     error: str
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 class IdleJobFile(TypedDict):
     """The file block of what `GET /api/job` answers with nothing selected."""
 
@@ -910,6 +911,7 @@ class Bench:
             return True
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
 def bench_octoprint(bench: Bench, api_key: str) -> ThreadingHTTPServer:
     """The OctoPrint stand-in over a bench: what a start request reads, and the start itself."""
 
