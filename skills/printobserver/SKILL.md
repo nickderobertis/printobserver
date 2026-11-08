@@ -61,11 +61,11 @@ Six steps, in order, every turn. The commands are in
   on a rail, screw or the frame, is not one: note it.
 - **Position.** Judge each frame against this print's own earlier frames. What has
   been printed stays where it was laid. A shifting view carries sheet and part
-  together, so at every look measure the footprint itself, its distance to one of
-  the sheet's holes, edges or marks, in this frame and an earlier one, and give both
-  in your reason. Changed in any frame, even one a later frame seems to undo, it
-  has moved, and that is clear, whatever else might explain it. So has a
-  part off the bed or a first layer not sticking.
+  together, so at every look measure the footprint itself as a share of the gap
+  between two of the sheet's holes, edges or marks, in this frame and an earlier
+  one, and give both in your reason. That share changed in any frame, even one a
+  later frame seems to undo, it has moved, and that is clear. So has a part off the
+  bed or a first layer not sticking.
 
 ## When the detector has already paused the print
 
