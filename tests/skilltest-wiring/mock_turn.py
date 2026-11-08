@@ -26,6 +26,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -36,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "repo-che
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "skilltest"))
 
 from repo_checks.shell import run
-from shell_lines import segments
+from shell_lines import pieces
 
 Confidence = Literal["low", "medium", "high"]
 
@@ -147,7 +148,7 @@ def _allowed(line: str, prefixes: list[str] | None) -> bool:
     """Whether every command a shell line chains begins with a command a rule allows."""
     if prefixes is None:
         return True
-    commands = segments(line)
+    commands = [" ".join(words) for words in pieces(line)]
     return bool(commands) and all(
         any(command == prefix or command.startswith(f"{prefix} ") for prefix in prefixes)
         for command in commands
@@ -213,14 +214,16 @@ def _ran(command: list[str] | str, prompt: str, prefixes: list[str] | None) -> C
         line = shlex.join(words)
     if not _allowed(line, prefixes):
         return {"words": words, "status": REFUSED, "out": "", "err": "permission denied"}
-    status, out, err = 0, "", ""
-    for part in segments(line) if isinstance(command, str) else [None]:
-        argv = words if part is None else shlex.split(part)
-        if not argv:
-            continue
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        done = run(argv, timeout=TIMEOUT_S)
-        status, out, err = done.returncode, out + done.stdout, err + done.stderr
+    argv = words
+    if isinstance(command, str) and len(pieces(line)) > 1:
+        # A chained line every command of which a rule allows is the shell's to run.
+        shell = shutil.which("sh")
+        if shell is None:
+            return {"words": words, "status": REFUSED, "out": "", "err": "no shell to run it"}
+        argv = [shell, "-c", line]
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    done = run(argv, timeout=TIMEOUT_S)
+    status, out, err = done.returncode, done.stdout, done.stderr
     return {"words": words, "status": status, "out": out, "err": err}
 
 

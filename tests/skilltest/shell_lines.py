@@ -1,9 +1,14 @@
 """How one shell line an agent wrote splits into the commands it runs.
 
-Its own module, importing nothing of the suite's, because two sides read lines by it: the suite,
-which reports a `printobserver` command chained to another, and the wiring tests'
-stand-in for the harness, which refuses a chained line the way the harness's
-permission rules do. One splitter keeps the two from disagreeing about a line.
+Its own module, importing nothing of the suite's, because two sides read lines by it:
+the suite, which reports a `printobserver` command chained to another, and the wiring
+tests' stand-in for the harness, which refuses a chained line the way the harness's
+permission rules do. One reading keeps the two from disagreeing about a line.
+
+The reading is Python's own POSIX shell lexer, `shlex`, told which characters are the
+shell's operators: quotes, escapes and comments are its to read, and nothing here
+restates them. What it does not look into, this does not either: a substitution inside
+double quotes or between backquotes is one word to it.
 """
 
 from __future__ import annotations
@@ -12,89 +17,65 @@ import re
 import shlex
 from pathlib import Path
 
-#: What ends one command and begins another, outside quotes and escapes: the chaining
-#: operators and a line break.
-OPERATORS = ("&&", "||", ";", "|", "&", "\n")
-#: What opens a command substitution, which runs a command of its own even inside
-#: double quotes, and what closes each.
-OPENS = {"$(": ")", "`": "`"}
+#: The characters the shell's operators are written in, a line break among them.
+PUNCTUATION = "();<>|&\n"
+#: The characters a redirection is written in, which runs no other command.
+REDIRECTION = "<>&"
 #: A word assigning a variable for the command after it.
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
-def _redirects(command: str, index: int) -> bool:
-    """Whether the `&` at an index is part of a redirection, `2>&1` or `&>`, not a chain."""
-    return command.startswith("&>", index) or (index > 0 and command[index - 1] in "<>")
+def _tokens(line: str) -> list[str] | None:
+    """The line's words and operators as the lexer reads them, or none for a line it cannot."""
+    lexer = shlex.shlex(line, posix=True, punctuation_chars=PUNCTUATION)
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    try:
+        return list(lexer)
+    except ValueError:
+        return None
 
 
-def segments(command: str) -> list[str]:
-    """The pieces a line's commands are written in, as far as chaining them goes.
+def _separates(token: str) -> bool:
+    """Whether a token is an operator ending one command, rather than a word or a redirection."""
+    written = set(token)
+    return written <= set(PUNCTUATION) and not (written <= set(REDIRECTION) and written & set("<>"))
 
-    Split wherever the shell would run another command: at a chaining operator or a
-    line break outside quotes, and at the bounds of a command substitution, which
-    double quotes do not stop. A quoted or escaped operator stays in its word, and a
-    redirection is no chain. A piece is no parsed command: it may begin with an
-    assignment or a launcher.
+
+def pieces(line: str) -> list[list[str]]:
+    """The words of each command a line runs, split at the operators between commands.
+
+    A line the lexer cannot read, such as one leaving a quote open, is one piece, which
+    the shell would refuse to run at all.
     """
-    found, current, quote, closing, index = [], "", "", [], 0
-    while index < len(command):
-        character = command[index]
-        if character == "\\" and quote != "'":
-            current += command[index : index + 2]
-            index += 2
-            continue
-        opened = next((mark for mark in OPENS if command.startswith(mark, index)), None)
-        if quote != "'" and closing and command.startswith(closing[-1], index):
-            # The substitution's own close, before a backtick reads as opening another.
-            found.append(current)
-            current, index = "", index + len(closing.pop())
-            continue
-        if quote != "'" and opened is not None:
-            found.append(current)
-            closing.append(OPENS[opened])
-            current, index = "", index + len(opened)
-            continue
-        if quote:
-            current += character
-            quote = "" if character == quote else quote
-            index += 1
-            continue
-        if character in {"'", '"'}:
-            quote = character
-            current += character
-            index += 1
-            continue
-        joined = next((op for op in OPERATORS if command.startswith(op, index)), None)
-        if joined is not None and not (joined == "&" and _redirects(command, index)):
-            found.append(current)
-            current, index = "", index + len(joined)
-            continue
-        current += character
-        index += 1
-    found.append(current)
-    return [part.strip() for part in found if part.strip()]
+    tokens = _tokens(line)
+    if tokens is None:
+        return [line.split()]
+    found: list[list[str]] = [[]]
+    for token in tokens:
+        if _separates(token):
+            found.append([])
+        else:
+            found[-1].append(token)
+    return [words for words in found if words]
 
 
-def runs_the_program(piece: str) -> bool:
-    """Whether a piece's command is `printobserver`: its first word after any assignments.
+def runs_the_program(words: list[str]) -> bool:
+    """Whether a command's words run `printobserver`: its first word after any assignments.
 
     A program run through another, such as `env` or `sudo`, is that other's command.
     """
-    try:
-        words = shlex.split(piece)
-    except ValueError:
-        words = piece.split()
     command = next((word for word in words if not ASSIGNMENT.match(word)), "")
     return Path(command).name.removesuffix(".exe") == "printobserver"
 
 
-def is_compound(command: str) -> bool:
-    """Whether a line chains a piece running the `printobserver` program to another piece.
+def is_compound(line: str) -> bool:
+    """Whether a line runs a `printobserver` command beside another command.
 
-    Chained to another in one line, run after `cd`, or run inside a substitution. The
-    harness refuses such a line whenever one of its commands is not one a permission
-    rule allows, which costs the action it carried, so the skill asks for one command
-    per call.
+    Chained to another in one line, run after `cd`, or run in a group or a substitution
+    the lexer reads as its own command. The harness refuses such a line whenever one of
+    its commands is not one a permission rule allows, which costs the action it carried,
+    so the skill asks for one command per call.
     """
-    parts = segments(command)
-    return len(parts) > 1 and any(runs_the_program(part) for part in parts)
+    commands = pieces(line)
+    return len(commands) > 1 and any(runs_the_program(words) for words in commands)
