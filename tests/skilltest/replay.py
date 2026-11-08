@@ -573,6 +573,25 @@ def _json_lines(text: str) -> list[dict[str, Any]]:
     return lines
 
 
+#: How much of what a failed turn's harness runs printed its record keeps.
+HARNESS_SAID_CHARS = 1500
+
+
+def _harness_said(runs: list[Run]) -> str:
+    """The end of what a turn's harness runs printed, which is where a run says why it failed.
+
+    The engine's own refusal of an answer names no cause when the harness printed
+    no answer at all, so a failed turn's record carries the harness's own words.
+    """
+    said = " | ".join(
+        harness_run.record.read_text("utf-8", "replace").strip() or "(nothing)"
+        if harness_run.record.is_file()
+        else "(no output kept)"
+        for harness_run in runs
+    )
+    return said[-HARNESS_SAID_CHARS:]
+
+
 def _lines_of(harness_run: Run) -> list[dict[str, Any]]:
     """Everything one harness run wrote: its transcript, then its result document."""
     record = harness_run.record
@@ -1071,7 +1090,9 @@ class Replay:
             usage=report.usage,
             models=report.models,
             compacted=report.compacted,
-            failure=failures[0] if failures else None,
+            failure=f"{failures[0]}; the harness answered: {_harness_said(runs)}"
+            if failures
+            else None,
             event_kind=trigger["kind"],
             image_sha256=image.get("sha256"),
             looks=sum(1 for event in during if event["kind"] == CAMERA_LOOK),

@@ -88,9 +88,10 @@ Open the camera's current frame first. Start only on a clear bed, naming in the
 manifest the sheet it shows: textured-pei, bronze or gold, or smooth-pei, grey or
 dark, each labelled. Never PLA on textured or PETG on smooth, per the spool and
 the file. Its lines, logo and glare are no debris; a strand, part or blob is. Any
-of the sheet an object could sit on out of view stops a start, as under a beam
-across it; its rim or a corner alone, under a beam or head or past the frame, does
-not. Not starting, ask nothing; tell a person what stops it. Never set an override.
+of the sheet an object could sit on hidden behind something, as a beam across it,
+stops a start; its edges past the frame's border, or its rim under a beam or head,
+do not. Not starting, ask nothing; tell a person what stops it. Never set an
+override.
 
 ## The boundaries you work inside
 
