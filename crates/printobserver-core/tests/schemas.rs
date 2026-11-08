@@ -37,7 +37,7 @@ use printobserver_core::{
     SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
-use printobserver_core::{PlanFact, PlannedLayer, PlannedObject, SetValue, SlicerPlan};
+use printobserver_core::{PlanFact, PlannedObject, SetValue, SlicerPlan};
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
 use printobserver_types::{
@@ -175,7 +175,6 @@ fn generated() -> Vec<(String, Value)> {
         schema_of::<DetectorHealth>(),
     ));
     entries.push(("SlicerPlan.json".to_owned(), schema_of::<SlicerPlan>()));
-    entries.push(("PlannedLayer.json".to_owned(), schema_of::<PlannedLayer>()));
     entries.push((
         "PlannedObject.json".to_owned(),
         schema_of::<PlannedObject>(),
@@ -393,7 +392,7 @@ fn the_print_context_carries_exactly_the_stated_fields() {
             field("print", "PrintRecord", true),
             field("printer", "PrinterSnapshot", false),
             field("recent_events", "array:EventRecord", true),
-            field("slicer_plan", "SlicerPlan", false),
+            field("slicer", "SlicerPlan", false),
         ]
     );
     assert_eq!(

@@ -1474,12 +1474,12 @@ pub enum PlanFact {
     #[serde(rename = "final_z")]
     FinalZ,
     /// The file labels no extrusion types.
-    #[serde(rename = "extrusion_types")]
-    ExtrusionTypes,
+    #[serde(rename = "types")]
+    Types,
     /// The file carries no estimate of the time left, by the current
     /// position.
-    #[serde(rename = "slicer_time_left")]
-    SlicerTimeLeft,
+    #[serde(rename = "minutes_left")]
+    MinutesLeft,
     /// The file sets no flow factor, by the current position.
     #[serde(rename = "flow_factor")]
     FlowFactor,
@@ -1489,18 +1489,6 @@ pub enum PlanFact {
     /// The file labels no objects.
     #[serde(rename = "objects")]
     Objects,
-}
-
-/// One layer of the plan, as the context answers it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PlannedLayer {
-    /// The layer the print is in, counting the first as 1.
-    pub number: i64,
-    /// How many layers the file plans.
-    pub of: i64,
-    /// The layer's height, in millimetres, when the file states it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub z_mm: Option<f64>,
 }
 
 /// One object the print's file lays down, and the bed area it covers.
@@ -1995,7 +1983,7 @@ pub struct PrintContext {
     /// the print's own G-code: absent when the file could not be read, or the
     /// job is not this print's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub slicer_plan: Option<SlicerPlan>,
+    pub slicer: Option<SlicerPlan>,
 }
 
 /// One print's end, as its `print_ended` event stored it.
@@ -2828,10 +2816,6 @@ pub struct SignalPosition {
 /// it printed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SlicerPlan {
-    /// What the current layer lays material as, in the order the file first
-    /// names each: `Perimeter`, `Support material`, `Bridge infill`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extrusion_types: Option<Vec<String>>,
     /// The part-cooling fan speed, in percent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fan_percent: Option<SetValue>,
@@ -2841,20 +2825,31 @@ pub struct SlicerPlan {
     /// The flow factor, one meaning one hundred percent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_factor: Option<SetValue>,
-    /// The layer the print is in and its height; absent before the first.
+    /// The layer the print is in, counting the first as 1; absent before the
+    /// first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub layer: Option<PlannedLayer>,
-    /// Every object the file lays down, each with the bed area it covers.
+    pub layer: Option<i64>,
+    /// How many layers the file plans.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub objects: Option<Vec<PlannedObject>>,
+    pub layers: Option<i64>,
     /// The slicer's own estimate of the minutes left, at the current
     /// position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub slicer_time_left_min: Option<i64>,
+    pub minutes_left: Option<i64>,
+    /// Every object the file lays down, each with the bed area it covers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objects: Option<Vec<PlannedObject>>,
+    /// What the current layer lays material as, in the order the file first
+    /// names each: `Perimeter`, `Support material`, `Bridge infill`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub types: Option<Vec<String>>,
     /// The facts the file does not state, which are therefore unknown rather
     /// than absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unknown: Option<Vec<PlanFact>>,
+    /// The current layer's height, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z_mm: Option<f64>,
 }
 
 /// A spool's remaining figure was corrected.

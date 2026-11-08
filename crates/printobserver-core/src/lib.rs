@@ -99,9 +99,7 @@ pub use filament::{
     DEFAULT_DIAMETER_MM, MATERIAL_DENSITIES, MarkClearing, buffer_g, density_for, grams_for_length,
     marks_cleared_by,
 };
-pub use gcode_index::{
-    GcodeIndex, IndexBuilder, PlanFact, PlannedLayer, PlannedObject, SetValue, SlicerPlan,
-};
+pub use gcode_index::{GcodeIndex, IndexBuilder, PlanFact, PlannedObject, SetValue, SlicerPlan};
 pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,

@@ -56,7 +56,7 @@ pub struct PrintContext {
     /// the print's own G-code: absent when the file could not be read, or the
     /// job is not this print's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub slicer_plan: Option<SlicerPlan>,
+    pub slicer: Option<SlicerPlan>,
 }
 
 impl Sample for PrintContext {
@@ -71,7 +71,7 @@ impl Sample for PrintContext {
             recent_events: vec![EventRecord::sample_full()],
             latest_image: Some(ImageRef::sample_full()),
             detector: DetectorHealth::sample_full(),
-            slicer_plan: Some(SlicerPlan::sample_full()),
+            slicer: Some(SlicerPlan::sample_full()),
         }
     }
 
@@ -86,7 +86,7 @@ impl Sample for PrintContext {
             recent_events: vec![],
             latest_image: None,
             detector: DetectorHealth::sample_minimal(),
-            slicer_plan: None,
+            slicer: None,
         }
     }
 }

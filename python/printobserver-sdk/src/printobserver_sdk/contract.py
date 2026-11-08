@@ -1551,28 +1551,8 @@ class PeriodicObservationPayload(TypedDict):
 
 # A fact of the plan the print's file does not state.
 PlanFact: TypeAlias = Literal[
-    "layer",
-    "final_z",
-    "extrusion_types",
-    "slicer_time_left",
-    "flow_factor",
-    "fan_percent",
-    "objects",
+    "layer", "final_z", "types", "minutes_left", "flow_factor", "fan_percent", "objects"
 ]
-
-
-class PlannedLayer(TypedDict):
-    """`PlannedLayer`, as the contracts declare it.
-
-    One layer of the plan, as the context answers it.
-    """
-
-    # The layer the print is in, counting the first as 1.
-    number: int
-    # How many layers the file plans.
-    of: int
-    # The layer's height, in millimetres, when the file states it.
-    z_mm: NotRequired[float | None]
 
 
 class PlannedObject(TypedDict):
@@ -2135,7 +2115,7 @@ class PrintContext(TypedDict):
     # What the slicer planned at the job's current file position, read from
     # the print's own G-code: absent when the file could not be read, or the
     # job is not this print's.
-    slicer_plan: NotRequired[SlicerPlan | None]
+    slicer: NotRequired[SlicerPlan | None]
 
 
 class PrintEnded(TypedDict):
@@ -3305,25 +3285,30 @@ class SlicerPlan(TypedDict):
     it printed.
     """
 
-    # What the current layer lays material as, in the order the file first
-    # names each: `Perimeter`, `Support material`, `Bridge infill`.
-    extrusion_types: NotRequired[list[str]]
     # The part-cooling fan speed, in percent.
     fan_percent: NotRequired[SetValue | None]
     # The final layer's height, in millimetres.
     final_z_mm: NotRequired[float | None]
     # The flow factor, one meaning one hundred percent.
     flow_factor: NotRequired[SetValue | None]
-    # The layer the print is in and its height; absent before the first.
-    layer: NotRequired[PlannedLayer | None]
-    # Every object the file lays down, each with the bed area it covers.
-    objects: NotRequired[list[PlannedObject]]
+    # The layer the print is in, counting the first as 1; absent before the
+    # first.
+    layer: NotRequired[int | None]
+    # How many layers the file plans.
+    layers: NotRequired[int | None]
     # The slicer's own estimate of the minutes left, at the current
     # position.
-    slicer_time_left_min: NotRequired[int | None]
+    minutes_left: NotRequired[int | None]
+    # Every object the file lays down, each with the bed area it covers.
+    objects: NotRequired[list[PlannedObject]]
+    # What the current layer lays material as, in the order the file first
+    # names each: `Perimeter`, `Support material`, `Bridge infill`.
+    types: NotRequired[list[str]]
     # The facts the file does not state, which are therefore unknown rather
     # than absent.
     unknown: NotRequired[list[PlanFact]]
+    # The current layer's height, in millimetres.
+    z_mm: NotRequired[float | None]
 
 
 class SpoolAdjustedPayload(TypedDict):
@@ -7022,43 +7007,12 @@ SHAPES: dict[str, object] = json.loads(
   "enum": [
    "layer",
    "final_z",
-   "extrusion_types",
-   "slicer_time_left",
+   "types",
+   "minutes_left",
    "flow_factor",
    "fan_percent",
    "objects"
   ]
- },
- "PlannedLayer": {
-  "struct": {
-   "fields": {
-    "number": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "scalar": "integer"
-     }
-    },
-    "of": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "scalar": "integer"
-     }
-    },
-    "z_mm": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "number"
-      }
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
  },
  "PlannedObject": {
   "struct": {
@@ -8048,7 +8002,7 @@ SHAPES: dict[str, object] = json.loads(
       "non_empty": false
      }
     },
-    "slicer_plan": {
+    "slicer": {
      "paired_with": "",
      "required": false,
      "shape": {
@@ -9672,16 +9626,6 @@ SHAPES: dict[str, object] = json.loads(
  "SlicerPlan": {
   "struct": {
    "fields": {
-    "extrusion_types": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "list": {
-       "scalar": "string"
-      },
-      "non_empty": false
-     }
-    },
     "fan_percent": {
      "paired_with": "",
      "required": false,
@@ -9714,7 +9658,25 @@ SHAPES: dict[str, object] = json.loads(
      "required": false,
      "shape": {
       "nullable": {
-       "ref": "PlannedLayer"
+       "scalar": "integer"
+      }
+     }
+    },
+    "layers": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "minutes_left": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
       }
      }
     },
@@ -9728,13 +9690,14 @@ SHAPES: dict[str, object] = json.loads(
       "non_empty": false
      }
     },
-    "slicer_time_left_min": {
+    "types": {
      "paired_with": "",
      "required": false,
      "shape": {
-      "nullable": {
-       "scalar": "integer"
-      }
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
      }
     },
     "unknown": {
@@ -9745,6 +9708,15 @@ SHAPES: dict[str, object] = json.loads(
        "ref": "PlanFact"
       },
       "non_empty": false
+     }
+    },
+    "z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
      }
     }
    },

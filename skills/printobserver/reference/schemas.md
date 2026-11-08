@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-196 types. The set is every type any crate declares under
+195 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -8866,12 +8866,12 @@ Declared by `printobserver-server`.
           "type": "string"
         },
         {
-          "const": "extrusion_types",
+          "const": "types",
           "description": "The file labels no extrusion types.",
           "type": "string"
         },
         {
-          "const": "slicer_time_left",
+          "const": "minutes_left",
           "description": "The file carries no estimate of the time left, by the current position.",
           "type": "string"
         },
@@ -8891,37 +8891,6 @@ Declared by `printobserver-server`.
           "type": "string"
         }
       ]
-    },
-    "PlannedLayer": {
-      "additionalProperties": false,
-      "description": "One layer of the plan, as the context answers it.",
-      "properties": {
-        "number": {
-          "description": "The layer the print is in, counting the first as 1.",
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "of": {
-          "description": "How many layers the file plans.",
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "z_mm": {
-          "description": "The layer's height, in millimetres, when the file states it.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "number",
-        "of"
-      ],
-      "type": "object"
     },
     "PlannedObject": {
       "additionalProperties": false,
@@ -9039,7 +9008,7 @@ Declared by `printobserver-server`.
           },
           "type": "array"
         },
-        "slicer_plan": {
+        "slicer": {
           "anyOf": [
             {
               "$ref": "#/$defs/SlicerPlan"
@@ -9352,13 +9321,6 @@ Declared by `printobserver-server`.
       "additionalProperties": false,
       "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
       "properties": {
-        "extrusion_types": {
-          "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
         "fan_percent": {
           "anyOf": [
             {
@@ -9390,15 +9352,30 @@ Declared by `printobserver-server`.
           "description": "The flow factor, one meaning one hundred percent."
         },
         "layer": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PlannedLayer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The layer the print is in and its height; absent before the first."
+          "description": "The layer the print is in, counting the first as 1; absent before the\nfirst.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "layers": {
+          "description": "How many layers the file plans.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "minutes_left": {
+          "description": "The slicer's own estimate of the minutes left, at the current position.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "objects": {
           "description": "Every object the file lays down, each with the bed area it covers.",
@@ -9407,13 +9384,12 @@ Declared by `printobserver-server`.
           },
           "type": "array"
         },
-        "slicer_time_left_min": {
-          "description": "The slicer's own estimate of the minutes left, at the current position.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+        "types": {
+          "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "unknown": {
           "description": "The facts the file does not state, which are therefore unknown rather\nthan absent.",
@@ -9421,6 +9397,14 @@ Declared by `printobserver-server`.
             "$ref": "#/$defs/PlanFact"
           },
           "type": "array"
+        },
+        "z_mm": {
+          "description": "The current layer's height, in millimetres.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -16139,12 +16123,12 @@ Declared by `printobserver-core`.
       "type": "string"
     },
     {
-      "const": "extrusion_types",
+      "const": "types",
       "description": "The file labels no extrusion types.",
       "type": "string"
     },
     {
-      "const": "slicer_time_left",
+      "const": "minutes_left",
       "description": "The file carries no estimate of the time left, by the current position.",
       "type": "string"
     },
@@ -16165,46 +16149,6 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "PlanFact"
-}
-```
-
-### PlannedLayer
-
-Declared by `printobserver-core`.
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "description": "One layer of the plan, as the context answers it.",
-  "properties": {
-    "number": {
-      "description": "The layer the print is in, counting the first as 1.",
-      "format": "uint",
-      "minimum": 0,
-      "type": "integer"
-    },
-    "of": {
-      "description": "How many layers the file plans.",
-      "format": "uint",
-      "minimum": 0,
-      "type": "integer"
-    },
-    "z_mm": {
-      "description": "The layer's height, in millimetres, when the file states it.",
-      "format": "double",
-      "type": [
-        "number",
-        "null"
-      ]
-    }
-  },
-  "required": [
-    "number",
-    "of"
-  ],
-  "title": "PlannedLayer",
-  "type": "object"
 }
 ```
 
@@ -23671,12 +23615,12 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         {
-          "const": "extrusion_types",
+          "const": "types",
           "description": "The file labels no extrusion types.",
           "type": "string"
         },
         {
-          "const": "slicer_time_left",
+          "const": "minutes_left",
           "description": "The file carries no estimate of the time left, by the current position.",
           "type": "string"
         },
@@ -23696,37 +23640,6 @@ Declared by `printobserver-core`.
           "type": "string"
         }
       ]
-    },
-    "PlannedLayer": {
-      "additionalProperties": false,
-      "description": "One layer of the plan, as the context answers it.",
-      "properties": {
-        "number": {
-          "description": "The layer the print is in, counting the first as 1.",
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "of": {
-          "description": "How many layers the file plans.",
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "z_mm": {
-          "description": "The layer's height, in millimetres, when the file states it.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "number",
-        "of"
-      ],
-      "type": "object"
     },
     "PlannedObject": {
       "additionalProperties": false,
@@ -24059,13 +23972,6 @@ Declared by `printobserver-core`.
       "additionalProperties": false,
       "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
       "properties": {
-        "extrusion_types": {
-          "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
         "fan_percent": {
           "anyOf": [
             {
@@ -24097,15 +24003,30 @@ Declared by `printobserver-core`.
           "description": "The flow factor, one meaning one hundred percent."
         },
         "layer": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PlannedLayer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The layer the print is in and its height; absent before the first."
+          "description": "The layer the print is in, counting the first as 1; absent before the\nfirst.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "layers": {
+          "description": "How many layers the file plans.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "minutes_left": {
+          "description": "The slicer's own estimate of the minutes left, at the current position.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "objects": {
           "description": "Every object the file lays down, each with the bed area it covers.",
@@ -24114,13 +24035,12 @@ Declared by `printobserver-core`.
           },
           "type": "array"
         },
-        "slicer_time_left_min": {
-          "description": "The slicer's own estimate of the minutes left, at the current position.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
+        "types": {
+          "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "unknown": {
           "description": "The facts the file does not state, which are therefore unknown rather\nthan absent.",
@@ -24128,6 +24048,14 @@ Declared by `printobserver-core`.
             "$ref": "#/$defs/PlanFact"
           },
           "type": "array"
+        },
+        "z_mm": {
+          "description": "The current layer's height, in millimetres.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -24246,7 +24174,7 @@ Declared by `printobserver-core`.
       },
       "type": "array"
     },
-    "slicer_plan": {
+    "slicer": {
       "anyOf": [
         {
           "$ref": "#/$defs/SlicerPlan"
@@ -32724,12 +32652,12 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         {
-          "const": "extrusion_types",
+          "const": "types",
           "description": "The file labels no extrusion types.",
           "type": "string"
         },
         {
-          "const": "slicer_time_left",
+          "const": "minutes_left",
           "description": "The file carries no estimate of the time left, by the current position.",
           "type": "string"
         },
@@ -32749,37 +32677,6 @@ Declared by `printobserver-core`.
           "type": "string"
         }
       ]
-    },
-    "PlannedLayer": {
-      "additionalProperties": false,
-      "description": "One layer of the plan, as the context answers it.",
-      "properties": {
-        "number": {
-          "description": "The layer the print is in, counting the first as 1.",
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "of": {
-          "description": "How many layers the file plans.",
-          "format": "uint",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "z_mm": {
-          "description": "The layer's height, in millimetres, when the file states it.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "number",
-        "of"
-      ],
-      "type": "object"
     },
     "PlannedObject": {
       "additionalProperties": false,
@@ -32847,13 +32744,6 @@ Declared by `printobserver-core`.
   "additionalProperties": false,
   "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
   "properties": {
-    "extrusion_types": {
-      "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
-      "items": {
-        "type": "string"
-      },
-      "type": "array"
-    },
     "fan_percent": {
       "anyOf": [
         {
@@ -32885,15 +32775,30 @@ Declared by `printobserver-core`.
       "description": "The flow factor, one meaning one hundred percent."
     },
     "layer": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/PlannedLayer"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "description": "The layer the print is in and its height; absent before the first."
+      "description": "The layer the print is in, counting the first as 1; absent before the\nfirst.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "layers": {
+      "description": "How many layers the file plans.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "minutes_left": {
+      "description": "The slicer's own estimate of the minutes left, at the current position.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
     },
     "objects": {
       "description": "Every object the file lays down, each with the bed area it covers.",
@@ -32902,13 +32807,12 @@ Declared by `printobserver-core`.
       },
       "type": "array"
     },
-    "slicer_time_left_min": {
-      "description": "The slicer's own estimate of the minutes left, at the current position.",
-      "format": "int64",
-      "type": [
-        "integer",
-        "null"
-      ]
+    "types": {
+      "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
     },
     "unknown": {
       "description": "The facts the file does not state, which are therefore unknown rather\nthan absent.",
@@ -32916,6 +32820,14 @@ Declared by `printobserver-core`.
         "$ref": "#/$defs/PlanFact"
       },
       "type": "array"
+    },
+    "z_mm": {
+      "description": "The current layer's height, in millimetres.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
     }
   },
   "title": "SlicerPlan",

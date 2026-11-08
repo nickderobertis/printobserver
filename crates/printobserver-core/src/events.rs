@@ -563,7 +563,7 @@ impl Supervisor {
         let interventions = self.stores().actions.active_interventions(print.id).await?;
         let recent_events = self.recent_events_of(print).await?;
         let latest_image = recent_events.iter().find_map(|record| record.image.clone());
-        let slicer_plan = self.slicer_plan(print, job.as_ref(), &interventions).await;
+        let slicer = self.slicer_plan(print, job.as_ref(), &interventions).await;
         Ok(PrintContext {
             print: print.clone(),
             printer,
@@ -574,7 +574,7 @@ impl Supervisor {
             recent_events,
             latest_image,
             detector: self.detector_health(),
-            slicer_plan,
+            slicer,
         })
     }
 

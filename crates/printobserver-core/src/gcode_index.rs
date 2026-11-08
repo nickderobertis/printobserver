@@ -282,15 +282,10 @@ impl GcodeIndex {
         if final_z_mm.is_none() {
             unknown.push(PlanFact::FinalZ);
         }
-        let layer = layer_index.map(|index| PlannedLayer {
-            number: index + 1,
-            of: self.layers.len(),
-            z_mm: self.layers[index].z_mm,
-        });
         if !self.labelled_types {
-            unknown.push(PlanFact::ExtrusionTypes);
+            unknown.push(PlanFact::Types);
         }
-        let extrusion_types = layer_index.map_or_else(Vec::new, |index| {
+        let types = layer_index.map_or_else(Vec::new, |index| {
             let bits = self.layers[index].types;
             self.type_names
                 .iter()
@@ -299,9 +294,9 @@ impl GcodeIndex {
                 .map(|(_, name)| name.clone())
                 .collect()
         });
-        let slicer_time_left_min = last_at(&self.time_left, position).map(|mark| mark.value);
-        if slicer_time_left_min.is_none() {
-            unknown.push(PlanFact::SlicerTimeLeft);
+        let minutes_left = last_at(&self.time_left, position).map(|mark| mark.value);
+        if minutes_left.is_none() {
+            unknown.push(PlanFact::MinutesLeft);
         }
         let flow_factor = set_value(
             self.flow_at(position).map(|set| set.value),
@@ -320,10 +315,12 @@ impl GcodeIndex {
         }
         unknown.sort_unstable();
         SlicerPlan {
-            layer,
-            extrusion_types,
+            layer: layer_index.map(|index| index + 1),
+            layers: (!self.layers.is_empty()).then_some(self.layers.len()),
+            z_mm: layer_index.and_then(|index| self.layers[index].z_mm),
             final_z_mm,
-            slicer_time_left_min,
+            types,
+            minutes_left,
             flow_factor,
             fan_percent,
             objects: self.objects.clone(),
@@ -361,20 +358,6 @@ fn last_at<T: Copy>(marks: &[Mark<T>], position: i64) -> Option<Mark<T>> {
     };
     let reached = marks.partition_point(|mark| mark.at <= position);
     reached.checked_sub(1).map(|index| marks[index])
-}
-
-/// One layer of the plan, as the context answers it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
-pub struct PlannedLayer {
-    /// The layer the print is in, counting the first as 1.
-    pub number: usize,
-    /// How many layers the file plans.
-    pub of: usize,
-    /// The layer's height, in millimetres, when the file states it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub z_mm: Option<f64>,
 }
 
 /// One adjustable as the print's file set it at the current position, and as
@@ -418,9 +401,9 @@ pub enum PlanFact {
     /// The file states no final height.
     FinalZ,
     /// The file labels no extrusion types.
-    ExtrusionTypes,
+    Types,
     /// The file carries no estimate of the time left, by the current position.
-    SlicerTimeLeft,
+    MinutesLeft,
     /// The file sets no flow factor, by the current position.
     FlowFactor,
     /// The file sets no part-cooling fan speed, by the current position.
@@ -439,19 +422,26 @@ pub enum PlanFact {
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct SlicerPlan {
-    /// The layer the print is in and its height; absent before the first.
+    /// The layer the print is in, counting the first as 1; absent before the
+    /// first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub layer: Option<PlannedLayer>,
-    /// What the current layer lays material as, in the order the file first
-    /// names each: `Perimeter`, `Support material`, `Bridge infill`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub extrusion_types: Vec<String>,
+    pub layer: Option<usize>,
+    /// How many layers the file plans.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layers: Option<usize>,
+    /// The current layer's height, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z_mm: Option<f64>,
     /// The final layer's height, in millimetres.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub final_z_mm: Option<f64>,
+    /// What the current layer lays material as, in the order the file first
+    /// names each: `Perimeter`, `Support material`, `Bridge infill`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub types: Vec<String>,
     /// The slicer's own estimate of the minutes left, at the current position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub slicer_time_left_min: Option<i64>,
+    pub minutes_left: Option<i64>,
     /// The flow factor, one meaning one hundred percent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_factor: Option<SetValue>,
@@ -470,18 +460,16 @@ pub struct SlicerPlan {
 impl Sample for SlicerPlan {
     fn sample_full() -> Self {
         Self {
-            layer: Some(PlannedLayer {
-                number: 12,
-                of: 150,
-                z_mm: Some(2.4),
-            }),
-            extrusion_types: vec![
+            layer: Some(12),
+            layers: Some(150),
+            z_mm: Some(2.4),
+            types: vec![
                 "Perimeter".to_owned(),
                 "External perimeter".to_owned(),
                 "Support material".to_owned(),
             ],
             final_z_mm: Some(30.0),
-            slicer_time_left_min: Some(42),
+            minutes_left: Some(42),
             flow_factor: Some(SetValue {
                 file: Some(1.0),
                 printobserver: Some(0.95),
@@ -502,9 +490,11 @@ impl Sample for SlicerPlan {
     fn sample_minimal() -> Self {
         Self {
             layer: None,
-            extrusion_types: Vec::new(),
+            layers: None,
+            z_mm: None,
             final_z_mm: None,
-            slicer_time_left_min: None,
+            types: Vec::new(),
+            minutes_left: None,
             flow_factor: None,
             fan_percent: None,
             objects: Vec::new(),

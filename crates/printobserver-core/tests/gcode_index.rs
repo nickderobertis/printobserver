@@ -13,9 +13,7 @@ use core::pin::pin;
 use core::task::{Context, Poll, Waker};
 
 use printobserver_core::gcode_index::{Claimed, GcodeIndexes};
-use printobserver_core::{
-    GcodeIndex, IndexBuilder, PlanFact, PlannedLayer, PlannedObject, SetValue,
-};
+use printobserver_core::{GcodeIndex, IndexBuilder, PlanFact, PlannedObject, SetValue};
 use printobserver_printer_api::GcodeSink as _;
 use printobserver_types::PrintId;
 
@@ -105,15 +103,11 @@ fn each_layer_names_its_height_its_types_and_the_time_left() {
 
     let first = index.plan_at(past(PLATE, "G1 X20 Y20 E1.5"));
     assert_eq!(
-        first.layer,
-        Some(PlannedLayer {
-            number: 1,
-            of: 2,
-            z_mm: Some(0.2)
-        })
+        (first.layer, first.layers, first.z_mm),
+        (Some(1), Some(2), Some(0.2))
     );
     assert_eq!(
-        first.extrusion_types,
+        first.types,
         vec![
             "External perimeter".to_owned(),
             "Support material".to_owned()
@@ -121,20 +115,20 @@ fn each_layer_names_its_height_its_types_and_the_time_left() {
         "a layer's types are every type it lays, ahead of the position too"
     );
     assert_eq!(first.final_z_mm, Some(0.4));
-    assert_eq!(first.slicer_time_left_min, Some(10));
+    assert_eq!(first.minutes_left, Some(10));
 
     let second = index.plan_at(past(PLATE, "M73 P100 R0"));
-    assert_eq!(second.layer.as_ref().map(|layer| layer.number), Some(2));
-    assert_eq!(second.layer.and_then(|layer| layer.z_mm), Some(0.4));
+    assert_eq!(second.layer, Some(2));
+    assert_eq!(second.z_mm, Some(0.4));
     assert_eq!(
-        second.extrusion_types,
+        second.types,
         vec![
             "Support material".to_owned(),
             "Overhang perimeter".to_owned()
         ],
         "the type in force across a layer change counts, and Custom never does"
     );
-    assert_eq!(second.slicer_time_left_min, Some(0));
+    assert_eq!(second.minutes_left, Some(0));
     assert_eq!(index.layer_count(), 2);
     assert_eq!(index.busiest_layer().map(|(types, _)| types), Some(2));
     assert_eq!(index.bytes(), u64::try_from(PLATE.len()).expect("small"));
@@ -147,12 +141,12 @@ fn a_marker_counts_once_its_whole_line_is_read() {
     let index = indexed(PLATE);
     let change = past(PLATE, "M73 P50 R5");
 
-    assert_eq!(index.plan_at(change - 1).slicer_time_left_min, Some(10));
-    assert_eq!(index.plan_at(change).slicer_time_left_min, Some(5));
+    assert_eq!(index.plan_at(change - 1).minutes_left, Some(10));
+    assert_eq!(index.plan_at(change).minutes_left, Some(5));
     let before = index.plan_at(past(PLATE, "G1 X0 Y0 E5"));
     assert_eq!(before.layer, None, "the start G-code is in no layer");
-    assert!(before.extrusion_types.is_empty());
-    assert_eq!(index.plan_at(-1).slicer_time_left_min, None);
+    assert!(before.types.is_empty());
+    assert_eq!(index.plan_at(-1).minutes_left, None);
 }
 
 /// The flow and fan are what the file last set by the position, and a change
@@ -225,15 +219,15 @@ fn a_file_without_markers_says_which_facts_are_unknown() {
     let plan = index.plan_at(i64::try_from(bare.len()).expect("small"));
 
     assert_eq!(plan.layer, None);
-    assert!(plan.extrusion_types.is_empty());
+    assert!(plan.types.is_empty());
     assert!(plan.objects.is_empty());
     assert_eq!(
         plan.unknown,
         vec![
             PlanFact::Layer,
             PlanFact::FinalZ,
-            PlanFact::ExtrusionTypes,
-            PlanFact::SlicerTimeLeft,
+            PlanFact::Types,
+            PlanFact::MinutesLeft,
             PlanFact::FlowFactor,
             PlanFact::FanPercent,
             PlanFact::Objects,
@@ -251,9 +245,9 @@ fn silent_mode_estimates_alone_leave_the_time_left_unknown() {
     let silent = ";LAYER_CHANGE\n;Z:0.3\nM73 Q10 S50\nM73 R5\nG1 X1 Y1 E1\n";
     let plan = indexed(silent).plan_at(i64::try_from(silent.len()).expect("small"));
 
-    assert_eq!(plan.slicer_time_left_min, None);
-    assert!(plan.unknown.contains(&PlanFact::SlicerTimeLeft));
-    assert!(plan.unknown.contains(&PlanFact::ExtrusionTypes));
+    assert_eq!(plan.minutes_left, None);
+    assert!(plan.unknown.contains(&PlanFact::MinutesLeft));
+    assert!(plan.unknown.contains(&PlanFact::Types));
     assert!(plan.unknown.contains(&PlanFact::FlowFactor));
     assert!(!plan.unknown.contains(&PlanFact::Layer));
     assert_eq!(plan.final_z_mm, Some(0.3));
@@ -323,16 +317,12 @@ fn an_overlong_line_is_nothing_and_the_last_line_needs_no_newline() {
     let plan = index.plan_at(i64::try_from(text.len()).expect("small"));
 
     assert_eq!(index.layer_count(), 2);
-    assert_eq!(plan.layer.as_ref().map(|layer| layer.z_mm), Some(None));
+    assert_eq!((plan.layer, plan.z_mm), (Some(2), None));
     assert_eq!(plan.final_z_mm, None);
     assert!(plan.unknown.contains(&PlanFact::FinalZ));
     let first = index.plan_at(past(&text, "G1 X1 Y1 E1"));
-    assert_eq!(first.extrusion_types, vec!["Perimeter".to_owned()]);
-    assert_eq!(
-        first.slicer_time_left_min,
-        Some(9),
-        "a numbered line was not read"
-    );
+    assert_eq!(first.types, vec!["Perimeter".to_owned()]);
+    assert_eq!(first.minutes_left, Some(9), "a numbered line was not read");
 }
 
 /// More types than any slicer names, and more objects, are held to a bound.
@@ -348,7 +338,7 @@ fn types_and_objects_are_held_to_a_bound() {
     let index = indexed_in(&text, 4096);
     let plan = index.plan_at(i64::try_from(text.len()).expect("small"));
 
-    assert_eq!(plan.extrusion_types.len(), 64);
+    assert_eq!(plan.types.len(), 64);
     assert_eq!(plan.objects.len(), 1024);
 }
 

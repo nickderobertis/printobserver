@@ -151,10 +151,12 @@ fn objects() -> Value {
 /// through this program.
 fn plan_of(planned: &Planned) -> Value {
     json!({
-        "layer": { "number": planned.layer, "of": LAYERS, "z_mm": planned.z_mm },
-        "extrusion_types": planned.types,
+        "layer": planned.layer,
+        "layers": LAYERS,
+        "z_mm": planned.z_mm,
         "final_z_mm": FINAL_Z_MM,
-        "slicer_time_left_min": planned.minutes,
+        "types": planned.types,
+        "minutes_left": planned.minutes,
         "flow_factor": { "file": 1.0 },
         "fan_percent": { "file": planned.fan },
         "objects": objects(),
@@ -501,7 +503,7 @@ async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
     // download is held for three seconds: whichever of the check and this read
     // arrives first starts the build, and the other arrives while it is held.
     let (context, sent, answered) = world.context(&print_id).await;
-    assert_eq!(context["slicer_plan"], plan_of(&IN_SUPPORT));
+    assert_eq!(context["slicer"], plan_of(&IN_SUPPORT));
     let first_check = world
         .history(&print_id, "periodic_observation")
         .await
@@ -526,33 +528,33 @@ async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
     let turn = world
         .checked_at(&print_id, FIRST, BUBBLER, IN_SUPPORT.position)
         .await;
-    assert_eq!(turn["slicer_plan"], plan_of(&IN_SUPPORT));
+    assert_eq!(turn["slicer"], plan_of(&IN_SUPPORT));
     for planned in [&IN_OVERHANG, &IN_BRIDGE] {
         let turn = world
             .checked_at(&print_id, FIRST, BUBBLER, planned.position)
             .await;
         assert_eq!(
-            turn["slicer_plan"],
+            turn["slicer"],
             plan_of(planned),
             "at {}",
             planned.position
         );
         let (read, _, _) = world.context(&print_id).await;
-        assert_eq!(read["slicer_plan"], plan_of(planned));
+        assert_eq!(read["slicer"], plan_of(planned));
     }
 
     // A change made through this program stands beside what the file set,
     // until the file sets the same thing again.
     let changed = world.operator_sets_the_fan(&print_id, 80.0).await;
     assert_eq!(
-        changed["slicer_plan"]["fan_percent"],
+        changed["slicer"]["fan_percent"],
         json!({ "file": IN_BRIDGE.fan, "printobserver": 80.0 })
     );
     let turn = world
         .checked_at(&print_id, FIRST, BUBBLER, HIGH_UP.position)
         .await;
     assert_eq!(
-        turn["slicer_plan"],
+        turn["slicer"],
         plan_of(&HIGH_UP),
         "the file's own later fan command did not take over from the change"
     );
@@ -565,7 +567,7 @@ async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
     let turn = world
         .checked_at(&print_id, FIRST, BUBBLER, IN_OVERHANG.position)
         .await;
-    assert_eq!(turn["slicer_plan"], plan_of(&IN_OVERHANG));
+    assert_eq!(turn["slicer"], plan_of(&IN_OVERHANG));
     world.more_checks(&print_id, 3).await;
     world.context(&print_id).await;
     assert_eq!(
@@ -582,7 +584,7 @@ async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
     let turn = world
         .checked_at(&second, SECOND, BUBBLER, IN_BRIDGE.position)
         .await;
-    assert_eq!(turn["slicer_plan"], plan_of(&IN_BRIDGE));
+    assert_eq!(turn["slicer"], plan_of(&IN_BRIDGE));
     world.more_checks(&second, 2).await;
     world.context(&second).await;
     assert_eq!(world.octoprint.whole_downloads(SECOND), 1);
@@ -612,15 +614,15 @@ async fn a_file_with_no_types_or_estimates_says_so_and_is_checked_all_the_same()
         .await;
     world.more_checks(&print_id, 2).await;
 
-    let plan = &turn["slicer_plan"];
+    let plan = &turn["slicer"];
     assert_eq!(
         plan["unknown"],
-        json!(["extrusion_types", "slicer_time_left"])
+        json!(["types", "minutes_left"])
     );
-    assert!(plan.get("extrusion_types").is_none(), "{plan}");
-    assert!(plan.get("slicer_time_left_min").is_none(), "{plan}");
+    assert!(plan.get("types").is_none(), "{plan}");
+    assert!(plan.get("minutes_left").is_none(), "{plan}");
     assert_eq!(plan["final_z_mm"], json!(FINAL_Z_MM));
-    assert_eq!(plan["layer"]["of"], json!(LAYERS));
+    assert_eq!(plan["layers"], json!(LAYERS));
     assert!(
         world.history(&print_id, "periodic_observation").await.len() >= 3,
         "the checks did not go on"

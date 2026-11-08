@@ -1195,21 +1195,11 @@ export interface PeriodicObservationPayload {
 export type PlanFact =
   | "layer"
   | "final_z"
-  | "extrusion_types"
-  | "slicer_time_left"
+  | "types"
+  | "minutes_left"
   | "flow_factor"
   | "fan_percent"
   | "objects";
-
-/** One layer of the plan, as the context answers it. */
-export interface PlannedLayer {
-  /** The layer the print is in, counting the first as 1. */
-  number: number;
-  /** How many layers the file plans. */
-  of: number;
-  /** The layer's height, in millimetres, when the file states it. */
-  z_mm?: number | null;
-}
 
 /** One object the print's file lays down, and the bed area it covers. */
 export interface PlannedObject {
@@ -1481,7 +1471,7 @@ export interface PrintContext {
    * the print's own G-code: absent when the file could not be read, or the
    * job is not this print's.
    */
-  slicer_plan?: SlicerPlan | null;
+  slicer?: SlicerPlan | null;
 }
 
 /** One print's end, as its `print_ended` event stored it. */
@@ -1985,28 +1975,35 @@ export interface SignalPosition {
  * it printed.
  */
 export interface SlicerPlan {
-  /**
-   * What the current layer lays material as, in the order the file first
-   * names each: `Perimeter`, `Support material`, `Bridge infill`.
-   */
-  extrusion_types?: Array<string>;
   /** The part-cooling fan speed, in percent. */
   fan_percent?: SetValue | null;
   /** The final layer's height, in millimetres. */
   final_z_mm?: number | null;
   /** The flow factor, one meaning one hundred percent. */
   flow_factor?: SetValue | null;
-  /** The layer the print is in and its height; absent before the first. */
-  layer?: PlannedLayer | null;
+  /**
+   * The layer the print is in, counting the first as 1; absent before the
+   * first.
+   */
+  layer?: number | null;
+  /** How many layers the file plans. */
+  layers?: number | null;
+  /** The slicer's own estimate of the minutes left, at the current position. */
+  minutes_left?: number | null;
   /** Every object the file lays down, each with the bed area it covers. */
   objects?: Array<PlannedObject>;
-  /** The slicer's own estimate of the minutes left, at the current position. */
-  slicer_time_left_min?: number | null;
+  /**
+   * What the current layer lays material as, in the order the file first
+   * names each: `Perimeter`, `Support material`, `Bridge infill`.
+   */
+  types?: Array<string>;
   /**
    * The facts the file does not state, which are therefore unknown rather
    * than absent.
    */
   unknown?: Array<PlanFact>;
+  /** The current layer's height, in millimetres. */
+  z_mm?: number | null;
 }
 
 /** A spool's remaining figure was corrected. */
@@ -5081,43 +5078,12 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "enum": [
    "layer",
    "final_z",
-   "extrusion_types",
-   "slicer_time_left",
+   "types",
+   "minutes_left",
    "flow_factor",
    "fan_percent",
    "objects"
   ]
- },
- "PlannedLayer": {
-  "struct": {
-   "fields": {
-    "number": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "scalar": "integer"
-     }
-    },
-    "of": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "scalar": "integer"
-     }
-    },
-    "z_mm": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "number"
-      }
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
  },
  "PlannedObject": {
   "struct": {
@@ -6107,7 +6073,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "non_empty": false
      }
     },
-    "slicer_plan": {
+    "slicer": {
      "paired_with": "",
      "required": false,
      "shape": {
@@ -7731,16 +7697,6 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
  "SlicerPlan": {
   "struct": {
    "fields": {
-    "extrusion_types": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "list": {
-       "scalar": "string"
-      },
-      "non_empty": false
-     }
-    },
     "fan_percent": {
      "paired_with": "",
      "required": false,
@@ -7773,7 +7729,25 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": false,
      "shape": {
       "nullable": {
-       "ref": "PlannedLayer"
+       "scalar": "integer"
+      }
+     }
+    },
+    "layers": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "minutes_left": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
       }
      }
     },
@@ -7787,13 +7761,14 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "non_empty": false
      }
     },
-    "slicer_time_left_min": {
+    "types": {
      "paired_with": "",
      "required": false,
      "shape": {
-      "nullable": {
-       "scalar": "integer"
-      }
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
      }
     },
     "unknown": {
@@ -7804,6 +7779,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "ref": "PlanFact"
       },
       "non_empty": false
+     }
+    },
+    "z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
      }
     }
    },

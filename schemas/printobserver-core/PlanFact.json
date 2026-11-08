@@ -13,12 +13,12 @@
       "type": "string"
     },
     {
-      "const": "extrusion_types",
+      "const": "types",
       "description": "The file labels no extrusion types.",
       "type": "string"
     },
     {
-      "const": "slicer_time_left",
+      "const": "minutes_left",
       "description": "The file carries no estimate of the time left, by the current position.",
       "type": "string"
     },

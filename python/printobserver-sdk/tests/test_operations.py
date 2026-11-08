@@ -195,14 +195,14 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
         '0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c'
         '-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e'
         '-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc"}], "slicer_plan": {"extrusion_types": ["0198f0a1-2'
-        'b3c-7d4e-8f90-123456789abc"], "fan_percent": {"file": 1.5, "'
-        'printobserver": 1.5}, "final_z_mm": 1.5, "flow_factor": {"fi'
-        'le": 1.5, "printobserver": 1.5}, "layer": {"number": 7, "of"'
-        ': 7, "z_mm": 1.5}, "objects": [{"name": "0198f0a1-2b3c-7d4e-'
-        '8f90-123456789abc", "x_mm": [1.5], "y_mm": [1.5]}], "slicer_'
-        'time_left_min": 7, "unknown": ["layer"]}}, "image_path": "01'
-        '98f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        '56789abc"}], "slicer": {"fan_percent": {"file": 1.5, "printo'
+        'bserver": 1.5}, "final_z_mm": 1.5, "flow_factor": {"file": 1'
+        '.5, "printobserver": 1.5}, "layer": 7, "layers": 7, "minutes'
+        '_left": 7, "objects": [{"name": "0198f0a1-2b3c-7d4e-8f90-123'
+        '456789abc", "x_mm": [1.5], "y_mm": [1.5]}], "types": ["0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc"], "unknown": ["layer"], "z_'
+        'mm": 1.5}}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc"}'
     )
 
     with Host(200, answer) as host:
