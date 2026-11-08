@@ -467,6 +467,8 @@ owed_paths = [
     "crates/printobserver-oneharness/**",
     "crates/printobserver-core/src/context.rs",
     "crates/printobserver-core/src/events.rs",
+    "crates/printobserver-core/src/watch.rs",
+    "crates/printobserver-core/src/scoring.rs",
     "tests/skilltest/**",
     "tests/real-prints/**",
 ]

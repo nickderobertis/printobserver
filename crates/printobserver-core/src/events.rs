@@ -182,6 +182,10 @@ impl Supervisor {
                 print
             }
         };
+        if alert.detection.is_some() {
+            // The detector flagged this print, which its status says from now on.
+            self.note_flagged(print.id);
+        }
         let (image, frame_captured_at) = self
             .write_image(&print, &event, alert.image_url.clone())
             .await
@@ -572,7 +576,7 @@ impl Supervisor {
             interventions,
             recent_events,
             latest_image,
-            detector: self.detector_health(),
+            detector: self.detector_health_for(print.id),
         })
     }
 

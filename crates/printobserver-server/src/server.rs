@@ -24,7 +24,7 @@ use axum::Router;
 use axum::routing::post;
 use printobserver_core::store::Stores;
 use printobserver_core::{Clock as _, CoreConfig, Supervisor, SystemClock};
-use printobserver_obico::{DetectorHealthCheck, ObicoVision, ObicoVisionConfig};
+use printobserver_obico::{DetectorHealthCheck, ObicoScoring, ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
 use printobserver_oneharness::{
     AgentCommand, AssessmentSchema, EnvAssignment, HarnessSignIn, OneharnessSupervisor,
@@ -503,6 +503,9 @@ impl Server {
         // credential minted for them.
         let turns = TurnCredentials::new(Some(address));
         supervisor.install_turn_authority(Arc::new(turns.clone()));
+        if let Some(scoring) = scoring_read(&config, &ports.vision)? {
+            supervisor.install_scoring_probe(scoring);
+        }
         let reconciliation = reconcile(
             &supervisor,
             &ReconcileStores {
@@ -592,6 +595,26 @@ fn core_config_of(config: &ServerConfig) -> CoreConfig {
         .recovery_grants
         .clone_from(&config.recovery_grants);
     core_config
+}
+
+/// The reader of `Obico`'s own record of the print, when its API is
+/// configured: of the printer `obico.printer_id` names, or the one the last
+/// body `Obico` posted named.
+fn scoring_read(
+    config: &ServerConfig,
+    vision: &ObicoVision,
+) -> Result<Option<Arc<dyn printobserver_core::ScoringProbe>>, StartError> {
+    config
+        .obico_api
+        .clone()
+        .map(|api| {
+            ObicoScoring::new(api, config.obico_printer_id, vision.known_printer())
+                .map(|scoring| Arc::new(scoring) as Arc<dyn printobserver_core::ScoringProbe>)
+                .map_err(|error| StartError::State {
+                    detail: error.to_string(),
+                })
+        })
+        .transpose()
 }
 
 /// The failure detector's health check, when its address is configured.

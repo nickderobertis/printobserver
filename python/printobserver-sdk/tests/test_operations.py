@@ -77,51 +77,53 @@ def test_prints_sends_what_it_declares_and_answers_what_was_sent() -> None:
 def test_status_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`status` sends what it declares and answers what the server sent."""
     answer = json.loads(
-        '{"detector": {"since": null, "status": "unchecked"}, "interv'
-        'entions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789a'
-        'bc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-        'applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applie'
-        'd_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456'
-        '789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outc'
-        'ome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-1'
-        '23456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2'
-        'b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_o'
-        'f_range": true, "value": 1.5}, "error": {"source": "printer"'
-        ', "text": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "estimate'
-        'd_print_time_s": 7, "filament": [{"length_mm": 1.5, "tool": '
-        '7, "volume_cm3": 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f9'
-        '0-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123'
-        '456789abc", "file_position_bytes": 7, "print_time_left_s": 7'
-        ', "print_time_s": 7, "size_bytes": 7, "state": "operational"'
-        '}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-12345678'
-        '9abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-        'file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc", "job_print_time_s": 7,'
-        ' "job_started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-        'narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456'
-        '789abc", "applied": {"max": 1.5, "min": 1.5}, "requested": {'
-        '"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-'
-        '8f90-123456789abc", "provider_print_id": 7, "state": "operat'
-        'ional"}, "printer": {"bed": {"actual_c": {"out_of_range": tr'
-        'ue, "value": 1.5}, "offset_c": {"out_of_range": true, "value'
-        '": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, '
-        '"chamber": {"actual_c": {"out_of_range": true, "value": 1.5}'
-        ', "offset_c": {"out_of_range": true, "value": 1.5}, "target_'
-        'c": {"out_of_range": true, "value": 1.5}}, "connection": "op'
-        'erational", "fan_percent": {"out_of_range": true, "value": 1'
-        '.5}, "feedrate_factor": {"out_of_range": true, "value": 1.5}'
-        ', "flowrate_factor": {"out_of_range": true, "value": 1.5}, "'
-        'observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools'
-        '": [{"actual_c": {"out_of_range": true, "value": 1.5}, "offs'
-        'et_c": {"out_of_range": true, "value": 1.5}, "target_c": {"o'
-        'ut_of_range": true, "value": 1.5}}]}, "session": {"close_rea'
-        'son": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "closed_at": "'
-        '0198f0a1-2b3c-7d4e-8f90-123456789abc", "created_at": "0198f0'
-        'a1-2b3c-7d4e-8f90-123456789abc", "harness_identity": "0198f0'
-        'a1-2b3c-7d4e-8f90-123456789abc", "last_turn_at": "0198f0a1-2'
-        'b3c-7d4e-8f90-123456789abc", "print_id": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc", "session_name": "0198f0a1-2b3c-7d4e-8f9'
-        '0-123456789abc"}}'
+        '{"detector": {"probe_failure": "0198f0a1-2b3c-7d4e-8f90-1234'
+        '56789abc", "since": "0198f0a1-2b3c-7d4e-8f90-123456789abc", '
+        '"status": "scoring_nothing_flagged"}, "interventions": [{"ac'
+        'tion_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "adjustabl'
+        'e": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_at": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "applied_value": 1.5, '
+        '"expires_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id": '
+        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "outcome": "still_ac'
+        'tive", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'prior_value": 1.5, "restored_at": "0198f0a1-2b3c-7d4e-8f90-1'
+        '23456789abc"}], "job": {"completion": {"out_of_range": true,'
+        ' "value": 1.5}, "error": {"source": "printer", "text": "0198'
+        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "estimated_print_time_s"'
+        ': 7, "filament": [{"length_mm": 1.5, "tool": 7, "volume_cm3"'
+        ': 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
+        ', "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "fi'
+        'le_position_bytes": 7, "print_time_left_s": 7, "print_time_s'
+        '": 7, "size_bytes": 7, "state": "operational"}, "print": {"e'
+        'nd_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_a'
+        't": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "01'
+        '98f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d'
+        '4e-8f90-123456789abc", "job_print_time_s": 7, "job_started_a'
+        't": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{'
+        '"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "appli'
+        'ed": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "mi'
+        'n": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "provider_print_id": 7, "state": "operational"}, "print'
+        'er": {"bed": {"actual_c": {"out_of_range": true, "value": 1.'
+        '5}, "offset_c": {"out_of_range": true, "value": 1.5}, "targe'
+        't_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"ac'
+        'tual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {'
+        '"out_of_range": true, "value": 1.5}, "target_c": {"out_of_ra'
+        'nge": true, "value": 1.5}}, "connection": "operational", "fa'
+        'n_percent": {"out_of_range": true, "value": 1.5}, "feedrate_'
+        'factor": {"out_of_range": true, "value": 1.5}, "flowrate_fac'
+        'tor": {"out_of_range": true, "value": 1.5}, "observed_at": "'
+        '0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c"'
+        ': {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of'
+        '_range": true, "value": 1.5}, "target_c": {"out_of_range": t'
+        'rue, "value": 1.5}}]}, "session": {"close_reason": "0198f0a1'
+        '-2b3c-7d4e-8f90-123456789abc", "closed_at": "0198f0a1-2b3c-7'
+        'd4e-8f90-123456789abc", "created_at": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "harness_identity": "0198f0a1-2b3c-7d4e-8f'
+        '90-123456789abc", "last_turn_at": "0198f0a1-2b3c-7d4e-8f90-1'
+        '23456789abc", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
+        "}}"
     )
 
     with Host(200, answer) as host:
@@ -140,62 +142,64 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
     """`context` sends what it declares and answers what the server sent."""
     answer = json.loads(
         '{"context": {"bounds": {"allowed": {"feedrate": {"max": 1.5,'
-        ' "min": 1.5}}}, "detector": {"since": null, "status": "unche'
-        'cked"}, "interventions": [{"action_id": "0198f0a1-2b3c-7d4e-'
-        '8f90-123456789abc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-1'
-        '23456789abc", "applied_at": "0198f0a1-2b3c-7d4e-8f90-1234567'
-        '89abc", "applied_value": 1.5, "expires_at": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-12345'
-        '6789abc", "outcome": "still_active", "print_id": "0198f0a1-2'
-        'b3c-7d4e-8f90-123456789abc", "prior_value": 1.5, "restored_a'
-        't": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "job": {"compl'
-        'etion": {"out_of_range": true, "value": 1.5}, "error": {"sou'
-        'rce": "printer", "text": "0198f0a1-2b3c-7d4e-8f90-123456789a'
-        'bc"}, "estimated_print_time_s": 7, "filament": [{"length_mm"'
-        ': 1.5, "tool": 7, "volume_cm3": 1.5}], "file_name": "0198f0a'
-        '1-2b3c-7d4e-8f90-123456789abc", "file_origin": "0198f0a1-2b3'
-        'c-7d4e-8f90-123456789abc", "file_position_bytes": 7, "print_'
-        'time_left_s": 7, "print_time_s": 7, "size_bytes": 7, "state"'
-        ': "operational"}, "latest_image": {"id": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc"}, "manifest": {"allowed": {"feedrate": {"max": 1.5'
-        ', "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456'
-        '789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
-        ' "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789'
-        'abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d'
-        '4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc"}, "print": {"end_reason": "0198f0a1-2b3c'
-        '-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f'
-        '90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "jo'
-        'b_print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-8f'
-        '90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b'
-        '3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1'
-        '.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "'
-        '0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": '
-        '7, "state": "operational"}, "printer": {"bed": {"actual_c": '
-        '{"out_of_range": true, "value": 1.5}, "offset_c": {"out_of_r'
-        'ange": true, "value": 1.5}, "target_c": {"out_of_range": tru'
-        'e, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": '
-        'true, "value": 1.5}, "offset_c": {"out_of_range": true, "val'
-        'ue": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}'
-        ', "connection": "operational", "fan_percent": {"out_of_range'
-        '": true, "value": 1.5}, "feedrate_factor": {"out_of_range": '
-        'true, "value": 1.5}, "flowrate_factor": {"out_of_range": tru'
-        'e, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-12'
-        '3456789abc", "tools": [{"actual_c": {"out_of_range": true, "'
-        'value": 1.5}, "offset_c": {"out_of_range": true, "value": 1.'
-        '5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "re'
-        'cent_events": [{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
-        ', "image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "s'
-        'ha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "ac'
-        'tion_executed", "payload": {"action_id": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc", "intervention_id": "0198f0a1-2b3c-7d4e-'
-        '8f90-123456789abc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-12'
-        '3456789abc", "raw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", '
-        '"received_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sour'
-        'ce": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]}, "image_path"'
-        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        ' "min": 1.5}}}, "detector": {"probe_failure": "0198f0a1-2b3c'
+        '-7d4e-8f90-123456789abc", "since": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "status": "scoring_nothing_flagged"}, "interv'
+        'entions": [{"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc", "adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'applied_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applie'
+        'd_value": 1.5, "expires_at": "0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "outc'
+        'ome": "still_active", "print_id": "0198f0a1-2b3c-7d4e-8f90-1'
+        '23456789abc", "prior_value": 1.5, "restored_at": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc"}], "job": {"completion": {"out_o'
+        'f_range": true, "value": 1.5}, "error": {"source": "printer"'
+        ', "text": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "estimate'
+        'd_print_time_s": 7, "filament": [{"length_mm": 1.5, "tool": '
+        '7, "volume_cm3": 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f9'
+        '0-123456789abc", "file_origin": "0198f0a1-2b3c-7d4e-8f90-123'
+        '456789abc", "file_position_bytes": 7, "print_time_left_s": 7'
+        ', "print_time_s": 7, "size_bytes": 7, "state": "operational"'
+        '}, "latest_image": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "sha256": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "ma'
+        'nifest": {"allowed": {"feedrate": {"max": 1.5, "min": 1.5}},'
+        ' "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "mater'
+        'ial": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"'
+        'feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_'
+        'diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-1234567'
+        '89abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc"}, "print": {"end_reason": "0198f0a1-2b3c-7d4e-8f90-1234'
+        '56789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "id"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "job_print_time_s"'
+        ': 7, "job_started_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '", "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "applied": {"max": 1.5, "min": 1.5}, "requested'
+        '": {"max": 1.5, "min": 1.5}}], "opened_at": "0198f0a1-2b3c-7'
+        'd4e-8f90-123456789abc", "provider_print_id": 7, "state": "op'
+        'erational"}, "printer": {"bed": {"actual_c": {"out_of_range"'
+        ': true, "value": 1.5}, "offset_c": {"out_of_range": true, "v'
+        'alue": 1.5}, "target_c": {"out_of_range": true, "value": 1.5'
+        '}}, "chamber": {"actual_c": {"out_of_range": true, "value": '
+        '1.5}, "offset_c": {"out_of_range": true, "value": 1.5}, "tar'
+        'get_c": {"out_of_range": true, "value": 1.5}}, "connection":'
+        ' "operational", "fan_percent": {"out_of_range": true, "value'
+        '": 1.5}, "feedrate_factor": {"out_of_range": true, "value": '
+        '1.5}, "flowrate_factor": {"out_of_range": true, "value": 1.5'
+        '}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "t'
+        'ools": [{"actual_c": {"out_of_range": true, "value": 1.5}, "'
+        'offset_c": {"out_of_range": true, "value": 1.5}, "target_c":'
+        ' {"out_of_range": true, "value": 1.5}}]}, "recent_events": ['
+        '{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id'
+        '": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0'
+        'a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed",'
+        ' "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "r'
+        'aw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": '
+        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc"}]}, "image_path": "0198f0a1-2b3'
+        'c-7d4e-8f90-123456789abc"}'
     )
 
     with Host(200, answer) as host:
@@ -3338,6 +3342,64 @@ def test_recover_home_z_makes_no_request_when_the_reason_is_empty() -> None:
         client = Client(host.address, ACTOR)
         try:
             client.recover_home_z("   ", True)
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_bed_clear_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`bed_clear` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"detail": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "event": '
+        '{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "image": {"id'
+        '": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0'
+        'a1-2b3c-7d4e-8f90-123456789abc"}, "kind": "action_executed",'
+        ' "payload": {"action_id": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "intervention_id": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc"}, "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "r'
+        'aw": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "received_at": '
+        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "source": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc"}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.bed_clear("a generated walk is asking")
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/printer/bed_clear")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "reason": "a generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_bed_clear_makes_no_request_when_the_reason_is_empty() -> None:
+    """`bed_clear` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.bed_clear("")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.bed_clear("   ")
         except NoReasonError:
             pass
         else:

@@ -198,6 +198,10 @@ fn answer_schemas() -> Vec<(String, Value)> {
             schema_of::<printobserver_server::RecoveryAnswer>(),
         ),
         (
+            "BedClearAnswer.json".to_owned(),
+            schema_of::<printobserver_server::BedClearAnswer>(),
+        ),
+        (
             "SpoolsAnswer.json".to_owned(),
             schema_of::<printobserver_server::SpoolsAnswer>(),
         ),

@@ -60,7 +60,7 @@ pub use config::{
 pub use events::{DEFAULT_EVENTS_LIMIT, MAX_EVENTS_LIMIT, MAX_EVENTS_WAIT_S, Stored};
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
-    Answer, BESIDE_THE_ACTIONS, COMMAND_TAG, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect,
+    Answer, BED_CLEAR, BESIDE_THE_ACTIONS, COMMAND_TAG, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect,
     IMAGE_PATH_FIELD, INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation,
     PRINTER_LOOK, Parameter, RECOVERY_STATUS, RecoveryActionKind, SpoolCommandKind, VERSION_PREFIX,
     ValueKind, command_for, operation, printer_wide_of,
@@ -81,9 +81,9 @@ pub use server::{
 };
 pub use turns::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};
 pub use wire::{
-    ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, EventsAnswer, HistoryAnswer,
-    ImageAnswer, IngressAnswer, LookAnswer, ManifestAnswer, ManifestBody, PreflightAnswer,
-    PrintEnded, PrintsAnswer, RecoveryAnswer, RecoveryStatusAnswer, SpoolAnswer,
-    SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer, at_a_glance, claimed_actor,
-    reason_of, recovery_of, spool_command_of,
+    ActionAnswer, ActionBody, BedClearAnswer, BedClearBody, BodyRefusal, ContextAnswer,
+    ErrorAnswer, EventsAnswer, HistoryAnswer, ImageAnswer, IngressAnswer, LookAnswer,
+    ManifestAnswer, ManifestBody, PreflightAnswer, PrintEnded, PrintsAnswer, RecoveryAnswer,
+    RecoveryStatusAnswer, SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer, StatusAnswer,
+    TimelineAnswer, at_a_glance, claimed_actor, reason_of, recovery_of, spool_command_of,
 };

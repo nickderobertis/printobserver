@@ -140,7 +140,7 @@ Reached at `GET /v1/prints/{print_id}/status`.
 
 - `--print-id` — the print this command is about (required).
 
-**Output.** The print record, a printer snapshot and a job snapshot when one could be taken, the supervision session watching it when one is, and every bounded intervention still in force.
+**Output.** The print record, a printer snapshot and a job snapshot when one could be taken, the supervision session watching it when one is, every bounded intervention still in force, and the failure detector's status as `detector`: `scoring_nothing_flagged` while Obico's own record of the print shows it scoring this print and no failure alert of Obico's has arrived for it, `scoring_flagged` once one has, `available` when there is no such evidence and the detector's health check answers, `unavailable` when it does not, and `unchecked` when there is no evidence of any kind. `since` is when the status became what it is, `null` while `unchecked`; a scoring status names a failing health check beside it as `probe_failure`, and any other says why Obico's record is not being read as `scoring_unread`. The two scoring statuses and the two fields beside them are new: a client that knew only `available`, `unavailable` and `unchecked` reads the detector's status afresh.
 
 **Failures.** `unreachable` when nothing answers at the configured address; `refused` when the supervisor answers something this program will not act on.
 
@@ -154,7 +154,7 @@ Reached at `GET /v1/prints/{print_id}/context`.
 
 - `--print-id` — the print this command is about (required).
 
-**Output.** The print's context — the printer, the job, the effective bounds, the active interventions and the recent events — and the absolute path on the server's own host where the latest image was materialized.
+**Output.** The print's context — the printer, the job, the effective bounds, the active interventions, the recent events and the failure detector's status, as `status` answers it — and the absolute path on the server's own host where the latest image was materialized.
 
 **Failures.** `image-elsewhere` when that path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `unreachable` and `refused` as for every command.
 
@@ -291,7 +291,7 @@ Reached at `GET /v1/history`.
 
 **Arguments.**
 
-- `--kinds` — one kind to read, and it may be given more than once, each another kind (optional; left out, every kind). The kinds are `print_started`, `print_ended`, `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`, `spool_adjusted`, `spool_retired`, `spool_command_rejected`, `spool_unverified`, `filament_change_signalled`, `unaccounted_print`, `preflight_checked`, `charge_pended`, `print_untracked`, `file_tally_rebaselined`, `printer_connection_changed`, `printer_reset`, `unattended_printer_activity`, `detector_health_changed`, `recovery_requested`, `recovery_executed` and `recovery_rejected`; any other is refused.
+- `--kinds` — one kind to read, and it may be given more than once, each another kind (optional; left out, every kind). The kinds are `print_started`, `print_ended`, `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`, `spool_adjusted`, `spool_retired`, `spool_command_rejected`, `spool_unverified`, `filament_change_signalled`, `unaccounted_print`, `preflight_checked`, `charge_pended`, `print_untracked`, `file_tally_rebaselined`, `printer_connection_changed`, `printer_reset`, `unattended_printer_activity`, `detector_health_changed`, `recovery_requested`, `recovery_executed`, `recovery_rejected` and `bed_clear_asserted`; any other is refused.
 - `--since` — the earliest instant to read from, inclusive, in RFC 3339 (optional).
 - `--until` — the latest instant to read to, inclusive (optional).
 - `--spool-id` — only the events naming this spool (optional).
@@ -688,7 +688,7 @@ Reached at `POST /v1/printer/recovery/recover_fan`.
 
 ### recover-heat
 
-Heat one tool, inside the safety envelope's range for it. Needs Z trusted and the nozzle `recovery.clearance_margin_mm` above the last print's tallest part, or the operator's word that it is clear.
+Heat one tool, inside the safety envelope's range for it. Needs Z trusted and the nozzle `recovery.clearance_margin_mm` above the last print's tallest part, or the operator's word that it is clear — given here, or standing from `bed-clear`.
 
 Reached at `POST /v1/printer/recovery/recover_heat`.
 
@@ -741,7 +741,7 @@ Reached at `POST /v1/printer/recovery/recover_home_xy`.
 
 ### recover-home-z
 
-Home Z, after which Z is trusted. Needs the operator's word that the bed is clear, and is never granted to the agent; the refusal says whether homing Z brings a gantry down over the whole bed.
+Home Z, after which Z is trusted. Needs the operator's word that the bed is clear — given here, or standing from `bed-clear` — and is never granted to the agent; the refusal says whether homing Z brings a gantry down over the whole bed.
 
 Reached at `POST /v1/printer/recovery/recover_home_z`.
 
@@ -750,11 +750,27 @@ Reached at `POST /v1/printer/recovery/recover_home_z`.
 - `--actor` — who is asking (required).
 - `--actor-file` — the path of a file carrying that value instead (optional).
 - `--reason` — why this change is being made, in the actor's own words (required).
-- `--bed-clear-asserted` — `true` for the operator's word that homing Z meets nothing on the bed (optional; false when left out, which is refused `assertion_required`).
+- `--bed-clear-asserted` — `true` for the operator's word that homing Z meets nothing on the bed (optional; false when left out, which is refused `assertion_required` unless a `bed-clear` stands).
 
 **Output.** The recovery's answer: the `action` asked for, its `decision` — `executed` with what the printer made of it, or `rejected` with why — a `detail` sentence, and the `recovery_requested` and `recovery_executed` or `recovery_rejected` events it wrote, with no print.
 
 **Failures.** `rejected` when the server refuses it: the answer's `decision` is `rejected`, carrying one of `actor_may_not_request`, `print_running`, `printer_unreachable`, `z_untrusted`, `insufficient_clearance` with the nozzle's Z, the part's height and the margin, `out_of_bounds` with the field, the value and the range, `assertion_required`, `recovery_not_configured` or `printer_cannot`, and `detail` says what would let it go ahead; every refusal is recorded as `recovery_rejected`. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, or for the printer refusing what was asked. `unreachable` when nothing answers at the configured address.
+
+### bed-clear
+
+Record the operator's word that the bed is clear: nothing is on it that homing Z could crush or a move over the part could strike. Until the next print starts — through printobserver or observed starting at the printer — `recover-home-z` is decided as though it carried `--bed-clear-asserted true`, and `recover-heat`, `recover-park` and `recover-home-xy` as though they carried `--clearance-asserted true`, wherever `[policy.recovery] asserting` counts the operator's word; each one decided on it names it in its `recovery_requested` and `recovery_executed` events as `bed_clear`. Z still has to be trusted for the three moves over the part. The word is read back out of the event log, so it stands across a restart, and only the operator gives it.
+
+Reached at `POST /v1/printer/bed_clear`.
+
+**Arguments.**
+
+- `--actor` — who is asking: `operator`, the one actor whose word is recorded (required).
+- `--actor-file` — the path of a file carrying that value instead (optional).
+- `--reason` — why this change is being made, in the actor's own words (required).
+
+**Output.** The `bed_clear_asserted` event it recorded, carrying the actor and the reason and no print, and a `detail` sentence saying what it means from now on.
+
+**Failures.** `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, for the agent's word and for the system's, none of which is recorded. `unreachable` when nothing answers at the configured address.
 
 ### watch
 

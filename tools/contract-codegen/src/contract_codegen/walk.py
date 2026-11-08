@@ -253,8 +253,10 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     # print was not started by this supervisor — so the walk lifts, sets the
     # fan and homes Z with the bed asserted clear, and only then makes the
     # moves that need Z, each with the operator's word that the nozzle is clear.
-    # It cools last, so nothing is left heating.
+    # It cools last, so nothing is left heating. The operator's word that the
+    # bed is clear is recorded first, which the start below ends.
     Ordered("recover_status", "operational"),
+    Ordered("bed_clear", "operational"),
     Ordered("recover_lift", "operational"),
     Ordered("recover_fan", "operational"),
     Ordered("recover_home_z", "operational"),

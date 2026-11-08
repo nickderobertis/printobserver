@@ -45,6 +45,8 @@ def instant(local: str) -> datetime:
 
 ScenarioId = NewType("ScenarioId", str)
 EventId = NewType("EventId", str)
+#: Obico's own identifier for one print.
+ObicoPrintId = NewType("ObicoPrintId", int)
 
 
 class Trigger(StrEnum):
@@ -235,6 +237,9 @@ class Case:
     #: Where every positioned scenario of the case puts the job, in time order: the
     #: recording's own, whether or not this suite replays that scenario yet.
     anchors: tuple[PrintedAt, ...] = ()
+    #: Whether the case records what Obico's detector did during the print, which
+    #: is a detector that was watching it.
+    detector_recorded: bool = False
 
     @property
     def test_id(self) -> str:
@@ -333,6 +338,17 @@ class Case:
         share = min(1.0, (when - earlier.at).total_seconds() / span)
         return earlier.position + int((later.position - earlier.position) * share)
 
+    def obico_print_id(self) -> ObicoPrintId | None:
+        """Obico's own identifier for the print, as the first recorded alert names it."""
+        for event in self.history:
+            if event.get("kind") != "obico_failure_alert" or not event.get("raw"):
+                continue
+            body = json.loads(base64.b64decode(event["raw"]))
+            named = body.get("print", {}).get("id") if isinstance(body, dict) else None
+            if isinstance(named, int):
+                return ObicoPrintId(named)
+        return None
+
     def recorded_alert(self, event_id: str) -> dict[str, Any]:
         """The body Obico posted for a recorded alert, as the history keeps it."""
         event = next(event for event in self.history if event["id"] == event_id)
@@ -416,6 +432,7 @@ def read_case(name: str) -> Case:
         gcode_size=stored_size(gcode),
         history=tuple(history),
         anchors=tuple(anchors),
+        detector_recorded=document.get("detector") is not None,
     )
 
 

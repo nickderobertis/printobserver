@@ -49,7 +49,10 @@ use printobserver_printer_api::{
 use printobserver_types::{EventId, EventKind, EventPayload as _, FileName, PrintId};
 
 use crate::error::CoreError;
-use crate::kinds::{RecoveryExecutedPayload, RecoveryRejectedPayload, RecoveryRequestedPayload};
+use crate::kinds::{
+    BedClearActor, BedClearAssertedPayload, PrintStartedPayload, RecoveryExecutedPayload,
+    RecoveryRejectedPayload, RecoveryRequestedPayload,
+};
 use crate::records::{
     ActionAllowance, Actor, ActorClass, AwayFromBed, BedTemperature, ExecutionOutcome, LastPrint,
     PausedPrint, PrintRecord, RecoveryAction, RecoveryActionKind, RecoveryConfig, RecoveryDecision,
@@ -70,6 +73,9 @@ struct Facts {
     snapshot: Option<PrinterSnapshot>,
     /// Whether Z is trusted, and what was read only because it is.
     z: ZFacts,
+    /// The operator's standing word that the bed is clear, when it stands and
+    /// counts: the event recording it.
+    bed_clear: Option<EventId>,
 }
 
 /// What a recovery reads of Z: nothing while it is untrusted, because a
@@ -155,7 +161,8 @@ fn decide(
             })]
         }
         RecoveryAction::RecoverHomeZ { bed_clear_asserted } => {
-            if !(*bed_clear_asserted && grants.assertion_counts(class)) {
+            if !(*bed_clear_asserted && grants.assertion_counts(class)) && facts.bed_clear.is_none()
+            {
                 return Err(RecoveryRejection::AssertionRequired {
                     field: RecoveryField::BedClearAsserted,
                 });
@@ -269,7 +276,8 @@ fn clear_of_the_part(
     let ZFacts::Trusted { position, tallest } = &facts.z else {
         return Err(RecoveryRejection::ZUntrusted);
     };
-    if action.clearance_asserted() && grants.assertion_counts(class) {
+    if (action.clearance_asserted() && grants.assertion_counts(class)) || facts.bed_clear.is_some()
+    {
         return Ok(());
     }
     let kind = action.kind();
@@ -318,13 +326,40 @@ fn position_of(
     }
 }
 
+/// Whether one action is decided on its own assertion, which the actor's
+/// class makes count.
+fn asserts_for_itself(action: &RecoveryAction, class: ActorClass, grants: &RecoveryGrants) -> bool {
+    let own = match action {
+        RecoveryAction::RecoverHomeZ { bed_clear_asserted } => *bed_clear_asserted,
+        other => other.clearance_asserted(),
+    };
+    own && grants.assertion_counts(class)
+}
+
+/// The operator's standing word that the bed is clear one action is decided
+/// on in place of an assertion of its own: when it stands, the operator's word
+/// counts, the action needs the bed or the nozzle clear, and it asserts
+/// nothing that counts for itself.
+fn relied_on(
+    standing: Option<EventId>,
+    action: &RecoveryAction,
+    class: ActorClass,
+    grants: &RecoveryGrants,
+) -> Option<EventId> {
+    let kind = action.kind();
+    let needs_it = kind.needs_clearance() || kind == RecoveryActionKind::RecoverHomeZ;
+    standing.filter(|_| {
+        needs_it
+            && grants.assertion_counts(ActorClass::Operator)
+            && !asserts_for_itself(action, class, grants)
+    })
+}
+
 /// Whether deciding one action reads where the head is.
-fn reads_position(action: &RecoveryAction, class: ActorClass, grants: &RecoveryGrants) -> bool {
+fn reads_position(action: &RecoveryAction, cleared: bool) -> bool {
     match action.kind() {
         RecoveryActionKind::RecoverLift => true,
-        kind if kind.needs_clearance() => {
-            !(action.clearance_asserted() && grants.assertion_counts(class))
-        }
+        kind if kind.needs_clearance() => !cleared,
         _ => false,
     }
 }
@@ -496,18 +531,27 @@ impl Supervisor {
         let grants = &self.config().recovery_grants;
         let granted =
             config.is_some() && self.config().recovery_grants.grants(class, action.kind());
+        let bed_clear = if granted {
+            relied_on(self.standing_bed_clear().await?, &action, class, grants)
+        } else {
+            None
+        };
         let facts = if granted {
-            self.facts(
-                reads_position(&action, class, grants),
-                action.kind().needs_clearance()
-                    && !(action.clearance_asserted() && grants.assertion_counts(class)),
-            )
-            .await
+            let cleared = bed_clear.is_some() || asserts_for_itself(&action, class, grants);
+            let mut read = self
+                .facts(
+                    reads_position(&action, cleared),
+                    action.kind().needs_clearance() && !cleared,
+                )
+                .await;
+            read.bed_clear = bed_clear;
+            read
         } else {
             // A request refused before the printer matters reads nothing of it.
             Facts {
                 snapshot: None,
                 z: ZFacts::Untrusted,
+                bed_clear: None,
             }
         };
         let calls = decide(
@@ -522,6 +566,7 @@ impl Supervisor {
             action,
             actor,
             reason,
+            bed_clear,
         };
         let under_a_pause = facts
             .snapshot
@@ -579,6 +624,7 @@ impl Supervisor {
             action,
             actor,
             reason,
+            bed_clear,
         } = requested;
         let moves_z = matches!(
             action,
@@ -601,6 +647,7 @@ impl Supervisor {
                     actor,
                     reason,
                     outcome: outcome.clone(),
+                    bed_clear,
                 },
             )?,
             RecoveryDecision::Rejected(rejection) => self.draft_of(
@@ -642,21 +689,28 @@ impl Supervisor {
         // The store answers which print was last before anything is read of
         // the machine: a store that cannot is this server's own failure.
         self.stores().prints.prints().await?;
+        let standing = self.standing_bed_clear().await?;
         let facts = self.facts(true, true).await;
         let config = self.config().recovery;
+        let grants = &self.config().recovery_grants;
         let actions = RecoveryActionKind::ALL
             .iter()
-            .map(|kind| ActionAllowance {
-                action: *kind,
-                refusal: decide(
-                    config.as_ref(),
-                    &self.config().recovery_grants,
-                    &self.config().envelope,
-                    class,
-                    &representative(*kind, config.as_ref()),
-                    &facts,
-                )
-                .err(),
+            .map(|kind| {
+                let action = representative(*kind, config.as_ref());
+                let mut deciding = facts.clone();
+                deciding.bed_clear = relied_on(standing, &action, class, grants);
+                ActionAllowance {
+                    action: *kind,
+                    refusal: decide(
+                        config.as_ref(),
+                        grants,
+                        &self.config().envelope,
+                        class,
+                        &action,
+                        &deciding,
+                    )
+                    .err(),
+                }
             })
             .collect();
         let state = facts
@@ -751,7 +805,71 @@ impl Supervisor {
         } else {
             ZFacts::Untrusted
         };
-        Facts { snapshot, z }
+        Facts {
+            snapshot,
+            z,
+            bed_clear: None,
+        }
+    }
+
+    /// The operator's standing word that the bed is clear, when it stands: the
+    /// last `bed_clear_asserted` the event log holds, unless a `print_started`
+    /// was recorded after it — whichever way that print started.
+    ///
+    /// Read from the log rather than held, so a server started again holds it
+    /// exactly as the one before did.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when the log could not be read.
+    pub async fn standing_bed_clear(&self) -> Result<Option<EventId>, CoreError> {
+        let kinds = [BedClearAssertedPayload::KIND, PrintStartedPayload::KIND]
+            .into_iter()
+            .map(|kind| {
+                EventKind::new(kind).map_err(|error| CoreError::Unrepresentable {
+                    detail: error.to_string(),
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let newest = self
+            .stores()
+            .timeline
+            .timeline(TimelineQuery {
+                kinds,
+                since: None,
+                until: None,
+                spool_id: None,
+                before: None,
+                limit: Some(1),
+            })
+            .await?
+            .into_iter()
+            .next();
+        Ok(newest
+            .filter(|event| event.kind().as_str() == BedClearAssertedPayload::KIND)
+            .map(|event| event.id))
+    }
+
+    /// Record the operator's word that the bed is clear, which stands until
+    /// the next print starts.
+    ///
+    /// Only the operator's: an assertion is a person's word for what they can
+    /// see, so this takes no actor and records the operator.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when it could not be recorded.
+    pub async fn assert_bed_clear(
+        &self,
+        reason: String,
+    ) -> Result<printobserver_types::EventRecord, CoreError> {
+        let payload = BedClearAssertedPayload {
+            actor: BedClearActor::Operator,
+            reason,
+        };
+        let source = crate::actions::source_of(&payload.actor.actor());
+        let draft = self.draft_of(None, source, &payload)?;
+        Ok(self.stores().events.append_event(draft).await?)
     }
 
     /// The last print with a file, and what its G-code laid down up to the

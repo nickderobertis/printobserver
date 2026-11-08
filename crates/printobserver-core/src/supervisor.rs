@@ -261,6 +261,9 @@ pub struct Supervisor {
     /// Where each supervision turn's runs take their credentials from, once
     /// the composition root has installed it.
     turn_authority: std::sync::OnceLock<Arc<dyn TurnAuthority>>,
+    /// What reads the failure detector's own record of the print, once the
+    /// composition root has installed it.
+    scoring_probe: std::sync::OnceLock<Arc<dyn crate::scoring::ScoringProbe>>,
     /// What the printer watch holds between its reads.
     pub(crate) watch: Mutex<WatchState>,
     /// Whether Z is trusted, which this supervisor starts out not doing.
@@ -342,6 +345,7 @@ impl Supervisor {
             inboxes: Inboxes::default(),
             detector_pauses: Mutex::new(BTreeMap::new()),
             turn_authority: std::sync::OnceLock::new(),
+            scoring_probe: std::sync::OnceLock::new(),
             watch: Mutex::new(WatchState::default()),
             z_trust: Mutex::new(ZTrust::Untrusted(
                 crate::recovery::UNTRUSTED_AT_START.to_owned(),
@@ -368,6 +372,19 @@ impl Supervisor {
     /// from. The first installation stands; answers whether this one did.
     pub fn install_turn_authority(&self, authority: Arc<dyn TurnAuthority>) -> bool {
         self.turn_authority.set(authority).is_ok()
+    }
+
+    /// Install what reads the failure detector's own record of the print,
+    /// which every round of periodic observations asks first. The first
+    /// installation stands; answers whether this one did.
+    pub fn install_scoring_probe(&self, probe: Arc<dyn crate::scoring::ScoringProbe>) -> bool {
+        self.scoring_probe.set(probe).is_ok()
+    }
+
+    /// What reads the failure detector's own record of the print, when one is
+    /// installed.
+    pub(crate) fn scoring_probe(&self) -> Option<Arc<dyn crate::scoring::ScoringProbe>> {
+        self.scoring_probe.get().cloned()
     }
 
     /// Whether Z is trusted, held for one read or write.

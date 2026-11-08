@@ -127,6 +127,7 @@ fn unacceptable(
         | ConfigField::PrinterPollS
         | ConfigField::UnattendedWindowS
         | ConfigField::ObicoMlApiUrl
+        | ConfigField::ObicoPrinterId
         | ConfigField::VisionBlankFrameMaxStddev => unacceptable_watch(field, &mut document),
         ConfigField::IngressAnswerBoundMs => set(
             &mut document,
@@ -214,6 +215,15 @@ fn unacceptable_watch(field: ConfigField, document: &mut toml::Value) {
             toml::Value::Table(toml::Table::from_iter([(
                 "ml_api_url".to_owned(),
                 toml::Value::String("ftp://127.0.0.1:3333".to_owned()),
+            )])),
+        ),
+        // Optional: a number no printer of Obico's is.
+        ConfigField::ObicoPrinterId => set(
+            document,
+            "obico",
+            toml::Value::Table(toml::Table::from_iter([(
+                "printer_id".to_owned(),
+                toml::Value::Integer(0),
             )])),
         ),
         // A bound below the one grey level it admits.
@@ -822,6 +832,7 @@ fn with_the_examples_taken_up(configuration: &str) -> String {
         "# [obico]",
         "# url = ",
         "# access_token = ",
+        "# ml_api_url = ",
     ];
     let mut taken = 0;
     let lines: Vec<String> = configuration
@@ -901,4 +912,5 @@ fn the_powershell_installers_configuration_reads_with_and_without_its_examples()
     .expect("the configuration reads with its examples taken up");
     assert!(taken_up.camera_snapshot_url.is_some());
     assert!(taken_up.obico_api.is_some());
+    assert!(taken_up.obico_ml_api_url.is_some());
 }

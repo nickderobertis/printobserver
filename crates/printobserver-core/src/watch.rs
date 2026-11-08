@@ -57,7 +57,7 @@ use crate::error::CoreError;
 use crate::events::PendingTurn;
 use crate::inbox::Arrival;
 use crate::kinds::{
-    DetectorHealthChangedPayload, DetectorStatus, HeatedTool, PrintEndedPayload,
+    DetectorHealthChangedPayload, DetectorStatus, HeatedTool, PortFailureSite, PrintEndedPayload,
     PrinterConnectionChangedPayload, PrinterResetPayload, UnattendedPrinterActivityPayload,
     system_source,
 };
@@ -122,7 +122,7 @@ pub trait DetectorProbe: Send + Sync {
     fn check(&self) -> BoxFuture<'_, Result<String, String>>;
 }
 
-/// The failure detector's health, as the last check found it.
+/// The failure detector's status, as the status and context reads answer it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(
     crate = "printobserver_types::serde",
@@ -131,63 +131,111 @@ pub trait DetectorProbe: Send + Sync {
 )]
 #[schemars(crate = "printobserver_types::schemars")]
 pub enum DetectorHealthStatus {
-    /// It answered its health check.
+    /// The detector is scoring the print, and no failure alert of its own has
+    /// arrived for it.
+    ScoringNothingFlagged,
+    /// The detector is scoring the print, and a failure alert of its own has
+    /// arrived for it.
+    ScoringFlagged,
+    /// No evidence that it is scoring the print, and it answered its health
+    /// check: available, with no scores yet.
     Available,
-    /// It did not.
+    /// No evidence that it is scoring the print, and it did not answer its
+    /// health check.
     Unavailable,
-    /// Nothing checks it: no detector health address is configured, or no
-    /// check has been made yet.
+    /// No evidence of any kind: no detector health address is configured, or
+    /// no check has been made yet, and nothing shows it scoring.
     #[default]
     Unchecked,
 }
 
-/// The failure detector's health, and since when it has been so.
+/// The failure detector's status, and since when it has been so.
 ///
-/// Three states and no fourth: a detector nobody has checked has no "since",
-/// and one that was checked always has one. On the wire it is the object the
-/// status and context reads answer — `status`, and `since` that is `null`
-/// exactly when the status is `unchecked` — and an object pairing them any
-/// other way is refused rather than read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// Evidence that the detector is scoring the print comes first: while its own
+/// record of the print's live prediction moved between two of this server's
+/// reads within the last two observation intervals, it is scoring, whatever
+/// its health check answers. Without that evidence its health check decides.
+///
+/// On the wire it is the object the status and context reads answer —
+/// `status`; `since`, `null` exactly when the status is `unchecked`; the failing
+/// health check named beside a scoring status as `probe_failure`; and, beside
+/// any other status, why the detector's scoring is not being read as
+/// `scoring_unread` — and an object pairing them any other way is refused
+/// rather than read.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DetectorHealth {
-    /// Nothing checks it: no detector health address is configured, or no
-    /// check has been made yet.
-    #[default]
-    Unchecked,
-    /// It answered its health check, from this instant on.
+    /// No evidence of any kind: no detector health address is configured, or
+    /// no check has been made yet, and nothing shows it scoring.
+    Unchecked {
+        /// Why the detector's scoring is not being read, when it is not.
+        scoring_unread: Option<String>,
+    },
+    /// No evidence that it is scoring the print, and it answered its health
+    /// check, from this instant on.
     Available {
         /// When it was first found answering.
         since: Timestamp,
+        /// Why the detector's scoring is not being read, when it is not.
+        scoring_unread: Option<String>,
     },
-    /// It did not, from this instant on.
+    /// No evidence that it is scoring the print, and it did not answer its
+    /// health check, from this instant on.
     Unavailable {
         /// When it was first found not answering.
         since: Timestamp,
+        /// Why the detector's scoring is not being read, when it is not.
+        scoring_unread: Option<String>,
+    },
+    /// The detector is scoring the print, from this instant on.
+    Scoring {
+        /// When it was first found scoring it.
+        since: Timestamp,
+        /// Whether a failure alert of its own has arrived for the print.
+        flagged: bool,
+        /// What the detector's health check answered, when it is failing
+        /// while the detector scores.
+        probe_failure: Option<String>,
     },
 }
 
-impl DetectorHealth {
-    /// What the last check found.
-    #[must_use]
-    pub const fn status(&self) -> DetectorHealthStatus {
-        match self {
-            Self::Unchecked => DetectorHealthStatus::Unchecked,
-            Self::Available { .. } => DetectorHealthStatus::Available,
-            Self::Unavailable { .. } => DetectorHealthStatus::Unavailable,
+impl Default for DetectorHealth {
+    fn default() -> Self {
+        Self::Unchecked {
+            scoring_unread: None,
         }
     }
 }
 
-/// The failure detector's health as the wire carries it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+impl DetectorHealth {
+    /// The status this is.
+    #[must_use]
+    pub const fn status(&self) -> DetectorHealthStatus {
+        match self {
+            Self::Unchecked { .. } => DetectorHealthStatus::Unchecked,
+            Self::Available { .. } => DetectorHealthStatus::Available,
+            Self::Unavailable { .. } => DetectorHealthStatus::Unavailable,
+            Self::Scoring { flagged: false, .. } => DetectorHealthStatus::ScoringNothingFlagged,
+            Self::Scoring { flagged: true, .. } => DetectorHealthStatus::ScoringFlagged,
+        }
+    }
+}
+
+/// The failure detector's status as the wire carries it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 struct DetectorHealthWire {
-    /// What the last check found.
+    /// What it is.
     status: DetectorHealthStatus,
     /// When the status became what it is, `null` exactly while unchecked —
     /// and always present, as the schema requires.
     #[serde(deserialize_with = "present")]
     since: Option<Timestamp>,
+    /// The failing health check, beside a scoring status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    probe_failure: Option<String>,
+    /// Why the detector's scoring is not being read, beside any other status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scoring_unread: Option<String>,
 }
 
 /// Read a value that may be `null` but may not be missing: serde reads a
@@ -200,15 +248,28 @@ fn present<'de, D: printobserver_types::serde::Deserializer<'de>>(
 
 impl From<DetectorHealth> for DetectorHealthWire {
     fn from(health: DetectorHealth) -> Self {
-        let since = match health {
-            DetectorHealth::Unchecked => None,
-            DetectorHealth::Available { since } | DetectorHealth::Unavailable { since } => {
-                Some(since)
+        let status = health.status();
+        let (since, probe_failure, scoring_unread) = match health {
+            DetectorHealth::Unchecked { scoring_unread } => (None, None, scoring_unread),
+            DetectorHealth::Available {
+                since,
+                scoring_unread,
             }
+            | DetectorHealth::Unavailable {
+                since,
+                scoring_unread,
+            } => (Some(since), None, scoring_unread),
+            DetectorHealth::Scoring {
+                since,
+                probe_failure,
+                ..
+            } => (Some(since), probe_failure, None),
         };
         Self {
-            status: health.status(),
+            status,
             since,
+            probe_failure,
+            scoring_unread,
         }
     }
 }
@@ -217,10 +278,42 @@ impl TryFrom<DetectorHealthWire> for DetectorHealth {
     type Error = &'static str;
 
     fn try_from(wire: DetectorHealthWire) -> Result<Self, Self::Error> {
-        match (wire.status, wire.since) {
-            (DetectorHealthStatus::Unchecked, None) => Ok(Self::Unchecked),
-            (DetectorHealthStatus::Available, Some(since)) => Ok(Self::Available { since }),
-            (DetectorHealthStatus::Unavailable, Some(since)) => Ok(Self::Unavailable { since }),
+        let DetectorHealthWire {
+            status,
+            since,
+            probe_failure,
+            scoring_unread,
+        } = wire;
+        let scoring = matches!(
+            status,
+            DetectorHealthStatus::ScoringNothingFlagged | DetectorHealthStatus::ScoringFlagged
+        );
+        if scoring && scoring_unread.is_some() {
+            return Err("a scoring detector's scoring is being read");
+        }
+        if !scoring && probe_failure.is_some() {
+            return Err("only a scoring detector names its failing health check beside it");
+        }
+        match (status, since) {
+            (DetectorHealthStatus::Unchecked, None) => Ok(Self::Unchecked { scoring_unread }),
+            (DetectorHealthStatus::Available, Some(since)) => Ok(Self::Available {
+                since,
+                scoring_unread,
+            }),
+            (DetectorHealthStatus::Unavailable, Some(since)) => Ok(Self::Unavailable {
+                since,
+                scoring_unread,
+            }),
+            (DetectorHealthStatus::ScoringNothingFlagged, Some(since)) => Ok(Self::Scoring {
+                since,
+                flagged: false,
+                probe_failure,
+            }),
+            (DetectorHealthStatus::ScoringFlagged, Some(since)) => Ok(Self::Scoring {
+                since,
+                flagged: true,
+                probe_failure,
+            }),
             (DetectorHealthStatus::Unchecked, Some(_)) => {
                 Err("an unchecked detector has no instant it became so")
             }
@@ -234,7 +327,7 @@ impl Serialize for DetectorHealth {
         &self,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
-        DetectorHealthWire::from(*self).serialize(serializer)
+        DetectorHealthWire::from(self.clone()).serialize(serializer)
     }
 }
 
@@ -247,25 +340,44 @@ impl<'de> Deserialize<'de> for DetectorHealth {
     }
 }
 
-/// One arm of the detector's health as a schema: its status, and its `since`.
+/// One arm of the detector's status as a schema: its status, its `since`, and
+/// the one optional text it may carry beside them.
 fn health_arm(
     status: &str,
     doc: &str,
     since: &printobserver_types::serde_json::Value,
+    beside: (&str, &str),
 ) -> printobserver_types::serde_json::Value {
+    let (field, field_doc) = beside;
+    let mut properties = printobserver_types::serde_json::Map::new();
+    properties.insert(
+        "status".to_owned(),
+        printobserver_types::serde_json::json!({ "type": "string", "const": status }),
+    );
+    properties.insert("since".to_owned(), since.clone());
+    properties.insert(
+        field.to_owned(),
+        printobserver_types::serde_json::json!({ "type": "string", "description": field_doc }),
+    );
     printobserver_types::serde_json::json!({
         "type": "object",
         "description": doc,
-        "properties": {
-            "status": { "type": "string", "const": status },
-            "since": since,
-        },
+        "properties": properties,
         "required": ["status", "since"],
         "additionalProperties": false,
     })
 }
 
-/// The schema describes the three states as arms tagged by `status`, so a
+/// What `scoring_unread` says, in the schema.
+const SCORING_UNREAD_DOC: &str = "Why the detector's scoring of the print is not being read, \
+    when it is not: no Obico API is configured, no Obico printer is known yet, or the last read \
+    failed.";
+
+/// What `probe_failure` says, in the schema.
+const PROBE_FAILURE_DOC: &str = "What the detector's health check answered, when it is \
+    failing while the detector scores the print.";
+
+/// The schema describes the five states as arms tagged by `status`, so a
 /// generated client cannot pair a status with the wrong `since` either.
 impl JsonSchema for DetectorHealth {
     fn schema_name() -> std::borrow::Cow<'static, str> {
@@ -278,29 +390,51 @@ impl JsonSchema for DetectorHealth {
         let timestamp =
             printobserver_types::serde_json::to_value(generator.subschema_for::<Timestamp>())
                 .unwrap_or_default();
+        let unread = ("scoring_unread", SCORING_UNREAD_DOC);
+        let failing = ("probe_failure", PROBE_FAILURE_DOC);
         let schema = printobserver_types::serde_json::json!({
             "title": "DetectorHealth",
-            "description": "The failure detector's health, and since when it has been so: \
-                `since` is `null` exactly while the status is `unchecked`.",
+            "description": "The failure detector's status, and since when it has been so: \
+                `since` is `null` exactly while the status is `unchecked`. Evidence that the \
+                detector is scoring the print comes before its health check.",
             "oneOf": [
                 health_arm(
+                    "scoring_nothing_flagged",
+                    "The detector is scoring the print, from `since` on, and no failure alert \
+                     of its own has arrived for it.",
+                    &timestamp,
+                    failing,
+                ),
+                health_arm(
+                    "scoring_flagged",
+                    "The detector is scoring the print, from `since` on, and a failure alert \
+                     of its own has arrived for it.",
+                    &timestamp,
+                    failing,
+                ),
+                health_arm(
+                    "available",
+                    "No evidence that the detector is scoring the print, and it answered its \
+                     health check, from `since` on: available, with no scores yet.",
+                    &timestamp,
+                    unread,
+                ),
+                health_arm(
+                    "unavailable",
+                    "No evidence that the detector is scoring the print, and it did not answer \
+                     its health check, from `since` on.",
+                    &timestamp,
+                    unread,
+                ),
+                health_arm(
                     "unchecked",
-                    "Nothing checks it: no detector health address is configured, or no \
-                     check has been made yet.",
+                    "No evidence of any kind: no detector health address is configured, or no \
+                     check has been made yet, and nothing shows the detector scoring.",
                     &printobserver_types::serde_json::json!({
                         "type": "null",
                         "description": "Nothing: an unchecked detector has no instant it became so.",
                     }),
-                ),
-                health_arm(
-                    "available",
-                    "It answered its health check, from `since` on.",
-                    &timestamp,
-                ),
-                health_arm(
-                    "unavailable",
-                    "It did not answer its health check, from `since` on.",
-                    &timestamp,
+                    unread,
                 ),
             ],
         });
@@ -310,19 +444,77 @@ impl JsonSchema for DetectorHealth {
 
 impl Sample for DetectorHealth {
     fn sample_full() -> Self {
-        Self::Unavailable {
+        Self::Scoring {
             since: Timestamp::sample_full(),
+            flagged: false,
+            probe_failure: Some("the detector's health check answered 503".to_owned()),
         }
     }
 
     fn sample_minimal() -> Self {
-        Self::Unchecked
+        Self::Unchecked {
+            scoring_unread: None,
+        }
     }
 
     fn sample_alternates() -> Vec<Self> {
-        vec![Self::Available {
-            since: Timestamp::sample_full(),
-        }]
+        vec![
+            Self::Scoring {
+                since: Timestamp::sample_full(),
+                flagged: true,
+                probe_failure: None,
+            },
+            Self::Available {
+                since: Timestamp::sample_full(),
+                scoring_unread: Some(
+                    "no Obico printer is known yet: no [obico] printer_id is configured and Obico \
+                     has posted nothing naming one since this server started"
+                        .to_owned(),
+                ),
+            },
+            Self::Unavailable {
+                since: Timestamp::sample_full(),
+                scoring_unread: None,
+            },
+            Self::Unchecked {
+                scoring_unread: Some(
+                    "no [obico] url and access_token are configured, so Obico's record of the \
+                     print is not read"
+                        .to_owned(),
+                ),
+            },
+        ]
+    }
+}
+
+/// What the detector's health check last found, with what it was answered.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) enum ProbeHealth {
+    /// Nothing has checked it.
+    #[default]
+    Unchecked,
+    /// It answered, from this instant on.
+    Available {
+        /// When it was first found answering.
+        since: Timestamp,
+    },
+    /// It did not, from this instant on.
+    Unavailable {
+        /// When it was first found not answering.
+        since: Timestamp,
+        /// What it was answered, in words.
+        detail: String,
+    },
+}
+
+impl ProbeHealth {
+    /// The status the check alone gives.
+    const fn status(&self) -> DetectorHealthStatus {
+        match self {
+            Self::Unchecked => DetectorHealthStatus::Unchecked,
+            Self::Available { .. } => DetectorHealthStatus::Available,
+            Self::Unavailable { .. } => DetectorHealthStatus::Unavailable,
+        }
     }
 }
 
@@ -385,8 +577,10 @@ pub(crate) struct WatchState {
     channel: Channel,
     /// The unattended window, while one is open.
     unattended: Option<Unattended>,
-    /// The detector's health.
-    detector: DetectorHealth,
+    /// What the detector's health check last found.
+    pub(crate) probe: ProbeHealth,
+    /// What the reads of the detector's own record of the print have found.
+    pub(crate) scoring: crate::scoring::ScoringState,
     /// Turns an ending claimed, for the next watch round to answer.
     pending_turns: Vec<PendingTurn>,
     /// Resets the store refused to write down, for the next round to write.
@@ -538,10 +732,53 @@ impl Supervisor {
         };
     }
 
-    /// The failure detector's health, as the last check found it.
+    /// The failure detector's status, for whichever print it is scoring.
+    ///
+    /// Evidence that the detector is scoring a print comes first
+    /// ([`crate::scoring`]); without it, what its health check last found.
     #[must_use]
     pub fn detector_health(&self) -> DetectorHealth {
-        self.watch_state().detector
+        self.detector_health_of(None)
+    }
+
+    /// The failure detector's status, as one print's status and context reads
+    /// answer it: scoring only when the evidence is of that print.
+    #[must_use]
+    pub fn detector_health_for(&self, print_id: PrintId) -> DetectorHealth {
+        self.detector_health_of(Some(print_id))
+    }
+
+    /// The failure detector's status, for one print or for whichever print it
+    /// is scoring.
+    fn detector_health_of(&self, print_id: Option<PrintId>) -> DetectorHealth {
+        let window = self
+            .config()
+            .observation_interval
+            .saturating_mul(crate::scoring::EVIDENCE_INTERVALS);
+        let now = self.clock().elapsed();
+        let held = self.watch_state();
+        if let Some(scoring) = held.scoring.scoring(print_id, now, window) {
+            return DetectorHealth::Scoring {
+                since: scoring.since,
+                flagged: scoring.flagged,
+                probe_failure: match &held.probe {
+                    ProbeHealth::Unavailable { detail, .. } => Some(detail.clone()),
+                    ProbeHealth::Unchecked | ProbeHealth::Available { .. } => None,
+                },
+            };
+        }
+        let scoring_unread = held.scoring.unread().map(str::to_owned);
+        match &held.probe {
+            ProbeHealth::Unchecked => DetectorHealth::Unchecked { scoring_unread },
+            ProbeHealth::Available { since } => DetectorHealth::Available {
+                since: *since,
+                scoring_unread,
+            },
+            ProbeHealth::Unavailable { since, .. } => DetectorHealth::Unavailable {
+                since: *since,
+                scoring_unread,
+            },
+        }
     }
 
     /// Report that the printer's push channel opened, or why it is down.
@@ -933,7 +1170,9 @@ impl Supervisor {
 
     /// Ask the failure detector whether it is answering, during a print, and
     /// record each change; going unavailable claims the active print's agent a
-    /// turn.
+    /// turn — unless the detector is scoring that print, when its failing
+    /// health check is recorded as a port failure against the change instead,
+    /// and the print is still watched.
     ///
     /// No print open, no check: a detector nobody needs is not one to
     /// record.
@@ -956,32 +1195,58 @@ impl Supervisor {
             DetectorStatus::Available => DetectorHealthStatus::Available,
             DetectorStatus::Unavailable => DetectorHealthStatus::Unavailable,
         };
-        let previous = self.watch_state().detector.status();
+        let previous = self.watch_state().probe.status();
         if previous == health {
+            // The failure the status names beside a scoring detector is the
+            // latest one it was answered.
+            if let ProbeHealth::Unavailable { detail: held, .. } = &mut self.watch_state().probe {
+                held.clone_from(&detail);
+            }
             return Ok(None);
         }
         let since = self.clock().now();
         let found = match status {
-            DetectorStatus::Available => DetectorHealth::Available { since },
-            DetectorStatus::Unavailable => DetectorHealth::Unavailable { since },
+            DetectorStatus::Available => ProbeHealth::Available { since },
+            DetectorStatus::Unavailable => ProbeHealth::Unavailable {
+                since,
+                detail: detail.clone(),
+            },
         };
         // The first check finding the detector up is where watching it begins,
         // not a change in it.
         if previous == DetectorHealthStatus::Unchecked && health == DetectorHealthStatus::Available
         {
-            self.watch_state().detector = found;
+            self.watch_state().probe = found;
             return Ok(None);
         }
         let draft = self.draft_of(
             None,
             system_source(),
-            &DetectorHealthChangedPayload { status, detail },
+            &DetectorHealthChangedPayload {
+                status,
+                detail: detail.clone(),
+            },
         )?;
         let event = self.stores().events.append_event(draft).await?;
         // Remembered only once it is written down: a change the store refused
         // is found again by the next check.
-        self.watch_state().detector = found;
+        self.watch_state().probe = found;
         if status != DetectorStatus::Unavailable {
+            return Ok(None);
+        }
+        if matches!(
+            self.detector_health_for(print.id),
+            DetectorHealth::Scoring { .. }
+        ) {
+            // The detector is still scoring the print, so the print is still
+            // watched: the failing check is a port that failed, not an outage.
+            self.record_port_failure_to(
+                None,
+                event.id,
+                PortFailureSite::DetectorHealthCheck,
+                detail,
+            )
+            .await;
             return Ok(None);
         }
         let arrival = Arrival {

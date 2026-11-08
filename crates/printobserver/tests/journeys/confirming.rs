@@ -254,11 +254,40 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
             assert_eq!(at(&said, "actions.0.action"), "recover_lift", "{said:#?}");
             assert_eq!(at(&said, "z_home.x"), "100.0", "{said:#?}");
         }
+        "bed-clear" => the_word_was_recorded(world, one, &said),
         recovering if recovering.starts_with("recover-") => {
             the_recovery_was_carried_out(one, &said);
         }
         _ => the_action_was_carried_out(world, one, &said),
     }
+}
+
+/// The operator's word that the bed is clear was recorded with the caller's
+/// own reason, as the operator's and no print's, and the printer history
+/// reads it back as the newest of its kind.
+fn the_word_was_recorded(world: &World, one: &Driven, said: &BTreeMap<String, String>) {
+    assert_eq!(at(said, "event.kind"), "bed_clear_asserted", "{said:#?}");
+    assert_eq!(at(said, "event.payload.actor"), "operator", "{said:#?}");
+    assert_eq!(
+        at(said, "event.payload.reason"),
+        one.text("reason"),
+        "{said:#?}"
+    );
+    let read = running::read(
+        world,
+        &[
+            "printer-history",
+            "--kinds",
+            "bed_clear_asserted",
+            "--limit",
+            "1",
+        ],
+    );
+    assert_eq!(
+        read.pointer("/events/0/id").and_then(Value::as_str),
+        Some(at(said, "event.id").as_str()),
+        "the printer history does not read the word back: {read}"
+    );
 }
 
 /// One recovery reached the machine and the machine took it, recorded as the

@@ -73,7 +73,12 @@
 //! it, so no refusal or log line this program writes can carry it.
 //! `obico.ml_api_url` is the failure detector's own service, whose
 //! unauthenticated health check is asked during every print; without it the
-//! detector's health reads `unchecked`. `vision.blank_frame_max_stddev` is the
+//! detector's health check is never asked. With `obico.url` and
+//! `obico.access_token`, `Obico`'s own record of the printer's live prediction
+//! is read once per observation interval, from the printer `obico.printer_id`
+//! names — a whole number from 1 — or, left out, the one the last body `Obico`
+//! posted named; that is what says the detector is scoring a print.
+//! `vision.blank_frame_max_stddev` is the
 //! grey-level spread at or below which a frame is blank — from 1 to 128, 36.5
 //! when left out.
 //!
@@ -121,6 +126,7 @@ use printobserver_core::{
 };
 use printobserver_obico::{
     AccessToken, BlankFrameBound, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, ObicoApi,
+    ObicoPrinterId,
 };
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
@@ -235,6 +241,8 @@ pub enum ConfigField {
     ObicoAccessToken,
     /// Where the failure detector's own service answers its health check.
     ObicoMlApiUrl,
+    /// Which of `Obico`'s printers its record of the print is read from.
+    ObicoPrinterId,
     /// The grey-level spread at or below which a camera frame is blank.
     VisionBlankFrameMaxStddev,
     /// What a start does when the spool check finds a problem.
@@ -271,7 +279,7 @@ pub enum ConfigField {
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 37] = [
+    pub const ALL: [Self; 38] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -293,6 +301,7 @@ impl ConfigField {
         Self::ObicoUrl,
         Self::ObicoAccessToken,
         Self::ObicoMlApiUrl,
+        Self::ObicoPrinterId,
         Self::VisionBlankFrameMaxStddev,
         Self::SpoolsPreflight,
         Self::SpoolsBufferPercent,
@@ -336,6 +345,7 @@ impl ConfigField {
             Self::ObicoUrl => "obico.url",
             Self::ObicoAccessToken => "obico.access_token",
             Self::ObicoMlApiUrl => "obico.ml_api_url",
+            Self::ObicoPrinterId => "obico.printer_id",
             Self::VisionBlankFrameMaxStddev => "vision.blank_frame_max_stddev",
             Self::SpoolsPreflight => "spools.preflight",
             Self::SpoolsBufferPercent => "spools.buffer_percent",
@@ -639,6 +649,13 @@ pub struct ObicoSection {
     /// health reads `unchecked`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ml_api_url: Option<String>,
+    /// `Obico`'s own identifier for the printer — the number in its printer
+    /// page's address — whose record of the print is read once per
+    /// observation interval for the detector's status. Left out, the printer
+    /// the last body `Obico` posted named is read, and nothing until it has
+    /// posted one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer_id: Option<i64>,
 }
 
 /// How a camera frame is judged, as written down.
@@ -666,6 +683,7 @@ impl core::fmt::Debug for ObicoSection {
                 &self.access_token.as_ref().map(|_| REDACTED),
             )
             .field("ml_api_url", &self.ml_api_url)
+            .field("printer_id", &self.printer_id)
             .finish()
     }
 }
@@ -1166,6 +1184,9 @@ pub struct ServerConfig {
     /// Where the failure detector's own service answers its health check,
     /// when configured.
     pub obico_ml_api_url: Option<WebAddress>,
+    /// Which of `Obico`'s printers its record of the print is read from, when
+    /// configured.
+    pub obico_printer_id: Option<ObicoPrinterId>,
     /// How long the ingress may take to answer.
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
@@ -1259,12 +1280,7 @@ impl ServerConfig {
             UNATTENDED_WINDOW_RANGE_S,
         )?;
         let blank_frame_max_stddev = blank_frame_bound(file.vision.blank_frame_max_stddev)?;
-        let obico_ml_api_url = file
-            .obico
-            .ml_api_url
-            .as_deref()
-            .map(|url| web_address(ConfigField::ObicoMlApiUrl, url))
-            .transpose()?;
+        let (obico_ml_api_url, obico_printer_id) = detector_reads(&file.obico)?;
         let ingress_answer_bound = answer_bound(file.ingress.answer_bound_ms)?;
         let ingress_shared_secret = SharedSecret::new(&required(
             ConfigField::IngressSharedSecret,
@@ -1316,6 +1332,7 @@ impl ServerConfig {
             unattended_window,
             blank_frame_max_stddev,
             obico_ml_api_url,
+            obico_printer_id,
             ingress_answer_bound,
             ingress_shared_secret,
             api_credential,
@@ -1342,6 +1359,27 @@ impl ServerConfig {
 /// naming a host, by the field's own key and without quoting the value.
 fn web_address(field: ConfigField, url: &str) -> Result<WebAddress, ConfigError> {
     WebAddress::new(url).map_err(|why| ConfigError::about(field, why))
+}
+
+/// Where the failure detector's health check is asked, and which of `Obico`'s
+/// printers its record of the print is read from — its own identifier, a whole
+/// number from 1 — when each is written down.
+fn detector_reads(
+    section: &ObicoSection,
+) -> Result<(Option<WebAddress>, Option<ObicoPrinterId>), ConfigError> {
+    let ml_api_url = section
+        .ml_api_url
+        .as_deref()
+        .map(|url| web_address(ConfigField::ObicoMlApiUrl, url))
+        .transpose()?;
+    let printer_id = section
+        .printer_id
+        .map(|id| {
+            ObicoPrinterId::new(id)
+                .map_err(|why| ConfigError::about(ConfigField::ObicoPrinterId, why))
+        })
+        .transpose()?;
+    Ok((ml_api_url, printer_id))
 }
 
 /// `Obico`'s API, when both its address and its token are written down.

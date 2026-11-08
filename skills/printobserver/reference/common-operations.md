@@ -99,8 +99,8 @@ from when you want one line about where things stand.
 
 ```console
 $ printobserver status --print-id PRINT_ID
-detector.since: null
-detector.status: unchecked
+detector.since: TIMESTAMP
+detector.status: available
 interventions: []
 job.completion.out_of_range: false
 job.completion.value: 0.42
@@ -149,8 +149,8 @@ context.bounds.allowed.flowrate.max: 1.1
 context.bounds.allowed.flowrate.min: 0.9
 context.bounds.allowed.tool_target:0.max: 260.0
 context.bounds.allowed.tool_target:0.min: 0.0
-context.detector.since: null
-context.detector.status: unchecked
+context.detector.since: TIMESTAMP
+context.detector.status: available
 context.interventions: []
 context.job.completion.out_of_range: false
 context.job.completion.value: 0.42
@@ -1297,4 +1297,23 @@ events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
+```
+
+### bed_clear
+
+Say once that the bed is clear, as the operator, after taking a part off it.
+Until the next print starts, a Z home is decided as though it carried
+`--bed-clear-asserted true` and a heat, a park and an XY home as though they
+carried `--clearance-asserted true`, each naming the word in its events; the
+agent's word is refused.
+
+```console
+$ printobserver bed-clear --actor operator --reason "the cancelled print is off the bed"
+detail: recorded: until the next print starts, a Z home is decided as though it asserted the bed clear, and a heat, a park and an XY home as though they asserted the nozzle clear of the part, wherever the operator's word counts
+event.id: ID
+event.kind: bed_clear_asserted
+event.payload.actor: operator
+event.payload.reason: the cancelled print is off the bed
+event.received_at: TIMESTAMP
+event.source: operator
 ```

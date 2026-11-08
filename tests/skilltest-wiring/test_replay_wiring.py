@@ -10,10 +10,12 @@ stamped with the name of the frame it stands for.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
 import sys
+import tomllib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -812,6 +814,87 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         connection.close()
         server.shutdown()
         server.server_close()
+
+
+def _detectors_read(done: Scripted) -> list[str]:
+    """The detector's status each turn's context read answered, in turn order."""
+    return [
+        json.loads(entry["out"])["context"]["detector"]["status"]
+        for seen in done.turns
+        for entry in seen["ran"]
+        if entry["words"][1] == "context"
+    ]
+
+
+def test_the_real_supervisor_reads_the_replays_detector_through_obicos_record(
+    scratch: Path,
+) -> None:
+    """The real server reads the double's printer record over HTTP into every turn's context.
+
+    A case recording the detector is one Obico watched, so once two of the server's
+    reads apart have seen its snapshot move, a turn reads it scoring with nothing
+    flagged; the same case with no detector recorded never reads scoring.
+    """
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    truth(len(case.moments) >= 2, describing="two turns, so two reads lie between them")
+    for directory in ("watched", "unwatched"):
+        (scratch / directory).mkdir()
+    watched = _detectors_read(mock_replay(case, [{"commands": [CONTEXT]}], scratch / "watched"))
+    equal(len(watched), len(case.moments))
+    equal(watched[-1], "scoring_nothing_flagged")
+
+    unrecorded = dataclasses.replace(case, detector_recorded=False)
+    unwatched = _detectors_read(
+        mock_replay(unrecorded, [{"commands": [CONTEXT]}], scratch / "unwatched")
+    )
+    equal(len(unwatched), len(case.moments))
+    truth(
+        not any(status.startswith("scoring") for status in unwatched),
+        describing=f"no scoring read for a case recording no detector: {unwatched}",
+    )
+
+
+def test_the_obico_doubles_printer_record_is_the_cases_recorded_detector(scratch: Path) -> None:
+    """A case recording the detector names its print and a snapshot that moves; none, no print.
+
+    The print is named by the identifier the case's first recorded alert names, its
+    file and its start, which is what the server matches it to its own print by.
+    """
+    case = read_case("petg-clip-detach-and-stringing-web")
+    truth(case.detector_recorded, describing="the case records what the detector did")
+    timeline = doubles.Timeline(case=case, picture=stamped, clock=scratch / "clock")
+    first = timeline.obico_printer()
+    named = case.obico_print_id()
+    truth(named is not None, describing="the case's recorded alert names Obico's print")
+    current = first["current_print"]
+    truth(current is not None, describing="the record names the print Obico watched")
+    if current is not None:
+        equal(current["id"], named)
+        equal(current["filename"], case.gcode.name)
+        equal(datetime.fromisoformat(current["started_at"]), case.job_started())
+    truth("auth_token" not in first, describing="the double carries no printer credential")
+    timeline.offset += timedelta(seconds=5)
+    later = timeline.obico_printer()
+    truth(
+        later["pic"] != first["pic"], describing="a watching Obico's snapshot moved between reads"
+    )
+
+    unrecorded = dataclasses.replace(case, detector_recorded=False)
+    quiet = doubles.Timeline(case=unrecorded, picture=stamped, clock=scratch / "quiet-clock")
+    equal(quiet.obico_printer()["current_print"], None)
+
+    minted = Minted()
+    config = tomllib.loads(
+        service_config(
+            scratch / "state",
+            "127.0.0.1:1",
+            "http://127.0.0.1:2",
+            "http://127.0.0.1:3",
+            "http://127.0.0.1:4",
+            minted,
+        )
+    )
+    equal(config["obico"]["printer_id"], doubles.OBICO_PRINTER)
 
 
 @pytest.mark.parametrize(
