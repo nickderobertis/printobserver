@@ -60,7 +60,7 @@ toml = { version = "0.9", default-features = false, features = ["display", "pars
 # unauthenticated post is written down as. The connection is opened through
 # `printobserver-store-sqlite`'s own `connect`, so it is the store's schema
 # being read rather than a second belief about it.
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.42", features = ["bundled"] }
 reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls", "webpki-roots"] }
 tempfile = "3"
 # The scripted `OctoPrint` the printer-watch journeys drive the real adapter
