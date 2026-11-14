@@ -6,6 +6,10 @@ Three halves, each driven through the interface the workflow itself uses:
   what `just --dry-run check` says the unsharded gate invokes;
 * a shard's run, through the real `just`, over a copy whose tier recipes write
   what they were handed rather than running the gate;
+* each aarch64 platform's dispatched shards, through the real `just check-shard`
+  and the real recipes, shard runner and project filter beneath it, against the
+  real `just check all`, with only the leaf build, test and check programs
+  doubled, compared by the Nx tasks and check runs they were asked for;
 * the aggregator's verdict, through the real `just shard-verdict` recipe, handed
   `needs` documents in the shape `${{ toJSON(needs) }}` renders them;
 
@@ -21,6 +25,7 @@ import re
 import subprocess
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +40,8 @@ from repo_checks.gate_shards import (
     END_TO_END_PART_VARIABLE,
     END_TO_END_SECOND_PART,
     END_TO_END_THIRD_PART,
+    PARTS,
+    SHARD_RECIPE,
     plan,
 )
 from repo_checks.gate_shards import REFUSED as REFUSED_SHARD
@@ -42,9 +49,10 @@ from repo_checks.gate_shards import main as gate_shards_main
 from repo_checks.gate_tier import PROJECTS_VARIABLE, REFUSED, ProjectFilter, command
 from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
-from repo_checks.parsing import jobs_of, load_workflow, run_commands, steps_of
+from repo_checks.parsing import jobs_of, load_workflow, steps_of
 from repo_checks.shell import run
-from treecopy import REPO_ROOT, Tree
+from test_commands import program
+from treecopy import REPO_ROOT, Closure, Tree, copy_tree
 
 #: The files the checks this module drives read; see `closures`.
 CLOSURE = closure("sharded-jobs")
@@ -841,130 +849,194 @@ def partitions(sides: set[str]) -> bool:
     )
 
 
-def coverage_findings(selected: list[str], unsharded: set[tuple[str, ...]]) -> list[str]:
-    """How the commands a split runs differ from the unsharded gate's: omitted, or run twice.
-
-    A recipe is run whole by one command, or in parts that together are all of
-    it: every side of a split of the projects, or every part `k/n` of the
-    end-to-end tier.
-    """
-    findings = [f"`{one}` is run twice" for one, seen in Counter(selected).items() if seen > 1]
-    by_recipe: dict[tuple[str, ...], set[str]] = {}
-    for line in selected:
-        handed = " ".join(word for word in line.split() if "=" in word)
-        by_recipe.setdefault(invoked(line), set()).add(handed)
-    findings.extend(f"`just {' '.join(one)}` is omitted" for one in unsharded - by_recipe.keys())
-    findings.extend(
-        f"`just {' '.join(one)}` is run by no shard of the unsharded gate"
-        for one in by_recipe.keys() - unsharded
+#: The programs the gate's recipes launch to build, test and check, each doubled
+#: by one that records what it was asked to run. `uv` is one of them for every
+#: invocation but the shard runner and the tier selector, which it hands to
+#: this interpreter, so the real recipes reach the real project filter.
+LEAVES = ("bun", "bunx", "cargo", "uv")
+#: The modules the `uv` double runs rather than records.
+PASSED_THROUGH = ("repo_checks.gate_shards", "repo_checks.gate_tier")
+#: The variable naming the file the doubles append their records to.
+LEAF_RECORD = "GATE_LEAF_RECORD"
+#: Leaf runs that prepare a runner rather than doing gate work: each shard
+#: repeats them for its own runner, so they are recorded and not compared.
+PREPARATION = (
+    ("bun", "install"),
+    ("cargo", "llvm-cov", "clean"),
+    ("uv", "run", "-q", "coverage", "erase"),
+    ("uv", "run", "-q", "python", "-m", "repo_checks", "install-tools"),
+)
+#: What a copy for a gate run carries: the recipes, the policy, the graph, the
+#: workflows and the tool packages the recipes put on `PYTHONPATH`.
+GATE_RUN = Closure(
+    (
+        "justfile",
+        "repo-policy.toml",
+        "AGENTS.md",
+        "pyproject.toml",
+        "**/project.json",
+        ".github/workflows/",
+        "tools/repo-checks/src/",
+        "tools/contract-codegen/src/",
+        "tools/release-artifacts/src/",
     )
-    for recipe, parts in by_recipe.items():
-        sides = {part.split("=", 1)[1] for part in parts if part.startswith(PROJECTS_VARIABLE)}
-        end_to_end_parts = {
-            part.split("=", 1)[1] for part in parts if part.startswith(END_TO_END_PART_VARIABLE)
+)
+
+LEAF = f"""
+import json, os, subprocess, sys
+name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+argv = sys.argv[1:]
+if name == "uv" and argv[:4] == ["run", "-q", "python", "-m"] and argv[4] in {PASSED_THROUGH!r}:
+    sys.exit(subprocess.run([sys.executable, "-m", *argv[4:]]).returncode)
+with open(os.environ[{LEAF_RECORD!r}], "a", encoding="utf-8") as record:
+    record.write(json.dumps({{
+        "argv": [name, *argv],
+        "part": os.environ.get({END_TO_END_PART_VARIABLE!r}, ""),
+        "side": os.environ.get({PROJECTS_VARIABLE!r}, ""),
+    }}) + "\\n")
+"""
+
+
+@dataclass(frozen=True)
+class GateRun:
+    """A copy of the tree whose leaf programs are doubled, and the gate runs made in it."""
+
+    root: Path
+    programs: Path
+
+    def run(self, *recipe: str) -> list[dict[str, Any]]:
+        """What the leaves recorded while the real `just <recipe>` ran here, in order."""
+        record = self.programs.parent / f"record-{len(list(self.programs.parent.glob('record-*')))}"
+        environment = {
+            **{key: value for key, value in os.environ.items() if key not in PARTS},
+            "PATH": os.pathsep.join([str(self.programs), os.environ["PATH"]]),
+            LEAF_RECORD: str(record),
         }
-        whole = "" in parts
-        counts = {int(part.split("/")[1]) for part in end_to_end_parts}
-        if whole and len(parts) > 1:
-            findings.append(f"`just {' '.join(recipe)}` is run whole and in parts")
-        elif sides and not partitions(sides):
-            findings.append(
-                f"`just {' '.join(recipe)}` is omitted for a side: run for {sorted(sides)}"
-            )
-        elif end_to_end_parts and (
-            len(counts) != 1
-            or end_to_end_parts != {f"{k}/{n}" for n in counts for k in range(1, n + 1)}
-        ):
-            ran = sorted(end_to_end_parts)
-            findings.append(f"`just {' '.join(recipe)}` is omitted for a part: run for {ran}")
-    return findings
+        ran = run(["just", *recipe], cwd=self.root, env=environment, timeout=600)
+        passing(ran, describing=f"`just {' '.join(recipe)}` over the doubled leaves")
+        return [json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()]
 
 
-def reached_commands(
-    tree: Callable[[], Tree], workflow: dict[str, Any], platform: str
-) -> list[str]:
-    """What `platform`'s dispatched shards ran through the real `gate_shards run`, a command a line.
+@pytest.fixture
+def gate_run(tmp_path: Path) -> Callable[[], GateRun]:
+    """A factory for fresh copies of the tree a gate runs in, with its leaves doubled."""
+    counter = {"n": 0}
 
-    Each shard runs in a copy whose tier recipes, the build and test programs
-    the selector launches, are replaced by ones that write what they were
-    handed, so the result is the real selector's work and the real recipe
-    interface, with no gate run. Each reached line is written back as the
-    command `commands` prints, so that the unsharded gate's dry run can judge it.
-    """
-    copy = tree()
-    copy.write("justfile", recording_justfile(copy.repo))
-    for shard in dispatched_shards(workflow, platform):
-        equal(
-            gate_shards_main(["--root", str(copy.root), "run", "all", shard]),
-            0,
-            describing=f"shard {shard}'s run",
-        )
-    commands: list[str] = []
-    for line in copy.read("reached").splitlines():
-        words = line.split()
-        recipe, arguments, handed = words[0], words[1:], ""
-        if arguments and ("/" in arguments[-1] or ":" in arguments[-1]):
-            part = arguments.pop()
-            variable = END_TO_END_PART_VARIABLE if "/" in part else PROJECTS_VARIABLE
-            handed = f"{variable}={part} "
-        commands.append(f"{handed}just {' '.join([recipe, *arguments])}")
-    return commands
+    def make() -> GateRun:
+        counter["n"] += 1
+        here = tmp_path / f"gate{counter['n']}"
+        programs = here / "programs"
+        programs.mkdir(parents=True)
+        for name in LEAVES:
+            program(programs, name, LEAF)
+        return GateRun(copy_tree(here / "tree", closure=GATE_RUN), programs)
+
+    return make
 
 
-@pytest.mark.parametrize("platform", AARCH64)
-def test_an_aarch64_gate_runs_no_unsharded_gate(platform: str) -> None:
-    """Its every gate cell runs a shard, and its context is its aggregator's alone."""
-    workflow = load_workflow(REPO_ROOT / CI)
-    gate_cells = [
-        key
-        for key, _ in platform_cells(workflow, platform)
-        if any(
-            command.split()[:2] in (["just", WHOLE_GATE], ["just", "check-shard"])
-            for command in run_commands(jobs_of(workflow)[key])
-        )
+def planned_tasks(argv: list[str], graph: dict[str, set[str]]) -> list[str]:
+    """Each `target:project` task an `nx run-many` invocation runs, by the graph's targets."""
+    targets: list[str] = []
+    excluded: set[str] = set()
+    named: set[str] | None = None
+    words = iter(argv[argv.index("run-many") + 1 :])
+    for word in words:
+        if word in ("-t", "--targets"):
+            targets.extend(target for target in next(words).split(",") if target)
+            for following in words:
+                if following.startswith("-"):
+                    word = following
+                    break
+                targets.append(following)
+        if word.startswith("--exclude="):
+            excluded |= set(word.removeprefix("--exclude=").split(","))
+        elif word.startswith("--projects="):
+            named = set(word.removeprefix("--projects=").split(","))
+    return [
+        f"{target}:{project}"
+        for target in targets
+        for project, declared in sorted(graph.items())
+        if target in declared and project not in excluded and (named is None or project in named)
     ]
 
-    equal(sorted(set(gate_cells)), [shard_job(platform)], describing="the jobs running its gate")
-    equal(
-        [
-            key
-            for key, job in jobs_of(workflow).items()
-            if job.get("name") == f"gate ({platform})"
-            or (
-                platform in str(job)
-                and any(
-                    command.split()[:2] == ["just", WHOLE_GATE] for command in run_commands(job)
-                )
-            )
-        ],
-        [aggregator(platform)],
-        describing="the jobs reporting its context or running the whole gate on it",
+
+def gate_work(records: list[dict[str, Any]], graph: dict[str, set[str]]) -> list[tuple[str, str]]:
+    """The gate work leaf records stand for: an Nx task or a check program run, with its part.
+
+    The part is the end-to-end part a task ran under, or the side of the
+    projects a check program's report was over; preparation is left out.
+    """
+    work: list[tuple[str, str]] = []
+    for record in records:
+        argv = record["argv"]
+        if argv[:2] == ["bunx", "nx"]:
+            part = record["part"] if "test-e2e" in argv else ""
+            work.extend((task, part) for task in planned_tasks(argv, graph))
+        elif not any(tuple(argv[: len(one)]) == one for one in PREPARATION):
+            work.append((" ".join(argv), record["side"]))
+    return work
+
+
+def work_findings(sharded: list[tuple[str, str]], whole: list[tuple[str, str]]) -> list[str]:
+    """How the shards' work differs from the complete check's: omitted, or run twice.
+
+    The complete check runs each unit once and whole. The shards run each
+    once, or in parts that are together all of it: every part `k/n` of the
+    end-to-end tier, or a report over every side of a split of the projects.
+    """
+    expected = Counter(unit for unit, _ in whole)
+    parts: dict[str, list[str]] = {}
+    for unit, part in sharded:
+        parts.setdefault(unit, []).append(part)
+    findings = [f"`{unit}` is omitted" for unit in expected.keys() - parts.keys()]
+    findings.extend(f"`{unit}` is not the complete check's" for unit in parts.keys() - expected)
+    for unit, ran in sorted(parts.items()):
+        if unit not in expected:
+            continue
+        named = [one for one in ran if one]
+        counts = {int(one.split("/")[1]) for one in named if "/" in one}
+        if len(ran) != len(set(ran)) or ("" in ran and len(ran) > 1):
+            findings.append(f"`{unit}` is run twice: {sorted(ran)}")
+        if counts and set(named) != {f"{k}/{n}" for n in counts for k in range(1, n + 1)}:
+            findings.append(f"`{unit}` is omitted for an end-to-end part: run for {sorted(named)}")
+        elif named and not counts and not partitions(set(named)):
+            findings.append(f"`{unit}` is omitted for a side: run for {sorted(named)}")
+    return sorted(findings)
+
+
+def shard_findings(gate: GateRun, workflow: dict[str, Any], platform: str) -> list[str]:
+    """How the work `platform`'s dispatched shards run differs from `just check all`'s.
+
+    Each dispatched cell's own shard step, `just check-shard all k/n`, and the
+    complete check run the real recipes, shard runner and project filter in
+    the same copy; only the leaf programs are doubled.
+    """
+    graph = {project.name: set(project.targets) for project in projects(Repo(gate.root))}
+    sharded = [
+        unit
+        for shard in dispatched_shards(workflow, platform)
+        for unit in gate_work(gate.run(SHARD_RECIPE, "all", shard), graph)
+    ]
+    whole = gate_work(gate.run(WHOLE_GATE, "all"), graph)
+    truth(
+        any(unit.startswith("test:") for unit, _ in whole),
+        describing="the complete check reaching the projects' tests through the doubled Nx",
     )
+    return work_findings(sharded, whole)
 
 
 @pytest.mark.parametrize("platform", AARCH64)
-def test_an_aarch64_gate_dispatches_exactly_the_planners_shards(platform: str) -> None:
-    """Each cell hands its shard step its own `k/n`, and the cells are every shard of one plan."""
-    workflow = load_workflow(REPO_ROOT / CI)
-    shards = dispatched_shards(workflow, platform)
-    count = len(shards)
-
-    equal(shards, [f"{index}/{count}" for index in range(1, count + 1)])
-    equal(
-        len(plan(Repo(REPO_ROOT), count)),
-        count,
-        describing=f"the planner's {count}-way split of the gate",
-    )
-
-
-@pytest.mark.parametrize("platform", AARCH64)
-def test_an_aarch64_gates_shards_run_exactly_the_unsharded_gates_work(
-    tree: Callable[[], Tree], platform: str
+def test_an_aarch64_gates_shards_run_exactly_the_complete_checks_work(
+    gate_run: Callable[[], GateRun], platform: str
 ) -> None:
-    """What its dispatched shards run, through the real `run` verb, is `just check` once over."""
-    work = reached_commands(tree, load_workflow(REPO_ROOT / CI), platform)
+    """Its dispatched shards, through the real recipes and filter, do `just check`'s work once."""
+    equal(shard_findings(gate_run(), load_workflow(REPO_ROOT / CI), platform), [])
 
-    equal(coverage_findings(work, dry_run_check("all")), [], describing="omitted or doubled work")
+
+#: What a misdispatched cell leaves undone, as the findings name it.
+REPO_CHECKS_OMITTED = "`test:repo-checks` is omitted"
+WORKFLOWS_OMITTED = "`test:github-workflows` is omitted"
+PART_OMITTED = "omitted for an end-to-end part"
 
 
 def misdispatched(platform: str, old: int, new: int) -> tuple[str, str, str]:
@@ -981,23 +1053,17 @@ def misdispatched(platform: str, old: int, new: int) -> tuple[str, str, str]:
     ("change", "naming"),
     [
         pytest.param(misdispatched("linux-aarch64", 5, 4), "is run twice", id="linux-twice"),
-        pytest.param(
-            misdispatched("linux-aarch64", 2, 1), "is omitted for a side", id="linux-a-side"
-        ),
-        pytest.param(
-            misdispatched("linux-aarch64", 4, 3), "is omitted for a part", id="linux-a-part"
-        ),
+        pytest.param(misdispatched("linux-aarch64", 2, 1), REPO_CHECKS_OMITTED, id="linux-a-side"),
+        pytest.param(misdispatched("linux-aarch64", 4, 3), PART_OMITTED, id="linux-a-part"),
         pytest.param(misdispatched("windows-aarch64", 7, 6), "is run twice", id="windows-twice"),
         pytest.param(
-            misdispatched("windows-aarch64", 3, 2), "is omitted for a side", id="windows-a-side"
+            misdispatched("windows-aarch64", 3, 2), WORKFLOWS_OMITTED, id="windows-a-side"
         ),
-        pytest.param(
-            misdispatched("windows-aarch64", 5, 4), "is omitted for a part", id="windows-a-part"
-        ),
+        pytest.param(misdispatched("windows-aarch64", 5, 4), PART_OMITTED, id="windows-a-part"),
     ],
 )
-def test_an_aarch64_gates_shards_omitting_or_doubling_work_are_found(
-    tree: Callable[[], Tree], tmp_path: Path, change: tuple[str, str, str], naming: str
+def test_an_aarch64_workflow_misdispatching_a_shard_is_found(
+    gate_run: Callable[[], GateRun], tmp_path: Path, change: tuple[str, str, str], naming: str
 ) -> None:
     """A cell handed another cell's shard leaves one part unrun and runs another twice."""
     old, new, platform = change
@@ -1006,9 +1072,54 @@ def test_an_aarch64_gates_shards_omitting_or_doubling_work_are_found(
     broken = tmp_path / "ci.yml"
     broken.write_text(text[:at] + text[at:].replace(old, new, 1), encoding="utf-8")
 
-    work = reached_commands(tree, load_workflow(broken), platform)
+    contains("\n".join(shard_findings(gate_run(), load_workflow(broken), platform)), naming)
 
-    contains("\n".join(coverage_findings(work, dry_run_check("all"))), naming)
+
+#: Defects in the selection code the recipes reach, each in the copy alone.
+SELECTOR = "tools/repo-checks/src/repo_checks/gate_tier.py"
+RUNNER = "tools/repo-checks/src/repo_checks/gate_shards.py"
+
+
+@pytest.mark.parametrize(
+    ("platform", "path", "old", "new", "naming"),
+    [
+        pytest.param(
+            "linux-aarch64",
+            SELECTOR,
+            "if not narrowed.admits(project.tags))",
+            'if not narrowed.admits(project.tags) or project.name == "repo-checks")',
+            "`test:repo-checks` is omitted",
+            id="the-filter-drops-a-project",
+        ),
+        pytest.param(
+            "windows-aarch64",
+            SELECTOR,
+            "        return (self.tag in carried) != self.negated and all(",
+            "        return (self.tag in carried) != self.negated or all(",
+            "`test:repo-checks` is run twice",
+            id="the-filter-ignores-its-narrowing",
+        ),
+        pytest.param(
+            "linux-aarch64",
+            RUNNER,
+            "            handed[PROJECTS_VARIABLE] = str(self.projects)\n",
+            "            pass\n",
+            "`test:printobserver-core` is run twice",
+            id="the-runner-hands-no-side",
+        ),
+    ],
+)
+def test_an_aarch64_gates_selection_omitting_or_doubling_project_work_is_found(
+    gate_run: Callable[[], GateRun], platform: str, path: str, old: str, new: str, naming: str
+) -> None:
+    """A defect in the filter or the runner the recipes reach drops or doubles a project's tasks."""
+    gate = gate_run()
+    source = gate.root / path
+    text = source.read_text(encoding="utf-8")
+    contains(text, old, describing=path)
+    source.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+    contains("\n".join(shard_findings(gate, load_workflow(REPO_ROOT / CI), platform)), naming)
 
 
 def aggregator_verdict(platform: str, results: dict[str, str]) -> subprocess.CompletedProcess[str]:
