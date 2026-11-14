@@ -53,6 +53,7 @@ const RUNS = {
 };
 
 /** The actions that keep no cache whatever their inputs. */
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 const CACHELESS = new Set([
   "actions/checkout",
   "actions/upload-artifact",
@@ -72,6 +73,7 @@ const CACHELESS = new Set([
  */
 
 /** @type {Record<string, Caching>} */
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 const CACHING = {
   "actions-rust-lang/setup-rust-toolchain": {
     off: { input: "cache", value: "false" },

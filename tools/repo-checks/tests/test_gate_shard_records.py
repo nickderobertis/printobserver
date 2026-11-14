@@ -19,9 +19,9 @@ from typing import Any, TypeIs
 
 import pytest
 import yaml
-from repo_checks.checks_graph import projects
+from repo_checks.checks_graph import Project, projects
 from repo_checks.expect import contains, equal
-from repo_checks.gate_shards import END_TO_END, plan
+from repo_checks.gate_shards import END_TO_END, Step, plan
 from repo_checks.model import Repo
 from repo_checks.parsing import load_workflow
 from test_gate_shards import CI, dispatched_shards
@@ -63,7 +63,7 @@ def _platform_findings(
     entry: dict[str, Any],
     workflow: dict[str, Any],
     repo: Repo,
-    tested: dict[str, Any],
+    tested: dict[str, Project],
 ) -> list[str]:
     found: list[str] = []
     count = entry.get("shards")
@@ -132,7 +132,7 @@ def _platform_findings(
     return found
 
 
-def _projects_run(steps: tuple[Any, ...], tested: dict[str, Any]) -> set[str]:
+def _projects_run(steps: tuple[Step, ...], tested: dict[str, Project]) -> set[str]:
     """The projects whose tests a shard's steps run: a side of the test tier, or the e2e tier's."""
     runs: set[str] = set()
     for step in steps:
