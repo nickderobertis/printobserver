@@ -860,22 +860,23 @@ def coverage_findings(selected: list[str], unsharded: set[tuple[str, ...]]) -> l
     )
     for recipe, parts in by_recipe.items():
         sides = {part.split("=", 1)[1] for part in parts if part.startswith(PROJECTS_VARIABLE)}
-        thirds = {
+        end_to_end_parts = {
             part.split("=", 1)[1] for part in parts if part.startswith(END_TO_END_PART_VARIABLE)
         }
         whole = "" in parts
-        counts = {int(part.split("/")[1]) for part in thirds}
+        counts = {int(part.split("/")[1]) for part in end_to_end_parts}
         if whole and len(parts) > 1:
             findings.append(f"`just {' '.join(recipe)}` is run whole and in parts")
         elif sides and not partitions(sides):
             findings.append(
                 f"`just {' '.join(recipe)}` is omitted for a side: run for {sorted(sides)}"
             )
-        elif thirds and (
-            len(counts) != 1 or thirds != {f"{k}/{n}" for n in counts for k in range(1, n + 1)}
+        elif end_to_end_parts and (
+            len(counts) != 1
+            or end_to_end_parts != {f"{k}/{n}" for n in counts for k in range(1, n + 1)}
         ):
             findings.append(
-                f"`just {' '.join(recipe)}` is omitted for a part: run for {sorted(thirds)}"
+                f"`just {' '.join(recipe)}` is omitted for a part: run for {sorted(end_to_end_parts)}"
             )
     return findings
 
