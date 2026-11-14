@@ -875,9 +875,8 @@ def coverage_findings(selected: list[str], unsharded: set[tuple[str, ...]]) -> l
             len(counts) != 1
             or end_to_end_parts != {f"{k}/{n}" for n in counts for k in range(1, n + 1)}
         ):
-            findings.append(
-                f"`just {' '.join(recipe)}` is omitted for a part: run for {sorted(end_to_end_parts)}"
-            )
+            ran = sorted(end_to_end_parts)
+            findings.append(f"`just {' '.join(recipe)}` is omitted for a part: run for {ran}")
     return findings
 
 
