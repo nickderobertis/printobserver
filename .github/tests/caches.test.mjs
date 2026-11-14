@@ -336,7 +336,6 @@ function saveFindings(cell, step, where, restored) {
   return found;
 }
 
-/** The committed workflow's text. */
 const TEXT = readFileSync(CI, "utf8");
 
 /**
