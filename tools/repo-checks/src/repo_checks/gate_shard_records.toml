@@ -1,0 +1,191 @@
+# What each shard of the `linux-aarch64` and `windows-aarch64` gates runs, and
+# how long that took on that platform's runner, read off `main`'s own runs.
+# `tests/test_gate_shard_records.py` holds this record to the planner and to
+# `ci.yml`: one platform table per split, each shard's `tiers` the tiers
+# `just gate-shards <shards>` hands it, its `projects` every project of the
+# test tier on its side (each in exactly one shard), and its `total_seconds`
+# its overhead plus its tiers, below the `gate-time` budget.
+#
+# Every figure is from run 42429008618, `main`'s push of 0e7db9eb, which the
+# affected tier ran over every project and whose caches were warm.
+#
+# * A tier's seconds run from the line its recipe logs as it starts to the next
+#   one's.
+# * A project's seconds run from the first to the last line its test task wrote,
+#   so they include building what that task builds. Nx runs three tasks at once,
+#   so a shard's projects overlap, and their sum is not the shard's time.
+# * A shard's `overhead_seconds` is the time its job spends outside its tiers,
+#   from the job's start to its shard step and from its cleanup to its end, plus
+#   the aggregating job's time from its start to its `gate-time` step (8 s on
+#   both platforms in that run), since `gate-time` charges a context with its
+#   longest shard and then that aggregator. A platform's `overhead_seconds` is
+#   the gate's fixed overhead there, the largest of its shards'.
+# * A shard's `total_seconds` is its overhead plus its tiers.
+# * `basis` names where a shard's tiers came from when the run did not split
+#   the gate the way this record does.
+
+[linux-aarch64]
+# The gate ran unsharded, as `gate (linux-aarch64)` (job 128573495727), in
+# 1,490 s: 54 s from the job's start to `just check`, 5 s after its last tier.
+# That job ran `test` and `test-e2e` side by side on its 4 processors, so every
+# tier figure below was measured under the other tier's load, and a shard
+# that runs one of them alone has only that tier's own load.
+shards = 5
+overhead_seconds = 67
+
+[[linux-aarch64.shard]]
+shard = "1/5"
+overhead_seconds = 67
+basis = "The Rust side's `test` ran until the last line a Rust crate's task wrote, 652 s after the tier started; its `coverage` was the whole tier's, 10 s, over both sides."
+total_seconds = 927
+tiers = { format-check = 2, lint = 147, typecheck = 8, test = 652, coverage = 10, build = 25, lint-workflows = 4, check-repo = 12 }
+
+[linux-aarch64.shard.projects]
+printobserver = 652
+printobserver-core = 42
+printobserver-obico = 39
+printobserver-octoprint = 50
+printobserver-oneharness = 35
+printobserver-printer-api = 4
+printobserver-sdk = 87
+printobserver-server = 215
+printobserver-store-sqlite = 98
+printobserver-supervisor-api = 3
+printobserver-types = 44
+printobserver-vision-api = 6
+
+[[linux-aarch64.shard]]
+shard = "2/5"
+overhead_seconds = 67
+basis = "The whole `test` tier, both sides of `lang:rust` beside the end-to-end tier, took 1,226 s, and the other side's tasks were the last to finish."
+total_seconds = 1303
+tiers = { test = 1226, coverage = 10 }
+
+[linux-aarch64.shard.projects]
+contract-codegen = 122
+github-workflows = 653
+octoprint-env = 2
+pool-maintenance = 2
+printer-smoke = 181
+printobserver-sdk-node = 8
+printobserver-sdk-python = 58
+printobserver-server-check-delay-budget = 889
+real-prints-lfs = 877
+release-artifacts = 748
+repo-checks = 550
+skilltest-wiring = 320
+
+[[linux-aarch64.shard]]
+shard = "3/5"
+overhead_seconds = 67
+basis = "The whole end-to-end tier took 903 s, its debug build included. Each third collects a part of its files, so 903 s is a ceiling on each part rather than a measurement of one."
+total_seconds = 970
+tiers = { test-e2e = 903 }
+projects = { repo-e2e = 903 }
+
+[[linux-aarch64.shard]]
+shard = "4/5"
+overhead_seconds = 67
+basis = "As 3/5: the whole end-to-end tier's 903 s, a ceiling on this part."
+total_seconds = 970
+tiers = { test-e2e = 903 }
+projects = { repo-e2e = 903 }
+
+[[linux-aarch64.shard]]
+shard = "5/5"
+overhead_seconds = 67
+basis = "As 3/5: the whole end-to-end tier's 903 s, a ceiling on this part."
+total_seconds = 970
+tiers = { test-e2e = 903 }
+projects = { repo-e2e = 903 }
+
+[windows-aarch64]
+# The gate ran as five shards in that run (jobs 128573495820, 128573495700,
+# 128573495823, 128573495683 and 128573495756). Each one's time outside its
+# tiers was 237 s, 177 s, 185 s, 196 s and 170 s, and each seven-way shard
+# below is charged its five-way source's, plus the aggregator's 8 s.
+shards = 7
+overhead_seconds = 245
+
+[[windows-aarch64.shard]]
+shard = "1/7"
+overhead_seconds = 245
+basis = "The five-way split's 1/5, unchanged: its overhead was 237 s, and its tiers are as measured."
+total_seconds = 1407
+tiers = { format-check = 9, lint = 108, typecheck = 12, test = 918, coverage = 3, build = 70, lint-workflows = 5, check-repo = 37 }
+
+[windows-aarch64.shard.projects]
+printobserver = 766
+printobserver-core = 40
+printobserver-obico = 27
+printobserver-octoprint = 70
+printobserver-oneharness = 32
+printobserver-printer-api = 17
+printobserver-sdk = 54
+printobserver-server = 203
+printobserver-store-sqlite = 110
+printobserver-supervisor-api = 11
+printobserver-types = 78
+printobserver-vision-api = 8
+
+[[windows-aarch64.shard]]
+shard = "2/7"
+overhead_seconds = 185
+basis = "The five-way 2/5's Python projects, with its overhead of 177 s. Its `test` tier took 1,645 s over 13 projects. `repo-checks` is that tier's longest task, a single xdist worker on this host for 1,473 s, and it started 168 s in, once three earlier tasks had freed a slot. One of those three, `github-workflows`, is 3/7's now, so this shard's `test` is the debug build its suites run (76 s) followed by `repo-checks`: 1,549 s. This is the tightest shard. Of the work no planner split can shorten, `repo-checks` is the largest, because the Python side's coverage is one report over every Python source."
+total_seconds = 1737
+tiers = { test = 1549, coverage = 3 }
+
+[windows-aarch64.shard.projects]
+contract-codegen = 527
+octoprint-env = 2
+pool-maintenance = 38
+printer-smoke = 321
+printobserver-sdk-python = 86
+real-prints-lfs = 987
+release-artifacts = 917
+repo-checks = 1473
+skilltest-wiring = 372
+
+[[windows-aarch64.shard]]
+shard = "3/7"
+overhead_seconds = 185
+basis = "The five-way 2/5's projects carrying neither `lang:rust` nor `lang:python`, with its overhead of 177 s. Their last line came 1,071 s into that tier, under the Python projects' load."
+total_seconds = 1259
+tiers = { test = 1071, coverage = 3 }
+
+[windows-aarch64.shard.projects]
+github-workflows = 634
+printobserver-server-check-delay-budget = 1023
+printobserver-sdk-node = 6
+
+[[windows-aarch64.shard]]
+shard = "4/7"
+overhead_seconds = 193
+basis = "The five-way 3/5, `test-e2e[1/3]`, which collects exactly the files `test-e2e[1/4]` does: 1,121 s, with its overhead of 185 s."
+total_seconds = 1314
+tiers = { test-e2e = 1121 }
+projects = { repo-e2e = 1121 }
+
+[[windows-aarch64.shard]]
+shard = "5/7"
+overhead_seconds = 204
+basis = "Part of the five-way 4/5, `test-e2e[2/3]`: 1,597 s, 1,551 s of it pytest's over 4 workers, with its overhead of 196 s. `test-e2e[2/4]` keeps 71 of that part's 153 tests, and `test-e2e[4/4]` takes the other 82. Of the 15 slowest calls pytest reported there, 2 are this part's, 265 s, and 13 are 7/7's, 1,263 s. The remaining worker time, 4 × 1,551 − 1,528 s, falls on 69 tests in each part. That gives this part (265 + 2,338) / 4 = 651 s of pytest, after the 46 s debug build: 697 s."
+total_seconds = 901
+tiers = { test-e2e = 697 }
+projects = { repo-e2e = 697 }
+
+[[windows-aarch64.shard]]
+shard = "6/7"
+overhead_seconds = 178
+basis = "The five-way 5/5, `test-e2e[3/3]`, which collects exactly the files `test-e2e[3/4]` does: 1,281 s, with its overhead of 170 s."
+total_seconds = 1459
+tiers = { test-e2e = 1281 }
+projects = { repo-e2e = 1281 }
+
+[[windows-aarch64.shard]]
+shard = "7/7"
+overhead_seconds = 204
+basis = "The rest of the five-way 4/5, by 5/7's method: (1,263 + 2,338) / 4 = 901 s of pytest after the 46 s debug build, 947 s, with that shard's overhead of 196 s."
+total_seconds = 1151
+tiers = { test-e2e = 947 }
+projects = { repo-e2e = 947 }

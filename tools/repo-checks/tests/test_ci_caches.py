@@ -246,7 +246,7 @@ def hit(step_id: object, value: str) -> dict[str, str]:
     return {f"steps.{step_id}.outputs.cache-hit": value}
 
 
-def findings(workflow: Mapping[str, Any]) -> list[str]:
+def findings(workflow: dict[str, Any]) -> list[str]:
     """Every way a cache step of `workflow` is not restored everywhere and saved on `main` alone."""
     found: list[str] = []
     for name, job in jobs_of(workflow).items():
@@ -262,7 +262,8 @@ def _cell_findings(cell: Cell, steps: list[dict[str, Any]]) -> Iterator[str]:
     for index, step in enumerate(steps):
         used = action(step)
         where = f"{cell} step {index + 1} (`{step.get('uses')}`)"
-        inputs = step.get("with") if isinstance(step.get("with"), dict) else {}
+        declared = step.get("with")
+        inputs: dict[str, Any] = declared if isinstance(declared, dict) else {}
         if not used or used in CACHELESS:
             continue
         if used == RESTORE:

@@ -783,12 +783,21 @@ def test_an_integration_shard_is_refused_while_no_selector_splits_it(
     refused(sharded_jobs(copy.repo), "shards the integration tier, which no selector splits")
 
 
-#: The platform the newest split is of, its shard job and its aggregating job.
-AARCH64 = "linux-aarch64"
-AARCH64_SHARDS = "gate-shard-linux-aarch64"
-AARCH64_GATE = "gate-linux-aarch64"
+#: The two aarch64 gates this repository splits by `just gate-shards`, each with
+#: its shard job and its aggregating job.
+AARCH64 = ("linux-aarch64", "windows-aarch64")
 #: The recipe an unsharded gate runs the whole of the gate by.
 WHOLE_GATE = "check"
+
+
+def shard_job(platform: str) -> str:
+    """The key of `platform`'s shard job."""
+    return f"gate-shard-{platform}"
+
+
+def aggregator(platform: str) -> str:
+    """The key of the job reporting `gate (<platform>)` over `platform`'s shards."""
+    return f"gate-{platform}"
 
 
 def platform_cells(workflow: dict[str, Any], platform: str) -> list[tuple[str, dict[str, Any]]]:
@@ -836,7 +845,8 @@ def coverage_findings(selected: list[str], unsharded: set[tuple[str, ...]]) -> l
     """How the commands a split runs differ from the unsharded gate's: omitted, or run twice.
 
     A recipe is run whole by one command, or in parts that together are all of
-    it: both sides of one project tag, or every part `k/n` of the end-to-end tier.
+    it: every side of a split of the projects, or every part `k/n` of the
+    end-to-end tier.
     """
     findings = [f"`{one}` is run twice" for one, seen in Counter(selected).items() if seen > 1]
     by_recipe: dict[tuple[str, ...], set[str]] = {}
@@ -870,47 +880,73 @@ def coverage_findings(selected: list[str], unsharded: set[tuple[str, ...]]) -> l
     return findings
 
 
-def aarch64_work(
-    capsys: pytest.CaptureFixture[str], workflow: dict[str, Any], tier: str
+def reached_commands(
+    tree: Callable[[], Tree], workflow: dict[str, Any], platform: str
 ) -> list[str]:
-    """Every command `linux-aarch64`'s dispatched shards run at `tier`, by the real selector."""
-    return [
-        command
-        for shard in dispatched_shards(workflow, AARCH64)
-        for command in shard_commands(capsys, tier, shard)
-    ]
+    """What `platform`'s dispatched shards ran through the real `gate_shards run`, a command a line.
+
+    Each shard runs in a copy whose tier recipes, the build and test programs
+    the selector launches, are replaced by ones that write what they were
+    handed, so the result is the real selector's work and the real recipe
+    interface, with no gate run. Each reached line is written back as the
+    command `commands` prints, so that the unsharded gate's dry run can judge it.
+    """
+    copy = tree()
+    copy.write("justfile", recording_justfile(copy.repo))
+    for shard in dispatched_shards(workflow, platform):
+        equal(
+            gate_shards_main(["--root", str(copy.root), "run", "all", shard]),
+            0,
+            describing=f"shard {shard}'s run",
+        )
+    commands: list[str] = []
+    for line in copy.read("reached").splitlines():
+        words = line.split()
+        recipe, arguments, handed = words[0], words[1:], ""
+        if arguments and ("/" in arguments[-1] or ":" in arguments[-1]):
+            part = arguments.pop()
+            variable = END_TO_END_PART_VARIABLE if "/" in part else PROJECTS_VARIABLE
+            handed = f"{variable}={part} "
+        commands.append(f"{handed}just {' '.join([recipe, *arguments])}")
+    return commands
 
 
-def test_linux_aarch64_runs_no_unsharded_gate() -> None:
+@pytest.mark.parametrize("platform", AARCH64)
+def test_an_aarch64_gate_runs_no_unsharded_gate(platform: str) -> None:
     """Its every gate cell runs a shard, and its context is its aggregator's alone."""
     workflow = load_workflow(REPO_ROOT / CI)
-    cells = platform_cells(workflow, AARCH64)
     gate_cells = [
         key
-        for key, _ in cells
+        for key, _ in platform_cells(workflow, platform)
         if any(
             command.split()[:2] in (["just", WHOLE_GATE], ["just", "check-shard"])
             for command in run_commands(jobs_of(workflow)[key])
         )
     ]
 
-    equal(sorted(set(gate_cells)), [AARCH64_SHARDS], describing="the jobs running its gate")
+    equal(sorted(set(gate_cells)), [shard_job(platform)], describing="the jobs running its gate")
     equal(
         [
             key
             for key, job in jobs_of(workflow).items()
-            if job.get("name") == f"gate ({AARCH64})"
-            or any(command.split()[:2] == ["just", WHOLE_GATE] for command in run_commands(job))
+            if job.get("name") == f"gate ({platform})"
+            or (
+                platform in str(job)
+                and any(
+                    command.split()[:2] == ["just", WHOLE_GATE] for command in run_commands(job)
+                )
+            )
         ],
-        [AARCH64_GATE],
-        describing="the jobs reporting its context or running the whole gate",
+        [aggregator(platform)],
+        describing="the jobs reporting its context or running the whole gate on it",
     )
 
 
-def test_linux_aarch64_dispatches_exactly_the_planners_shards() -> None:
+@pytest.mark.parametrize("platform", AARCH64)
+def test_an_aarch64_gate_dispatches_exactly_the_planners_shards(platform: str) -> None:
     """Each cell hands its shard step its own `k/n`, and the cells are every shard of one plan."""
     workflow = load_workflow(REPO_ROOT / CI)
-    shards = dispatched_shards(workflow, AARCH64)
+    shards = dispatched_shards(workflow, platform)
     count = len(shards)
 
     equal(shards, [f"{index}/{count}" for index in range(1, count + 1)])
@@ -921,62 +957,70 @@ def test_linux_aarch64_dispatches_exactly_the_planners_shards() -> None:
     )
 
 
-@pytest.mark.parametrize("tier", ["affected", "all"])
-def test_linux_aarch64_shards_run_exactly_the_unsharded_gates_work(
-    capsys: pytest.CaptureFixture[str], tier: str
+@pytest.mark.parametrize("platform", AARCH64)
+def test_an_aarch64_gates_shards_run_exactly_the_unsharded_gates_work(
+    tree: Callable[[], Tree], platform: str
 ) -> None:
-    """What its dispatched shards run, through the real selector, is `just check` once over."""
-    work = aarch64_work(capsys, load_workflow(REPO_ROOT / CI), tier)
+    """What its dispatched shards run, through the real `run` verb, is `just check` once over."""
+    work = reached_commands(tree, load_workflow(REPO_ROOT / CI), platform)
 
-    equal(coverage_findings(work, dry_run_check(tier)), [], describing="omitted or doubled work")
+    equal(coverage_findings(work, dry_run_check("all")), [], describing="omitted or doubled work")
+
+
+def misdispatched(platform: str, old: int, new: int) -> tuple[str, str, str]:
+    """`platform`'s cell for shard `old` handed shard `new` instead, in a split of its count."""
+    count = {"linux-aarch64": 5, "windows-aarch64": SHARDS}[platform]
+    return (
+        f"            shard: {old}\n            shards: {count}\n",
+        f"            shard: {new}\n            shards: {count}\n",
+        platform,
+    )
 
 
 @pytest.mark.parametrize(
-    ("old", "new", "naming"),
+    ("change", "naming"),
     [
+        pytest.param(misdispatched("linux-aarch64", 5, 4), "is run twice", id="linux-twice"),
         pytest.param(
-            "            shard: 5\n            shards: 5\n",
-            "            shard: 4\n            shards: 5\n",
-            "is run twice",
-            id="a-shard-run-twice",
+            misdispatched("linux-aarch64", 2, 1), "is omitted for a side", id="linux-a-side"
         ),
         pytest.param(
-            "            shard: 2\n            shards: 5\n",
-            "            shard: 1\n            shards: 5\n",
-            "is omitted for a side",
-            id="the-non-rust-tests-omitted",
+            misdispatched("linux-aarch64", 4, 3), "is omitted for a part", id="linux-a-part"
+        ),
+        pytest.param(misdispatched("windows-aarch64", 7, 6), "is run twice", id="windows-twice"),
+        pytest.param(
+            misdispatched("windows-aarch64", 3, 2), "is omitted for a side", id="windows-a-side"
         ),
         pytest.param(
-            "            shard: 4\n            shards: 5\n",
-            "            shard: 3\n            shards: 5\n",
-            "is omitted for a part",
-            id="an-end-to-end-part-omitted",
+            misdispatched("windows-aarch64", 5, 4), "is omitted for a part", id="windows-a-part"
         ),
     ],
 )
-def test_linux_aarch64_shards_omitting_or_doubling_work_are_found(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path, old: str, new: str, naming: str
+def test_an_aarch64_gates_shards_omitting_or_doubling_work_are_found(
+    tree: Callable[[], Tree], tmp_path: Path, change: tuple[str, str, str], naming: str
 ) -> None:
     """A cell handed another cell's shard leaves one part unrun and runs another twice."""
+    old, new, platform = change
     text = (REPO_ROOT / CI).read_text(encoding="utf-8")
-    at = text.index(f"  {AARCH64_SHARDS}:\n")
+    at = text.index(f"  {shard_job(platform)}:\n")
     broken = tmp_path / "ci.yml"
     broken.write_text(text[:at] + text[at:].replace(old, new, 1), encoding="utf-8")
 
-    work = aarch64_work(capsys, load_workflow(broken), "all")
+    work = reached_commands(tree, load_workflow(broken), platform)
 
     contains("\n".join(coverage_findings(work, dry_run_check("all"))), naming)
 
 
-def aggregator_verdict(result: str) -> subprocess.CompletedProcess[str]:
-    """`gate (linux-aarch64)`'s own verdict step, as committed, over its shards' `result`.
+def aggregator_verdict(platform: str, results: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    """`gate (<platform>)`'s own verdict step, as committed, over the shard `results` handed it.
 
-    The `needs` document is built from the jobs the aggregator declares it
-    needs, as `${{ toJSON(needs) }}` renders it: a matrix job's one result.
+    The `needs` document carries each job of `results`, as `${{ toJSON(needs) }}`
+    renders it: a matrix job's one result. A job the aggregator needs and
+    `results` leaves out is one the document does not carry.
     """
-    job = jobs_of(load_workflow(REPO_ROOT / CI))[AARCH64_GATE]
+    job = jobs_of(load_workflow(REPO_ROOT / CI))[aggregator(platform)]
     step = next(one for one in steps_of(job) if "NEEDS" in (one.get("env") or {}))
-    handed = needs(**{need.replace("-", "_"): result for need in job["needs"]})
+    handed = needs(**{need.replace("-", "_"): result for need, result in results.items()})
     return run(
         str(step["run"]).split(),
         cwd=REPO_ROOT,
@@ -985,22 +1029,73 @@ def aggregator_verdict(result: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_linux_aarch64_s_context_passes_when_every_shard_succeeded() -> None:
+@pytest.mark.parametrize("platform", AARCH64)
+def test_an_aarch64_context_passes_when_every_shard_succeeded(platform: str) -> None:
     """The aggregator's verdict passes, naming the shard job it needs."""
-    ran = aggregator_verdict("success")
+    job = jobs_of(load_workflow(REPO_ROOT / CI))[aggregator(platform)]
+    ran = aggregator_verdict(platform, dict.fromkeys(job["needs"], "success"))
 
     passing(ran)
-    contains(ran.stdout, f"gate ({AARCH64}): every shard succeeded ({AARCH64_SHARDS})")
+    contains(ran.stdout, f"gate ({platform}): every shard succeeded ({shard_job(platform)})")
 
 
 @pytest.mark.parametrize("result", ["failure", "cancelled", "skipped"])
-def test_linux_aarch64_s_context_fails_when_a_shard_failed_or_never_ran(result: str) -> None:
-    """A shard that failed, or was cancelled or skipped before it ran, fails `gate (linux-aarch64)`.
+@pytest.mark.parametrize("platform", AARCH64)
+def test_an_aarch64_context_fails_when_a_shard_failed_or_never_ran(
+    platform: str, result: str
+) -> None:
+    """A shard that failed, or was cancelled or skipped before it ran, fails `gate (<platform>)`.
 
     The aggregator runs `if: always()`, so it reaches this verdict whatever its
     shards concluded; the `sharded-jobs` check holds it to that.
     """
-    job = jobs_of(load_workflow(REPO_ROOT / CI))[AARCH64_GATE]
+    job = jobs_of(load_workflow(REPO_ROOT / CI))[aggregator(platform)]
     equal(job.get("if"), "always()", describing="the aggregator's condition")
 
-    failing(aggregator_verdict(result), naming=f'`{AARCH64_SHARDS}` concluded "{result}"')
+    failing(
+        aggregator_verdict(platform, dict.fromkeys(job["needs"], result)),
+        naming=f'`{shard_job(platform)}` concluded "{result}"',
+    )
+
+
+@pytest.mark.parametrize("platform", AARCH64)
+def test_an_aarch64_context_fails_when_its_shards_are_missing(platform: str) -> None:
+    """A `needs` document carrying no shard job is no pass: there is nothing to judge."""
+    failing(aggregator_verdict(platform, {}), naming="names no shard")
+
+
+@pytest.mark.parametrize("platform", AARCH64)
+def test_an_aarch64_gates_coverage_is_over_every_project_the_unsharded_gate_covers(
+    monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    """Its shards' coverage reports are over every crate and every Python source, each once.
+
+    Each `coverage` step the dispatched split runs, read through the report's
+    own scope (`measured_for`) under the side the step is handed, covers a
+    whole ecosystem or none of it. So each ecosystem's figure is the unsharded
+    gate's figure, over the same code, and the step hands nothing but that side,
+    leaving the floors `repo-policy.toml` records as they are.
+    """
+    repo = Repo(REPO_ROOT)
+    every = projects(repo)
+    crates = tuple(project.root for project in every if "lang:rust" in project.tags)
+    sources = measured_sources(repo, every)
+    count = len(dispatched_shards(load_workflow(REPO_ROOT / CI), platform))
+    steps = [step for shard in plan(repo, count) for step in shard if step.tier == "coverage"]
+
+    reports = []
+    for step in steps:
+        equal(set(step.environment), {PROJECTS_VARIABLE}, describing=f"what {step} is handed")
+        monkeypatch.setenv(PROJECTS_VARIABLE, str(step.projects))
+        reports.append(measured_for(repo, "all"))
+
+    equal(
+        sorted(report.rust for report in reports if report.rust),
+        [crates],
+        describing="the reports over Rust crates",
+    )
+    equal(
+        sorted(report.python for report in reports if report.python),
+        [sources],
+        describing="the reports over Python sources",
+    )
