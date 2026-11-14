@@ -35,7 +35,7 @@
 # cache a pull request saves is the real-print suite's LFS store, keyed on the
 # cases' content and saved only when that misses: only a pull request changing
 # the cases saves one, and restoring it alone would download them again on
-# every push.
+# every push. `.github/tests/caches.test.mjs` holds every cache step to this.
 
 name: ci
 
@@ -554,9 +554,7 @@ jobs:
       # saved only when that key missed, so it holds one program and nothing of
       # the Rust toolchain's cache. A restored program whose key no longer
       # holds is built over rather than used. Saved by a run on `main` alone,
-      # as every cache here is: a pull request's cache is scoped to its own
-      # merge ref, which no other run restores, and filling the repository's
-      # quota with those evicts `main`'s, the ones every pull request restores.
+      # as the header says every cache here is.
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"
       - id: release-program-cache
