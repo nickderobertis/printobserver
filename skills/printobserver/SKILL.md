@@ -46,7 +46,7 @@ a time, starting with the program's name: no variable, chain, pipe, redirection 
    stated flow and fan first, settings, never design; change one only for
    a clear defect its stated value explains, or one the plan calls at odds,
    wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
-2. **A clear defect no setting addresses, or a part that has moved or gone, gets a
+2. **A clear defect no setting addresses, or a part that has moved, gone or not risen as planned, gets a
    pause,** also beside a defect with a setting.
 3. **An uncertain reading gets a watch and another look, never a pause,** unless
    the frames show it clearly getting worse.
