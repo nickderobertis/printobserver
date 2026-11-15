@@ -19,8 +19,8 @@ Six steps, in order, every turn. The commands are in
 [the command surface](reference/command-surface.md), and
 [common operations](reference/common-operations.md) works each. Read them with your file tools.
 
-1. **Read the context.** The printer, the job, the bounds, recent events, the
-   latest picture. Read all of it, however long: never piped.
+1. **Read the context.** All of it, however long or repeated: it is the
+   record you decide on, and a cut read decides on part. Never piped.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    and neither is a picture too dark, blurred or aimed at nothing: say so: it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
