@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-195 types. The set is every type any crate declares under
+194 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -8892,46 +8892,6 @@ Declared by `printobserver-server`.
         }
       ]
     },
-    "PlannedObject": {
-      "additionalProperties": false,
-      "description": "One object the print's file lays down, and the bed area it covers.",
-      "properties": {
-        "name": {
-          "description": "Its name, as the file labels it.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "x_max_mm": {
-          "description": "The most X its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "x_min_mm": {
-          "description": "The least X its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "y_max_mm": {
-          "description": "The most Y its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "y_min_mm": {
-          "description": "The least Y its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        }
-      },
-      "required": [
-        "x_min_mm",
-        "x_max_mm",
-        "y_min_mm",
-        "y_max_mm"
-      ],
-      "type": "object"
-    },
     "PrintContext": {
       "additionalProperties": false,
       "description": "Everything a supervision turn is given about one print.",
@@ -9379,10 +9339,25 @@ Declared by `printobserver-server`.
             "null"
           ]
         },
+        "object_count": {
+          "description": "How many objects the file lays down; absent when it labels none.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "objects": {
-          "description": "Every object the file lays down, each with the bed area it covers.",
+          "description": "The bed area each object the file lays down covers, unnamed, as\n`[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of\nthe file's object numbers.",
           "items": {
-            "$ref": "#/$defs/PlannedObject"
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": "array"
           },
           "type": "array"
         },
@@ -16163,55 +16138,6 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "PlanFact"
-}
-```
-
-### PlannedObject
-
-Declared by `printobserver-core`.
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "description": "One object the print's file lays down, and the bed area it covers.",
-  "properties": {
-    "name": {
-      "description": "Its name, as the file labels it.",
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "x_max_mm": {
-      "description": "The most X its material reaches, in millimetres.",
-      "format": "double",
-      "type": "number"
-    },
-    "x_min_mm": {
-      "description": "The least X its material reaches, in millimetres.",
-      "format": "double",
-      "type": "number"
-    },
-    "y_max_mm": {
-      "description": "The most Y its material reaches, in millimetres.",
-      "format": "double",
-      "type": "number"
-    },
-    "y_min_mm": {
-      "description": "The least Y its material reaches, in millimetres.",
-      "format": "double",
-      "type": "number"
-    }
-  },
-  "required": [
-    "x_min_mm",
-    "x_max_mm",
-    "y_min_mm",
-    "y_max_mm"
-  ],
-  "title": "PlannedObject",
-  "type": "object"
 }
 ```
 
@@ -23657,46 +23583,6 @@ Declared by `printobserver-core`.
         }
       ]
     },
-    "PlannedObject": {
-      "additionalProperties": false,
-      "description": "One object the print's file lays down, and the bed area it covers.",
-      "properties": {
-        "name": {
-          "description": "Its name, as the file labels it.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "x_max_mm": {
-          "description": "The most X its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "x_min_mm": {
-          "description": "The least X its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "y_max_mm": {
-          "description": "The most Y its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "y_min_mm": {
-          "description": "The least Y its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        }
-      },
-      "required": [
-        "x_min_mm",
-        "x_max_mm",
-        "y_min_mm",
-        "y_max_mm"
-      ],
-      "type": "object"
-    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -24046,10 +23932,25 @@ Declared by `printobserver-core`.
             "null"
           ]
         },
+        "object_count": {
+          "description": "How many objects the file lays down; absent when it labels none.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "objects": {
-          "description": "Every object the file lays down, each with the bed area it covers.",
+          "description": "The bed area each object the file lays down covers, unnamed, as\n`[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of\nthe file's object numbers.",
           "items": {
-            "$ref": "#/$defs/PlannedObject"
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": "array"
           },
           "type": "array"
         },
@@ -32696,46 +32597,6 @@ Declared by `printobserver-core`.
         }
       ]
     },
-    "PlannedObject": {
-      "additionalProperties": false,
-      "description": "One object the print's file lays down, and the bed area it covers.",
-      "properties": {
-        "name": {
-          "description": "Its name, as the file labels it.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "x_max_mm": {
-          "description": "The most X its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "x_min_mm": {
-          "description": "The least X its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "y_max_mm": {
-          "description": "The most Y its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "y_min_mm": {
-          "description": "The least Y its material reaches, in millimetres.",
-          "format": "double",
-          "type": "number"
-        }
-      },
-      "required": [
-        "x_min_mm",
-        "x_max_mm",
-        "y_min_mm",
-        "y_max_mm"
-      ],
-      "type": "object"
-    },
     "SetValue": {
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
@@ -32820,10 +32681,25 @@ Declared by `printobserver-core`.
         "null"
       ]
     },
+    "object_count": {
+      "description": "How many objects the file lays down; absent when it labels none.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
     "objects": {
-      "description": "Every object the file lays down, each with the bed area it covers.",
+      "description": "The bed area each object the file lays down covers, unnamed, as\n`[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of\nthe file's object numbers.",
       "items": {
-        "$ref": "#/$defs/PlannedObject"
+        "items": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "maxItems": 4,
+        "minItems": 4,
+        "type": "array"
       },
       "type": "array"
     },

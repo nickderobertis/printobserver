@@ -24,12 +24,13 @@
 //! * `M221 S<percent>` sets the flow factor and `M106 S<0–255>` the part
 //!   cooling fan, which `M107` turns off; a fan named by a `P` other than `0`
 //!   is not the part-cooling fan.
-//! * `M486 S<n>` starts laying down object `n`, `M486 S-1` stops, and
-//!   `M486 A<name>` names the object last started. An object's bed area is the
-//!   rectangle every move laying material for it reached — an arc's the
-//!   extremes of the part of its circle it sweeps, so a footprint is never
-//!   smaller than what was laid and a nearly straight arc about a far centre
-//!   is no larger than the line it nearly is.
+//! * `M486 S<n>` starts laying down object `n` and `M486 S-1` stops; an
+//!   `M486 A<name>` labels the file's objects too, though no name is kept. An
+//!   object's bed area is the rectangle every move laying material for it
+//!   reached — an arc's the extremes of the part of its circle it sweeps, so a
+//!   footprint is never smaller than what was laid and a nearly straight arc
+//!   about a far centre is no larger than the line it nearly is — read to the
+//!   nearest tenth of a millimetre and then widened to whole millimetres.
 //!
 //! Everything else is a move or nothing to this reader: `G0`–`G3` with
 //! `G90`/`G91`, `M82`/`M83`, `G92` and `G28` are followed so that what laid
@@ -79,9 +80,6 @@ const TYPE_LIMIT: usize = 64;
 /// The most objects one index names, for the same reason.
 const OBJECT_LIMIT: usize = 1024;
 
-/// The longest object name recorded, in characters.
-const NAME_LIMIT: usize = 120;
-
 /// The largest axis word read as a place, in millimetres: ten metres, far
 /// past any machine's travel. A word beyond it is no place a head can be.
 const AXIS_LIMIT: f64 = 1e4;
@@ -126,8 +124,6 @@ struct Mark<T> {
 /// An object as the reader has seen it so far.
 #[derive(Debug, Clone, Default, PartialEq)]
 struct ObjectDraft {
-    /// Its name, from `M486 A`.
-    name: Option<String>,
     /// The rectangle its material reached: least X, least Y, most X, most Y.
     bounds: Option<[f64; 4]>,
 }
@@ -152,7 +148,7 @@ pub struct GcodeIndex {
     /// The part-cooling fan speeds the file sets, in percent.
     fan: Vec<Mark<f64>>,
     /// Every object the file labels and lays material for, by its number.
-    objects: Vec<PlannedObject>,
+    objects: Vec<BedArea>,
     /// Whether the file labels any object.
     labelled_objects: bool,
 }
@@ -202,11 +198,6 @@ impl GcodeIndex {
     #[must_use]
     pub fn resident_bytes(&self) -> usize {
         let names: usize = self.type_names.iter().map(String::capacity).sum();
-        let objects: usize = self
-            .objects
-            .iter()
-            .map(|object| object.name.as_ref().map_or(0, String::capacity))
-            .sum();
         core::mem::size_of::<Self>()
             + self.layers.capacity() * core::mem::size_of::<Layer>()
             + self.type_names.capacity() * core::mem::size_of::<String>()
@@ -214,8 +205,7 @@ impl GcodeIndex {
             + self.time_left.capacity() * core::mem::size_of::<Mark<i64>>()
             + self.flow.capacity() * core::mem::size_of::<Mark<f64>>()
             + self.fan.capacity() * core::mem::size_of::<Mark<f64>>()
-            + self.objects.capacity() * core::mem::size_of::<PlannedObject>()
-            + objects
+            + self.objects.capacity() * core::mem::size_of::<BedArea>()
     }
 
     /// The most extrusion types any one layer lays material under, and the
@@ -323,6 +313,7 @@ impl GcodeIndex {
             minutes_left,
             flow_factor,
             fan_percent,
+            object_count: self.labelled_objects.then_some(self.objects.len()),
             objects: self.objects.clone(),
             unknown,
         }
@@ -372,23 +363,11 @@ pub struct SetValue {
     pub changed: Option<f64>,
 }
 
-/// One object the print's file lays down, and the bed area it covers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
-pub struct PlannedObject {
-    /// Its name, as the file labels it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// The least X its material reaches, in millimetres.
-    pub x_min_mm: f64,
-    /// The most X its material reaches, in millimetres.
-    pub x_max_mm: f64,
-    /// The least Y its material reaches, in millimetres.
-    pub y_min_mm: f64,
-    /// The most Y its material reaches, in millimetres.
-    pub y_max_mm: f64,
-}
+/// The bed area one object of the print covers: the rectangle
+/// `[x_min, y_min, x_max, y_max]` its material reaches, in whole millimetres —
+/// each edge read to the nearest tenth, then each least edge rounded down and
+/// each most edge up, so that it holds every move laying that object down.
+pub type BedArea = [i64; 4];
 
 /// A fact of the plan the print's file does not state.
 #[derive(
@@ -449,9 +428,14 @@ pub struct SlicerPlan {
     /// The part-cooling fan speed, in percent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fan_percent: Option<SetValue>,
-    /// Every object the file lays down, each with the bed area it covers.
+    /// How many objects the file lays down; absent when it labels none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_count: Option<usize>,
+    /// The bed area each object the file lays down covers, unnamed, as
+    /// `[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of
+    /// the file's object numbers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub objects: Vec<PlannedObject>,
+    pub objects: Vec<BedArea>,
     /// The facts the file does not state, which are therefore unknown rather
     /// than absent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -479,13 +463,8 @@ impl Sample for SlicerPlan {
                 file: Some(100.0),
                 changed: None,
             }),
-            objects: vec![PlannedObject {
-                name: Some("benchy.stl".to_owned()),
-                x_min_mm: 100.0,
-                x_max_mm: 150.0,
-                y_min_mm: 99.0,
-                y_max_mm: 117.0,
-            }],
+            object_count: Some(1),
+            objects: vec![[100, 99, 150, 117]],
             unknown: vec![PlanFact::Objects],
         }
     }
@@ -500,6 +479,7 @@ impl Sample for SlicerPlan {
             minutes_left: None,
             flow_factor: None,
             fan_percent: None,
+            object_count: None,
             objects: Vec::new(),
             unknown: Vec::new(),
         }
@@ -613,15 +593,14 @@ impl IndexBuilder {
             .into_values()
             .filter_map(|place| drafts.get_mut(place).and_then(Option::take))
             .filter_map(|draft| {
-                draft
-                    .bounds
-                    .map(|[least_x, least_y, most_x, most_y]| PlannedObject {
-                        name: draft.name,
-                        x_min_mm: tenth(least_x),
-                        x_max_mm: tenth(most_x),
-                        y_min_mm: tenth(least_y),
-                        y_max_mm: tenth(most_y),
-                    })
+                draft.bounds.map(|[least_x, least_y, most_x, most_y]| {
+                    [
+                        whole(tenth(least_x).floor()),
+                        whole(tenth(least_y).floor()),
+                        whole(tenth(most_x).ceil()),
+                        whole(tenth(most_y).ceil()),
+                    ]
+                })
             })
             .collect();
         GcodeIndex {
@@ -874,26 +853,13 @@ impl IndexBuilder {
 
     /// `M486`: an object starting, stopping, or being named.
     fn object(&mut self, raw: &[u8], words: &[Word]) {
-        let command = String::from_utf8_lossy(raw);
-        let command = command.split(';').next().unwrap_or_default();
-        if let Some(name) = command
-            .strip_prefix("M486")
-            .map(str::trim_start)
-            .and_then(|rest| rest.strip_prefix('A'))
+        // A name labels the file's objects, though none is kept: an object is
+        // its place on the bed.
+        if raw
+            .strip_prefix(b"M486")
+            .is_some_and(|rest| rest.trim_ascii_start().starts_with(b"A"))
         {
             self.labelled_objects = true;
-            let name: String = name
-                .trim()
-                .trim_matches('"')
-                .chars()
-                .take(NAME_LIMIT)
-                .collect();
-            if let Some(object) = self.current_object
-                && let Some(draft) = self.objects.get_mut(object)
-                && !name.is_empty()
-            {
-                draft.name = Some(name);
-            }
             return;
         }
         // An object is a whole number, and `-1` alone stops laying one down;
@@ -936,8 +902,9 @@ fn whole(value: f64) -> i64 {
     format!("{:.0}", value.round()).parse().unwrap_or_default()
 }
 
-/// A length rounded to a tenth of a millimetre, which is all a bed area is
-/// read to.
+/// A length rounded to a tenth of a millimetre before a bed area is widened
+/// to whole millimetres, so that an arc's extreme computed a hair past a whole
+/// number does not widen it by a millimetre more.
 fn tenth(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
 }

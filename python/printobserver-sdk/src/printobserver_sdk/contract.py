@@ -1555,24 +1555,6 @@ PlanFact: TypeAlias = Literal[
 ]
 
 
-class PlannedObject(TypedDict):
-    """`PlannedObject`, as the contracts declare it.
-
-    One object the print's file lays down, and the bed area it covers.
-    """
-
-    # Its name, as the file labels it.
-    name: NotRequired[str | None]
-    # The most X its material reaches, in millimetres.
-    x_max_mm: float
-    # The least X its material reaches, in millimetres.
-    x_min_mm: float
-    # The most Y its material reaches, in millimetres.
-    y_max_mm: float
-    # The least Y its material reaches, in millimetres.
-    y_min_mm: float
-
-
 class PolicyDecisionRejected(TypedDict):
     """The `rejected` arm of `PolicyDecision`.
 
@@ -3303,8 +3285,12 @@ class SlicerPlan(TypedDict):
     # The slicer's own estimate of the minutes left, at the current
     # position.
     minutes_left: NotRequired[int | None]
-    # Every object the file lays down, each with the bed area it covers.
-    objects: NotRequired[list[PlannedObject]]
+    # How many objects the file lays down; absent when it labels none.
+    object_count: NotRequired[int | None]
+    # The bed area each object the file lays down covers, unnamed, as
+    # `[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of
+    # the file's object numbers.
+    objects: NotRequired[list[list[int]]]
     # What the current layer lays material as, in the order the file first
     # names each: `Perimeter`, `Support material`, `Bridge infill`.
     types: NotRequired[list[str]]
@@ -7018,51 +7004,6 @@ SHAPES: dict[str, object] = json.loads(
    "objects"
   ]
  },
- "PlannedObject": {
-  "struct": {
-   "fields": {
-    "name": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "string"
-      }
-     }
-    },
-    "x_max_mm": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "scalar": "number"
-     }
-    },
-    "x_min_mm": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "scalar": "number"
-     }
-    },
-    "y_max_mm": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "scalar": "number"
-     }
-    },
-    "y_min_mm": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "scalar": "number"
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
- },
  "PolicyDecision": {
   "union": {
    "tag_field": "",
@@ -9692,12 +9633,24 @@ SHAPES: dict[str, object] = json.loads(
       }
      }
     },
+    "object_count": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
     "objects": {
      "paired_with": "",
      "required": false,
      "shape": {
       "list": {
-       "ref": "PlannedObject"
+       "list": {
+        "scalar": "integer"
+       },
+       "non_empty": true
       },
       "non_empty": false
      }

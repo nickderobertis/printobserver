@@ -18,7 +18,10 @@ pub const LABEL_SEPARATOR: &str = ": ";
 /// Every leaf of one document, by the path it sits at, in path order.
 ///
 /// A branch with nothing under it is a leaf of its own, so an answer carrying
-/// an empty list of events says so rather than saying nothing.
+/// an empty list of events says so rather than saying nothing. A list holding
+/// numbers alone, at any depth — a rectangle, or a list of them — is one value
+/// rather than a branch, and is written as its JSON on one line: its numbers
+/// mean something only together.
 #[must_use]
 pub fn fields(document: &Value) -> Vec<(String, String)> {
     let mut found = Vec::new();
@@ -42,6 +45,9 @@ fn walk(at: String, value: &Value, found: &mut Vec<(String, String)>) {
         }
     };
     match value {
+        Value::Array(entries) if !entries.is_empty() && numbers_alone(value) => {
+            found.push((at, value.to_string()));
+        }
         Value::Object(entries) if !entries.is_empty() => {
             for (name, held) in entries {
                 walk(under(name), held, found);
@@ -56,5 +62,15 @@ fn walk(at: String, value: &Value, found: &mut Vec<(String, String)>) {
         Value::Array(_) => found.push((at, "[]".to_owned())),
         Value::String(text) => found.push((at, text.clone())),
         other => found.push((at, other.to_string())),
+    }
+}
+
+/// Whether a value is a number, or a non-empty list holding numbers alone at
+/// every depth.
+fn numbers_alone(value: &Value) -> bool {
+    match value {
+        Value::Number(_) => true,
+        Value::Array(entries) => !entries.is_empty() && entries.iter().all(numbers_alone),
+        _ => false,
     }
 }

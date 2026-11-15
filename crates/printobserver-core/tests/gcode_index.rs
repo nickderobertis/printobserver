@@ -13,7 +13,7 @@ use core::pin::pin;
 use core::task::{Context, Poll, Waker};
 
 use printobserver_core::gcode_index::{Claimed, GcodeIndexes};
-use printobserver_core::{GcodeIndex, IndexBuilder, PlanFact, PlannedObject, SetValue};
+use printobserver_core::{GcodeIndex, IndexBuilder, PlanFact, SetValue};
 use printobserver_printer_api::GcodeSink as _;
 use printobserver_types::PrintId;
 
@@ -184,33 +184,16 @@ fn the_flow_and_the_fan_are_what_the_file_set_by_the_position() {
     assert_eq!(other_fan.fan_at(100).map(|set| set.value), Some(50.0));
 }
 
-/// Each labelled object is named once and covers the rectangle its material
-/// reached, the top of a clockwise half circle included; moves outside any
-/// object, and moves that lay nothing, reach none.
+/// Each labelled object is counted once, unnamed, and covers the rectangle its
+/// material reached, the top of a clockwise half circle included; moves
+/// outside any object, and moves that lay nothing, reach none.
 #[test]
 fn each_object_covers_the_bed_area_its_material_reached() {
     let index = indexed(PLATE);
     let plan = index.plan_at(past(PLATE, "M73 P100 R0"));
 
-    assert_eq!(
-        plan.objects,
-        vec![
-            PlannedObject {
-                name: Some("box.stl".to_owned()),
-                x_min_mm: 10.0,
-                x_max_mm: 22.0,
-                y_min_mm: 10.0,
-                y_max_mm: 20.0,
-            },
-            PlannedObject {
-                name: Some("tower.stl".to_owned()),
-                x_min_mm: 50.0,
-                x_max_mm: 60.0,
-                y_min_mm: 50.0,
-                y_max_mm: 55.0,
-            },
-        ]
-    );
+    assert_eq!(plan.objects, vec![[10, 10, 22, 20], [50, 50, 60, 55]]);
+    assert_eq!(plan.object_count, Some(2));
     assert!(plan.unknown.is_empty(), "{:?}", plan.unknown);
 }
 
@@ -225,6 +208,10 @@ fn a_file_without_markers_says_which_facts_are_unknown() {
     assert_eq!(plan.layer, None);
     assert!(plan.types.is_empty());
     assert!(plan.objects.is_empty());
+    assert_eq!(
+        plan.object_count, None,
+        "no object labelled, yet a count was given"
+    );
     assert_eq!(
         plan.unknown,
         vec![
@@ -289,22 +276,14 @@ G1 X5 Y5 ; a travel lays nothing
 M486 S-1
 ";
     let plan = indexed_in(text, 3).plan_at(i64::try_from(text.len()).expect("small"));
-    let part = &plan.objects[0];
-
-    assert_eq!(part.name.as_deref(), Some("part"));
     assert_eq!(
-        (part.x_min_mm, part.x_max_mm, part.y_min_mm, part.y_max_mm),
-        (0.0, 35.0, -1.0, 10.0),
+        plan.objects[0],
+        [0, -1, 35, 10],
         "the half circle below its chord was not reached, or more than it"
     );
     assert_eq!(
-        (
-            plan.objects[1].x_min_mm,
-            plan.objects[1].x_max_mm,
-            plan.objects[1].y_min_mm,
-            plan.objects[1].y_max_mm
-        ),
-        (0.0, 0.0, 0.0, 1.0),
+        plan.objects[1],
+        [0, 0, 0, 1],
         "an X beyond any machine's travel was read as a place"
     );
     assert_eq!(
@@ -409,27 +388,9 @@ G3 X0 Y0 I1 J0 E1 ; ending where it began, the whole circle
 M486 S-1
 ";
     let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
-    let covered: Vec<(f64, f64, f64, f64)> = plan
-        .objects
-        .iter()
-        .map(|object| {
-            (
-                object.x_min_mm,
-                object.x_max_mm,
-                object.y_min_mm,
-                object.y_max_mm,
-            )
-        })
-        .collect();
+    let covered = plan.objects;
 
-    assert_eq!(
-        covered,
-        vec![
-            (0.0, 10.0, 0.0, 0.0),
-            (-1.0, 1.0, 0.0, 2.0),
-            (0.0, 2.0, -1.0, 1.0),
-        ]
-    );
+    assert_eq!(covered, vec![[0, 0, 10, 0], [-1, 0, 1, 2], [0, -1, 2, 1]]);
 }
 
 /// An object is named by a whole number, and `-1` alone stops one: a fraction
@@ -451,15 +412,9 @@ G1 X50 Y50 E1
     let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
 
     assert_eq!(plan.objects.len(), 1, "{:?}", plan.objects);
-    let object = &plan.objects[0];
     assert_eq!(
-        (
-            object.x_min_mm,
-            object.x_max_mm,
-            object.y_min_mm,
-            object.y_max_mm
-        ),
-        (0.0, 10.0, 0.0, 10.0),
+        plan.objects[0],
+        [0, 0, 10, 10],
         "a malformed number moved the reader off object 2, or past its stop"
     );
 }
@@ -481,19 +436,26 @@ fn a_fan_with_no_speed_or_past_full_is_read_as_full() {
     );
 }
 
-/// An object's name is held to a bound counted in characters, so a name of
-/// many-byte characters is cut on a character rather than a byte.
+/// A bed area is widened to whole millimetres — its least edges down, its
+/// most edges up — so it still holds every move that laid the object, and a
+/// name labels the file's objects without being kept.
 #[test]
-fn an_object_name_is_held_to_a_bound_in_characters() {
-    let text = format!(
-        "M83\nM486 S0\nM486 A{}\nG1 X0 Y0\nG1 X1 Y0 E1\nM486 S-1\n",
-        "é".repeat(200)
-    );
-    let plan = indexed(&text).plan_at(i64::try_from(text.len()).expect("small"));
+fn a_bed_area_widens_to_whole_millimetres_and_keeps_no_name() {
+    let text = "M83\nM486 S0\nM486 Abracket.stl\nG1 X10.26 Y4.5\nG1 X21.31 Y7.24 E1\nM486 S-1\n";
+    let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
 
-    let name = plan.objects[0].name.clone().expect("the object is named");
-    assert_eq!(name.chars().count(), 120);
-    assert!(name.chars().all(|character| character == 'é'));
+    assert_eq!(plan.objects, vec![[10, 4, 22, 8]]);
+    assert_eq!(plan.object_count, Some(1));
+    let named = indexed("M486 Abracket.stl\n").plan_at(100);
+    assert_eq!(
+        named.object_count,
+        Some(0),
+        "a name alone labels no object to count"
+    );
+    assert!(
+        !named.unknown.contains(&PlanFact::Objects),
+        "a file labelling its objects by name was read as labelling none"
+    );
 }
 
 /// An arc whose radius cannot reach its end, and one ending where it began,
@@ -512,20 +474,9 @@ G2 X5 Y5 R2 E1 ; ending where it began
 M486 S-1
 ";
     let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
-    let covered: Vec<(f64, f64, f64, f64)> = plan
-        .objects
-        .iter()
-        .map(|object| {
-            (
-                object.x_min_mm,
-                object.x_max_mm,
-                object.y_min_mm,
-                object.y_max_mm,
-            )
-        })
-        .collect();
+    let covered = plan.objects;
 
-    assert_eq!(covered, vec![(0.0, 10.0, 0.0, 0.0), (5.0, 5.0, 5.0, 5.0)]);
+    assert_eq!(covered, vec![[0, 0, 10, 0], [5, 5, 5, 5]]);
 }
 
 /// A number written with more digits than are summed exactly is read by a
@@ -542,16 +493,10 @@ G1 X10.00000000000000000001 Y2 E1
 M486 S-1
 ";
     let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
-    let object = &plan.objects[0];
 
     assert_eq!(
-        (
-            object.x_min_mm,
-            object.x_max_mm,
-            object.y_min_mm,
-            object.y_max_mm
-        ),
-        (0.0, 10.0, 0.0, 2.0),
+        plan.objects[0],
+        [0, 0, 10, 2],
         "an unusual number was misread, or a word that is no number moved the head"
     );
 }

@@ -140,15 +140,11 @@ const LAYERS: u64 = 732;
 /// The `;Z:` of the file's last layer change.
 const FINAL_Z_MM: f64 = 142.0;
 
-/// The one object the file labels, and the bed area its material covers.
+/// The one object the file labels, and the bed area its material covers:
+/// 83.0 to 167.3 mm in X and 86.8 to 133.3 mm in Y, widened to whole
+/// millimetres.
 fn objects() -> Value {
-    json!([{
-        "name": "bubbler_guard_and_pad.stl",
-        "x_min_mm": 83.0,
-        "x_max_mm": 167.3,
-        "y_min_mm": 86.8,
-        "y_max_mm": 133.3,
-    }])
+    json!([[83, 86, 168, 134]])
 }
 
 /// The plan a context should carry at one position, with no change made
@@ -163,6 +159,7 @@ fn plan_of(planned: &Planned) -> Value {
         "minutes_left": planned.minutes,
         "flow_factor": { "file": 1.0 },
         "fan_percent": { "file": planned.fan },
+        "object_count": 1,
         "objects": objects(),
     })
 }
@@ -597,15 +594,21 @@ async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
     world.server.stop().await;
 }
 
-/// The same slice with its `;TYPE:` and `M73` lines taken out: every check
-/// still runs, and the context says the extrusion types and the time left are
-/// unknown while it goes on naming the layers the file does mark.
+/// The same slice with its `;TYPE:`, `M73`, flow, fan and object lines taken
+/// out: every check still runs, and the context says the extrusion types, the
+/// time left, the flow, the fan and the objects are unknown — with no value,
+/// count or place for any of them — while it goes on naming the layers the
+/// file does mark.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_file_with_no_types_or_estimates_says_so_and_is_checked_all_the_same() {
+async fn a_file_stating_none_of_the_plans_facts_says_so_and_is_checked_all_the_same() {
     let stripped: Vec<u8> = String::from_utf8(BUBBLER.to_vec())
         .expect("the slice is text")
         .split_inclusive('\n')
-        .filter(|line| !line.starts_with(";TYPE:") && !line.starts_with("M73 "))
+        .filter(|line| {
+            ![";TYPE:", "M73 ", "M221", "M106", "M107", "M486"]
+                .iter()
+                .any(|stripped| line.starts_with(stripped))
+        })
         .collect::<String>()
         .into_bytes();
     let world = Indexing::open(&[("unlabelled.gcode", &stripped)], 200_000).await;
@@ -618,9 +621,26 @@ async fn a_file_with_no_types_or_estimates_says_so_and_is_checked_all_the_same()
     world.more_checks(&print_id, 2).await;
 
     let plan = &turn["slicer"];
-    assert_eq!(plan["unknown"], json!(["types", "minutes_left"]));
-    assert!(plan.get("types").is_none(), "{plan}");
-    assert!(plan.get("minutes_left").is_none(), "{plan}");
+    assert_eq!(
+        plan["unknown"],
+        json!([
+            "types",
+            "minutes_left",
+            "flow_factor",
+            "fan_percent",
+            "objects"
+        ])
+    );
+    for absent in [
+        "types",
+        "minutes_left",
+        "flow_factor",
+        "fan_percent",
+        "object_count",
+        "objects",
+    ] {
+        assert!(plan.get(absent).is_none(), "{absent} was invented: {plan}");
+    }
     assert_eq!(plan["final_z_mm"], json!(FINAL_Z_MM));
     assert_eq!(plan["layers"], json!(LAYERS));
     assert!(

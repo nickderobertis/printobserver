@@ -1491,22 +1491,6 @@ pub enum PlanFact {
     Objects,
 }
 
-/// One object the print's file lays down, and the bed area it covers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PlannedObject {
-    /// Its name, as the file labels it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// The most X its material reaches, in millimetres.
-    pub x_max_mm: f64,
-    /// The least X its material reaches, in millimetres.
-    pub x_min_mm: f64,
-    /// The most Y its material reaches, in millimetres.
-    pub y_max_mm: f64,
-    /// The least Y its material reaches, in millimetres.
-    pub y_min_mm: f64,
-}
-
 /// The decision policy took on one request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PolicyDecision {
@@ -2838,9 +2822,14 @@ pub struct SlicerPlan {
     /// position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub minutes_left: Option<i64>,
-    /// Every object the file lays down, each with the bed area it covers.
+    /// How many objects the file lays down; absent when it labels none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub objects: Option<Vec<PlannedObject>>,
+    pub object_count: Option<i64>,
+    /// The bed area each object the file lays down covers, unnamed, as
+    /// `[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of
+    /// the file's object numbers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objects: Option<Vec<Vec<i64>>>,
     /// What the current layer lays material as, in the order the file first
     /// names each: `Perimeter`, `Support material`, `Bridge infill`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
