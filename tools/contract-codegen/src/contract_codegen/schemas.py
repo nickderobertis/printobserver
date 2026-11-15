@@ -90,6 +90,14 @@ MUTATING = "mutating:"
 #: type it may not have generated.
 DOC_LINK = re.compile(r"\[(`[^`]+`)\](\([^)]*\))?")
 
+#: Names joined one to a line, each of them one word, which is what every one
+#: of the contracts' type names is.
+WORDS = re.compile(r"\w+(?:\n\w+)*")
+
+#: A whole word of a description standing outside code marks: the only place
+#: one of the contracts' type names is put in code marks.
+CODE_CANDIDATE = re.compile(r"(?<![`\w])\w+(?![`\w])")
+
 
 class ContractError(ValueError):
     """The checked-in schemas say something a client cannot be generated from."""
@@ -117,6 +125,16 @@ def _doc(schema: dict[str, Any], known: set[str]) -> str:
     if not isinstance(said, str):
         return ""
     said = DOC_LINK.sub(r"\1", said)
+    if not known:
+        return said
+    joined = "\n".join(known)
+    if joined.count("\n") == len(known) - 1 and WORDS.fullmatch(joined):
+        # Every name is one word, and a name only counts standing alone, so each
+        # one marked is exactly a whole word of the sentence: one pass over the
+        # words marks what one substitution per name, longest first, would.
+        return CODE_CANDIDATE.sub(
+            lambda found: f"`{found[0]}`" if found[0] in known else found[0], said
+        )
     for name in sorted(known, key=len, reverse=True):
         said = re.sub(rf"(?<![`\w]){re.escape(name)}(?![`\w])", f"`{name}`", said)
     return said
