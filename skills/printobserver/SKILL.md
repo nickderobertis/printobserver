@@ -42,7 +42,7 @@ a time, starting with the program's name: no variable, chain or usage listing. I
 1. **A clear defect a setting addresses gets that setting.** The flow factor
    addresses under-extruded walls; the fan, sagging bridges. Neither addresses
    stringing or spaghetti; no other defect has a setting. Read the
-   stated flow and fan first, settings, never design, whatever the file's name; change one only for
+   stated flow and fan first, settings, never design; change one only for
    a clear defect its stated value explains, or one the plan calls at odds,
    wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
 2. **A clear defect no setting addresses, or a part that has moved or gone, gets a
@@ -66,10 +66,10 @@ Reading frames:
   rail, screw or frame, is not.
 - **Position.** Judge each frame against earlier ones. What is
   printed stays where it was laid. Never judge growth between frames under
-  half an hour apart; with the rise unknown, judge none. Where it
-  states a rise since a frame, parts in view not showing it are not printing, however
-  small: a clear defect, never uncertain. Hidden parts: look again; none showing it is
-  the same. A shifting view carries sheet and part
+  half an hour apart; with the rise unknown, none. Where the plan
+  states how far its top rose since a frame, the tallest part still printing
+  shows that; finished parts do not grow. None showing it: not printing, a
+  clear defect, never uncertain. Hidden parts: look again first. A shifting view carries sheet and part
   together, so at every look measure the parts' height against that frame and
   the footprint's distance to a sheet hole, edge or mark, now
   and earlier, giving both. Changed in any frame, even one a later frame seems to undo, it
