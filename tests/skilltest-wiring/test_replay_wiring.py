@@ -16,7 +16,7 @@ import shutil
 import sys
 import time
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from http.client import HTTPConnection
 from pathlib import Path
@@ -816,24 +816,36 @@ def test_a_gcode_named_with_spaces_is_planned_through_the_real_adapter(scratch: 
     equal([plan and plan.get("layer") for plan in plans], [1] * len(case.moments))
 
 
-def _looked(done: Scripted) -> list[dict[str, object]]:
-    """What each look of the first turn handed the agent.
+@dataclass(frozen=True)
+class Looked:
+    """What one look handed the agent."""
 
-    The frame, when it was captured, how long the look waited, where the job
-    stood, and when the look's event was received, to the second.
-    """
+    #: The frame it answered.
+    frame: str
+    #: When that frame was captured.
+    frame_captured_at: str
+    #: How long the look waited, in whole seconds.
+    waited_s: int
+    #: When the look's event was received, to the second.
+    received_at: str
+    #: Where the job stood.
+    file_position_bytes: int
+
+
+def _looked(done: Scripted) -> list[Looked]:
+    """What each look of the first turn handed the agent."""
     seen = []
     for at, entry in enumerate(e for e in done.turns[0]["ran"] if e["words"][1] == "look"):
         answered = json.loads(entry["out"])
         payload = answered["event"]["payload"]
         seen.append(
-            {
-                "frame": done.seen_frame(0, at),
-                "frame_captured_at": payload["frame_captured_at"],
-                "waited_s": payload["waited_s"],
-                "file_position_bytes": answered["job"]["file_position_bytes"],
-                "received_at": answered["event"]["received_at"][:19],
-            }
+            Looked(
+                frame=done.seen_frame(0, at),
+                frame_captured_at=str(payload["frame_captured_at"]),
+                waited_s=int(payload["waited_s"]),
+                received_at=str(answered["event"]["received_at"])[:19],
+                file_position_bytes=int(answered["job"]["file_position_bytes"]),
+            )
         )
     return seen
 
@@ -865,10 +877,13 @@ def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
     jumped = mock_replay(case, [turn], tmp_path / "jumped")
     jumped_s = time.monotonic() - jumped_at
     looked, expected = _looked(jumped), _looked(real)
-    positions = [int(str(look.pop("file_position_bytes"))) for look in looked]
-    wanted = [int(str(look.pop("file_position_bytes"))) for look in expected]
-    equal(looked, expected)
-    equal(expected[0]["frame"], expected[1]["frame"])
+    positions = [look.file_position_bytes for look in looked]
+    wanted = [look.file_position_bytes for look in expected]
+    equal(
+        [replace(look, file_position_bytes=0) for look in looked],
+        [replace(look, file_position_bytes=0) for look in expected],
+    )
+    equal(expected[0].frame, expected[1].frame)
     rate = (wanted[1] - wanted[0]) / LOOK_WAIT_S
     truth(rate > 0, describing="the job to move on while the second look waits")
     for had, want in zip(positions, wanted, strict=True):
@@ -876,7 +891,7 @@ def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
             abs(had - want) <= rate / 10,
             describing=f"the job at {had} to stand where waiting it out puts it, {want}",
         )
-    equal([look["waited_s"] for look in _looked(jumped)], [LOOK_WAIT_S, LOOK_WAIT_S])
+    equal([look.waited_s for look in looked], [LOOK_WAIT_S, LOOK_WAIT_S])
     truth(
         jumped_s < real_s - LOOK_WAIT_S,
         describing=f"the jumped replay ({jumped_s:.1f} s) to skip the real waits ({real_s:.1f} s)",
