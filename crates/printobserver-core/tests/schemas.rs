@@ -38,8 +38,8 @@ use printobserver_core::{
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 use printobserver_core::{
-    AgentContext, AgentDetector, AgentEvent, AgentHeater, AgentJob, AgentPrint, AgentPrinter,
-    PlanFact, PlanMismatch, Rise, SetValue, SlicerPlan,
+    AgentContext, AgentEvent, AgentHeater, AgentPrint, AgentPrinter, PlanFact, PlanMismatch, Rise,
+    SetValue, SlicerPlan,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
@@ -184,16 +184,7 @@ fn generated() -> Vec<(String, Value)> {
     entries.push(("AgentPrint.json".to_owned(), schema_of::<AgentPrint>()));
     entries.push(("AgentPrinter.json".to_owned(), schema_of::<AgentPrinter>()));
     entries.push(("AgentHeater.json".to_owned(), schema_of::<AgentHeater>()));
-    entries.push(("AgentJob.json".to_owned(), schema_of::<AgentJob>()));
     entries.push(("AgentEvent.json".to_owned(), schema_of::<AgentEvent>()));
-    entries.push((
-        "AgentDetector.json".to_owned(),
-        schema_of::<AgentDetector>(),
-    ));
-    entries.push((
-        "DetectorHealthStatus.json".to_owned(),
-        schema_of::<printobserver_core::DetectorHealthStatus>(),
-    ));
     entries.push(("PlanMismatch.json".to_owned(), schema_of::<PlanMismatch>()));
     entries.push(("PlanFact.json".to_owned(), schema_of::<PlanFact>()));
     let context = print_context();

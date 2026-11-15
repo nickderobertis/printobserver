@@ -759,6 +759,20 @@ impl World {
 
     /// Ask the ledger for one thing, for no reason but setting the walk up,
     /// and answer what it said.
+    /// An event of a print's own that others followed, which a context read
+    /// can be asked since: the oldest of its recent events, read through the
+    /// program.
+    #[must_use]
+    pub fn an_earlier_event_of(&self, print_id: &str) -> String {
+        let read = self.ledger(&["context", "--print-id", print_id]);
+        read.pointer("/context/recent_events")
+            .and_then(Value::as_array)
+            .and_then(|events| events.last())
+            .and_then(|event| event["id"].as_str())
+            .unwrap_or_else(|| panic!("{print_id} has no event to be read since: {read}"))
+            .to_owned()
+    }
+
     fn ledger(&self, asked: &[&str]) -> Value {
         self.ledger_saying(asked, SETTLING_REASON)
     }

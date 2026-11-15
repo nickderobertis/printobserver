@@ -91,8 +91,8 @@ pub use config::{
     SheetTable, SpoolPolicy,
 };
 pub use context::{
-    AgentContext, AgentDetector, AgentEvent, AgentHeater, AgentJob, AgentPrint, AgentPrinter,
-    PrintContext,
+    AgentContext, AgentEvent, AgentHeater, AgentPrint, AgentPrinter, PrintContext, Since,
+    newer_than,
 };
 pub use decision::{DecisionInput, adjustment, changes_the_machine, decide, valid_from};
 pub use error::CoreError;

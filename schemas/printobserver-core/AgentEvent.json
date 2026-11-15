@@ -22,7 +22,7 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "One event of the print's, as a turn reads it: what it was and when.",
+  "description": "One event of the print's, as a turn reads it: what happened, when, and the\nfacts it changed.",
   "properties": {
     "id": {
       "$ref": "#/$defs/EventId",
@@ -33,7 +33,7 @@
       "description": "What kind of event it is."
     },
     "payload": {
-      "description": "What it carried, less the snapshots the context states once and the\nbookkeeping no decision reads."
+      "description": "What it carried, less the snapshots the context states once, the\nagent's own assessment and the bookkeeping no decision reads."
     },
     "received_at": {
       "$ref": "#/$defs/Timestamp",

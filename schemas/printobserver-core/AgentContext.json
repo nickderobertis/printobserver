@@ -13,23 +13,9 @@
       "title": "Adjustable",
       "type": "string"
     },
-    "AgentDetector": {
-      "additionalProperties": false,
-      "description": "The failure detector, as a decision reads it.",
-      "properties": {
-        "status": {
-          "$ref": "#/$defs/DetectorHealthStatus",
-          "description": "What its last health check found."
-        }
-      },
-      "required": [
-        "status"
-      ],
-      "type": "object"
-    },
     "AgentEvent": {
       "additionalProperties": false,
-      "description": "One event of the print's, as a turn reads it: what it was and when.",
+      "description": "One event of the print's, as a turn reads it: what happened, when, and the\nfacts it changed.",
       "properties": {
         "id": {
           "$ref": "#/$defs/EventId",
@@ -40,7 +26,7 @@
           "description": "What kind of event it is."
         },
         "payload": {
-          "description": "What it carried, less the snapshots the context states once and the\nbookkeeping no decision reads."
+          "description": "What it carried, less the snapshots the context states once, the\nagent's own assessment and the bookkeeping no decision reads."
         },
         "received_at": {
           "$ref": "#/$defs/Timestamp",
@@ -77,73 +63,24 @@
       },
       "type": "object"
     },
-    "AgentJob": {
+    "AgentPrint": {
       "additionalProperties": false,
-      "description": "The job as it is now.",
+      "description": "The print a context is about.",
       "properties": {
-        "completion": {
-          "description": "How far through it is, from zero to one, when that was read in range.",
-          "format": "double",
-          "type": [
-            "number",
-            "null"
-          ]
-        },
-        "error": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobError"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The error it stopped on, when it stopped on one."
-        },
-        "file_name": {
-          "description": "The file it prints.",
+        "end_reason": {
+          "description": "Why it ended, once it has.",
           "type": [
             "string",
             "null"
           ]
         },
-        "file_position_bytes": {
-          "description": "How far into its file the printer has read, in bytes.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "print_time_s": {
-          "description": "How long it has been printing, in seconds.",
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "state": {
-          "$ref": "#/$defs/PrinterState",
-          "description": "What the printer is doing with it."
-        }
-      },
-      "required": [
-        "state"
-      ],
-      "type": "object"
-    },
-    "AgentPrint": {
-      "additionalProperties": false,
-      "description": "The print a context is about.",
-      "properties": {
         "id": {
           "$ref": "#/$defs/PrintId",
           "description": "Its identifier."
         },
         "state": {
           "$ref": "#/$defs/PrinterState",
-          "description": "What the printer was last found doing with it."
+          "description": "What the printer was last found doing with it, or the state it ended in."
         }
       },
       "required": [
@@ -154,7 +91,7 @@
     },
     "AgentPrinter": {
       "additionalProperties": false,
-      "description": "The printer as it is now.",
+      "description": "The printer's heaters as they are now.",
       "properties": {
         "bed": {
           "anyOf": [
@@ -167,10 +104,6 @@
           ],
           "description": "The bed's heater, when it has one."
         },
-        "connection": {
-          "$ref": "#/$defs/PrinterState",
-          "description": "What it is doing."
-        },
         "tools": {
           "description": "Each tool's heater, in order.",
           "items": {
@@ -179,30 +112,7 @@
           "type": "array"
         }
       },
-      "required": [
-        "connection"
-      ],
       "type": "object"
-    },
-    "DetectorHealthStatus": {
-      "description": "The failure detector's health, as the last check found it.",
-      "oneOf": [
-        {
-          "const": "available",
-          "description": "It answered its health check.",
-          "type": "string"
-        },
-        {
-          "const": "unavailable",
-          "description": "It did not.",
-          "type": "string"
-        },
-        {
-          "const": "unchecked",
-          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
-          "type": "string"
-        }
-      ]
     },
     "EffectiveBounds": {
       "additionalProperties": false,
@@ -251,6 +161,32 @@
       "pattern": "^[a-z][a-z0-9_]*$",
       "title": "EventKind",
       "type": "string"
+    },
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    },
+    "ImageRef": {
+      "additionalProperties": false,
+      "description": "The handle an image travels in context under.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ImageId",
+          "description": "The image's identifier."
+        },
+        "sha256": {
+          "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "type": "object"
     },
     "Intervention": {
       "additionalProperties": false,
@@ -410,63 +346,6 @@
       "required": [
         "text",
         "source"
-      ],
-      "type": "object"
-    },
-    "JobManifest": {
-      "additionalProperties": false,
-      "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
-      "properties": {
-        "allowed": {
-          "additionalProperties": false,
-          "description": "The range each named adjustable may take, inclusive.",
-          "patternProperties": {
-            "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$": {
-              "$ref": "#/$defs/Range"
-            }
-          },
-          "type": "object"
-        },
-        "file_name": {
-          "description": "The file this manifest is about, as the slicer named it.",
-          "type": "string"
-        },
-        "material": {
-          "description": "The material the job is sliced for.",
-          "type": "string"
-        },
-        "metadata": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "Whatever else the slicer recorded.",
-          "type": "object"
-        },
-        "nozzle_diameter_mm": {
-          "description": "The nozzle the job is sliced for, in millimetres.",
-          "format": "double",
-          "type": "number"
-        },
-        "sheet": {
-          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "x-unchecked-text": true
-        },
-        "slicer_profile": {
-          "description": "The slicer profile the job was sliced with.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "file_name",
-        "material",
-        "nozzle_diameter_mm",
-        "slicer_profile",
-        "allowed",
-        "metadata"
       ],
       "type": "object"
     },
@@ -775,15 +654,11 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what it was and when; and asked `since` an event, only the events\nnewer than it are carried, so a turn that has read the rest is not handed\nthem again.",
+  "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nLeft out of it, each because no step of the skill, no check and no recorded\ncase decides anything by it: the print's file, provider and times; the\nprinter's and the job's own states (the print states it once); every heater's\noffset, the chamber and the time they were read; the printer's reported\nfeedrate, flowrate and fan (the slicer's plan states the flow and fan in\nforce, and no step reads the feedrate); the job's file, size, progress, time\nand position (the plan states where the print is); the manifest (its limits\nare the bounds); and the detector's health.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what happened, when, and what it changed; and asked `since` an\nevent, only the events newer than it are carried, so a turn that has read\nthe rest is not handed them again. `newest_event` is what the next read\nasks `since`.",
   "properties": {
     "bounds": {
       "$ref": "#/$defs/EffectiveBounds",
       "description": "The limits in force, so that the agent can see them before it asks."
-    },
-    "detector": {
-      "$ref": "#/$defs/AgentDetector",
-      "description": "What the failure detector's last health check found."
     },
     "interventions": {
       "description": "The interventions still active.",
@@ -792,27 +667,38 @@
       },
       "type": "array"
     },
-    "job": {
+    "job_error": {
       "anyOf": [
         {
-          "$ref": "#/$defs/AgentJob"
+          "$ref": "#/$defs/JobError"
         },
         {
           "type": "null"
         }
       ],
-      "description": "The job now, when it could be read."
+      "description": "The error the job stopped on, when it stopped on one."
     },
-    "manifest": {
+    "latest_image": {
       "anyOf": [
         {
-          "$ref": "#/$defs/JobManifest"
+          "$ref": "#/$defs/ImageRef"
         },
         {
           "type": "null"
         }
       ],
-      "description": "The manifest, when the print has one."
+      "description": "The most recent image, whose path is answered beside the context and\nwhose record states its digest."
+    },
+    "newest_event": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The newest event of this print's, which a later read asks `since`:\nabsent only when the print has none."
     },
     "print": {
       "$ref": "#/$defs/AgentPrint",
@@ -827,10 +713,10 @@
           "type": "null"
         }
       ],
-      "description": "The printer now, when it could be read."
+      "description": "The printer's heaters now, when they could be read."
     },
     "recent_events": {
-      "description": "This print's recent events, newest first, past the one asked `since`.",
+      "description": "This print's events newer than the one asked `since`, or its recent\nones when none was named, newest first.",
       "items": {
         "$ref": "#/$defs/AgentEvent"
       },
@@ -852,8 +738,7 @@
     "print",
     "bounds",
     "interventions",
-    "recent_events",
-    "detector"
+    "recent_events"
   ],
   "title": "AgentContext",
   "type": "object"

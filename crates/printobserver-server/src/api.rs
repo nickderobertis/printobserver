@@ -995,9 +995,17 @@ async fn context(
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
-    let context = match context_of(&state, print_id).await {
-        Ok(context) => context,
-        Err(refused) => return refused,
+    // Off the request's own thread, for the reason `context_of` gives.
+    let supervisor = Arc::clone(&state.supervisor);
+    let since = params.since;
+    let read = tokio::task::spawn_blocking(move || {
+        printobserver_core::block_on(supervisor.agent_context(print_id, since))
+    })
+    .await;
+    let context = match read {
+        Ok(Ok(read)) => read,
+        Ok(Err(error)) => return refusal(core_status(&error), error),
+        Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
     };
     let mut image_path = None;
     if let Some(latest) = context.latest_image.as_ref() {
@@ -1009,7 +1017,7 @@ async fn context(
     answer(
         StatusCode::OK,
         &ContextAnswer {
-            context: context.for_agent(params.since),
+            context,
             image_path,
         },
     )

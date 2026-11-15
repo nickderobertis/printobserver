@@ -60,13 +60,20 @@
   "additionalProperties": false,
   "description": "The print a context is about.",
   "properties": {
+    "end_reason": {
+      "description": "Why it ended, once it has.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "id": {
       "$ref": "#/$defs/PrintId",
       "description": "Its identifier."
     },
     "state": {
       "$ref": "#/$defs/PrinterState",
-      "description": "What the printer was last found doing with it."
+      "description": "What the printer was last found doing with it, or the state it ended in."
     }
   },
   "required": [

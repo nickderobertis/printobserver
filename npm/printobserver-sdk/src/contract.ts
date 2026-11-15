@@ -272,47 +272,67 @@ export interface AgentAssessmentPayload {
  * What a supervision turn reads about one print: `PrintContext` with each
  * fact stated once, as it is now, and nothing no supervision decision reads.
  *
+ * Left out of it, each because no step of the skill, no check and no
+ * recorded
+ * case decides anything by it: the print's file, provider and times; the
+ * printer's and the job's own states (the print states it once); every
+ * heater's
+ * offset, the chamber and the time they were read; the printer's reported
+ * feedrate, flowrate and fan (the slicer's plan states the flow and fan in
+ * force, and no step reads the feedrate); the job's file, size, progress,
+ * time
+ * and position (the plan states where the print is); the manifest (its
+ * limits
+ * are the bounds); and the detector's health.
+ *
  * The printer and the job are stated here and nowhere in the events; each
- * event is what it was and when; and asked `since` an event, only the events
- * newer than it are carried, so a turn that has read the rest is not handed
- * them again.
+ * event is what happened, when, and what it changed; and asked `since` an
+ * event, only the events newer than it are carried, so a turn that has read
+ * the rest is not handed them again. `newest_event` is what the next read
+ * asks `since`.
  */
 export interface AgentContext {
   /** The limits in force, so that the agent can see them before it asks. */
   bounds: EffectiveBounds;
-  /** What the failure detector's last health check found. */
-  detector: AgentDetector;
   /** The interventions still active. */
   interventions: Array<Intervention>;
-  /** The job now, when it could be read. */
-  job?: AgentJob | null;
-  /** The manifest, when the print has one. */
-  manifest?: JobManifest | null;
+  /** The error the job stopped on, when it stopped on one. */
+  job_error?: JobError | null;
+  /**
+   * The most recent image, whose path is answered beside the context and
+   * whose record states its digest.
+   */
+  latest_image?: ImageRef | null;
+  /**
+   * The newest event of this print's, which a later read asks `since`:
+   * absent only when the print has none.
+   */
+  newest_event?: EventId | null;
   /** The print. */
   print: AgentPrint;
-  /** The printer now, when it could be read. */
+  /** The printer's heaters now, when they could be read. */
   printer?: AgentPrinter | null;
-  /** This print's recent events, newest first, past the one asked `since`. */
+  /**
+   * This print's events newer than the one asked `since`, or its recent
+   * ones when none was named, newest first.
+   */
   recent_events: Array<AgentEvent>;
   /** What the slicer planned at the job's current file position. */
   slicer?: SlicerPlan | null;
 }
 
-/** The failure detector, as a decision reads it. */
-export interface AgentDetector {
-  /** What its last health check found. */
-  status: DetectorHealthStatus;
-}
-
-/** One event of the print's, as a turn reads it: what it was and when. */
+/**
+ * One event of the print's, as a turn reads it: what happened, when, and the
+ * facts it changed.
+ */
 export interface AgentEvent {
   /** Its identifier, which a later read asks `since`. */
   id: EventId;
   /** What kind of event it is. */
   kind: EventKind;
   /**
-   * What it carried, less the snapshots the context states once and the
-   * bookkeeping no decision reads.
+   * What it carried, less the snapshots the context states once, the
+   * agent's own assessment and the bookkeeping no decision reads.
    */
   payload?: unknown;
   /** When it was received. */
@@ -331,36 +351,20 @@ export interface AgentHeater {
   target_c?: number | null;
 }
 
-/** The job as it is now. */
-export interface AgentJob {
-  /** How far through it is, from zero to one, when that was read in range. */
-  completion?: number | null;
-  /** The error it stopped on, when it stopped on one. */
-  error?: JobError | null;
-  /** The file it prints. */
-  file_name?: string | null;
-  /** How far into its file the printer has read, in bytes. */
-  file_position_bytes?: number | null;
-  /** How long it has been printing, in seconds. */
-  print_time_s?: number | null;
-  /** What the printer is doing with it. */
-  state: PrinterState;
-}
-
 /** The print a context is about. */
 export interface AgentPrint {
+  /** Why it ended, once it has. */
+  end_reason?: string | null;
   /** Its identifier. */
   id: PrintId;
-  /** What the printer was last found doing with it. */
+  /** What the printer was last found doing with it, or the state it ended in. */
   state: PrinterState;
 }
 
-/** The printer as it is now. */
+/** The printer's heaters as they are now. */
 export interface AgentPrinter {
   /** The bed's heater, when it has one. */
   bed?: AgentHeater | null;
-  /** What it is doing. */
-  connection: PrinterState;
   /** Each tool's heater, in order. */
   tools?: Array<AgentHeater>;
 }
@@ -558,9 +562,6 @@ export interface DetectorHealthChangedPayload {
   /** What the check found. */
   status: DetectorStatus;
 }
-
-/** The failure detector's health, as the last check found it. */
-export type DetectorHealthStatus = "available" | "unavailable" | "unchecked";
 
 /** What a check of the failure detector's own health found. */
 export type DetectorStatus = "available" | "unavailable";
@@ -3061,13 +3062,6 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "ref": "EffectiveBounds"
      }
     },
-    "detector": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "AgentDetector"
-     }
-    },
     "interventions": {
      "paired_with": "",
      "required": true,
@@ -3078,21 +3072,30 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "non_empty": false
      }
     },
-    "job": {
+    "job_error": {
      "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
-       "ref": "AgentJob"
+       "ref": "JobError"
       }
      }
     },
-    "manifest": {
+    "latest_image": {
      "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
-       "ref": "JobManifest"
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "newest_event": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
       }
      }
     },
@@ -3129,21 +3132,6 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "nullable": {
        "ref": "SlicerPlan"
       }
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
- },
- "AgentDetector": {
-  "struct": {
-   "fields": {
-    "status": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "DetectorHealthStatus"
      }
     }
    },
@@ -3213,28 +3201,10 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
- "AgentJob": {
+ "AgentPrint": {
   "struct": {
    "fields": {
-    "completion": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "number"
-      }
-     }
-    },
-    "error": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "JobError"
-      }
-     }
-    },
-    "file_name": {
+    "end_reason": {
      "paired_with": "",
      "required": false,
      "shape": {
@@ -3243,39 +3213,6 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       }
      }
     },
-    "file_position_bytes": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "integer"
-      }
-     }
-    },
-    "print_time_s": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "integer"
-      }
-     }
-    },
-    "state": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "PrinterState"
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
- },
- "AgentPrint": {
-  "struct": {
-   "fields": {
     "id": {
      "paired_with": "",
      "required": true,
@@ -3305,13 +3242,6 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "nullable": {
        "ref": "AgentHeater"
       }
-     }
-    },
-    "connection": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "PrinterState"
      }
     },
     "tools": {
@@ -3729,13 +3659,6 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "tag_field": "",
    "variants": {}
   }
- },
- "DetectorHealthStatus": {
-  "enum": [
-   "available",
-   "unavailable",
-   "unchecked"
-  ]
  },
  "DetectorStatus": {
   "enum": [

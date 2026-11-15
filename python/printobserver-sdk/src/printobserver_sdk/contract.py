@@ -325,57 +325,69 @@ class AgentContext(TypedDict):
     fact stated once, as it is now, and nothing no supervision decision
     reads.
 
+    Left out of it, each because no step of the skill, no check and no
+    recorded
+    case decides anything by it: the print's file, provider and times; the
+    printer's and the job's own states (the print states it once); every
+    heater's
+    offset, the chamber and the time they were read; the printer's
+    reported
+    feedrate, flowrate and fan (the slicer's plan states the flow and fan
+    in
+    force, and no step reads the feedrate); the job's file, size,
+    progress, time
+    and position (the plan states where the print is); the manifest (its
+    limits
+    are the bounds); and the detector's health.
+
     The printer and the job are stated here and nowhere in the events;
     each
-    event is what it was and when; and asked `since` an event, only the
-    events
-    newer than it are carried, so a turn that has read the rest is not
-    handed
-    them again.
+    event is what happened, when, and what it changed; and asked `since`
+    an
+    event, only the events newer than it are carried, so a turn that has
+    read
+    the rest is not handed them again. `newest_event` is what the next
+    read
+    asks `since`.
     """
 
     # The limits in force, so that the agent can see them before it asks.
     bounds: EffectiveBounds
-    # What the failure detector's last health check found.
-    detector: AgentDetector
     # The interventions still active.
     interventions: list[Intervention]
-    # The job now, when it could be read.
-    job: NotRequired[AgentJob | None]
-    # The manifest, when the print has one.
-    manifest: NotRequired[JobManifest | None]
+    # The error the job stopped on, when it stopped on one.
+    job_error: NotRequired[JobError | None]
+    # The most recent image, whose path is answered beside the context and
+    # whose record states its digest.
+    latest_image: NotRequired[ImageRef | None]
+    # The newest event of this print's, which a later read asks `since`:
+    # absent only when the print has none.
+    newest_event: NotRequired[EventId | None]
     # The print.
     print: AgentPrint
-    # The printer now, when it could be read.
+    # The printer's heaters now, when they could be read.
     printer: NotRequired[AgentPrinter | None]
-    # This print's recent events, newest first, past the one asked `since`.
+    # This print's events newer than the one asked `since`, or its recent
+    # ones when none was named, newest first.
     recent_events: list[AgentEvent]
     # What the slicer planned at the job's current file position.
     slicer: NotRequired[SlicerPlan | None]
 
 
-class AgentDetector(TypedDict):
-    """`AgentDetector`, as the contracts declare it.
-
-    The failure detector, as a decision reads it.
-    """
-
-    # What its last health check found.
-    status: DetectorHealthStatus
-
-
 class AgentEvent(TypedDict):
     """`AgentEvent`, as the contracts declare it.
 
-    One event of the print's, as a turn reads it: what it was and when.
+    One event of the print's, as a turn reads it: what happened, when, and
+    the
+    facts it changed.
     """
 
     # Its identifier, which a later read asks `since`.
     id: EventId
     # What kind of event it is.
     kind: EventKind
-    # What it carried, less the snapshots the context states once and the
-    # bookkeeping no decision reads.
+    # What it carried, less the snapshots the context states once, the
+    # agent's own assessment and the bookkeeping no decision reads.
     payload: NotRequired[object]
     # When it was received.
     received_at: Timestamp
@@ -395,48 +407,29 @@ class AgentHeater(TypedDict):
     target_c: NotRequired[float | None]
 
 
-class AgentJob(TypedDict):
-    """`AgentJob`, as the contracts declare it.
-
-    The job as it is now.
-    """
-
-    # How far through it is, from zero to one, when that was read in range.
-    completion: NotRequired[float | None]
-    # The error it stopped on, when it stopped on one.
-    error: NotRequired[JobError | None]
-    # The file it prints.
-    file_name: NotRequired[str | None]
-    # How far into its file the printer has read, in bytes.
-    file_position_bytes: NotRequired[int | None]
-    # How long it has been printing, in seconds.
-    print_time_s: NotRequired[int | None]
-    # What the printer is doing with it.
-    state: PrinterState
-
-
 class AgentPrint(TypedDict):
     """`AgentPrint`, as the contracts declare it.
 
     The print a context is about.
     """
 
+    # Why it ended, once it has.
+    end_reason: NotRequired[str | None]
     # Its identifier.
     id: PrintId
-    # What the printer was last found doing with it.
+    # What the printer was last found doing with it, or the state it ended
+    # in.
     state: PrinterState
 
 
 class AgentPrinter(TypedDict):
     """`AgentPrinter`, as the contracts declare it.
 
-    The printer as it is now.
+    The printer's heaters as they are now.
     """
 
     # The bed's heater, when it has one.
     bed: NotRequired[AgentHeater | None]
-    # What it is doing.
-    connection: PrinterState
     # Each tool's heater, in order.
     tools: NotRequired[list[AgentHeater]]
 
@@ -720,10 +713,6 @@ class DetectorHealthChangedPayload(TypedDict):
     detail: str
     # What the check found.
     status: DetectorStatus
-
-
-# The failure detector's health, as the last check found it.
-DetectorHealthStatus: TypeAlias = Literal["available", "unavailable", "unchecked"]
 
 
 # What a check of the failure detector's own health found.
@@ -5006,13 +4995,6 @@ SHAPES: dict[str, object] = json.loads(
       "ref": "EffectiveBounds"
      }
     },
-    "detector": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "AgentDetector"
-     }
-    },
     "interventions": {
      "paired_with": "",
      "required": true,
@@ -5023,21 +5005,30 @@ SHAPES: dict[str, object] = json.loads(
       "non_empty": false
      }
     },
-    "job": {
+    "job_error": {
      "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
-       "ref": "AgentJob"
+       "ref": "JobError"
       }
      }
     },
-    "manifest": {
+    "latest_image": {
      "paired_with": "",
      "required": false,
      "shape": {
       "nullable": {
-       "ref": "JobManifest"
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "newest_event": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
       }
      }
     },
@@ -5074,21 +5065,6 @@ SHAPES: dict[str, object] = json.loads(
       "nullable": {
        "ref": "SlicerPlan"
       }
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
- },
- "AgentDetector": {
-  "struct": {
-   "fields": {
-    "status": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "DetectorHealthStatus"
      }
     }
    },
@@ -5158,28 +5134,10 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
- "AgentJob": {
+ "AgentPrint": {
   "struct": {
    "fields": {
-    "completion": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "number"
-      }
-     }
-    },
-    "error": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "JobError"
-      }
-     }
-    },
-    "file_name": {
+    "end_reason": {
      "paired_with": "",
      "required": false,
      "shape": {
@@ -5188,39 +5146,6 @@ SHAPES: dict[str, object] = json.loads(
       }
      }
     },
-    "file_position_bytes": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "integer"
-      }
-     }
-    },
-    "print_time_s": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "integer"
-      }
-     }
-    },
-    "state": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "PrinterState"
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
- },
- "AgentPrint": {
-  "struct": {
-   "fields": {
     "id": {
      "paired_with": "",
      "required": true,
@@ -5250,13 +5175,6 @@ SHAPES: dict[str, object] = json.loads(
       "nullable": {
        "ref": "AgentHeater"
       }
-     }
-    },
-    "connection": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "PrinterState"
      }
     },
     "tools": {
@@ -5674,13 +5592,6 @@ SHAPES: dict[str, object] = json.loads(
    "tag_field": "",
    "variants": {}
   }
- },
- "DetectorHealthStatus": {
-  "enum": [
-   "available",
-   "unavailable",
-   "unchecked"
-  ]
  },
  "DetectorStatus": {
   "enum": [

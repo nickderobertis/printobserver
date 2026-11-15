@@ -17,7 +17,7 @@
 
 use crate::gcode_index::SlicerPlan;
 use crate::records::{EffectiveBounds, Intervention, JobManifest, PrintRecord};
-use crate::watch::{DetectorHealth, DetectorHealthStatus};
+use crate::watch::DetectorHealth;
 use printobserver_printer_api::{
     HeaterSnapshot, JobError, JobSnapshot, PrinterSnapshot, PrinterState,
 };
@@ -98,12 +98,15 @@ impl Sample for PrintContext {
 
 /// The payload fields a context's recent events leave out: the printer and job
 /// snapshots an observation took, which the context states once as they are
-/// now, and the bookkeeping no supervision decision reads.
-const UNREAD_PAYLOAD_FIELDS: [&str; 6] = [
+/// now; the agent's own assessment, which its conversation already holds; and
+/// the bookkeeping no supervision decision reads.
+const UNREAD_PAYLOAD_FIELDS: [&str; 8] = [
     "printer",
     "job",
+    "assessment",
     "interval_s",
     "session_name",
+    "harness_identity",
     "delivered",
     "waited_s",
 ];
@@ -111,33 +114,47 @@ const UNREAD_PAYLOAD_FIELDS: [&str; 6] = [
 /// What a supervision turn reads about one print: [`PrintContext`] with each
 /// fact stated once, as it is now, and nothing no supervision decision reads.
 ///
+/// Left out of it, each because no step of the skill, no check and no recorded
+/// case decides anything by it: the print's file, provider and times; the
+/// printer's and the job's own states (the print states it once); every heater's
+/// offset, the chamber and the time they were read; the printer's reported
+/// feedrate, flowrate and fan (the slicer's plan states the flow and fan in
+/// force, and no step reads the feedrate); the job's file, size, progress, time
+/// and position (the plan states where the print is); the manifest (its limits
+/// are the bounds); and the detector's health.
+///
 /// The printer and the job are stated here and nowhere in the events; each
-/// event is what it was and when; and asked `since` an event, only the events
-/// newer than it are carried, so a turn that has read the rest is not handed
-/// them again.
+/// event is what happened, when, and what it changed; and asked `since` an
+/// event, only the events newer than it are carried, so a turn that has read
+/// the rest is not handed them again. `newest_event` is what the next read
+/// asks `since`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct AgentContext {
     /// The print.
     pub print: AgentPrint,
-    /// The printer now, when it could be read.
+    /// The printer's heaters now, when they could be read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printer: Option<AgentPrinter>,
-    /// The job now, when it could be read.
+    /// The error the job stopped on, when it stopped on one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub job: Option<AgentJob>,
-    /// The manifest, when the print has one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest: Option<JobManifest>,
+    pub job_error: Option<JobError>,
     /// The limits in force, so that the agent can see them before it asks.
     pub bounds: EffectiveBounds,
     /// The interventions still active.
     pub interventions: Vec<Intervention>,
-    /// This print's recent events, newest first, past the one asked `since`.
+    /// This print's events newer than the one asked `since`, or its recent
+    /// ones when none was named, newest first.
     pub recent_events: Vec<AgentEvent>,
-    /// What the failure detector's last health check found.
-    pub detector: AgentDetector,
+    /// The most recent image, whose path is answered beside the context and
+    /// whose record states its digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_image: Option<ImageRef>,
+    /// The newest event of this print's, which a later read asks `since`:
+    /// absent only when the print has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub newest_event: Option<EventId>,
     /// What the slicer planned at the job's current file position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slicer: Option<SlicerPlan>,
@@ -150,17 +167,18 @@ pub struct AgentContext {
 pub struct AgentPrint {
     /// Its identifier.
     pub id: PrintId,
-    /// What the printer was last found doing with it.
+    /// What the printer was last found doing with it, or the state it ended in.
     pub state: PrinterState,
+    /// Why it ended, once it has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_reason: Option<String>,
 }
 
-/// The printer as it is now.
+/// The printer's heaters as they are now.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct AgentPrinter {
-    /// What it is doing.
-    pub connection: PrinterState,
     /// Each tool's heater, in order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<AgentHeater>,
@@ -183,31 +201,8 @@ pub struct AgentHeater {
     pub target_c: Option<f64>,
 }
 
-/// The job as it is now.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
-pub struct AgentJob {
-    /// What the printer is doing with it.
-    pub state: PrinterState,
-    /// The file it prints.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_name: Option<String>,
-    /// How far through it is, from zero to one, when that was read in range.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub completion: Option<f64>,
-    /// How long it has been printing, in seconds.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub print_time_s: Option<i64>,
-    /// How far into its file the printer has read, in bytes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_position_bytes: Option<i64>,
-    /// The error it stopped on, when it stopped on one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<JobError>,
-}
-
-/// One event of the print's, as a turn reads it: what it was and when.
+/// One event of the print's, as a turn reads it: what happened, when, and the
+/// facts it changed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
@@ -218,63 +213,79 @@ pub struct AgentEvent {
     pub kind: EventKind,
     /// When it was received.
     pub received_at: Timestamp,
-    /// What it carried, less the snapshots the context states once and the
-    /// bookkeeping no decision reads.
-    #[serde(default, skip_serializing_if = "Value::is_null")]
+    /// What it carried, less the snapshots the context states once, the
+    /// agent's own assessment and the bookkeeping no decision reads.
+    #[serde(default, skip_serializing_if = "is_empty_payload")]
     pub payload: Value,
 }
 
-/// The failure detector, as a decision reads it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
-#[schemars(crate = "printobserver_types::schemars")]
-pub struct AgentDetector {
-    /// What its last health check found.
-    pub status: DetectorHealthStatus,
+/// Whether a payload says nothing.
+fn is_empty_payload(payload: &Value) -> bool {
+    match payload {
+        Value::Null => true,
+        Value::Object(fields) => fields.is_empty(),
+        _ => false,
+    }
+}
+
+/// The events a context read asked `since` one carries: that event, and the
+/// print's events newer than it, newest first.
+#[derive(Debug, Clone, Copy)]
+pub struct Since<'events> {
+    /// The event named.
+    pub event: EventId,
+    /// Every event of the print's newer than it, newest first.
+    pub newer: &'events [EventRecord],
 }
 
 impl PrintContext {
-    /// What a supervision turn reads of this context, carrying only the events
-    /// newer than `since` when it names one.
+    /// What a supervision turn reads of this context: its recent events, or
+    /// those `since` names when it names any.
     #[must_use]
-    pub fn for_agent(&self, since: Option<EventId>) -> AgentContext {
+    pub fn for_agent(&self, since: Option<Since<'_>>) -> AgentContext {
         let heater = |heater: &HeaterSnapshot| AgentHeater {
             actual_c: in_range(heater.actual_c.as_ref()),
             target_c: in_range(heater.target_c.as_ref()),
+        };
+        let (events, newest_event) = match since {
+            Some(since) => (
+                since.newer,
+                Some(since.newer.first().map_or(since.event, |newest| newest.id)),
+            ),
+            None => (
+                self.recent_events.as_slice(),
+                self.recent_events.first().map(|newest| newest.id),
+            ),
         };
         AgentContext {
             print: AgentPrint {
                 id: self.print.id,
                 state: self.print.state.clone(),
+                end_reason: self.print.end_reason.clone(),
             },
             printer: self.printer.as_ref().map(|printer| AgentPrinter {
-                connection: printer.connection.clone(),
                 tools: printer.tools.iter().map(heater).collect(),
                 bed: printer.bed.as_ref().map(heater),
             }),
-            job: self.job.as_ref().map(|job| AgentJob {
-                state: job.state.clone(),
-                file_name: job.file_name.clone(),
-                completion: in_range(job.completion.as_ref()),
-                print_time_s: job.print_time_s,
-                file_position_bytes: job.file_position_bytes,
-                error: job.error.clone(),
-            }),
-            manifest: self.manifest.clone(),
+            job_error: self.job.as_ref().and_then(|job| job.error.clone()),
             bounds: self.bounds.clone(),
             interventions: self.interventions.clone(),
-            recent_events: self
-                .recent_events
-                .iter()
-                .filter(|event| since.is_none_or(|since| event.id > since))
-                .map(agent_event)
-                .collect(),
-            detector: AgentDetector {
-                status: self.detector.status(),
-            },
+            recent_events: events.iter().map(agent_event).collect(),
+            latest_image: self.latest_image.clone(),
+            newest_event,
             slicer: self.slicer.clone(),
         }
     }
+}
+
+/// The events newer than `since`, newest first, when `events` — newest first —
+/// holds it.
+#[must_use]
+pub fn newer_than(events: &[EventRecord], since: EventId) -> Option<&[EventRecord]> {
+    events
+        .iter()
+        .position(|event| event.id == since)
+        .map(|at| &events[..at])
 }
 
 /// A reading in range, as its value alone.

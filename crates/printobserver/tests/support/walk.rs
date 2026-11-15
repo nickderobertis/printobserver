@@ -182,6 +182,15 @@ pub fn naming_the_print_and_spool_now(arguments: &[String], world: &World) -> Ve
         if now[index - 1] == "--print-id" && !world.is_the_ended_print(&now[index]) {
             now[index] = print_about(world, &command, &world.print_id());
         }
+        if now[index - 1] == "--since" && command == "context" {
+            let print_id = now
+                .iter()
+                .position(|word| word == "--print-id")
+                .and_then(|at| now.get(at + 1))
+                .cloned()
+                .unwrap_or_else(|| world.print_id());
+            now[index] = world.an_earlier_event_of(&print_id);
+        }
         if now[index - 1] == "--spool-id"
             && command == "retire-spool"
             && now[index] != world.retired_spool_id()
@@ -226,7 +235,13 @@ fn ordered(world: &World) -> Vec<Entry> {
         // opening another.
         named("prints", Reports::Printing, vec![]),
         named("status", Reports::Printing, vec![]),
-        named("context", Reports::Printing, vec![]),
+        // Since an event of the print's own, named again whenever the print
+        // the walk is about moves on.
+        named(
+            "context",
+            Reports::Printing,
+            vec![("since".to_owned(), world.event_id.clone())],
+        ),
         named(
             "image",
             Reports::Printing,

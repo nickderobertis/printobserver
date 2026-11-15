@@ -367,52 +367,64 @@ pub struct AgentAssessmentPayload {
 /// What a supervision turn reads about one print: `PrintContext` with each
 /// fact stated once, as it is now, and nothing no supervision decision reads.
 ///
+/// Left out of it, each because no step of the skill, no check and no
+/// recorded
+/// case decides anything by it: the print's file, provider and times; the
+/// printer's and the job's own states (the print states it once); every
+/// heater's
+/// offset, the chamber and the time they were read; the printer's reported
+/// feedrate, flowrate and fan (the slicer's plan states the flow and fan in
+/// force, and no step reads the feedrate); the job's file, size, progress,
+/// time
+/// and position (the plan states where the print is); the manifest (its
+/// limits
+/// are the bounds); and the detector's health.
+///
 /// The printer and the job are stated here and nowhere in the events; each
-/// event is what it was and when; and asked `since` an event, only the events
-/// newer than it are carried, so a turn that has read the rest is not handed
-/// them again.
+/// event is what happened, when, and what it changed; and asked `since` an
+/// event, only the events newer than it are carried, so a turn that has read
+/// the rest is not handed them again. `newest_event` is what the next read
+/// asks `since`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentContext {
     /// The limits in force, so that the agent can see them before it asks.
     pub bounds: EffectiveBounds,
-    /// What the failure detector's last health check found.
-    pub detector: AgentDetector,
     /// The interventions still active.
     pub interventions: Vec<Intervention>,
-    /// The job now, when it could be read.
+    /// The error the job stopped on, when it stopped on one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub job: Option<AgentJob>,
-    /// The manifest, when the print has one.
+    pub job_error: Option<JobError>,
+    /// The most recent image, whose path is answered beside the context and
+    /// whose record states its digest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest: Option<JobManifest>,
+    pub latest_image: Option<ImageRef>,
+    /// The newest event of this print's, which a later read asks `since`:
+    /// absent only when the print has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub newest_event: Option<EventId>,
     /// The print.
     pub print: AgentPrint,
-    /// The printer now, when it could be read.
+    /// The printer's heaters now, when they could be read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printer: Option<AgentPrinter>,
-    /// This print's recent events, newest first, past the one asked `since`.
+    /// This print's events newer than the one asked `since`, or its recent
+    /// ones when none was named, newest first.
     pub recent_events: Vec<AgentEvent>,
     /// What the slicer planned at the job's current file position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slicer: Option<SlicerPlan>,
 }
 
-/// The failure detector, as a decision reads it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentDetector {
-    /// What its last health check found.
-    pub status: DetectorHealthStatus,
-}
-
-/// One event of the print's, as a turn reads it: what it was and when.
+/// One event of the print's, as a turn reads it: what happened, when, and the
+/// facts it changed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentEvent {
     /// Its identifier, which a later read asks `since`.
     pub id: EventId,
     /// What kind of event it is.
     pub kind: EventKind,
-    /// What it carried, less the snapshots the context states once and the
-    /// bookkeeping no decision reads.
+    /// What it carried, less the snapshots the context states once, the
+    /// agent's own assessment and the bookkeeping no decision reads.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<serde_json::Value>,
     /// When it was received.
@@ -432,45 +444,25 @@ pub struct AgentHeater {
     pub target_c: Option<f64>,
 }
 
-/// The job as it is now.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AgentJob {
-    /// How far through it is, from zero to one, when that was read in range.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub completion: Option<f64>,
-    /// The error it stopped on, when it stopped on one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub error: Option<JobError>,
-    /// The file it prints.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_name: Option<String>,
-    /// How far into its file the printer has read, in bytes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file_position_bytes: Option<i64>,
-    /// How long it has been printing, in seconds.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub print_time_s: Option<i64>,
-    /// What the printer is doing with it.
-    pub state: PrinterState,
-}
-
 /// The print a context is about.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentPrint {
+    /// Why it ended, once it has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_reason: Option<String>,
     /// Its identifier.
     pub id: PrintId,
-    /// What the printer was last found doing with it.
+    /// What the printer was last found doing with it, or the state it ended
+    /// in.
     pub state: PrinterState,
 }
 
-/// The printer as it is now.
+/// The printer's heaters as they are now.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentPrinter {
     /// The bed's heater, when it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bed: Option<AgentHeater>,
-    /// What it is doing.
-    pub connection: PrinterState,
     /// Each tool's heater, in order.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<AgentHeater>>,
@@ -718,21 +710,6 @@ pub struct DetectorHealthChangedPayload {
     pub detail: String,
     /// What the check found.
     pub status: DetectorStatus,
-}
-
-/// The failure detector's health, as the last check found it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DetectorHealthStatus {
-    /// It answered its health check.
-    #[serde(rename = "available")]
-    Available,
-    /// It did not.
-    #[serde(rename = "unavailable")]
-    Unavailable,
-    /// Nothing checks it: no detector health address is configured, or no
-    /// check has been made yet.
-    #[serde(rename = "unchecked")]
-    Unchecked,
 }
 
 /// What a check of the failure detector's own health found.

@@ -332,11 +332,40 @@ impl Indexing {
             .reports("Printing", printing(file, bytes, position));
         let deadline = std::time::Instant::now() + PATIENCE;
         loop {
+            // A context states no job position, so a turn is placed by the check
+            // that prompted it: its newest observation, which the history holds
+            // whole.
+            let observed_there: Vec<Value> = self
+                .history(print_id, "periodic_observation")
+                .await
+                .into_iter()
+                .filter(|event| event["payload"]["job"]["file_position_bytes"] == json!(position))
+                .map(|event| event["id"].clone())
+                .collect();
             if let Some(turn) = self.turns().into_iter().rev().find(|turn| {
                 turn["print"]["id"] == json!(print_id)
-                    && turn["job"]["file_position_bytes"] == json!(position)
+                    && turn["recent_events"]
+                        .as_array()
+                        .and_then(|events| {
+                            events
+                                .iter()
+                                .find(|event| event["kind"] == json!("periodic_observation"))
+                        })
+                        .is_some_and(|newest| observed_there.contains(&newest["id"]))
             }) {
                 self.handed_no_gcode(&turn);
+                // The observation the history holds whole is stated in the turn
+                // as what it was, and the snapshots it took nowhere but once.
+                for event in turn["recent_events"].as_array().into_iter().flatten() {
+                    for snapshot in ["printer", "job"] {
+                        assert_eq!(
+                            event["payload"].get(snapshot),
+                            None,
+                            "an event repeats the {snapshot} snapshot the context states once: \
+                             {event}"
+                        );
+                    }
+                }
                 return turn;
             }
             assert!(

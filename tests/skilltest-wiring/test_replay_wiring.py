@@ -114,6 +114,8 @@ REPLAYS = {
     ],
 }
 CONTEXT = ["printobserver", "context", "--print-id", "{print}", "--json"]
+#: The status read, which states the job whole where the agent's context does not.
+STATUS = ["printobserver", "status", "--print-id", "{print}", "--json"]
 LOOK = ["printobserver", "look", "--print-id", "{print}", "--json"]
 #: How long a waiting look waits: long enough to see, short enough to wait out.
 LOOK_WAIT_S = 5
@@ -466,7 +468,7 @@ def test_the_configuration_is_the_installers_with_only_the_blanks_filled(tmp_pat
 def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch: Path) -> None:
     """The port opens one conversation, and each turn is handed its frame and its position."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
-    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    done = mock_replay(case, [{"commands": [CONTEXT, STATUS]}], scratch)
     ledger = done.replayed.ledger
     equal(len(ledger["sessions"]), 1)
     equal(len(ledger["turns"]), len(case.moments))
@@ -476,7 +478,8 @@ def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch
     truth("--resume" in arguments[1], describing="the later event to continue it")
     for turn, moment in zip(done.turns, case.moments, strict=True):
         answered = json.loads(turn["ran"][0]["out"])
-        equal(answered["context"]["job"]["file_position_bytes"], moment.file_position_bytes)
+        status = json.loads(turn["ran"][1]["out"])
+        equal(status["job"]["file_position_bytes"], moment.file_position_bytes)
         equal(done.images[Path(answered["image_path"]).name], moment.event_image)
 
 
@@ -546,10 +549,9 @@ def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
 def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
     """What the server records of the job's start stays put across a whole print."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
-    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    done = mock_replay(case, [{"commands": [STATUS]}], scratch)
     started = {
-        json.loads(turn["ran"][0]["out"])["context"]["print"]["job_started_at"][:16]
-        for turn in done.turns
+        json.loads(turn["ran"][0]["out"])["print"]["job_started_at"][:16] for turn in done.turns
     }
     equal(len(started), 1, describing=f"one job start among {started}")
 
@@ -820,8 +822,8 @@ def test_the_printer_reports_the_temperatures_the_gcode_asks_for_at_its_position
     gcode = b"M140 S60\nM104 S220\n" + b";\n" * (before // 2) + b"M104 S240\n"
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
     tools = [json.loads(turn["ran"][0]["out"])["context"]["printer"] for turn in done.turns]
-    equal([printer["tools"][0]["target_c"]["value"] for printer in tools], [220.0, 240.0])
-    equal(tools[0]["bed"]["target_c"]["value"], 60.0)
+    equal([printer["tools"][0]["target_c"] for printer in tools], [220.0, 240.0])
+    equal(tools[0]["bed"]["target_c"], 60.0)
 
 
 def test_a_gcode_named_with_spaces_is_planned_through_the_real_adapter(scratch: Path) -> None:

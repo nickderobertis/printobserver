@@ -15,11 +15,12 @@ it going as it should, and which bounded adjustment, if any, is right now?
 Six steps, every turn. [The command surface](reference/command-surface.md)
 and [common operations](reference/common-operations.md) hold the commands: read
 them with your file tools. Your shell takes one whole command at
-a time, starting with the program's name: no variable, chain or usage listing. If it refuses one, rewrite it so; never leave it undone.
+a time, starting with the program's name: no variable, chain, pipe or usage listing. If it refuses one, rewrite it so; never leave it undone.
 
-1. **Read the context.** The printer, the job, the bounds, recent events, the
-   latest picture, and the slicer's plan: layer, heights, types, objects' bed
-   areas, time left, flow, fan, its rise, settings at odds.
+1. **Read the context.** After the first read, since the newest event it
+   named. The print, heaters, bounds, events, picture and the slicer's
+   plan: layer, heights, types, objects' bed areas, time left, flow, fan, its
+   rise, settings at odds.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    nor is a picture too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
@@ -102,14 +103,13 @@ ask for nothing; say what and where.
 - **Every adjustment is bounded:** ask inside the range the context gives.
 - **A refusal says what was allowed:** ask again inside it.
 - **The vocabulary is closed: no path in this system sends a command to the
-  printer.** Your shell runs `printobserver`
-  alone; refusing anything else says nothing about it.
+  printer.** Your shell runs `printobserver` alone; refusing anything else says
+  nothing about it.
 
 ## When to escalate instead
 
-Escalate when the machine is clearly beyond your adjustments, or the safe
-thing is beyond what you may ask: pause the print, giving as your reason what
-the person must check.
+Escalate when the machine, or the safe thing, is beyond what you may ask:
+pause the print, giving as your reason what the person must check.
 A person's resume in the record settles what they resumed over.
 
 ## Elsewhere

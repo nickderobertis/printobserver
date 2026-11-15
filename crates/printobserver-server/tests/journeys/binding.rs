@@ -648,11 +648,15 @@ async fn reads_during_a_turn_reflect_the_operators_latest_action() {
             } else {
                 &answer
             };
-            assert_eq!(
-                context["printer"]["feedrate_factor"]["value"],
-                json!(1.2),
-                "{answer}"
-            );
+            // A context states no printer's reported factors: what is in force
+            // is the intervention.
+            if read == "status" {
+                assert_eq!(
+                    context["printer"]["feedrate_factor"]["value"],
+                    json!(1.2),
+                    "{answer}"
+                );
+            }
             assert!(
                 context["interventions"]
                     .as_array()
