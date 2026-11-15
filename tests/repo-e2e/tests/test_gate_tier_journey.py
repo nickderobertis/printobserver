@@ -242,12 +242,31 @@ def test_the_affected_coverage_report_rules_on_no_code_its_run_did_not_measure(
 def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
     gate_copy: Callable[..., GateCopy],
 ) -> None:
-    """A change to the Python client measures that client, and the report rules on it alone."""
+    """A change to the Python client measures that client, and the report rules on it alone.
+
+    The client's own `test` target is run, through Nx as the test tier runs it,
+    rather than the whole affected tier: the change reaches `printer-smoke` too,
+    whose suite measures no coverage and so gives the report nothing to read,
+    and the tier's selection is what the `format-check` journeys above prove.
+    """
     copy = as_a_clone(gate_copy())
     branch_with_a_change(copy, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
 
-    tested = copy.just("test", environment=QUIET, timeout=1800)
-    passing(tested, describing="`just test` over a change to the Python client")
+    tested = capture(
+        [
+            "bunx",
+            "nx",
+            "run-many",
+            "-t",
+            "test",
+            "--projects=printobserver-sdk-python",
+            "--output-style=stream",
+        ],
+        copy.root,
+        timeout=1800,
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET),
+    )
+    passing(tested, describing="the Python client's own `test` target")
     reported = copy.just("coverage", environment=QUIET)
 
     passing(reported, describing="`just coverage` over the client's own run")
