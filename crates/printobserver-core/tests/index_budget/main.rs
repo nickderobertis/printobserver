@@ -5,10 +5,10 @@
 //! A committed generator ([`generator`]) streams a slice shaped like the long
 //! plate those budgets name into the core's real [`IndexBuilder`], a piece at
 //! a time, through [`GcodeSink`] — the interface the `OctoPrint` adapter's
-//! whole-file read feeds it. The build is timed from the first byte reaching
-//! the builder to the index being ready, counting only the builder's own
-//! time, because the bytes' arrival is the read path's and is not this
-//! change's; and the heap is counted over the whole build by the counting
+//! whole-file read feeds it. The build is timed as the elapsed wall time from
+//! the first byte reaching the builder to the index being ready — the pieces
+//! still arriving while it reads included, as a streamed read's do — and the
+//! builder's own share of that time is recorded beside it; and the heap is counted over the whole build by the counting
 //! global allocator this binary runs under, its read buffer and the built
 //! index included. The context answer is then rendered at the layer naming
 //! the most extrusion types, through the labelled rendering the program a turn
@@ -135,10 +135,11 @@ struct Built {
     index: GcodeIndex,
     /// What the generator wrote.
     shape: Shape,
-    /// The builder's own time, from the first byte to the index being ready.
+    /// The builder's own share of [`Built::wall`]: the time spent inside its
+    /// calls, the pieces' arrival between them left out.
     building: Duration,
-    /// The time from the first byte to the index being ready, the
-    /// generator's writing included.
+    /// The elapsed wall time from the first byte reaching the builder to the
+    /// index being ready: what the budget `gcode-index-seconds` measures.
     wall: Duration,
     /// The peak heap over the build, beyond what was held before it.
     peak: usize,
@@ -301,14 +302,14 @@ fn one_long_plate_is_indexed_and_its_plan_rendered() {
         "index_entries": index.entries(),
         "index_resident_bytes": index.resident_bytes(),
         "peak_heap_bytes": peak,
+        "wall_seconds": wall.as_secs_f64(),
         "builder_seconds": building.as_secs_f64(),
-        "wall_seconds_with_generation": wall.as_secs_f64(),
-        "throughput_mb_per_s": figure(shape.bytes / 1_000) / 1_000.0 / building.as_secs_f64(),
+        "throughput_mb_per_s": figure(shape.bytes / 1_000) / 1_000.0 / wall.as_secs_f64(),
         "build": if cfg!(debug_assertions) { "unoptimised" } else { "optimised" },
     });
     record(
         "gcode-index.json",
-        &json!({ "seconds": building.as_secs_f64(), "peak_mb": megabytes(peak) }),
+        &json!({ "seconds": wall.as_secs_f64(), "peak_mb": megabytes(peak) }),
         &built,
     );
     record(

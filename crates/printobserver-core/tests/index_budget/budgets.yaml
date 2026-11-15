@@ -53,8 +53,8 @@ budgets:
     description: >-
       Time to index one print's G-code: wall time from the first byte of the
       print's G-code reaching the core's index builder, streamed as the read
-      path streams it, to the index being ready, counting the builder's own
-      time. Inner measure, because the index is the only new work on the first
+      path streams it, to the index being ready: the elapsed time, the pieces
+      still arriving while it reads included. Inner measure, because the index is the only new work on the first
       check's path and that check's whole delay is dominated by an agent turn
       that varies by minutes; the network read from OctoPrint on the LAN is
       the same read the server makes today and is not part of the change.
