@@ -13,7 +13,7 @@ published description, and through `registries.exchange` — the one place this
 tool audits a URL's scheme and attaches a credential — at the API address the
 forge hands every step as `GITHUB_API_URL`, for the repository it hands as
 `GITHUB_REPOSITORY`.
-`tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
+`tests/repo-e2e-independent/tests/test_release_workflow_journey.py` runs the committed
 workflow's steps against a stand-in of that API and holds the sequence to it.
 """
 
