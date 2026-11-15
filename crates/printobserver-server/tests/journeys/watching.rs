@@ -197,6 +197,22 @@ impl Watch {
         }
     }
 
+    /// Wait until the job has been read `reads` more times than it has been
+    /// so far, so every poll a defect could act in has run rather than a
+    /// stretch of the clock that may or may not have held one.
+    pub async fn polled_again(&self, reads: usize) {
+        let target = self.octoprint.job_reads() + reads;
+        let deadline = tokio::time::Instant::now() + PATIENCE;
+        while self.octoprint.job_reads() < target {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the job was read {} of {target} times",
+                self.octoprint.job_reads()
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
     /// Wait until the push socket is open.
     pub async fn connected(&self) {
         let deadline = tokio::time::Instant::now() + PATIENCE;
@@ -1172,7 +1188,15 @@ async fn a_job_starting_as_the_probe_is_sent_is_met_by_that_probe_alone() {
     );
     watch.until("print_started", 2).await;
     watch.octoprint.targets(210.0, 60.0);
-    tokio::time::sleep(POLL * 6).await;
+    watch.polled_again(3).await;
+    watch.octoprint.reports(
+        "Operational",
+        JobScript {
+            file: Some(("second.gcode".to_owned(), SIZE)),
+            ..JobScript::idle()
+        },
+    );
+    watch.until("print_ended", 2).await;
 
     let sent_while_printing: Vec<(String, bool)> = watch
         .octoprint
