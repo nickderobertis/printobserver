@@ -245,6 +245,7 @@ def holds(condition: str, switched: bool, outputs: dict[str, dict[str, str]]) ->
     return answered == (parsed["op"] == "==")
 
 
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 def restored_from(cache: Path, key: str, prefixes: list[str]) -> Path | None:
     """The entry `actions/cache/restore` restores: the key's own, else the newest prefixed one."""
     if (cache / key).is_dir():
