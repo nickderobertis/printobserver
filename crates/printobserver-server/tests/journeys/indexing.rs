@@ -600,7 +600,7 @@ async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
 /// count or place for any of them — while it goes on naming the layers the
 /// file does mark.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_file_stating_none_of_the_plans_facts_says_so_and_is_checked_all_the_same() {
+async fn a_file_without_types_estimates_flow_fan_or_objects_says_so_and_is_checked_all_the_same() {
     let stripped: Vec<u8> = String::from_utf8(BUBBLER.to_vec())
         .expect("the slice is text")
         .split_inclusive('\n')

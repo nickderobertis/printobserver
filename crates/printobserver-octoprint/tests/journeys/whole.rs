@@ -145,10 +145,16 @@ fn downloading(download: Reply) -> Stub {
     })
 }
 
+/// A key for an instance that accepts any: drawn fresh for each run, so no
+/// journey here relies on one value.
+fn any_key() -> String {
+    printobserver_types::EventId::new().to_string()
+}
+
 /// A printer configured against a stub.
 fn printer_of_stub(stub: &Stub) -> OctoPrintPrinter {
     OctoPrintPrinter::new(
-        OctoPrintConfig::new(&stub.base_url(), "test-key").expect("a configuration"),
+        OctoPrintConfig::new(&stub.base_url(), any_key()).expect("a configuration"),
     )
 }
 
@@ -194,7 +200,7 @@ fn an_instance_that_is_not_there_is_unreachable() {
         listener.local_addr().expect("the bound address")
     };
     let printer = OctoPrintPrinter::new(
-        OctoPrintConfig::new(&format!("http://{address}"), "test-key").expect("a configuration"),
+        OctoPrintConfig::new(&format!("http://{address}"), any_key()).expect("a configuration"),
     );
     let mut sink = Kept::everything();
 

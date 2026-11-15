@@ -116,9 +116,9 @@ fn the_documented_operator_workflow_is_carried_out_from_the_documentation_alone(
     documented::walk(&world);
 }
 
-/// After a print interrupted part-way, every recovery command against a real
-/// `OctoPrint`, each carried out or refused as Z trust and the part's height
-/// rule, the machine following what was carried out and nothing else.
+/// A real slice started and paused through this program: the context states
+/// the plan the file holds at the position the machine reports, and the flow
+/// and fan `set-flowrate-factor` and `set-fan-percent` set beside the file's.
 #[test]
 fn the_context_states_the_slicers_plan_and_the_flow_and_fan_set_since_against_a_real_octoprint() {
     let world = World::open(world::SCRIPTED);
@@ -126,6 +126,9 @@ fn the_context_states_the_slicers_plan_and_the_flow_and_fan_set_since_against_a_
     planning::the_context_states_the_plan_and_the_flow_and_fan_set_since(&world);
 }
 
+/// After a print interrupted part-way, every recovery command against a real
+/// `OctoPrint`, each carried out or refused as Z trust and the part's height
+/// rule, the machine following what was carried out and nothing else.
 #[test]
 fn every_recovery_command_is_proven_after_an_interrupted_print() {
     recovering::after_an_interrupted_print();
