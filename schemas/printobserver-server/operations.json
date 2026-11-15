@@ -62,6 +62,16 @@
           "shape": {
             "type": "string"
           }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "since",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "type": "string"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/context",

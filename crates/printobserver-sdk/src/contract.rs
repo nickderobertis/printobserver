@@ -364,6 +364,118 @@ pub struct AgentAssessmentPayload {
     pub session_name: String,
 }
 
+/// What a supervision turn reads about one print: `PrintContext` with each
+/// fact stated once, as it is now, and nothing no supervision decision reads.
+///
+/// The printer and the job are stated here and nowhere in the events; each
+/// event is what it was and when; and asked `since` an event, only the events
+/// newer than it are carried, so a turn that has read the rest is not handed
+/// them again.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentContext {
+    /// The limits in force, so that the agent can see them before it asks.
+    pub bounds: EffectiveBounds,
+    /// What the failure detector's last health check found.
+    pub detector: AgentDetector,
+    /// The interventions still active.
+    pub interventions: Vec<Intervention>,
+    /// The job now, when it could be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job: Option<AgentJob>,
+    /// The manifest, when the print has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<JobManifest>,
+    /// The print.
+    pub print: AgentPrint,
+    /// The printer now, when it could be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer: Option<AgentPrinter>,
+    /// This print's recent events, newest first, past the one asked `since`.
+    pub recent_events: Vec<AgentEvent>,
+    /// What the slicer planned at the job's current file position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slicer: Option<SlicerPlan>,
+}
+
+/// The failure detector, as a decision reads it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentDetector {
+    /// What its last health check found.
+    pub status: DetectorHealthStatus,
+}
+
+/// One event of the print's, as a turn reads it: what it was and when.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentEvent {
+    /// Its identifier, which a later read asks `since`.
+    pub id: EventId,
+    /// What kind of event it is.
+    pub kind: EventKind,
+    /// What it carried, less the snapshots the context states once and the
+    /// bookkeeping no decision reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
+    /// When it was received.
+    pub received_at: Timestamp,
+}
+
+/// One heater, in degrees Celsius: each reading absent when the printer did
+/// not
+/// report it, or reported one outside what a heater can read.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentHeater {
+    /// The temperature it is at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_c: Option<f64>,
+    /// The temperature it is driving towards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_c: Option<f64>,
+}
+
+/// The job as it is now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentJob {
+    /// How far through it is, from zero to one, when that was read in range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion: Option<f64>,
+    /// The error it stopped on, when it stopped on one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<JobError>,
+    /// The file it prints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    /// How far into its file the printer has read, in bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_position_bytes: Option<i64>,
+    /// How long it has been printing, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub print_time_s: Option<i64>,
+    /// What the printer is doing with it.
+    pub state: PrinterState,
+}
+
+/// The print a context is about.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentPrint {
+    /// Its identifier.
+    pub id: PrintId,
+    /// What the printer was last found doing with it.
+    pub state: PrinterState,
+}
+
+/// The printer as it is now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentPrinter {
+    /// The bed's heater, when it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed: Option<AgentHeater>,
+    /// What it is doing.
+    pub connection: PrinterState,
+    /// Each tool's heater, in order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<AgentHeater>>,
+}
+
 /// The bed heater, as a recovery read reports it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BedTemperature {
@@ -552,8 +664,12 @@ pub enum Confidence {
 
 /// What a context read answers.
 ///
+/// The context is the agent's view of it (`AgentContext`): each fact once,
+/// as it is now, and the events newer than the one asked `since`.
+///
 /// The latest image is **materialized** here rather than left as the handle
-/// `PrintContext` carries: the one thing a supervision turn does with an
+/// `printobserver_core::PrintContext` carries: the one thing a supervision
+/// turn does with an
 /// image is look at it, and a handle is not something anything can open. The
 /// path is absolute on this server's own filesystem, exactly as
 /// `ImageAnswer`'s is, and is absent when there is no image or when the
@@ -561,7 +677,7 @@ pub enum Confidence {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextAnswer {
     /// Everything a supervision turn is given about the print.
-    pub context: PrintContext,
+    pub context: AgentContext,
     /// Where the latest image's bytes are, absolute on this host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_path: Option<String>,
@@ -602,6 +718,21 @@ pub struct DetectorHealthChangedPayload {
     pub detail: String,
     /// What the check found.
     pub status: DetectorStatus,
+}
+
+/// The failure detector's health, as the last check found it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DetectorHealthStatus {
+    /// It answered its health check.
+    #[serde(rename = "available")]
+    Available,
+    /// It did not.
+    #[serde(rename = "unavailable")]
+    Unavailable,
+    /// Nothing checks it: no detector health address is configured, or no
+    /// check has been made yet.
+    #[serde(rename = "unchecked")]
+    Unchecked,
 }
 
 /// What a check of the failure detector's own health found.
@@ -1957,39 +2088,6 @@ pub enum PrintAction {
     },
 }
 
-/// Everything a supervision turn is given about one print.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PrintContext {
-    /// The limits in force, so that the agent can see them before it asks.
-    pub bounds: EffectiveBounds,
-    /// The failure detector's health, and since when it has been so.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detector: Option<DetectorHealth>,
-    /// The interventions still active.
-    pub interventions: Vec<Intervention>,
-    /// The job, when a snapshot could be taken.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub job: Option<JobSnapshot>,
-    /// The most recent image, when there is one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub latest_image: Option<ImageRef>,
-    /// The manifest, when the print has one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest: Option<JobManifest>,
-    /// The print itself.
-    pub print: PrintRecord,
-    /// The printer, when a snapshot could be taken.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub printer: Option<PrinterSnapshot>,
-    /// A bounded list of this print's events, newest first.
-    pub recent_events: Vec<EventRecord>,
-    /// What the slicer planned at the job's current file position, read from
-    /// the print's own G-code: absent when the file could not be read, or the
-    /// job is not this print's.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub slicer: Option<SlicerPlan>,
-}
-
 /// One print's end, as its `print_ended` event stored it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintEnded {
@@ -2852,9 +2950,6 @@ pub struct SlicerPlan {
     /// first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<i64>,
-    /// How many layers the file plans.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub layers: Option<i64>,
     /// The slicer's own estimate of the minutes left, at the current
     /// position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3850,9 +3945,16 @@ impl Client {
     ///
     /// Returns `ClientError` when the supervisor could not be reached, when
     /// it answered something this client cannot read.
-    pub fn context(&self, print_id: &str) -> Result<ContextAnswer, ClientError> {
+    pub fn context(
+        &self,
+        print_id: &str,
+        since: Option<String>,
+    ) -> Result<ContextAnswer, ClientError> {
         let target = format!("/v1/prints/{print_id}/context");
-        let asked: Vec<(String, String)> = Vec::new();
+        let mut asked: Vec<(String, String)> = Vec::new();
+        if let Some(value) = since {
+            asked.push(("since".to_owned(), value));
+        }
         let sending: Option<serde_json::Value> = None;
         self.call("GET", &target, &asked, sending.as_ref())
     }

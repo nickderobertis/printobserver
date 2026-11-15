@@ -229,7 +229,6 @@ fn agrees(context: &Value, file: &str, position: u64, changed: (Option<f64>, Opt
     let read = read_at(file, position);
     let plan = &context["slicer"];
     assert_eq!(plan["layer"], json!(read.layer), "at {position}: {plan}");
-    assert_eq!(plan["layers"], json!(read.layers), "{plan}");
     assert_eq!(plan["z_mm"], json!(read.z_mm), "at {position}: {plan}");
     assert_eq!(plan["final_z_mm"], json!(read.final_z_mm), "{plan}");
     let mut types = read.types;

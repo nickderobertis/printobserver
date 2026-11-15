@@ -82,9 +82,8 @@ const LONG_PLATE: [(&str, f64); 6] = [
 /// left, the flow factor and fan speed in force, the objects with their bed
 /// areas, the height risen since an earlier frame, and the settings the plan
 /// says are wrong.
-const COUNTED_FACTS: [&str; 12] = [
+const COUNTED_FACTS: [&str; 11] = [
     "layer",
-    "layers",
     "z_mm",
     "types",
     "final_z_mm",

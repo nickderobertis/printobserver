@@ -134,9 +134,6 @@ const HIGH_UP: Planned = Planned {
     fan: 100.0,
 };
 
-/// How many `;LAYER_CHANGE` lines the file carries.
-const LAYERS: u64 = 732;
-
 /// The `;Z:` of the file's last layer change.
 const FINAL_Z_MM: f64 = 142.0;
 
@@ -152,7 +149,6 @@ fn objects() -> Value {
 fn plan_of(planned: &Planned) -> Value {
     json!({
         "layer": planned.layer,
-        "layers": LAYERS,
         "z_mm": planned.z_mm,
         "final_z_mm": FINAL_Z_MM,
         "types": planned.types,
@@ -725,7 +721,10 @@ async fn a_file_without_types_estimates_flow_fan_or_objects_says_so_and_is_check
         assert!(plan.get(absent).is_none(), "{absent} was invented: {plan}");
     }
     assert_eq!(plan["final_z_mm"], json!(FINAL_Z_MM));
-    assert_eq!(plan["layers"], json!(LAYERS));
+    assert!(
+        plan["layer"].is_u64(),
+        "the layers the file marks were not read: {plan}"
+    );
     assert!(
         world.history(&print_id, "periodic_observation").await.len() >= 3,
         "the checks did not go on"

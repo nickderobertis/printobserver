@@ -1017,15 +1017,6 @@
             "null"
           ]
         },
-        "layers": {
-          "description": "How many layers the file plans.",
-          "format": "uint",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
         "minutes_left": {
           "description": "The slicer's own estimate of the minutes left, at the current position.",
           "format": "int64",

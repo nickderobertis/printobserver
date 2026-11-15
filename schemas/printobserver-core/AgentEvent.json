@@ -1,0 +1,50 @@
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One event of the print's, as a turn reads it: what it was and when.",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/EventId",
+      "description": "Its identifier, which a later read asks `since`."
+    },
+    "kind": {
+      "$ref": "#/$defs/EventKind",
+      "description": "What kind of event it is."
+    },
+    "payload": {
+      "description": "What it carried, less the snapshots the context states once and the\nbookkeeping no decision reads."
+    },
+    "received_at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When it was received."
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "received_at"
+  ],
+  "title": "AgentEvent",
+  "type": "object"
+}

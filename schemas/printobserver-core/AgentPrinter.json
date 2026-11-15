@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "AgentHeater": {
+      "additionalProperties": false,
+      "description": "One heater, in degrees Celsius: each reading absent when the printer did not\nreport it, or reported one outside what a heater can read.",
+      "properties": {
+        "actual_c": {
+          "description": "The temperature it is at.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target_c": {
+          "description": "The temperature it is driving towards.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The printer as it is now.",
+  "properties": {
+    "bed": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgentHeater"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The bed's heater, when it has one."
+    },
+    "connection": {
+      "$ref": "#/$defs/PrinterState",
+      "description": "What it is doing."
+    },
+    "tools": {
+      "description": "Each tool's heater, in order.",
+      "items": {
+        "$ref": "#/$defs/AgentHeater"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "connection"
+  ],
+  "title": "AgentPrinter",
+  "type": "object"
+}

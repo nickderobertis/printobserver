@@ -344,7 +344,6 @@ impl GcodeIndex {
         }
         SlicerPlan {
             layer: layer_index.map(|index| index + 1),
-            layers: (!self.layers.is_empty()).then_some(self.layers.len()),
             z_mm: layer_index.and_then(|index| self.layers[index].z_mm),
             final_z_mm,
             types,
@@ -531,9 +530,6 @@ pub struct SlicerPlan {
     /// first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer: Option<usize>,
-    /// How many layers the file plans.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub layers: Option<usize>,
     /// The current layer's height, in millimetres.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub z_mm: Option<f64>,
@@ -578,7 +574,6 @@ impl Sample for SlicerPlan {
     fn sample_full() -> Self {
         Self {
             layer: Some(12),
-            layers: Some(150),
             z_mm: Some(2.4),
             types: vec![
                 "Perimeter".to_owned(),
@@ -609,7 +604,6 @@ impl Sample for SlicerPlan {
     fn sample_minimal() -> Self {
         Self {
             layer: None,
-            layers: None,
             z_mm: None,
             final_z_mm: None,
             types: Vec::new(),

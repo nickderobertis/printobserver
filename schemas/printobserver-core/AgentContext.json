@@ -1,0 +1,860 @@
+{
+  "$defs": {
+    "ActionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one requested action.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ActionId",
+      "type": "string"
+    },
+    "Adjustable": {
+      "description": "One thing an adjustment may change.",
+      "pattern": "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$",
+      "title": "Adjustable",
+      "type": "string"
+    },
+    "AgentDetector": {
+      "additionalProperties": false,
+      "description": "The failure detector, as a decision reads it.",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/DetectorHealthStatus",
+          "description": "What its last health check found."
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "AgentEvent": {
+      "additionalProperties": false,
+      "description": "One event of the print's, as a turn reads it: what it was and when.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/EventId",
+          "description": "Its identifier, which a later read asks `since`."
+        },
+        "kind": {
+          "$ref": "#/$defs/EventKind",
+          "description": "What kind of event it is."
+        },
+        "payload": {
+          "description": "What it carried, less the snapshots the context states once and the\nbookkeeping no decision reads."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was received."
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "received_at"
+      ],
+      "type": "object"
+    },
+    "AgentHeater": {
+      "additionalProperties": false,
+      "description": "One heater, in degrees Celsius: each reading absent when the printer did not\nreport it, or reported one outside what a heater can read.",
+      "properties": {
+        "actual_c": {
+          "description": "The temperature it is at.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "target_c": {
+          "description": "The temperature it is driving towards.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentJob": {
+      "additionalProperties": false,
+      "description": "The job as it is now.",
+      "properties": {
+        "completion": {
+          "description": "How far through it is, from zero to one, when that was read in range.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JobError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The error it stopped on, when it stopped on one."
+        },
+        "file_name": {
+          "description": "The file it prints.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_position_bytes": {
+          "description": "How far into its file the printer has read, in bytes.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "print_time_s": {
+          "description": "How long it has been printing, in seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "What the printer is doing with it."
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    "AgentPrint": {
+      "additionalProperties": false,
+      "description": "The print a context is about.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "Its identifier."
+        },
+        "state": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "What the printer was last found doing with it."
+        }
+      },
+      "required": [
+        "id",
+        "state"
+      ],
+      "type": "object"
+    },
+    "AgentPrinter": {
+      "additionalProperties": false,
+      "description": "The printer as it is now.",
+      "properties": {
+        "bed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentHeater"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bed's heater, when it has one."
+        },
+        "connection": {
+          "$ref": "#/$defs/PrinterState",
+          "description": "What it is doing."
+        },
+        "tools": {
+          "description": "Each tool's heater, in order.",
+          "items": {
+            "$ref": "#/$defs/AgentHeater"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connection"
+      ],
+      "type": "object"
+    },
+    "DetectorHealthStatus": {
+      "description": "The failure detector's health, as the last check found it.",
+      "oneOf": [
+        {
+          "const": "available",
+          "description": "It answered its health check.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "It did not.",
+          "type": "string"
+        },
+        {
+          "const": "unchecked",
+          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
+          "type": "string"
+        }
+      ]
+    },
+    "EffectiveBounds": {
+      "additionalProperties": false,
+      "description": "The envelope intersected with the print's manifest.\n\nThis is what context reports, so that the agent can see its own limits\nbefore it asks. Computing one is the supervision core's; this crate declares\nthe shape and nothing that produces it.",
+      "properties": {
+        "allowed": {
+          "additionalProperties": false,
+          "description": "The range each adjustable may be set to, inclusive.",
+          "patternProperties": {
+            "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$": {
+              "$ref": "#/$defs/Range"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "allowed"
+      ],
+      "type": "object"
+    },
+    "ErrorSource": {
+      "description": "Whose error a job's error is.",
+      "oneOf": [
+        {
+          "const": "printer",
+          "description": "The printer's own message: its firmware stopped the job.",
+          "type": "string"
+        },
+        {
+          "const": "host",
+          "description": "The host's: it lost the line to the printer, or failed in itself.",
+          "type": "string"
+        }
+      ]
+    },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "Intervention": {
+      "additionalProperties": false,
+      "description": "One adjustment made for a bounded time.\n\n`prior_value` is read from the printer snapshot taken before the change, and\nis absent when the printer reported none — in which case expiry restores\nnothing and the outcome says so rather than guessing a default.",
+      "properties": {
+        "action_id": {
+          "$ref": "#/$defs/ActionId",
+          "description": "The action that asked for it."
+        },
+        "adjustable": {
+          "$ref": "#/$defs/Adjustable",
+          "description": "What it changed."
+        },
+        "applied_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was applied."
+        },
+        "applied_value": {
+          "description": "What it was changed to.",
+          "format": "double",
+          "type": "number"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it stops standing."
+        },
+        "id": {
+          "$ref": "#/$defs/InterventionId",
+          "description": "This intervention's identifier, minted by the store."
+        },
+        "outcome": {
+          "$ref": "#/$defs/InterventionOutcome",
+          "description": "What became of it."
+        },
+        "print_id": {
+          "$ref": "#/$defs/PrintId",
+          "description": "The print it was made against."
+        },
+        "prior_value": {
+          "description": "What the printer reported before the change, if it reported anything.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "restored_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the prior value was put back, if it was."
+        }
+      },
+      "required": [
+        "id",
+        "print_id",
+        "action_id",
+        "adjustable",
+        "applied_value",
+        "applied_at",
+        "expires_at",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "InterventionId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one bounded intervention.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "InterventionId",
+      "type": "string"
+    },
+    "InterventionOutcome": {
+      "description": "What became of a bounded change.",
+      "oneOf": [
+        {
+          "const": "still_active",
+          "description": "It is still in force.",
+          "type": "string"
+        },
+        {
+          "const": "restored",
+          "description": "The prior value was put back.",
+          "type": "string"
+        },
+        {
+          "const": "restore_unavailable",
+          "description": "There was no prior value to put back.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Putting the prior value back failed.",
+          "properties": {
+            "restore_failed": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "description": "Why it failed.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "restore_failed"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Another intervention replaced it before it expired.",
+          "properties": {
+            "superseded": {
+              "additionalProperties": false,
+              "properties": {
+                "by": {
+                  "$ref": "#/$defs/InterventionId",
+                  "description": "The intervention that replaced it."
+                }
+              },
+              "required": [
+                "by"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "superseded"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "JobError": {
+      "additionalProperties": false,
+      "description": "A job's error, and whose it is.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/ErrorSource",
+          "description": "Whose it is."
+        },
+        "text": {
+          "description": "The error, as the source reported it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "source"
+      ],
+      "type": "object"
+    },
+    "JobManifest": {
+      "additionalProperties": false,
+      "description": "What a sliced job declares about itself and about what may be adjusted.\n\nAn adjustable the manifest does not name takes the envelope's own range; a\nmanifest range wider than the envelope's is narrowed to the envelope's and\nthe narrowing is recorded on the print. A manifest may only narrow.",
+      "properties": {
+        "allowed": {
+          "additionalProperties": false,
+          "description": "The range each named adjustable may take, inclusive.",
+          "patternProperties": {
+            "^(feedrate|flowrate|bed_target|fan|tool_target:-?[0-9]+)$": {
+              "$ref": "#/$defs/Range"
+            }
+          },
+          "type": "object"
+        },
+        "file_name": {
+          "description": "The file this manifest is about, as the slicer named it.",
+          "type": "string"
+        },
+        "material": {
+          "description": "The material the job is sliced for.",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Whatever else the slicer recorded.",
+          "type": "object"
+        },
+        "nozzle_diameter_mm": {
+          "description": "The nozzle the job is sliced for, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "sheet": {
+          "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "x-unchecked-text": true
+        },
+        "slicer_profile": {
+          "description": "The slicer profile the job was sliced with.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_name",
+        "material",
+        "nozzle_diameter_mm",
+        "slicer_profile",
+        "allowed",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "PlanFact": {
+      "description": "A fact of the plan the print's file does not state.",
+      "oneOf": [
+        {
+          "const": "layer",
+          "description": "The file marks no layers.",
+          "type": "string"
+        },
+        {
+          "const": "final_z",
+          "description": "The file states no final height.",
+          "type": "string"
+        },
+        {
+          "const": "types",
+          "description": "The file labels no extrusion types.",
+          "type": "string"
+        },
+        {
+          "const": "minutes_left",
+          "description": "The file carries no estimate of the time left, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "flow_factor",
+          "description": "The file sets no flow factor, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "fan_percent",
+          "description": "The file sets no part-cooling fan speed, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "objects",
+          "description": "The file labels no objects.",
+          "type": "string"
+        },
+        {
+          "const": "rise",
+          "description": "No frame of this print is half an hour old with a position to rise\nfrom, so how far the parts should have grown is not known, and no\ngrowth can be judged from frames closer together.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlanMismatch": {
+      "description": "A setting in force that the plan at this height says is wrong for what is\nbeing laid.",
+      "oneOf": [
+        {
+          "const": "fan_off_over_bridges",
+          "description": "The part-cooling fan is off while the current layer or the few below\nit, which a frame shows, bridge or overhang.",
+          "type": "string"
+        },
+        {
+          "const": "flow_low_over_walls",
+          "description": "The flow factor is well under one while the current layer lays walls.",
+          "type": "string"
+        }
+      ]
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "PrinterState": {
+      "description": "The state a source reports a printer or a print to be in.\n\nThe `unknown` arm exists so that a state nobody anticipated is recorded\ncarrying the source's own word for it rather than lost.",
+      "oneOf": [
+        {
+          "const": "operational",
+          "description": "Connected and idle.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "Printing, but paused.",
+          "type": "string"
+        },
+        {
+          "const": "printing",
+          "description": "Printing.",
+          "type": "string"
+        },
+        {
+          "const": "cancelling",
+          "description": "Cancelling a print.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "In an error state.",
+          "type": "string"
+        },
+        {
+          "const": "offline",
+          "description": "Not reachable.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A state this vocabulary does not name, in the source's own word for it.",
+          "properties": {
+            "unknown": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "unknown"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Range": {
+      "additionalProperties": false,
+      "description": "An inclusive pair of 64-bit floats.",
+      "properties": {
+        "max": {
+          "description": "The highest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        },
+        "min": {
+          "description": "The lowest value the range admits, inclusive.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "Rise": {
+      "additionalProperties": false,
+      "description": "How far the plan has risen since an earlier frame of this print: the\nheight a camera should show the parts to have gained since then.",
+      "properties": {
+        "minutes_ago": {
+          "description": "How many whole minutes before this read that earlier frame was\ncaptured: the latest periodic observation's frame at least half an hour\nold.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "top_risen_mm": {
+          "description": "How far the print's highest point should have risen since the position\nthat frame's job had reached, in millimetres: the rise of every layer\nsince that lays anything but supports. It is the plate's, not every\npart's: a part the plan has finished does not grow with it.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "minutes_ago",
+        "top_risen_mm"
+      ],
+      "type": "object"
+    },
+    "SetValue": {
+      "additionalProperties": false,
+      "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
+      "properties": {
+        "changed": {
+          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "file": {
+          "description": "What the file's own commands set it to, by the current position.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SlicerPlan": {
+      "additionalProperties": false,
+      "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
+      "properties": {
+        "at_odds": {
+          "description": "Each setting in force the plan at this height says is wrong.",
+          "items": {
+            "$ref": "#/$defs/PlanMismatch"
+          },
+          "type": "array"
+        },
+        "fan_percent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SetValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The part-cooling fan speed, in percent."
+        },
+        "final_z_mm": {
+          "description": "The final layer's height, in millimetres.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "flow_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SetValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The flow factor, one meaning one hundred percent."
+        },
+        "layer": {
+          "description": "The layer the print is in, counting the first as 1; absent before the\nfirst.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "minutes_left": {
+          "description": "The slicer's own estimate of the minutes left, at the current position.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "object_count": {
+          "description": "How many objects the file lays down; absent when it labels none.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "objects": {
+          "description": "The bed area each object the file lays down covers, unnamed, as\n`[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of\nthe file's object numbers.",
+          "items": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "rise": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rise"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far the plan has risen since an earlier frame; absent before any\nframe is half an hour old."
+        },
+        "types": {
+          "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unknown": {
+          "description": "The facts the file does not state, which are therefore unknown rather\nthan absent.",
+          "items": {
+            "$ref": "#/$defs/PlanFact"
+          },
+          "type": "array"
+        },
+        "z_mm": {
+          "description": "The current layer's height, in millimetres.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what it was and when; and asked `since` an event, only the events\nnewer than it are carried, so a turn that has read the rest is not handed\nthem again.",
+  "properties": {
+    "bounds": {
+      "$ref": "#/$defs/EffectiveBounds",
+      "description": "The limits in force, so that the agent can see them before it asks."
+    },
+    "detector": {
+      "$ref": "#/$defs/AgentDetector",
+      "description": "What the failure detector's last health check found."
+    },
+    "interventions": {
+      "description": "The interventions still active.",
+      "items": {
+        "$ref": "#/$defs/Intervention"
+      },
+      "type": "array"
+    },
+    "job": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgentJob"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The job now, when it could be read."
+    },
+    "manifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JobManifest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The manifest, when the print has one."
+    },
+    "print": {
+      "$ref": "#/$defs/AgentPrint",
+      "description": "The print."
+    },
+    "printer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgentPrinter"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The printer now, when it could be read."
+    },
+    "recent_events": {
+      "description": "This print's recent events, newest first, past the one asked `since`.",
+      "items": {
+        "$ref": "#/$defs/AgentEvent"
+      },
+      "type": "array"
+    },
+    "slicer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SlicerPlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the slicer planned at the job's current file position."
+    }
+  },
+  "required": [
+    "print",
+    "bounds",
+    "interventions",
+    "recent_events",
+    "detector"
+  ],
+  "title": "AgentContext",
+  "type": "object"
+}

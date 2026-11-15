@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "DetectorHealthStatus": {
+      "description": "The failure detector's health, as the last check found it.",
+      "oneOf": [
+        {
+          "const": "available",
+          "description": "It answered its health check.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "It did not.",
+          "type": "string"
+        },
+        {
+          "const": "unchecked",
+          "description": "Nothing checks it: no detector health address is configured, or no\ncheck has been made yet.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The failure detector, as a decision reads it.",
+  "properties": {
+    "status": {
+      "$ref": "#/$defs/DetectorHealthStatus",
+      "description": "What its last health check found."
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "AgentDetector",
+  "type": "object"
+}

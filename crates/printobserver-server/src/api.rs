@@ -261,6 +261,16 @@ pub struct HistoryParams {
     pub limit: Option<u32>,
 }
 
+/// The event a context read is asked `since`: only the events newer than it
+/// are answered, because the caller has read the rest.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+pub struct ContextParams {
+    /// The newest event the caller has read; absent answers the recent window.
+    #[serde(default)]
+    pub since: Option<printobserver_types::EventId>,
+}
+
 /// How long a look asks to wait for something to arrive, in whole seconds.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "printobserver_types::serde")]
@@ -980,6 +990,7 @@ async fn context(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
+    Query(params): Query<ContextParams>,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
@@ -998,7 +1009,7 @@ async fn context(
     answer(
         StatusCode::OK,
         &ContextAnswer {
-            context,
+            context: context.for_agent(params.since),
             image_path,
         },
     )

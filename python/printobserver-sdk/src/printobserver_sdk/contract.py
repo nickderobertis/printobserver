@@ -317,6 +317,130 @@ class AgentAssessmentPayload(TypedDict):
     session_name: str
 
 
+class AgentContext(TypedDict):
+    """`AgentContext`, as the contracts declare it.
+
+    What a supervision turn reads about one print: `PrintContext` with
+    each
+    fact stated once, as it is now, and nothing no supervision decision
+    reads.
+
+    The printer and the job are stated here and nowhere in the events;
+    each
+    event is what it was and when; and asked `since` an event, only the
+    events
+    newer than it are carried, so a turn that has read the rest is not
+    handed
+    them again.
+    """
+
+    # The limits in force, so that the agent can see them before it asks.
+    bounds: EffectiveBounds
+    # What the failure detector's last health check found.
+    detector: AgentDetector
+    # The interventions still active.
+    interventions: list[Intervention]
+    # The job now, when it could be read.
+    job: NotRequired[AgentJob | None]
+    # The manifest, when the print has one.
+    manifest: NotRequired[JobManifest | None]
+    # The print.
+    print: AgentPrint
+    # The printer now, when it could be read.
+    printer: NotRequired[AgentPrinter | None]
+    # This print's recent events, newest first, past the one asked `since`.
+    recent_events: list[AgentEvent]
+    # What the slicer planned at the job's current file position.
+    slicer: NotRequired[SlicerPlan | None]
+
+
+class AgentDetector(TypedDict):
+    """`AgentDetector`, as the contracts declare it.
+
+    The failure detector, as a decision reads it.
+    """
+
+    # What its last health check found.
+    status: DetectorHealthStatus
+
+
+class AgentEvent(TypedDict):
+    """`AgentEvent`, as the contracts declare it.
+
+    One event of the print's, as a turn reads it: what it was and when.
+    """
+
+    # Its identifier, which a later read asks `since`.
+    id: EventId
+    # What kind of event it is.
+    kind: EventKind
+    # What it carried, less the snapshots the context states once and the
+    # bookkeeping no decision reads.
+    payload: NotRequired[object]
+    # When it was received.
+    received_at: Timestamp
+
+
+class AgentHeater(TypedDict):
+    """`AgentHeater`, as the contracts declare it.
+
+    One heater, in degrees Celsius: each reading absent when the printer
+    did not
+    report it, or reported one outside what a heater can read.
+    """
+
+    # The temperature it is at.
+    actual_c: NotRequired[float | None]
+    # The temperature it is driving towards.
+    target_c: NotRequired[float | None]
+
+
+class AgentJob(TypedDict):
+    """`AgentJob`, as the contracts declare it.
+
+    The job as it is now.
+    """
+
+    # How far through it is, from zero to one, when that was read in range.
+    completion: NotRequired[float | None]
+    # The error it stopped on, when it stopped on one.
+    error: NotRequired[JobError | None]
+    # The file it prints.
+    file_name: NotRequired[str | None]
+    # How far into its file the printer has read, in bytes.
+    file_position_bytes: NotRequired[int | None]
+    # How long it has been printing, in seconds.
+    print_time_s: NotRequired[int | None]
+    # What the printer is doing with it.
+    state: PrinterState
+
+
+class AgentPrint(TypedDict):
+    """`AgentPrint`, as the contracts declare it.
+
+    The print a context is about.
+    """
+
+    # Its identifier.
+    id: PrintId
+    # What the printer was last found doing with it.
+    state: PrinterState
+
+
+class AgentPrinter(TypedDict):
+    """`AgentPrinter`, as the contracts declare it.
+
+    The printer as it is now.
+    """
+
+    # The bed's heater, when it has one.
+    bed: NotRequired[AgentHeater | None]
+    # What it is doing.
+    connection: PrinterState
+    # Each tool's heater, in order.
+    tools: NotRequired[list[AgentHeater]]
+
+
 class BedTemperature(TypedDict):
     """`BedTemperature`, as the contracts declare it.
 
@@ -522,9 +646,14 @@ class ContextAnswer(TypedDict):
 
     What a context read answers.
 
+    The context is the agent's view of it (`AgentContext`): each fact
+    once,
+    as it is now, and the events newer than the one asked `since`.
+
     The latest image is **materialized** here rather than left as the
     handle
-    `PrintContext` carries: the one thing a supervision turn does with an
+    `printobserver_core::PrintContext` carries: the one thing a
+    supervision turn does with an
     image is look at it, and a handle is not something anything can open.
     The
     path is absolute on this server's own filesystem, exactly as
@@ -533,7 +662,7 @@ class ContextAnswer(TypedDict):
     """
 
     # Everything a supervision turn is given about the print.
-    context: PrintContext
+    context: AgentContext
     # Where the latest image's bytes are, absolute on this host.
     image_path: NotRequired[str | None]
 
@@ -591,6 +720,10 @@ class DetectorHealthChangedPayload(TypedDict):
     detail: str
     # What the check found.
     status: DetectorStatus
+
+
+# The failure detector's health, as the last check found it.
+DetectorHealthStatus: TypeAlias = Literal["available", "unavailable", "unchecked"]
 
 
 # What a check of the failure detector's own health found.
@@ -2079,36 +2212,6 @@ PrintAction: TypeAlias = (
 )
 
 
-class PrintContext(TypedDict):
-    """`PrintContext`, as the contracts declare it.
-
-    Everything a supervision turn is given about one print.
-    """
-
-    # The limits in force, so that the agent can see them before it asks.
-    bounds: EffectiveBounds
-    # The failure detector's health, and since when it has been so.
-    detector: NotRequired[DetectorHealth]
-    # The interventions still active.
-    interventions: list[Intervention]
-    # The job, when a snapshot could be taken.
-    job: NotRequired[JobSnapshot | None]
-    # The most recent image, when there is one.
-    latest_image: NotRequired[ImageRef | None]
-    # The manifest, when the print has one.
-    manifest: NotRequired[JobManifest | None]
-    # The print itself.
-    print: PrintRecord
-    # The printer, when a snapshot could be taken.
-    printer: NotRequired[PrinterSnapshot | None]
-    # A bounded list of this print's events, newest first.
-    recent_events: list[EventRecord]
-    # What the slicer planned at the job's current file position, read from
-    # the print's own G-code: absent when the file could not be read, or the
-    # job is not this print's.
-    slicer: NotRequired[SlicerPlan | None]
-
-
 class PrintEnded(TypedDict):
     """`PrintEnded`, as the contracts declare it.
 
@@ -3306,8 +3409,6 @@ class SlicerPlan(TypedDict):
     # The layer the print is in, counting the first as 1; absent before the
     # first.
     layer: NotRequired[int | None]
-    # How many layers the file plans.
-    layers: NotRequired[int | None]
     # The slicer's own estimate of the minutes left, at the current
     # position.
     minutes_left: NotRequired[int | None]
@@ -4895,6 +4996,284 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "AgentContext": {
+  "struct": {
+   "fields": {
+    "bounds": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EffectiveBounds"
+     }
+    },
+    "detector": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AgentDetector"
+     }
+    },
+    "interventions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "AgentJob"
+      }
+     }
+    },
+    "manifest": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobManifest"
+      }
+     }
+    },
+    "print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AgentPrint"
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "AgentPrinter"
+      }
+     }
+    },
+    "recent_events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "AgentEvent"
+      },
+      "non_empty": false
+     }
+    },
+    "slicer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SlicerPlan"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentDetector": {
+  "struct": {
+   "fields": {
+    "status": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "DetectorHealthStatus"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentEvent": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "payload": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "any": true
+     }
+    },
+    "received_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentHeater": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentJob": {
+  "struct": {
+   "fields": {
+    "completion": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "error": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobError"
+      }
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "file_position_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "print_time_s": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentPrint": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentPrinter": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "AgentHeater"
+      }
+     }
+    },
+    "connection": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "AgentHeater"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "BedTemperature": {
   "struct": {
    "fields": {
@@ -5211,7 +5590,7 @@ SHAPES: dict[str, object] = json.loads(
      "paired_with": "",
      "required": true,
      "shape": {
-      "ref": "PrintContext"
+      "ref": "AgentContext"
      }
     },
     "image_path": {
@@ -5295,6 +5674,13 @@ SHAPES: dict[str, object] = json.loads(
    "tag_field": "",
    "variants": {}
   }
+ },
+ "DetectorHealthStatus": {
+  "enum": [
+   "available",
+   "unavailable",
+   "unchecked"
+  ]
  },
  "DetectorStatus": {
   "enum": [
@@ -7911,100 +8297,6 @@ SHAPES: dict[str, object] = json.loads(
    }
   }
  },
- "PrintContext": {
-  "struct": {
-   "fields": {
-    "bounds": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "EffectiveBounds"
-     }
-    },
-    "detector": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "ref": "DetectorHealth"
-     }
-    },
-    "interventions": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "list": {
-       "ref": "Intervention"
-      },
-      "non_empty": false
-     }
-    },
-    "job": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "JobSnapshot"
-      }
-     }
-    },
-    "latest_image": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "ImageRef"
-      }
-     }
-    },
-    "manifest": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "JobManifest"
-      }
-     }
-    },
-    "print": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "PrintRecord"
-     }
-    },
-    "printer": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "PrinterSnapshot"
-      }
-     }
-    },
-    "recent_events": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "list": {
-       "ref": "EventRecord"
-      },
-      "non_empty": false
-     }
-    },
-    "slicer": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "SlicerPlan"
-      }
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
- },
  "PrintEnded": {
   "struct": {
    "fields": {
@@ -9683,15 +9975,6 @@ SHAPES: dict[str, object] = json.loads(
       }
      }
     },
-    "layers": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "scalar": "integer"
-      }
-     }
-    },
     "minutes_left": {
      "paired_with": "",
      "required": false,
@@ -11351,7 +11634,7 @@ class GeneratedClient(GeneratedSurface):
         # for it, so this cast names that type.
         return cast(StatusAnswer, answered)
 
-    def context(self, print_id: PrintId) -> ContextAnswer:
+    def context(self, print_id: PrintId, since: str | None = None) -> ContextAnswer:
         """Call `context` on the configured supervisor.
 
         Raises:
@@ -11363,6 +11646,8 @@ class GeneratedClient(GeneratedSurface):
         """
         target = f"/v1/prints/{print_id}/context"
         asked: list[tuple[str, str]] = []
+        if since is not None:
+            asked.append(("since", str(since)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = self.call("GET", target, asked, sending, "ContextAnswer")

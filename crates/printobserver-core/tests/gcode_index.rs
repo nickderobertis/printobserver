@@ -103,10 +103,7 @@ fn each_layer_names_its_height_its_types_and_the_time_left() {
     let index = indexed(PLATE);
 
     let first = index.plan_at(past(PLATE, "G1 X20 Y20 E1.5"));
-    assert_eq!(
-        (first.layer, first.layers, first.z_mm),
-        (Some(1), Some(2), Some(0.2))
-    );
+    assert_eq!((first.layer, first.z_mm), (Some(1), Some(0.2)));
     assert_eq!(
         first.types,
         vec![

@@ -90,7 +90,10 @@ pub use config::{
     DEFAULT_RECENT_EVENTS, DEFAULT_SHEETS, MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER, PreflightMode,
     SheetTable, SpoolPolicy,
 };
-pub use context::PrintContext;
+pub use context::{
+    AgentContext, AgentDetector, AgentEvent, AgentHeater, AgentJob, AgentPrint, AgentPrinter,
+    PrintContext,
+};
 pub use decision::{DecisionInput, adjustment, changes_the_machine, decide, valid_from};
 pub use error::CoreError;
 pub use events::{PendingTurn, Received, TERMINAL_STATES};
