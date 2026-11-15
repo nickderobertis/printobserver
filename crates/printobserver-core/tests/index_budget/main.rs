@@ -74,16 +74,24 @@ const LONG_PLATE: [(&str, f64); 6] = [
 ];
 
 /// The plan's facts the budget `agent-context-added-tokens` counts: the layer
-/// and its height, the extrusion types, the final height and the slicer's time
-/// left.
-const COUNTED_FACTS: [&str; 6] = [
+/// and its height, the extrusion types, the final height, the slicer's time
+/// left, the flow factor and fan speed in force, and the objects with their
+/// bed areas.
+const COUNTED_FACTS: [&str; 10] = [
     "layer",
     "layers",
     "z_mm",
     "types",
     "final_z_mm",
     "minutes_left",
+    "flow_factor",
+    "fan_percent",
+    "object_count",
+    "objects",
 ];
+
+/// How many objects the long plate labels: eight guards and eight pads.
+const OBJECTS: usize = 16;
 
 /// Bytes in a megabyte.
 const MEGABYTE: f64 = 1_000_000.0;
@@ -181,6 +189,8 @@ struct Rendered {
     counted: usize,
     /// The bytes every plan field takes.
     every: usize,
+    /// How many objects the plan names.
+    objects: usize,
 }
 
 /// Render the context at the layer naming the most types, and measure what
@@ -190,6 +200,12 @@ fn rendered(index: &GcodeIndex) -> Rendered {
     let plan = index.plan_at(position);
     assert_eq!(plan.types.len(), most_types);
     assert_eq!(plan.final_z_mm, Some(FINAL_Z_MM));
+    assert_eq!(plan.object_count, Some(OBJECTS));
+    assert!(
+        plan.flow_factor.is_some() && plan.fan_percent.is_some(),
+        "the plate's flow and fan are not in force at the layer measured"
+    );
+    let objects = plan.objects.len();
     let layer = plan.layer;
     let mut with_plan = PrintContext::sample_full();
     with_plan.slicer = Some(plan);
@@ -228,6 +244,7 @@ fn rendered(index: &GcodeIndex) -> Rendered {
         per_field,
         counted,
         every,
+        objects,
     }
 }
 
@@ -304,6 +321,10 @@ fn one_long_plate_is_indexed_and_its_plan_rendered() {
             "added_bytes_per_field": rendered.per_field,
             "counted_fields": COUNTED_FACTS,
             "counted_bytes": rendered.counted,
+            "objects": rendered.objects,
+            "bytes_per_object": figure(
+                rendered.per_field["objects"].as_u64().unwrap_or(0)
+            ) / figure(rendered.objects.max(1)),
             "every_plan_field_bytes": rendered.every,
             "every_plan_field_tokens": figure(rendered.every) * TOKENS_PER_BYTE,
             "turn_prompt_bytes": TURN_PROMPT.len(),

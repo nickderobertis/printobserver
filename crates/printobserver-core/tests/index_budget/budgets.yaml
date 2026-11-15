@@ -3,25 +3,33 @@ budgets:
   - id: agent-context-added-tokens
     description: >-
       Agent tokens added per check by the new context facts: the model input
-      tokens one scheduled check adds to the print's conversation through the
-      slicer plan — the context answer's layer, Z, extrusion types, final
-      height and slicer time left, as the labelled lines `printobserver
-      context` prints them, plus the turn prompt template's bytes beyond its
-      bytes at commit 0f1c113e — converted from bytes to tokens at the
-      tokens-per-byte ratio spike-check-costs measured on the Claude model the
-      agent side is served by. Inner measure, because a whole turn's input,
-      about 64,000 tokens, moves with the frame and history and would hide a
-      change this size. Workload: one scheduled check of a 2.5 h print (76
-      checks per print at the default 120 s interval, in one conversation that
-      re-reads each check), at the layer with the most extrusion types of the
-      generated long plate (8 types); text only, no added image. Detail: added
-      bytes per field, the turn prompt's added bytes, the ratio and the layer
-      measured. Basis: measured — spike-check-costs (its tokens row) measured
-      +127 input tokens per check for +330 bytes, median of 2 real
-      `claude-code` turns per variant served by claude-opus-5-5, so 0.385
-      tokens per byte; the threshold, 200, is that measured 127 plus about 57%,
-      restored by the manager because instructions go in the skill and the turn
-      prompt gains only slot facts. Read from the telemetry the
+      tokens one scheduled check adds to the print's conversation through this
+      plan — the context answer's new fields (layer, Z, extrusion types, final
+      height, slicer time left, flow factor, fan speed, and the objects with
+      their bed areas), as the labelled lines `printobserver context` prints
+      them, plus the turn prompt template's bytes beyond its bytes at commit
+      0f1c113e — converted from bytes to tokens at the tokens-per-byte ratio
+      spike-check-costs measured. Detail: added bytes per field, bytes per
+      object, the prompt's added bytes, the ratio and the layer measured.
+      Inner measure, because the approved concern is the tokens these facts
+      add; a whole turn's input, about 64,000 tokens, moves with the frame and
+      history and would hide a change this size. Workload: one scheduled
+      check of a 2.5 h print (76 checks per print at the default 120 s
+      interval, in one conversation that re-reads each check), at the layer
+      with the most extrusion types of the generated long plate (up to 8
+      types), with its 16 labelled objects (8 guards and 8 pads) and flow and
+      fan set; the spike measured the five layer facts at +330 B of context;
+      the agent side runs Claude Code's default model, measured as
+      claude-opus-5-5; text only, no added image. Basis: arithmetic —
+      spike-check-costs (its tokens row) measured +127 input tokens per check
+      for +330 B (median of 2 real `claude-code` turns per variant,
+      claude-opus-5-5, cache included), so 0.385 tokens per byte, on host
+      U-17UN402ICR95C on 2026-11-01; flow, fan and 16 objects as unnamed
+      whole-millimetre rectangles were estimated at about 410 B (about 80 B
+      flow and fan, 18 B per object), about 158 tokens, so about 285 in all.
+      The threshold, 400, is the manager's, replacing an earlier 200 that the
+      new fields make infeasible; arithmetic, because those fields' bytes were
+      estimated. Read from the telemetry the
       `printobserver-core-index-budget:test` journey records; the command
       changes to the repository root first, because onebudgetspec runs it in
       this file's directory.
@@ -39,7 +47,7 @@ budgets:
       - added_tokens
     unit: tokens
     direction: max
-    threshold: 200
+    threshold: 400
     timeout_seconds: 60
   - id: gcode-index-seconds
     description: >-

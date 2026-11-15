@@ -5,7 +5,9 @@
 //! HF0.4 nozzle, 0.20mm BALANCED, automatic supports): about 78 MB in
 //! 3,349,278 lines over 850 layers to a final Z of 142.0 mm, with 661
 //! normal-mode `M73 P.. R..` and 745 silent-mode `M73 Q.. S..` markers, at
-//! most eight extrusion types in one layer, and `G2`/`G3` arcs with `I`/`J`.
+//! most eight extrusion types in one layer, `G2`/`G3` arcs with `I`/`J`,
+//! sixteen labelled objects (eight guards and eight pads), and the flow
+//! (`M221`) and part-cooling fan (`M106`/`M107`) set.
 //! Its per-layer densities follow the recipe of the spike that measured that
 //! slice and the index's cost over it (reports
 //! `print-run-improvements-spike-ops-costs-report`, which holds the slice, and
@@ -39,15 +41,26 @@ const MINUTES: u32 = 561;
 /// How many lines each layer carries, all told: 3,349,278 over 850 layers.
 const LINES_PER_LAYER: u32 = 3_940;
 
-/// The objects on the plate: a name, and the corner and size of the bed area
-/// it is laid in, in millimetres.
-const OBJECTS: [(&str, [f64; 2], [f64; 2]); 6] = [
-    ("magnetic bin body", [8.0, 10.0], [72.0, 78.0]),
-    ("spool clip", [88.0, 12.0], [40.0, 60.0]),
-    ("purge pan", [140.0, 10.0], [100.0, 80.0]),
-    ("scraper holder", [10.0, 110.0], [70.0, 90.0]),
-    ("magnetic base", [92.0, 104.0], [64.0, 96.0]),
-    ("screw", [170.0, 120.0], [60.0, 80.0]),
+/// The objects on the plate — eight guards and eight pads, in rows across the
+/// bed — each a name, and the corner and size of the bed area it is laid in,
+/// in millimetres.
+const OBJECTS: [(&str, [f64; 2], [f64; 2]); 16] = [
+    ("bubbler guard 1", [8.0, 10.0], [52.0, 44.0]),
+    ("bubbler guard 2", [68.0, 10.0], [52.0, 44.0]),
+    ("bubbler guard 3", [128.0, 10.0], [52.0, 44.0]),
+    ("bubbler guard 4", [188.0, 10.0], [52.0, 44.0]),
+    ("bubbler pad 1", [8.0, 60.0], [48.0, 40.0]),
+    ("bubbler pad 2", [68.0, 60.0], [48.0, 40.0]),
+    ("bubbler pad 3", [128.0, 60.0], [48.0, 40.0]),
+    ("bubbler pad 4", [188.0, 60.0], [48.0, 40.0]),
+    ("bubbler guard 5", [8.0, 110.0], [52.0, 44.0]),
+    ("bubbler guard 6", [68.0, 110.0], [52.0, 44.0]),
+    ("bubbler guard 7", [128.0, 110.0], [52.0, 44.0]),
+    ("bubbler guard 8", [188.0, 110.0], [52.0, 44.0]),
+    ("bubbler pad 5", [8.0, 160.0], [48.0, 40.0]),
+    ("bubbler pad 6", [68.0, 160.0], [48.0, 40.0]),
+    ("bubbler pad 7", [128.0, 160.0], [48.0, 40.0]),
+    ("bubbler pad 8", [188.0, 160.0], [48.0, 40.0]),
 ];
 
 /// Every extrusion type the plate names, in the order a layer lays them.
