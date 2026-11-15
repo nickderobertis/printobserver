@@ -194,12 +194,13 @@ jobs:
         env:
           GATE_TIME_KIND: gate
 
-  # `linux-x86_64`'s gate reaches past 1,800 s on one 4-processor runner once a
-  # change reaches the whole graph — 1,980 s on run 41558713748 and 2,006 s on
-  # the release sweep 41532109264 — because its `test` and `test-e2e` tiers run
-  # side by side on the same processors. Four shards give the Rust crates'
-  # tests, every other project's tests beside the other tiers, and each half of
-  # the end-to-end tier a runner of their own.
+  # `linux-x86_64`'s gate reached past the line `gate-time` held when it was
+  # split, on one 4-processor runner once a change reached the whole graph —
+  # 1,980 s on run 41558713748 and 2,006 s on the release sweep 41532109264 —
+  # because its `test` and `test-e2e` tiers run side by side on the same
+  # processors. Four shards give the Rust crates' tests, every other project's
+  # tests beside the other tiers, and each half of the end-to-end tier a runner
+  # of their own.
   gate-shard-linux-x86_64:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
@@ -313,8 +314,8 @@ jobs:
           PRINTOBSERVER_PLATFORM: linux-x86_64
           GITHUB_TOKEN: ${{ github.token }}
 
-  # A platform whose gate does not fit one runner in the 30 minutes each
-  # platform is held to is split: one matrix cell per shard, each running the
+  # A platform whose gate does not fit one runner inside the line `budgets.yaml`'s
+  # `gate-time` holds each platform to is split: one matrix cell per shard, each running the
   # gate tiers `just gate-shards <shards>` hands that shard, and an aggregating
   # job carrying the required name. AGENTS.md's "Commits, releases, and merging"
   # records which platform is split and the run that measured it over.

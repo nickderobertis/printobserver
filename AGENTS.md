@@ -401,8 +401,8 @@ integration cell and the job carrying it, and `.github/budgets.yaml` holds both
 bounds against the graph `github-workflows:test` evaluates.
 
 The gate is two shards and the integration tier a job of its own because one
-3-core runner cannot run the gate, let alone both lanes, under `gate-time`'s
-1,800 s: they are bound by the same processors. The macOS shards leave the
+3-core runner could not run the gate, let alone both lanes, inside the line
+`gate-time` held when they were split: they are bound by the same processors. The macOS shards leave the
 Windows-target lint, which reads only the committed tree, to the Linux gate
 cells, through `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere`.
 
@@ -1287,10 +1287,11 @@ it, because a context named here that nothing reports blocks every pull request
 forever.
 
 **The two Windows gates and `linux-x86_64`'s are sharded.** A 4-processor
-Windows runner cannot run the whole gate in 1,800 s with its tiers in turn, and
-running the end-to-end and test tiers beside each other there starves Nx's
-plugin workers. The `linux-x86_64` runner runs them side by side and still
-exceeds 1,800 s once a change reaches the whole graph. So each of those
+Windows runner could not run the whole gate with its tiers in turn inside the
+line `gate-time` held when they were split, and running the end-to-end and test
+tiers beside each other there starves Nx's plugin workers. The `linux-x86_64`
+runner runs them side by side and exceeded that line once a change reached the
+whole graph. So each of those
 platforms' work runs in the cells of `gate-shard-<platform>`,
 reporting `gate-shard (<platform>, <k>/<n>)`, each running in turn the tiers
 `just gate-shards <n>` hands it; and `gate-<platform>` reports the required
@@ -1304,13 +1305,15 @@ shard-verdict` over the workflow's own `needs`, and then the `gate-time` step.
 `repo_checks.gate_jobs` is the one reading of how long a sharded or unsharded
 context is waited on.
 
-**Every required gate and integration context is held to 1,800 s, inside
-itself.** The root `budgets.yaml` registers `gate-time`, and every job reporting
-one of the ten contexts ends with the `gate-time` step, which fails that context
-over budget — so the merge path refuses the change with no protection change —
-except on the release pull request's full sweep, where it only reports. The
-figure is the critical path of the context's jobs' own running time: the longest
-job behind it, then the aggregator. A job queued for a runner is GitHub's
+**Every required gate and integration context is held to `gate-time`'s line,
+inside itself.** The root `budgets.yaml` registers `gate-time` and is the one
+place its threshold is written: today an interim line, held while the suites
+are cut and the job set reshaped, after which a measured line replaces it.
+Every job reporting one of the ten contexts ends with the `gate-time` step,
+which fails that context over budget — so the merge path refuses the change
+with no protection change — except on the release pull request's full sweep,
+where it only reports. The figure is the critical path of the context's jobs'
+own running time: the longest job behind it, then the aggregator. A job queued for a runner is GitHub's
 capacity rather than this repository's work, so every queue is reported and
 none is charged. A context over budget is brought under by making its work
 faster or sharding it behind its own required name, never by loosening the
