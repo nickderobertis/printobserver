@@ -284,12 +284,12 @@ class Machine:
                 "interventions": [],
             }
         if operation == "context":
+            # A context states the print and its heaters once, as they are now,
+            # and nothing of the job but the print's state.
             return 200, {
                 "context": {
-                    "print": self._print(),
-                    "printer": self._printer(),
-                    "job": self._job(),
-                    "manifest": self.manifest,
+                    "print": {"id": self.print_id, "state": self.printer.connection},
+                    "printer": {"tools": [], "bed": {}},
                     "bounds": {"allowed": self._bounds()},
                     "interventions": [],
                     "recent_events": [],

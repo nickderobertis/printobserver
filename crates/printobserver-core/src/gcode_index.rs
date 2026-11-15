@@ -980,7 +980,7 @@ impl IndexBuilder {
     /// `M221 S<percent>`: the flow factor.
     fn flow_factor(&mut self, words: &[Word]) {
         if let Some(percent) = number(words, 'S').filter(|percent| *percent >= 0.0) {
-            push_changed(&mut self.flow, self.read, percent / 100.0);
+            mark_setting(&mut self.flow, self.read, percent / 100.0);
         }
     }
 
@@ -994,7 +994,7 @@ impl IndexBuilder {
             Fan::Set => number(words, 'S').unwrap_or(FAN_FULL),
         };
         let percent = (speed.clamp(0.0, FAN_FULL) / FAN_FULL * 100.0).round();
-        push_changed(&mut self.fan, self.read, percent);
+        mark_setting(&mut self.fan, self.read, percent);
     }
 
     /// `M486`: an object starting, stopping, or being named.
@@ -1038,7 +1038,7 @@ impl IndexBuilder {
 /// Record a value a file set, where it set it — every time, the same value
 /// included, because a command repeating a value still puts it back over a
 /// change made since.
-fn push_changed(marks: &mut Vec<Mark<f64>>, at: u64, value: f64) {
+fn mark_setting(marks: &mut Vec<Mark<f64>>, at: u64, value: f64) {
     marks.push(Mark { at, value });
 }
 

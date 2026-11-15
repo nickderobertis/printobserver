@@ -554,7 +554,7 @@ exactly that ceiling.
 
 **What it verifies**, in this order, reading the printer's own answer back at
 every point and failing the run naming the point where that answer was not what
-was required: the context read reports the printer, the job and effective bounds
+was required: the context read reports the printer, the print's state and effective bounds
 no wider than the configuration allows; the smoke print starts; each adjustable
 is set just inside its bound and read back from the machine; each is then asked
 for just outside its bound, and the rejection is confirmed to have changed

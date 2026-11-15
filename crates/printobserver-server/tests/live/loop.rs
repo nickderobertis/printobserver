@@ -1297,10 +1297,13 @@ async fn the_reads_answer_the_records_they_name(world: &Composed, print_id: Prin
 
     let (code, context) = world.get(&world.operation_url("context", print_id)).await;
     assert_eq!(code, reqwest::StatusCode::OK);
+    // The context states the manifest's limits as the bounds in force, and
+    // the manifest itself nowhere.
+    assert_eq!(context["context"].get("manifest"), None, "{context}");
     assert_eq!(
-        context["context"]["manifest"],
-        manifest(),
-        "the context does not carry the manifest that was written"
+        context["context"]["bounds"]["allowed"]["feedrate"],
+        manifest()["allowed"]["feedrate"],
+        "the context's bounds are not the manifest's that was written: {context}"
     );
     assert_eq!(
         context["context"]["print"]["id"],

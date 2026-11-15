@@ -212,14 +212,18 @@ fn adjustable(file: Option<f64>, changed: Option<f64>) -> Value {
 }
 
 /// The context of the print the world follows, and the file position the
-/// machine reported in it.
+/// machine reports, read through the status command: the context states the
+/// plan at that position and no position of its own. Once the print is
+/// paused, the two reads are of one position.
 fn context(world: &World) -> (Value, u64) {
-    let answer = running::read(world, &["context", "--print-id", &world.print_id()]);
+    let print_id = world.print_id();
+    let answer = running::read(world, &["context", "--print-id", &print_id]);
     let context = answer["context"].clone();
-    let position = context
+    let status = running::read(world, &["status", "--print-id", &print_id]);
+    let position = status
         .pointer("/job/file_position_bytes")
         .and_then(Value::as_u64)
-        .unwrap_or_else(|| panic!("the context names no file position: {context}"));
+        .unwrap_or_else(|| panic!("the status names no file position: {status}"));
     (context, position)
 }
 

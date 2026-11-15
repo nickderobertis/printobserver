@@ -478,7 +478,7 @@ class Smoke:
     # ~~ the sequence, in the order `SEQUENCE` declares and no other
 
     def step_context(self) -> None:
-        """Read the context, and require the printer, the job and the bounds in it.
+        """Read the context, and require the printer, the print's state and the bounds in it.
 
         Raises:
             VerificationError: If the read failed, if any of the three is missing, or
@@ -491,7 +491,10 @@ class Smoke:
             raise VerificationError(
                 STEP_CONTEXT, f"the context read exited {answer.exit}: {answer.said}"
             )
-        for pointer, what in (("/context/printer", "printer"), ("/context/job", "job")):
+        for pointer, what in (
+            ("/context/printer", "printer"),
+            ("/context/print/state", "print's state"),
+        ):
             if at(answer.document, pointer) is None:
                 raise VerificationError(STEP_CONTEXT, f"the context reports no {what}")
         allowed = at(answer.document, "/context/bounds/allowed")

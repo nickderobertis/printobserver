@@ -757,8 +757,6 @@ impl World {
             .to_owned()
     }
 
-    /// Ask the ledger for one thing, for no reason but setting the walk up,
-    /// and answer what it said.
     /// An event of a print's own that others followed, which a context read
     /// can be asked since: the oldest of its recent events, read through the
     /// program.
@@ -773,6 +771,8 @@ impl World {
             .to_owned()
     }
 
+    /// Ask the ledger for one thing, for no reason but setting the walk up,
+    /// and answer what it said.
     fn ledger(&self, asked: &[&str]) -> Value {
         self.ledger_saying(asked, SETTLING_REASON)
     }
