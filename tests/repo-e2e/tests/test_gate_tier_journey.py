@@ -156,20 +156,25 @@ def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
     )
 
 
+#: The projects carrying the end-to-end tier's target, by their directory.
+END_TO_END_PROJECTS = ("tests/repo-e2e", "tests/repo-e2e-independent")
+
+
 def standing_in_for_the_suite(copy: GateCopy) -> None:
-    """Commit, on the copy's `main`, a `test-e2e` target that does nothing.
+    """Commit, on the copy's `main`, `test-e2e` targets that do nothing.
 
     The project graph's edges, and so which projects a change selects, are the
-    copy's own and unchanged. Only what selection would then run is replaced:
-    the suite, and the build it waits on, which is a task-graph edge and
-    selects nothing.
+    copy's own and unchanged. Only what selection would then run is replaced,
+    in each of the tier's two projects: the suite, and any build it waits on,
+    which is a task-graph edge and selects nothing.
     """
-    project = copy.root / "tests" / "repo-e2e" / "project.json"
-    declared = json.loads(project.read_text(encoding="utf-8"))
-    declared["targets"]["test-e2e"]["command"] = "echo the suite runs as this journey"
-    declared["targets"]["test-e2e"].pop("dependsOn")
-    project.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
-    copy.git("commit", "-q", "-am", "test: stand in for the end-to-end suite")
+    for directory in END_TO_END_PROJECTS:
+        project = copy.root / directory / "project.json"
+        declared = json.loads(project.read_text(encoding="utf-8"))
+        declared["targets"]["test-e2e"]["command"] = "echo the suite runs as this journey"
+        declared["targets"]["test-e2e"].pop("dependsOn", None)
+        project.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
+    copy.git("commit", "-q", "-am", "test: stand in for the end-to-end suites")
 
 
 def test_the_sweep_runs_every_gate_eligible_project(gate_copy: Callable[..., GateCopy]) -> None:
