@@ -53,6 +53,7 @@ const RUNS = {
 };
 
 /** The actions that keep no cache whatever their inputs. */
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 const CACHELESS = new Set([
   "actions/checkout",
   "actions/upload-artifact",
@@ -65,6 +66,7 @@ const CACHELESS = new Set([
  * How one caching action is told what to keep, by the inputs its step sets.
  *
  * @typedef {object} Caching
+ * @property {string | null} onlyWith the input without which it keeps no cache, if it caches only where asked
  * @property {{input: string, value: string} | null} off the input that turns its cache off and the value that does, if one does
  * @property {string | null} restore the input that turns its restore off, if one does
  * @property {string | null} save the input deciding whether it saves, or `null` where it restores and saves as one
@@ -72,29 +74,32 @@ const CACHELESS = new Set([
  */
 
 /** @type {Record<string, Caching>} */
+// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 const CACHING = {
   "actions-rust-lang/setup-rust-toolchain": {
+    onlyWith: null,
     off: { input: "cache", value: "false" },
     restore: null,
     save: "cache-save-if",
     keyedBy: ["cache-key", "cache-shared-key", "cache-workspaces", "cache-directories"],
   },
   "astral-sh/setup-uv": {
+    onlyWith: null,
     off: { input: "enable-cache", value: "false" },
     restore: "restore-cache",
     save: "save-cache",
     keyedBy: ["cache-suffix", "cache-dependency-glob", "cache-local-path"],
   },
   "oven-sh/setup-bun": {
+    onlyWith: null,
     off: { input: "no-cache", value: "true" },
     restore: null,
     save: null,
     keyedBy: [],
   },
-  "actions/cache": { off: null, restore: null, save: null, keyedBy: [] },
+  "actions/cache": { onlyWith: null, off: null, restore: null, save: null, keyedBy: [] },
+  "actions/setup-node": { onlyWith: "cache", off: null, restore: null, save: null, keyedBy: [] },
 };
-/** An action that caches only where it is handed this input, and then restores and saves as one. */
-const CACHING_WHEN_ASKED = { "actions/setup-node": "cache" };
 const RESTORE = "actions/cache/restore";
 const SAVE = "actions/cache/save";
 /** The one cache a pull request may save, by the path it holds. */
@@ -219,13 +224,6 @@ function cellFindings(cell) {
       restored.set(String(step.id), cell.input(step, "key", RUNS.main));
     } else if (used === SAVE) {
       found.push(...saveFindings(cell, step, where, restored));
-    } else if (used in CACHING_WHEN_ASKED) {
-      const asked = CACHING_WHEN_ASKED[/** @type {keyof typeof CACHING_WHEN_ASKED} */ (used)];
-      if (asked in step.with) {
-        found.push(
-          `${where} caches, and restores and saves as one, so it cannot restore on a pull request without saving there: leave \`${asked}\` out`,
-        );
-      }
     } else if (caching === undefined) {
       found.push(`${where} uses an action this test does not know whether it caches`);
     } else {
@@ -242,7 +240,10 @@ function cellFindings(cell) {
  * @param {Caching} caching
  */
 function cachingFindings(cell, step, where, caching) {
-  const { off, restore, save, keyedBy } = caching;
+  const { onlyWith, off, restore, save, keyedBy } = caching;
+  if (onlyWith !== null && !(onlyWith in step.with)) {
+    return [];
+  }
   if (off && off.input in step.with && cell.input(step, off.input, RUNS.main) === off.value) {
     return [];
   }
@@ -335,7 +336,6 @@ function saveFindings(cell, step, where, restored) {
   return found;
 }
 
-/** The committed workflow's text. */
 const TEXT = readFileSync(CI, "utf8");
 
 /**
@@ -433,6 +433,12 @@ describe("a cache saved on a pull request's ref is refused", () => {
       "the combined cache action",
       "        uses: actions/cache/restore@v4\n",
       "        uses: actions/cache@v4\n",
+      "restores and saves as one",
+    ],
+    [
+      "Node's cache asked for",
+      "      - uses: actions/setup-node@v4\n",
+      "      - uses: actions/setup-node@v4\n        with:\n          cache: npm\n",
       "restores and saves as one",
     ],
     [

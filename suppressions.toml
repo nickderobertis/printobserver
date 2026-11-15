@@ -4661,3 +4661,15 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/repo-checks/src/repo_checks/checks_real_prints.py"
 site = "listing = run("
 reason = "One blocking `git ls-files` a synchronous repository check reads its answer from before it goes on, through `repo_checks.shell.run`, the one subprocess path this repository allows. There is nothing to overlap it with, and git's command line is the interface, so no typed client applies."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/tests/caches.test.mjs"
+site = "const CACHELESS = new Set(["
+reason = "Which of the actions ci.yml uses keep a cache, and which input of each turns it off, turns its restore off or decides whether it saves, is each action's own `action.yml` at the major tag the workflow pins. That file lives in the action's own repository, and the gate runs offline, so no gate step can read it. actionlint, run by `just lint-workflows`, already refuses an input that `actions/cache/restore`, `actions/cache/save` or `actions/setup-node` does not declare. It carries no metadata for the Rust toolchain, uv or Bun setup actions, so for those three nothing here reconciles the table. The test assumes no action's default: a caching step that leaves its save input unset is refused, and an action the table does not name is refused rather than assumed cacheless. A renamed input would therefore leave a step this test accepts while its action ignores the input. That shows up on the forge as pull-request caches in the repository's cache list. A scheduled check that reads each pinned action's `action.yml` is drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/tests/caches.test.mjs"
+site = "const CACHING = {"
+reason = "Which of the actions ci.yml uses keep a cache, and which input of each turns it off, turns its restore off or decides whether it saves, is each action's own `action.yml` at the major tag the workflow pins. That file lives in the action's own repository, and the gate runs offline, so no gate step can read it. actionlint, run by `just lint-workflows`, already refuses an input that `actions/cache/restore`, `actions/cache/save` or `actions/setup-node` does not declare. It carries no metadata for the Rust toolchain, uv or Bun setup actions, so for those three nothing here reconciles the table. The test assumes no action's default: a caching step that leaves its save input unset is refused, and an action the table does not name is refused rather than assumed cacheless. A renamed input would therefore leave a step this test accepts while its action ignores the input. That shows up on the forge as pull-request caches in the repository's cache list. A scheduled check that reads each pinned action's `action.yml` is drafted as a follow-up."
