@@ -4,7 +4,8 @@
   "projectType": "library",
   "tags": [
     "lang:python",
-    "type:client"
+    "type:client",
+    "platform:independent"
   ],
   "implicitDependencies": [
     "repo-checks"
