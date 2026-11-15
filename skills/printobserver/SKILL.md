@@ -19,7 +19,7 @@ a time, starting with the program's name: no variable, chain or usage listing. I
 
 1. **Read the context.** The printer, the job, the bounds, recent events, the
    latest picture, and the slicer's plan: layer, heights, types, objects' bed
-   areas, time left, flow and fan.
+   areas, time left, flow, fan, its rise, settings at odds.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    nor is a picture too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
@@ -43,9 +43,8 @@ a time, starting with the program's name: no variable, chain or usage listing. I
    addresses under-extruded walls; the fan, sagging bridges. Neither addresses
    stringing or spaghetti; no other defect has a setting. Read the
    stated flow and fan first, settings and never design, whatever the file's name; change one only for
-   a clear defect its stated value explains. One far from normal, flow well under one or the fan off,
-   makes any sign of its defect clear, however small in the frame: put it back to
-   normal, flow one, the fan full.
+   a clear defect its stated value explains, or one the plan calls at odds,
+   wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
 2. **A clear defect no setting addresses, or a part that has moved or gone, gets a
    pause,** also beside a defect with a setting.
 3. **An uncertain reading gets a watch and another look, never a pause,** unless
@@ -66,11 +65,12 @@ Reading frames:
   outline and clearly growing or out of place. A strand off the part, on a
   rail, screw or frame, is not: note it.
 - **Position.** Judge each frame against this print's earlier frames. What is
-  printed stays where it was laid and rises with the plan's Z: parts lacking
-  the Z added since earlier frames are not printing, however small or busy
-  the nozzle: a clear defect, never uncertain. A shifting view carries sheet and part
-  together, so at every look measure the footprint's distance to one of the
-  sheet's holes, edges or marks, now and earlier, giving both in your reason. Changed in any frame, even one a later frame seems to undo, it
+  printed stays where it was laid and rises by the Z the plan says was
+  added since an earlier frame: parts lacking it are not printing, however small:
+  a clear defect, never uncertain. A shifting view carries sheet and part
+  together, so at every look measure the parts' height against that frame and
+  the footprint's distance to one of the sheet's holes, edges or marks, now
+  and earlier, giving both in your reason. Changed in any frame, even one a later frame seems to undo, it
   has moved, whatever might explain it. So has a
   part off the bed, a first layer not sticking, or a part where the plan puts
   no object, its own place empty.
