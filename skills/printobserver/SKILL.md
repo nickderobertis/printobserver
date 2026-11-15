@@ -65,9 +65,9 @@ Reading frames:
   outline and clearly growing or out of place. A strand off the part, on a
   rail, screw or frame, is not: note it.
 - **Position.** Judge each frame against this print's earlier frames. What is
-  printed stays where it was laid and rises by the Z the plan says was
-  added since an earlier frame: parts lacking it are not printing, however small:
-  a clear defect, never uncertain. A shifting view carries sheet and part
+  printed stays where it was laid. Where the plan states its rise since a
+  frame half an hour back, parts lacking it are not printing, however
+  small: a clear defect, never uncertain. A shifting view carries sheet and part
   together, so at every look measure the parts' height against that frame and
   the footprint's distance to one of the sheet's holes, edges or marks, now
   and earlier, giving both in your reason. Changed in any frame, even one a later frame seems to undo, it
