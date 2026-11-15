@@ -71,10 +71,14 @@ pub const FRAME_PATH: &str = "/api/frame.jpeg";
 const SETTLING_ROUNDS: usize = 4;
 
 /// How many times it looks after each asking.
-const SETTLING_POLLS: usize = 40;
+const SETTLING_POLLS: usize = 200;
 
-/// How long it waits between looking.
-const SETTLING_PAUSE: core::time::Duration = core::time::Duration::from_millis(500);
+/// How long it waits between looking: short, because every invocation of the
+/// walk against a real machine waits on at least one settling, and the walk
+/// runs hundreds of them, so the pause is what that wait costs beyond the
+/// machine's own time. The rounds' patience is `SETTLING_POLLS` of these,
+/// twenty seconds, whatever this is.
+const SETTLING_PAUSE: core::time::Duration = core::time::Duration::from_millis(100);
 
 /// Enough hold-print time for one traced command on the slowest hosted runner.
 const INVOCATION_MARGIN_SECONDS: i64 = 120;
