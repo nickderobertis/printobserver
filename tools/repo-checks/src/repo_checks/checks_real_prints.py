@@ -76,6 +76,9 @@ POINTER_SIZE = re.compile(r"size (?P<size>0|[1-9][0-9]*)")
 
 #: The one list of steps a continuous-integration job fetches the cases with.
 CI_STEPS = "tests/real-prints-lfs/ci-steps.yml"
+#: The job-level variable those steps run under: `true` where the job reads or
+#: warms the store on this run, and anything else where it does neither.
+CI_STEPS_SWITCH = "REAL_PRINTS_STORE"
 #: The programs a command reaches the cases' LFS objects through; a recipe
 #: reaches them when its body, or a recipe it calls, names one of these.
 LFS_PROGRAMS = ("git lfs", "git-lfs")
@@ -973,7 +976,9 @@ def real_prints_lfs_ci(repo: Repo) -> list[str]:
     counts as surely as `just real-prints-fetch`. A job with such a line must
     carry `ci-steps.yml` verbatim, which restores the store from the Actions
     cache and downloads only on a miss, and may have none before those steps;
-    after them the store is whole, and a fetch there downloads nothing.
+    after them the store is whole, and a fetch there downloads nothing. Those
+    steps run only where the job's own `REAL_PRINTS_STORE` is `true`, so the
+    job must set it: a job leaving it out would skip all of them.
     """
     canonical = _ci_steps(repo)
     if isinstance(canonical, str):
@@ -1008,6 +1013,13 @@ def real_prints_lfs_ci(repo: Repo) -> list[str]:
                     f"{CI_STEPS} verbatim: fetch them through those steps"
                 )
                 continue
+            switch = job.get("env")
+            if not isinstance(switch, dict) or CI_STEPS_SWITCH not in switch:
+                findings.append(
+                    f"{where} carries {CI_STEPS} without setting `{CI_STEPS_SWITCH}` in its "
+                    f"`env`, so every one of those steps is skipped: set it to `\"true\"`, or "
+                    f"to the expression naming the runs that need the store"
+                )
             findings.extend(
                 f"{where} runs `{command}`, which reaches the cases' LFS objects, before "
                 f"{CI_STEPS}: run it after those steps, once the store is whole"

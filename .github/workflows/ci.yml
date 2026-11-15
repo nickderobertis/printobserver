@@ -26,16 +26,24 @@
 #
 # Every run restores the caches a run on `main` saved, and only a run on `main`
 # saves one: the Rust toolchain's through `cache-save-if`, uv's through
-# `save-cache`, and the release program's through a save step conditioned on
-# the ref. A pull request's cache is scoped to its merge ref, which no other
+# `save-cache`, and Bun's and the release program's through a save step
+# conditioned on the ref. A pull request's cache is scoped to its merge ref, which no other
 # run restores, so three open pull requests saving theirs filled the
 # repository's 10 GB quota and evicted `main`'s, and every pull request after
 # ran cold. Bun's own cache cannot be split that way — the action saves on any
-# ref whose key missed — and holds one 33 MB download, so it is off. The one
-# cache a pull request saves is the real-print suite's LFS store, keyed on the
-# cases' content and saved only when that misses: only a pull request changing
-# the cases saves one, and restoring it alone would download them again on
-# every push. `.github/tests/caches.test.mjs` holds every cache step to this.
+# ref whose key missed — so it is off, and its executable is restored and saved
+# around it by the cache action's two halves: the action uses a `~/.bun/bin/bun`
+# already at the version `package.json` pins rather than downloading one.
+#
+# The one cache a pull request saves is the real-print suite's LFS store, keyed
+# on the cases' content: `skilltest` saves it only when that key missed, so only
+# a pull request changing the cases saves one, and its later pushes restore it
+# rather than download the cases again. `skilltest-classify` restores it on every
+# push to `main`, whether or not the push owes the suite, which keeps `main`'s
+# entry from the forge's 7-day eviction, and fetches and saves it when the key
+# missed. Every restore of it falls back by key prefix to the newest older store,
+# so a fetch downloads only the objects that store lacks.
+# `.github/tests/caches.test.mjs` holds every cache step to this.
 
 name: ci
 
@@ -77,9 +85,19 @@ jobs:
           # checkout carries.
           fetch-depth: 0
       - uses: extractions/setup-just@v3
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - id: classify
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -146,9 +164,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -230,9 +258,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -344,9 +382,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -450,9 +498,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -544,9 +602,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # The release program every client's world carries, in a cache of its
@@ -649,9 +717,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -721,9 +799,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       - id: release-program
@@ -799,9 +887,19 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       # The release `repo-policy.toml` holds gh at, installed from that
       # release's own archive once its published checksums vouch for it, ahead
       # of the runner's own gh on PATH.
@@ -817,6 +915,9 @@ jobs:
   skilltest-classify:
     name: skilltest-classify
     runs-on: ubuntu-24.04
+    env:
+      # The real-print cases' LFS store is warmed by a push to `main` alone.
+      REAL_PRINTS_STORE: ${{ github.ref == 'refs/heads/main' }}
     outputs:
       owed: ${{ steps.classify.outputs.owed }}
       reason: ${{ steps.classify.outputs.reason }}
@@ -836,6 +937,27 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: just skilltest-classify "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
+      # The steps `tests/real-prints-lfs/ci-steps.yml` holds, verbatim, run on a
+      # push to `main` alone: the header says why this job warms the store.
+      - id: real-prints-key
+        if: env.REAL_PRINTS_STORE == 'true'
+        run: just real-prints-cache-key >> "$GITHUB_OUTPUT"
+      - id: real-prints-cache
+        if: env.REAL_PRINTS_STORE == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.real-prints-key.outputs.key }}
+          restore-keys: real-prints-lfs-
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
+        run: just real-prints-fetch
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.real-prints-key.outputs.key }}
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit == 'true'
+        run: just real-prints-checkout
 
   # The real-print suite, on the harness and model production runs. Where the
   # classifier says it is not owed this is skipped, which the forge reports as a
@@ -850,6 +972,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # The real-print cases' LFS store, restored, and saved where its key missed.
+      REAL_PRINTS_STORE: "true"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -863,27 +987,40 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
         with:
           no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: actions/setup-node@v4
       - run: just bootstrap
       # The steps `tests/real-prints-lfs/ci-steps.yml` holds, verbatim.
       - id: real-prints-key
+        if: env.REAL_PRINTS_STORE == 'true'
         run: just real-prints-cache-key >> "$GITHUB_OUTPUT"
       - id: real-prints-cache
+        if: env.REAL_PRINTS_STORE == 'true'
         uses: actions/cache/restore@v4
         with:
           path: .git/lfs/objects
           key: ${{ steps.real-prints-key.outputs.key }}
-      - if: steps.real-prints-cache.outputs.cache-hit != 'true'
+          restore-keys: real-prints-lfs-
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
         run: just real-prints-fetch
-      - if: steps.real-prints-cache.outputs.cache-hit != 'true'
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .git/lfs/objects
           key: ${{ steps.real-prints-key.outputs.key }}
-      - if: steps.real-prints-cache.outputs.cache-hit == 'true'
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit == 'true'
         run: just real-prints-checkout
       - run: just skilltest-install-harness
       - run: just skilltest-record

@@ -222,19 +222,50 @@ def test_a_second_clone_sharing_the_hosts_lfs_storage_serves_nothing(
     RECORDED.shared_store_second_clone_bytes = 0
 
 
-#: The one condition and the one interpolation the committed steps use.
+#: The conditions and the one interpolation the committed steps use: the job's
+#: switch, alone or before one step output compared with `'true'`.
+SWITCH = "env.REAL_PRINTS_STORE == 'true'"
 CONDITION = re.compile(r"steps\.(?P<id>[\w-]+)\.outputs\.(?P<name>[\w-]+) (?P<op>==|!=) 'true'")
 INTERPOLATION = re.compile(r"\$\{\{ steps\.(?P<id>[\w-]+)\.outputs\.(?P<name>[\w-]+) \}\}")
 
 
-def run_ci_steps(host: Host, checkout: Path, cache: Path) -> list[str]:
+def holds(condition: str, switched: bool, outputs: dict[str, dict[str, str]]) -> bool:
+    """Whether a committed step's condition holds, or a failure for a form this does not know."""
+    switch, _, rest = condition.partition(" && ")
+    if switch != SWITCH:
+        pytest.fail(f"the condition `{condition}` does not open with `{SWITCH}`")
+    if not switched:
+        return False
+    if not rest:
+        return True
+    parsed = CONDITION.fullmatch(rest)
+    if parsed is None:
+        pytest.fail(f"the condition `{condition}` is in no form this runs")
+    answered = outputs.get(parsed["id"], {}).get(parsed["name"], "") == "true"
+    return answered == (parsed["op"] == "==")
+
+
+def restored_from(cache: Path, key: str, prefixes: list[str]) -> Path | None:
+    """The entry `actions/cache/restore` restores: the key's own, else the newest a prefix matches."""
+    if (cache / key).is_dir():
+        return cache / key
+    for prefix in prefixes:
+        matched = [entry for entry in cache.iterdir() if entry.name.startswith(prefix)]
+        if matched:
+            return max(matched, key=lambda entry: entry.stat().st_mtime_ns)
+    return None
+
+
+def run_ci_steps(host: Host, checkout: Path, cache: Path, *, switched: bool = True) -> list[str]:
     """Run the committed CI steps in `checkout`, with `cache` standing for the Actions cache.
 
-    Every `run:` runs for real under bash, `just` reaching the committed
-    justfile; `actions/cache/restore` and `actions/cache/save` copy the step's
-    path to and from `cache/<key>`, and answer `cache-hit` as the action does.
-    A step or an expression this does not know fails the journey rather than
-    being skipped. Answers what ran, in order.
+    `switched` is the job's `REAL_PRINTS_STORE`. Every `run:` runs for real
+    under bash, `just` reaching the committed justfile; `actions/cache/restore`
+    copies `cache/<key>` into the step's path, or else the newest entry a
+    restore key prefixes, and answers `cache-hit` as the action does — `true`
+    on the key's own entry alone; `actions/cache/save` copies the path to
+    `cache/<key>`. A step or an expression this does not know fails the journey
+    rather than being skipped. Answers what ran, in order.
     """
     steps = yaml.safe_load(CI_STEPS.read_text(encoding="utf-8"))
     outputs: dict[str, dict[str, str]] = {}
@@ -245,13 +276,10 @@ def run_ci_steps(host: Host, checkout: Path, cache: Path) -> list[str]:
 
     for index, step in enumerate(steps):
         condition = step.get("if")
-        if condition is not None:
-            parsed = CONDITION.fullmatch(condition)
-            if parsed is None:
-                pytest.fail(f"step {index}'s condition `{condition}` is in no form this runs")
-            holds = outputs.get(parsed["id"], {}).get(parsed["name"], "") == "true"
-            if holds != (parsed["op"] == "=="):
-                continue
+        if condition is None:
+            pytest.fail(f"step {index} carries no condition, so it runs whatever the switch says")
+        if not holds(condition, switched, outputs):
+            continue
         if "run" in step:
             written = host.root / f"github-output-{index}"
             written.write_text("", encoding="utf-8")
@@ -274,15 +302,16 @@ def run_ci_steps(host: Host, checkout: Path, cache: Path) -> list[str]:
         uses = step.get("uses")
         key = interpolated(step["with"]["key"])
         path = checkout / step["with"]["path"]
-        saved = cache / key
         match uses:
             case "actions/cache/restore@v4":
-                hit = saved.is_dir()
-                if hit:
-                    shutil.copytree(saved, path, dirs_exist_ok=True)
-                outputs[step["id"]] = {"cache-hit": "true" if hit else "false"}
+                prefixes = str(step["with"].get("restore-keys", "")).split()
+                entry = restored_from(cache, key, prefixes)
+                if entry is not None:
+                    shutil.copytree(entry, path, dirs_exist_ok=True)
+                    ran.append(f"restored {entry.name}")
+                outputs[step["id"]] = {"cache-hit": "true" if entry == cache / key else "false"}
             case "actions/cache/save@v4":
-                shutil.copytree(path, saved)
+                shutil.copytree(path, cache / key)
             case _:
                 pytest.fail(f"step {index} uses `{uses}`, which this does not run")
         ran.append(f"{uses} {key}")
@@ -323,6 +352,63 @@ def test_the_ci_steps_fetch_on_a_miss_save_the_store_and_restore_it_on_a_hit(
     RECORDED.ci = CiRuns(
         saved[0].name, Transfer(miss_bytes, miss_objects), Transfer(hit_bytes, len(host.served()))
     )
+
+
+def test_the_ci_steps_switched_off_restore_fetch_and_save_nothing(
+    host: Host, tmp_path: Path
+) -> None:
+    """A job whose `REAL_PRINTS_STORE` is not `true` — a pull request's classifier — skips them all."""
+    cache = tmp_path / "actions-cache"
+    cache.mkdir()
+    clone = host.clone("ci-off")
+    equal(run_ci_steps(host, clone, cache, switched=False), [], describing="steps that ran")
+    equal(host.served_bytes(), 0, describing="bytes served with the switch off")
+    equal(list(cache.iterdir()), [], describing="caches saved with the switch off")
+    equal(pointers_in(clone), list(LFS_FILES), describing="files left as pointers")
+
+
+def test_over_an_older_object_sets_store_the_ci_steps_fetch_only_the_object_it_lacks(
+    tmp_path: Path,
+) -> None:
+    """A miss restores the newest store a key prefix matches, and downloads only what it lacks.
+
+    The store a run saved for the fixture's objects stands in the cache when
+    one object changes. The next run's key misses, its restore key prefixes
+    that older store, and the real fetch recipe then downloads exactly the
+    changed object's bytes before the store is saved under the new key.
+    """
+    world = tmp_path / "world"
+    world.mkdir()
+    publisher, source = publish_fixture(world)
+    host = make_host(tmp_path / "host", publisher.remote)
+    cache = tmp_path / "actions-cache"
+    cache.mkdir()
+    run_ci_steps(host, host.clone("before"), cache)
+    (older,) = (entry.name for entry in cache.iterdir())
+
+    changed = "tests/real-prints/case-b/01-frame.jpeg"
+    replacement = b"a frame the older store does not hold"
+    (source / changed).write_bytes(replacement)
+    publisher.git("commit", "-q", "-am", "change one object", cwd=source)
+    publisher.git("push", "-q", "origin", "main", cwd=source)
+
+    host.forget_served()
+    after = host.clone("after")
+    ran = run_ci_steps(host, after, cache)
+    contains("\n".join(ran), f"restored {older}")
+    contains("\n".join(ran), "just real-prints-fetch")
+    served = host.served()
+    equal(len(served), 1, describing="objects the fetch over the older store served")
+    equal(served[0].size, len(replacement), describing="bytes the fetch over the older store served")
+    equal((after / changed).read_bytes(), replacement, describing="the changed file after the fetch")
+    equal(
+        [relative for relative in differing_from_originals(after) if relative != changed],
+        [],
+        describing="unchanged files not their originals",
+    )
+    saved = sorted(entry.name for entry in cache.iterdir())
+    equal(len(saved), 2, describing="caches after the newer set's miss")
+    truth(all(name.startswith("real-prints-lfs-") for name in saved), describing="keys by prefix")
 
 
 def key_of(host: Host, checkout: Path) -> str:
