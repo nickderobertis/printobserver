@@ -246,7 +246,7 @@ def holds(condition: str, switched: bool, outputs: dict[str, dict[str, str]]) ->
 
 
 def restored_from(cache: Path, key: str, prefixes: list[str]) -> Path | None:
-    """The entry `actions/cache/restore` restores: the key's own, else the newest a prefix matches."""
+    """The entry `actions/cache/restore` restores: the key's own, else the newest prefixed one."""
     if (cache / key).is_dir():
         return cache / key
     for prefix in prefixes:
@@ -357,7 +357,7 @@ def test_the_ci_steps_fetch_on_a_miss_save_the_store_and_restore_it_on_a_hit(
 def test_the_ci_steps_switched_off_restore_fetch_and_save_nothing(
     host: Host, tmp_path: Path
 ) -> None:
-    """A job whose `REAL_PRINTS_STORE` is not `true` — a pull request's classifier — skips them all."""
+    """A job whose `REAL_PRINTS_STORE` is not `true`, a pull request's classifier, skips them."""
     cache = tmp_path / "actions-cache"
     cache.mkdir()
     clone = host.clone("ci-off")
@@ -399,8 +399,8 @@ def test_over_an_older_object_sets_store_the_ci_steps_fetch_only_the_object_it_l
     contains("\n".join(ran), "just real-prints-fetch")
     served = host.served()
     equal(len(served), 1, describing="objects the fetch over the older store served")
-    equal(served[0].size, len(replacement), describing="bytes the fetch over the older store served")
-    equal((after / changed).read_bytes(), replacement, describing="the changed file after the fetch")
+    equal(served[0].size, len(replacement), describing="bytes served over the older store")
+    equal((after / changed).read_bytes(), replacement, describing="the changed file")
     equal(
         [relative for relative in differing_from_originals(after) if relative != changed],
         [],
