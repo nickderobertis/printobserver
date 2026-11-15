@@ -5,12 +5,16 @@
 //! A committed generator ([`generator`]) streams a slice shaped like the long
 //! plate those budgets name into the core's real [`IndexBuilder`], a piece at
 //! a time, through [`GcodeSink`] — the interface the `OctoPrint` adapter's
-//! whole-file read feeds it. The build is timed as the elapsed wall time from
-//! the first byte reaching the builder to the index being ready — the pieces
-//! still arriving while it reads included, as a streamed read's do — and the
-//! builder's own share of that time is recorded beside it; and the heap is counted over the whole build by the counting
-//! global allocator this binary runs under, its read buffer and the built
-//! index included. The context answer is then rendered at the layer naming
+//! whole-file read feeds it. The plate is written into memory first, because
+//! the generator stands in for the `OctoPrint` read, which the budget leaves
+//! out: timing its writing would measure this test rather than the indexer.
+//! The build is then timed as the elapsed wall time from the first piece
+//! reaching the builder to the index being ready, each piece handed over as
+//! fast as a read delivers one, and the builder's own share of that time is
+//! recorded beside it; and the heap is counted over the whole build by the counting
+//! global allocator this binary runs under, from a baseline taken once the
+//! written plate is held, so the held plate is outside it while the read
+//! buffer and the built index are inside. The context answer is then rendered at the layer naming
 //! the most extrusion types, through the labelled rendering the program a turn
 //! runs prints it in (`printobserver_types::labelled`), and the
 //! bytes the plan's facts add are converted to tokens at the ratio the
@@ -145,33 +149,45 @@ struct Built {
     peak: usize,
 }
 
-/// Stream the long plate into the core's index builder, a piece at a time.
-fn built() -> Built {
+/// The long plate, written a piece at a time, every piece held.
+fn written() -> (Vec<String>, Shape) {
     let mut plate = LongPlate::new();
-    ALLOCATOR.reset_peak_usage();
-    let baseline = ALLOCATOR.current_usage();
-    let mut piece = String::with_capacity(PIECE * 2);
-    let mut builder = IndexBuilder::new();
-    let mut building = Duration::ZERO;
-    let mut started = None;
+    let mut pieces = Vec::new();
     loop {
+        let mut piece = String::with_capacity(PIECE * 2);
         plate.next_piece(&mut piece);
         if piece.is_empty() {
-            break;
+            return (pieces, plate.shape());
         }
+        pieces.push(piece);
+    }
+}
+
+/// Stream the long plate into the core's index builder, a piece at a time.
+fn built() -> Built {
+    let (pieces, shape) = written();
+    ALLOCATOR.reset_peak_usage();
+    let baseline = ALLOCATOR.current_usage();
+    // The read buffer a streamed read fills, one piece at a time.
+    let mut piece = Vec::with_capacity(PIECE * 2);
+    let mut builder = IndexBuilder::new();
+    let mut building = Duration::ZERO;
+    let started = Instant::now();
+    for held in &pieces {
+        piece.clear();
+        piece.extend_from_slice(held.as_bytes());
         let taking = Instant::now();
-        started.get_or_insert(taking);
-        assert_eq!(builder.take(piece.as_bytes()), ControlFlow::Continue(()));
+        assert_eq!(builder.take(&piece), ControlFlow::Continue(()));
         building += taking.elapsed();
     }
     let finishing = Instant::now();
     let index = builder.finish();
     building += finishing.elapsed();
-    let wall = started.map_or(Duration::ZERO, |started| started.elapsed());
+    let wall = started.elapsed();
     let peak = ALLOCATOR.peak_usage().saturating_sub(baseline);
     Built {
         index,
-        shape: plate.shape(),
+        shape,
         building,
         wall,
         peak,
