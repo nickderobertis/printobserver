@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/nickderobertis/printobserver/compare/v0.11.1...v0.12.0) - 2026-11-07
+
+### Added
+
+- *(preflight)* [**breaking**] refuse a start whose material or build sheet is wrong ([#317](https://github.com/nickderobertis/printobserver/pull/317))
+
 ## [0.11.1](https://github.com/nickderobertis/printobserver/compare/v0.10.5...v0.11.1) - 2026-11-03
 
 ### Added

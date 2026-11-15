@@ -19,7 +19,7 @@ use std::time::Duration;
 use printobserver_core::store::Stores;
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
-use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
+use printobserver_octoprint::standin::{JobScript, Landing, ScriptedOctoPrint};
 use printobserver_server::{Ports, Running, Server, ServerConfig};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_supervisor_api::TurnRequest;
@@ -194,6 +194,22 @@ impl Watch {
                 Value::Array(self.history().await)
             );
             tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Wait until the job has been read `reads` more times than it has been
+    /// so far, so every poll a defect could act in has run rather than a
+    /// stretch of the clock that may or may not have held one.
+    pub async fn polled_again(&self, reads: usize) {
+        let target = self.octoprint.job_reads() + reads;
+        let deadline = tokio::time::Instant::now() + PATIENCE;
+        while self.octoprint.job_reads() < target {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the job was read {} of {target} times",
+                self.octoprint.job_reads()
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
     }
 
@@ -1099,18 +1115,31 @@ async fn a_position_nothing_answers_or_answers_unreadably_is_motion_unknown() {
 }
 
 /// A job started inside the window closes it: heating while it runs is no
-/// activity, and none is attributed to the interrupted print after it ends.
+/// activity, none is attributed to the interrupted print after it ends, and the
+/// watch sends no `M114` once it has read the job running.
+///
+/// The job starts once the window's probe is answered, rather than at a moment
+/// on the clock. The stand-in tags a command by the job as the command arrives,
+/// and the watch reads the job before it sends one, so a job started between
+/// that read and the command is one no client could have seen:
+/// `a_job_starting_as_the_probe_is_sent_is_met_by_that_probe_alone` holds that
+/// ordering on its own.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_job_started_inside_the_window_closes_it() {
     let watch = Watch::open().await;
     watch.connected().await;
     interrupted(&watch).await;
 
-    watch.octoprint.reports(
+    watch.octoprint.reports_at_next_command(
+        Landing::After,
         "Printing",
         JobScript::printing("second.gcode", SIZE, 100, 30),
     );
     watch.until("print_started", 2).await;
+    assert!(
+        !watch.octoprint.reporting_pending(),
+        "the job started before the window's probe was answered"
+    );
     watch.octoprint.targets(210.0, 60.0);
     tokio::time::sleep(POLL * 6).await;
     watch.octoprint.reports(
@@ -1139,6 +1168,52 @@ async fn a_job_started_inside_the_window_closes_it() {
         sent_while_printing,
         Vec::new(),
         "M114 was sent while a job ran"
+    );
+}
+
+/// A job that starts as the window's probe is sent is met by that probe alone.
+/// The watch read no job running, so it sent the probe, and the command arrived
+/// at a printing instance; once the watch has read the job running it sends no
+/// other, and its heating is no activity.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_job_starting_as_the_probe_is_sent_is_met_by_that_probe_alone() {
+    let watch = Watch::open().await;
+    watch.connected().await;
+    interrupted(&watch).await;
+
+    watch.octoprint.reports_at_next_command(
+        Landing::Before,
+        "Printing",
+        JobScript::printing("second.gcode", SIZE, 100, 30),
+    );
+    watch.until("print_started", 2).await;
+    watch.octoprint.targets(210.0, 60.0);
+    watch.polled_again(3).await;
+    watch.octoprint.reports(
+        "Operational",
+        JobScript {
+            file: Some(("second.gcode".to_owned(), SIZE)),
+            ..JobScript::idle()
+        },
+    );
+    watch.until("print_ended", 2).await;
+
+    let sent_while_printing: Vec<(String, bool)> = watch
+        .octoprint
+        .commands()
+        .into_iter()
+        .filter(|(_, printing)| *printing)
+        .collect();
+    assert_eq!(
+        sent_while_printing,
+        vec![("M114".to_owned(), true)],
+        "the one probe the job met, and none after the watch read it running"
+    );
+    assert!(
+        watch
+            .of_kind("unattended_printer_activity")
+            .await
+            .is_empty()
     );
 }
 

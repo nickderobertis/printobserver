@@ -14,8 +14,9 @@ this budget was built on, and three things are held of it:
   no `continue-on-error`, naming its own context, and with nothing but
   `actions: read` added to the permissions it had;
 * and that step's own `run` script, run as `ci.yml` states it against a stand-in
-  jobs API serving a recorded run over 1,800 s, fails the context on a pull
-  request and passes, still reporting the figure, on the release sweep.
+  jobs API serving a recorded run stretched over the line `budgets.yaml` holds,
+  fails the context on a pull request and passes, still reporting the figure,
+  on the release sweep.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from typing import Any
 
 import pytest
 import yaml
+from onebudgetspec_sdk import list_budgets
 from repo_checks.checks_ci import status_contexts
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gate_jobs import COMBINED_JOB, INTEGRATION_SHARD_JOB, SHARD_JOB
@@ -37,7 +39,7 @@ from repo_checks.model import Repo
 from repo_checks.parsing import Recipe, jobs_of, load_workflow, recipes, run_commands, steps_of
 from repo_checks.platforms import supported
 from repo_checks.shell import run
-from standin_jobs_api import Jobs, serving
+from standin_jobs_api import Jobs, serving, slowed
 from treecopy import REPO_ROOT
 
 #: This branch's merge base with `main`: the workflow every context is held against.
@@ -92,9 +94,18 @@ ADDED = {
 }
 
 RECORDED = Path(__file__).parent / "recorded"
-#: The finished pull-request run whose combined macOS job ran 2,573 s, so both
-#: macOS contexts are over 1,800 s; `test_gate_time_budget.py` reads it too.
+#: The finished pull-request run whose combined macOS job ran 2,573 s, its two
+#: macOS contexts' paths 2,579 s and 2,580 s; `test_gate_time_budget.py` reads it too.
 OVER_BUDGET = 40235536077
+MACOS_JOB = "macos-aarch64 (gate, integration)"
+#: The line `budgets.yaml` holds every required context to, read from it alone.
+THRESHOLD = int(
+    next(
+        budget.threshold
+        for budget in list_budgets(paths=[REPO_ROOT / "budgets.yaml"]).budgets
+        if budget.id == BUDGET
+    )
+)
 REPOSITORY = "nickderobertis/printobserver"
 
 TIER_TARGETS = re.compile(r"gate_tier run \{\{\s*quote\(tier\)\s*\}\} (?P<targets>[\w: -]+)")
@@ -362,11 +373,16 @@ def test_every_required_job_ends_with_the_gate_time_step(
 
 @pytest.fixture
 def over_budget() -> Iterator[str]:
-    """The stand-in jobs API serving the recorded run whose macOS contexts are over."""
+    """The stand-in jobs API serving the recorded run, its macOS job run `THRESHOLD` s longer.
+
+    So both macOS contexts are over whatever line `budgets.yaml` holds.
+    """
     document = json.loads(
         (RECORDED / f"jobs-{OVER_BUDGET}-attempt-1.json").read_text(encoding="utf-8")
     )
-    with serving(Jobs(REPOSITORY, OVER_BUDGET, 1, document)) as address:
+    with serving(
+        Jobs(REPOSITORY, OVER_BUDGET, 1, slowed(document, MACOS_JOB, THRESHOLD))
+    ) as address:
         yield address
 
 
@@ -385,13 +401,18 @@ def _step(repo: Repo, key: str) -> tuple[str, dict[str, str]]:
 @pytest.mark.parametrize(
     ("key", "head", "status", "said"),
     [
-        ("gate-macos", "nick/255/printobserver-release-declaration", 1, "gate-time: over: 2579 s"),
-        ("integration-macos", "nick/255/x", 1, "gate-time: over: 2580 s"),
+        (
+            "gate-macos",
+            "nick/255/printobserver-release-declaration",
+            1,
+            f"gate-time: over: {2579 + THRESHOLD} s",
+        ),
+        ("integration-macos", "nick/255/x", 1, f"gate-time: over: {2580 + THRESHOLD} s"),
         (
             "gate-macos",
             "release-plz-2026-10-25T21-00-00Z",
             0,
-            "over, reported and not enforced on the release sweep: 2579 s",
+            f"over, reported and not enforced on the release sweep: {2579 + THRESHOLD} s",
         ),
     ],
 )
@@ -404,7 +425,7 @@ def test_the_step_s_own_script_fails_an_over_budget_context_but_on_the_release_s
     status: int,
     said: str,
 ) -> None:
-    """`run: just gate-time`, exactly as `ci.yml` states it, over a recorded 2,579 s path."""
+    """`run: just gate-time`, exactly as `ci.yml` states it, over a recorded path past the line."""
     script, environment = _step(committed_repo, key)
     for name, value in {
         **environment,

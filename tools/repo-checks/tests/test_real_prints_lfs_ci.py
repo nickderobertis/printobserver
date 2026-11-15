@@ -42,13 +42,18 @@ def check(capsys: pytest.CaptureFixture[str]) -> Run:
     return run
 
 
-def with_job(tree: Tree, steps: list[dict[str, Any]]) -> Tree:
-    """A copy carrying one workflow more, whose one job runs `steps`."""
-    workflow = {
-        "name": "suite",
-        "on": {"workflow_dispatch": {}},
-        "jobs": {"suite": {"runs-on": "ubuntu-24.04", "steps": steps}},
-    }
+#: The job-level switch the committed steps run under, as the suite's job sets it.
+SWITCHED = {"REAL_PRINTS_STORE": "true"}
+
+
+def with_job(
+    tree: Tree, steps: list[dict[str, Any]], env: dict[str, str] | None = SWITCHED
+) -> Tree:
+    """A copy carrying one workflow more, whose one job runs `steps` under `env`."""
+    job: dict[str, Any] = {"runs-on": "ubuntu-24.04", "steps": steps}
+    if env is not None:
+        job["env"] = env
+    workflow = {"name": "suite", "on": {"workflow_dispatch": {}}, "jobs": {"suite": job}}
     tree.write(".github/workflows/suite.yml", yaml.safe_dump(workflow, sort_keys=False))
     return tree
 
@@ -61,6 +66,17 @@ def test_the_committed_workflows_pass(check: Run) -> None:
 def test_a_job_carrying_the_steps_verbatim_passes(check: Run, tree: Callable[[], Tree]) -> None:
     """The suite's job as its node will write it: checkout, bootstrap, the steps, the suite."""
     equal(check(with_job(tree(), [CHECKOUT, BOOTSTRAP, *STEPS, SUITE])), (0, ""))
+
+
+@pytest.mark.parametrize("env", [None, {"OTHER": "true"}], ids=["no-env", "switch-unset"])
+def test_steps_carried_without_their_switch_are_refused(
+    check: Run, tree: Callable[[], Tree], env: dict[str, str] | None
+) -> None:
+    """A job carrying the steps but not `REAL_PRINTS_STORE` would skip every one of them."""
+    code, err = check(with_job(tree(), [CHECKOUT, BOOTSTRAP, *STEPS, SUITE], env))
+    equal(code, 1)
+    contains(err, "job `suite` carries tests/real-prints-lfs/ci-steps.yml without setting")
+    contains(err, "`REAL_PRINTS_STORE`")
 
 
 @pytest.mark.parametrize(

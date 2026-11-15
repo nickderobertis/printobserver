@@ -2,26 +2,34 @@ schema_version: 1
 budgets:
   - id: gate-time
     description: >-
-      The critical path of one platform's required context — `gate
-      (<platform>)` or `integration (<platform>)` — in its jobs' own running
-      time, read from the current workflow run's recorded jobs: the longest job
-      behind the context (a shard, or the combined `macos-aarch64 (gate,
-      integration)` job of older runs), from its start to its end, and then the
-      reporting job from its start to the start of its own `gate-time` step.
-      It is how long a pull request's check takes to run. Inner measure, because
-      a figure read inside the required job is what lets an over-budget context
-      fail its own required check, and a job waiting for a runner is GitHub
-      capacity outside the repository's control: every queue, and the span on
-      the clock from the first start, is reported in the detail beside every
-      job behind the context with its start, end and queue seconds and each
-      step's recorded duration. Sized for 10 required contexts — gate and
-      integration on each of 5 platforms — on every pull-request push and push
-      to main, about 1.6 merged pull requests a day. Enforced by the `gate-time`
-      step of every job reporting one of those contexts; the release pull
-      request's full sweep is measured and reported but not enforced.
+      Longest required check of a pull-request run. The critical path of one
+      required context — `gate (<platform>)` or `integration (<platform>)` —
+      of a pull-request run, in its jobs' own running time, read from the run's
+      recorded jobs: the longest job behind the context (a shard, or the
+      combined `macos-aarch64 (gate, integration)` job of older runs), from its
+      start to its end, and then the reporting job from its start to the start
+      of its own `gate-time` step. Detail: every job behind the context with
+      its start, end and queue seconds, each step's duration, and the span on
+      the clock from the first start. Inner measure, because queue time is
+      GitHub's shared capacity rather than this repository's work, so it is
+      reported in the detail and not charged. Target at most 3600 seconds,
+      basis design: an interim line of one hour, held until the CI job set is
+      reshaped and a measured line set, so that a change reaching the whole
+      graph fits today's workflow, whose longest jobs measured 1,910-2,129 s on
+      whole-graph pull-request runs 42447137838 and 43624629720. Workload: one
+      pull-request push reaching printobserver-core, so the affected tier is
+      the whole graph — 29 Nx projects (12 Rust crates), the 42-file end-to-end
+      suite and the OctoPrint integration tier — on each of 5 platforms on
+      GitHub's hosted runners (4 processors, 3 on macOS), under the account's
+      20 concurrent jobs, about 1.6 merged pull requests a day, each pushed 3
+      to 7 times; 33 jobs a push, the linux-x86_64, windows and macOS gates in
+      shards. Measured from telemetry, about 10 seconds: one read of the run's
+      jobs. Enforced by the `gate-time` step of every job reporting one of the
+      10 required contexts; the release pull request's full sweep is measured
+      and reported but not enforced.
     measure: reported
     command: ["uv", "run", "python", "-m", "repo_checks", "gate_time_budget"]
     unit: seconds
     direction: max
-    threshold: 1800
+    threshold: 3600
     timeout_seconds: 120

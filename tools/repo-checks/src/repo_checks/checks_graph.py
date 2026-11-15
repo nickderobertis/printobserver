@@ -31,11 +31,21 @@ from pathlib import Path
 from typing import Any
 
 from repo_checks.checks_repo import _crate_manifest, _importable_names, _in_workspace_dependencies
-from repo_checks.model import UNCOMMITTED_DIRECTORIES, Repo
+from repo_checks.model import (
+    UNCOMMITTED_DIRECTORIES,
+    PolicyValueError,
+    Repo,
+    policy_strings,
+    policy_table,
+)
 
 RUST = "lang:rust"
 PYTHON = "lang:python"
 EDGES = "implicitDependencies"
+#: The tag dimension saying where a project's tests need to run.
+PLATFORM_DIMENSION = "platform"
+#: Where `repo-policy.toml` spells the one tag of that dimension a project may carry.
+PLATFORM_INDEPENDENT_KEY = "platform_independent_tag"
 
 
 class ProjectFileError(ValueError):
@@ -268,3 +278,50 @@ def graph_edges(repo: Repo) -> list[str]:
             if edge not in project.edges
         )
     return findings
+
+
+def platform_independent_tag(repo: Repo) -> str:
+    """The tag declaring a project's tests platform-independent, as `repo-policy.toml` spells it.
+
+    `[gate]`'s `platform_independent_tag` is its one source. A project carrying
+    it declares that its `test` target exercises no platform-dependent
+    behaviour; its absence means the project's tests run on every platform.
+
+    Raises:
+        PolicyValueError: If `[gate]` declares no such string, or one outside the
+            `platform:` dimension, which no project tag in that dimension could
+            then be held to.
+    """
+    declared = policy_strings(policy_table(repo, "gate"), (PLATFORM_INDEPENDENT_KEY,), "gate")
+    tag = declared[PLATFORM_INDEPENDENT_KEY]
+    dimension, colon, value = tag.partition(":")
+    if dimension != PLATFORM_DIMENSION or not colon or not value:
+        msg = (
+            f"`repo-policy.toml`'s `gate.{PLATFORM_INDEPENDENT_KEY}` is {tag!r}, which is no "
+            f"tag of the `{PLATFORM_DIMENSION}:` dimension"
+        )
+        raise PolicyValueError(msg)
+    return tag
+
+
+def project_tags(repo: Repo) -> list[str]:
+    """Every project tag in the `platform:` dimension is the one `repo-policy.toml` declares.
+
+    A misspelt tag would leave a project's suite on every platform while its
+    owner believed it ran once, so any other value of that dimension is refused
+    naming the declared spelling. The tag selects nothing yet: this is the
+    whole of what reads it.
+    """
+    try:
+        declared = platform_independent_tag(repo)
+        graph = projects(repo)
+    except (PolicyValueError, ProjectFileError) as malformed:
+        return [str(malformed)]
+    return [
+        f"{project.root}/project.json carries `{tag}`, which is no tag of the "
+        f"`{PLATFORM_DIMENSION}:` dimension: the one `repo-policy.toml`'s "
+        f"`gate.{PLATFORM_INDEPENDENT_KEY}` declares is `{declared}`"
+        for project in graph
+        for tag in sorted(project.tags)
+        if tag.partition(":")[0] == PLATFORM_DIMENSION and tag != declared
+    ]
