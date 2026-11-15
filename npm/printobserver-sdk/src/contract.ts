@@ -1925,8 +1925,9 @@ export interface Rise {
    */
   minutes_ago: number;
   /**
-   * The Z the plan has added since the position that frame's job had
-   * reached, in millimetres.
+   * The height the plan has the parts gain since the position that frame's
+   * job had reached, in millimetres: the rise of every layer since that
+   * lays anything but supports.
    */
   z_added_mm: number;
 }

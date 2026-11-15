@@ -91,6 +91,9 @@ const FLOW_WELL_UNDER_ONE: f64 = 0.9;
 /// The types a part-cooling fan holds up: what is laid over air.
 const OVER_AIR: [&str; 2] = ["Bridge infill", "Overhang perimeter"];
 
+/// The types that hold a part up rather than make it.
+const SUPPORTS: [&str; 2] = ["Support material", "Support material interface"];
+
 /// The types a wall is laid as.
 const WALLS: [&str; 2] = ["Perimeter", "External perimeter"];
 
@@ -365,12 +368,46 @@ impl GcodeIndex {
             .fold(0, |bits, (bit, _)| bits | (1 << bit))
     }
 
-    /// The height the current layer has risen above the one a position
-    /// reached, in millimetres to a tenth: nothing where either has no height.
+    /// The height the parts themselves have gained between two positions, in
+    /// millimetres to a tenth: each layer after the earlier one's, up to the
+    /// later one's, that lays anything but supports adds its rise over the
+    /// part's top so far, and a layer laying supports alone adds nothing,
+    /// because nothing a camera watches grows there — so a support layer
+    /// slicer-interleaved between two of the part's is not the floor the next
+    /// one rises from. Nothing where a position has no
+    /// layer with a height.
     #[must_use]
-    pub fn risen_since(&self, earlier: i64, z_now: Option<f64>) -> Option<f64> {
-        let z_then = self.plan_at(earlier).z_mm?;
-        Some((((z_now? - z_then) * 10.0).round() / 10.0).max(0.0))
+    pub fn risen_since(&self, earlier: i64, now: i64) -> Option<f64> {
+        let at = |position| {
+            self.layers
+                .iter()
+                .rposition(|layer| reached(layer.at, position))
+                .filter(|index| self.layers[*index].z_mm.is_some())
+        };
+        let (then, now) = (at(earlier)?, at(now)?);
+        let supports = self.type_bits(&SUPPORTS);
+        let lays_the_part = |layer: &&Layer| layer.types & !supports != 0;
+        // The part's own top as of the earlier position: the last layer up to
+        // it that laid the part, or that position's own layer before any did.
+        let mut top = self.layers[..=then]
+            .iter()
+            .rev()
+            .filter(lays_the_part)
+            .find_map(|layer| layer.z_mm)
+            .or(self.layers[then].z_mm)?;
+        let mut risen = 0.0;
+        for layer in self
+            .layers
+            .iter()
+            .take(now + 1)
+            .skip(then + 1)
+            .filter(lays_the_part)
+        {
+            let Some(z) = layer.z_mm else { continue };
+            risen += (z - top).max(0.0);
+            top = top.max(z);
+        }
+        Some((risen * 10.0).round() / 10.0)
     }
 }
 
@@ -433,8 +470,9 @@ pub struct Rise {
     /// captured: the latest periodic observation's frame at least half an hour
     /// old.
     pub minutes_ago: i64,
-    /// The Z the plan has added since the position that frame's job had
-    /// reached, in millimetres.
+    /// The height the plan has the parts gain since the position that frame's
+    /// job had reached, in millimetres: the rise of every layer since that
+    /// lays anything but supports.
     pub z_added_mm: f64,
 }
 
@@ -1527,7 +1565,7 @@ impl crate::supervisor::Supervisor {
             .changes_since(print.id, &index, position, interventions)
             .await?;
         let mut plan = index.plan_with(position, flow, fan);
-        plan.rise = self.rise_of(print.id, &index, plan.z_mm).await?;
+        plan.rise = self.rise_of(print.id, &index, position).await?;
         Ok(Some(plan))
     }
 
@@ -1537,7 +1575,7 @@ impl crate::supervisor::Supervisor {
         &self,
         print_id: PrintId,
         index: &GcodeIndex,
-        z_now: Option<f64>,
+        position: i64,
     ) -> Result<Option<Rise>, crate::error::CoreError> {
         use printobserver_types::EventPayload as _;
 
@@ -1566,7 +1604,7 @@ impl crate::supervisor::Supervisor {
             let captured = observed.frame_captured_at.unwrap_or(event.received_at);
             Some(Rise {
                 minutes_ago: (now.as_utc().timestamp() - captured.as_utc().timestamp()) / 60,
-                z_added_mm: index.risen_since(earlier, z_now)?,
+                z_added_mm: index.risen_since(earlier, position)?,
             })
         }))
     }

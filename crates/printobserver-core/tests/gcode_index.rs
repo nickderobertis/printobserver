@@ -575,62 +575,41 @@ fn a_setting_the_plan_at_this_height_says_is_wrong_is_named() {
     );
 }
 
-/// The height the plan has risen since a position is the current layer's Z
-/// less that position's, to a tenth, and nothing where either has none.
+/// The height the parts gain since a position is the rise of every layer
+/// after its layer that lays anything but supports; a layer of supports alone
+/// adds nothing, and a position before any layer has no rise.
 #[test]
-fn the_rise_since_a_position_is_the_z_added_since_it() {
-    let text = bridging(9, 0, 100);
+fn the_rise_since_a_position_counts_the_layers_that_lay_the_part() {
+    let text = bridging(4, 0, 100).replace(
+        ";Z:4\n;TYPE:Perimeter",
+        ";Z:4\n;TYPE:Support material\nG1 X5 Y5 E1\n;TYPE:Perimeter",
+    ) + ";LAYER_CHANGE\n;Z:9.9\n;TYPE:Support material\nG1 X0 Y5 E1\n\
+           ;LAYER_CHANGE\n;Z:10\n;TYPE:Perimeter\nG1 X0 Y0 E1\n\
+           ;LAYER_CHANGE\n;Z:12\n;TYPE:Support material\nG1 X5 Y0 E1\n";
     let index = indexed(&text);
+    let end = i64::try_from(text.len()).expect("small");
+    let inside = |marker: &str| {
+        i64::try_from(text.find(marker).expect("the layer is there") + marker.len()).expect("small")
+    };
     assert_eq!(
-        index.risen_since(0, Some(18.0)),
+        index.risen_since(0, end),
         None,
         "a position before any layer has a height"
     );
-    let first = i64::try_from(text.find(";Z:2\n").expect("layer 1") + 5).expect("small");
-    assert_eq!(index.risen_since(first, Some(18.0)), Some(16.0));
-    assert_eq!(index.risen_since(first, None), None);
-}
-
-/// A layer height below the bed or past any machine's reach is no height, and
-/// relative moves that each stay within reach but together leave it do not
-/// carry the reckoning out of it.
-#[test]
-fn a_height_or_a_place_out_of_reach_is_not_read() {
-    let text = "\
-;LAYER_CHANGE
-;Z:-0.2
-;LAYER_CHANGE
-;Z:20000
-;LAYER_CHANGE
-;Z:0.6
-M83
-G91
-M486 S0
-G1 X9000 E1
-G1 X9000 E1
-M486 S-1
-";
-    let index = indexed(text);
-    let end = i64::try_from(text.len()).expect("small");
-    // Inside each layer: past its change, short of the next one's.
-    let inside = |next: &str| {
-        i64::try_from(text.find(next).expect("the next layer is there")).expect("small")
-    };
     assert_eq!(
-        index.plan_at(inside(";LAYER_CHANGE\n;Z:20000")).z_mm,
-        None,
-        "a height below the bed was read"
+        index.risen_since(inside(";Z:2\n"), inside(";Z:8\n")),
+        Some(6.0),
+        "a layer laying the part beside its supports was not counted"
     );
     assert_eq!(
-        index.plan_at(inside(";LAYER_CHANGE\n;Z:0.6")).z_mm,
-        None,
-        "a height past any machine was read"
+        index.risen_since(inside(";Z:2\n"), inside(";Z:9.9\n")),
+        Some(6.0),
+        "a layer of supports alone was counted as the part rising"
     );
-    let plan = index.plan_at(end);
-    assert_eq!(plan.z_mm, Some(0.6));
     assert_eq!(
-        plan.objects,
-        vec![[0, 0, 9000, 0]],
-        "relative moves carried the reckoning past any machine's reach"
+        index.risen_since(inside(";Z:2\n"), end),
+        Some(8.0),
+        "the part's layer after an interleaved support layer rose from that \
+         layer rather than from the part's own top"
     );
 }

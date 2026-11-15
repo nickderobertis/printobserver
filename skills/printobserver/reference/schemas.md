@@ -9281,7 +9281,7 @@ Declared by `printobserver-server`.
           "type": "integer"
         },
         "z_added_mm": {
-          "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+          "description": "The height the plan has the parts gain since the position that frame's\njob had reached, in millimetres: the rise of every layer since that\nlays anything but supports.",
           "format": "double",
           "type": "number"
         }
@@ -23952,7 +23952,7 @@ Declared by `printobserver-core`.
           "type": "integer"
         },
         "z_added_mm": {
-          "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+          "description": "The height the plan has the parts gain since the position that frame's\njob had reached, in millimetres: the rise of every layer since that\nlays anything but supports.",
           "format": "double",
           "type": "number"
         }
@@ -31752,7 +31752,7 @@ Declared by `printobserver-core`.
       "type": "integer"
     },
     "z_added_mm": {
-      "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+      "description": "The height the plan has the parts gain since the position that frame's\njob had reached, in millimetres: the rise of every layer since that\nlays anything but supports.",
       "format": "double",
       "type": "number"
     }
@@ -32784,7 +32784,7 @@ Declared by `printobserver-core`.
           "type": "integer"
         },
         "z_added_mm": {
-          "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+          "description": "The height the plan has the parts gain since the position that frame's\njob had reached, in millimetres: the rise of every layer since that\nlays anything but supports.",
           "format": "double",
           "type": "number"
         }
