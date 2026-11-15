@@ -22,6 +22,10 @@ pub const LABEL_SEPARATOR: &str = ": ";
 /// numbers alone, at any depth — a rectangle, or a list of them — is one value
 /// rather than a branch, and is written as its JSON on one line: its numbers
 /// mean something only together.
+///
+/// `crates/printobserver/tests/journeys/planning.rs` holds that line as the
+/// program prints it — a context's object areas, `context.slicer.objects:
+/// [[83,86,168,134]]` — against a real `OctoPrint`.
 #[must_use]
 pub fn fields(document: &Value) -> Vec<(String, String)> {
     let mut found = Vec::new();
