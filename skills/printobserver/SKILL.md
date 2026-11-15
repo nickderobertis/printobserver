@@ -18,8 +18,8 @@ them with your file tools. Your shell takes one whole command at
 a time, starting with the program's name: no variable, chain or usage listing. If it refuses one, rewrite it so; never leave it undone.
 
 1. **Read the context.** The printer, the job, the bounds, recent events, the
-   latest picture, and the slicer's plan: layer, heights, types, objects, time
-   left, flow and fan.
+   latest picture, and the slicer's plan: layer, heights, types, objects' bed
+   areas, time left, flow and fan.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    nor is a picture too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
