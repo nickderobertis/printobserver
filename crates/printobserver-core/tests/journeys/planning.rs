@@ -551,8 +551,10 @@ fn a_print_whose_file_name_is_no_file_is_not_planned() {
 }
 
 /// Until a periodic observation is half an hour old the plan states no rise;
-/// once one is, the plan states when that observation was taken and the Z the
-/// file has added since the position its job had reached.
+/// once one is, the plan states how long ago it was taken and the Z the file
+/// has added since the position its job had reached. This world has no
+/// camera, so the observation carries no frame time and its received time
+/// stands in for it.
 #[test]
 fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
     let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
@@ -600,4 +602,46 @@ fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
         }),
         "the rise since the observation half an hour back is not the file's"
     );
+}
+
+/// An observation whose job had no position says nothing of how far the plan
+/// has risen since, and the context is answered all the same.
+#[test]
+fn an_observation_with_no_position_gives_no_rise() {
+    let (world, print) = printing_at(None);
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    world.clock.advance(31 * 60);
+    world.printer.reports_position(Some(past("M221 S95")), None);
+
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the job is planned");
+    assert_eq!(plan.rise, None, "a rise was given from no position");
+    assert_eq!(plan.layer, Some(2));
+}
+
+/// A store that cannot read the print's observations fails the context read
+/// rather than leaving the rise out in silence, and heals with it.
+#[test]
+fn the_observations_the_store_cannot_read_fail_the_context_read() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.context(print.id).expect("the context reads");
+    world.store.refuses_history_naming(
+        printobserver_types::EventKind::new(PeriodicObservationPayload::KIND).expect("a kind"),
+        printobserver_core::store::StoreError::Database {
+            detail: "the log is locked".to_owned(),
+        },
+    );
+
+    let refused = world.context(print.id);
+
+    assert!(
+        matches!(&refused, Err(printobserver_core::CoreError::Store(_))),
+        "{refused:?}"
+    );
+    world.store.heals();
+    assert!(world.context(print.id).is_ok());
 }
