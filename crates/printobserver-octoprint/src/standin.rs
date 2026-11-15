@@ -120,16 +120,17 @@ pub enum Landing {
 /// The command endpoint's request, as its method and its path.
 const COMMAND_REQUEST: &str = "POST /api/printer/command";
 
-/// A connection state and a job to report from one request on.
+/// What [`ScriptedOctoPrint::reports`] would report, held until the next
+/// request to the command endpoint.
 #[derive(Debug)]
 struct Pending {
-    /// The request, as its method and its path, that it lands at.
-    request: String,
     /// Which side of that request it lands on.
     landing: Landing,
-    /// The connection state.
+    /// Free text rather than a closed set, as [`Script`]'s own: a journey
+    /// scripts `OctoPrint`'s own words, "Offline after error" among them,
+    /// which this stand-in reads by prefix.
     connection: String,
-    /// The job.
+    /// Replaces [`Script`]'s whole job, file and progress included.
     job: JobScript,
 }
 
@@ -334,7 +335,6 @@ impl ScriptedOctoPrint {
     /// than at a moment on the clock that probe may or may not have reached.
     pub fn reports_at_next_command(&self, landing: Landing, connection: &str, job: JobScript) {
         self.held().pending = Some(Pending {
-            request: COMMAND_REQUEST.to_owned(),
             landing,
             connection: connection.to_owned(),
             job,
@@ -760,10 +760,14 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
         return;
     }
     let (status, body) = if admitted {
-        let named = format!("{} {}", request.method, request.path);
-        land(script, &named, Landing::Before);
+        let commanded = format!("{} {}", request.method, request.path) == COMMAND_REQUEST;
+        if commanded {
+            land(script, Landing::Before);
+        }
         let answered = answer(&request, script, sockets);
-        land(script, &named, Landing::After);
+        if commanded {
+            land(script, Landing::After);
+        }
         answered
     } else {
         (403, r#"{"error":"Forbidden"}"#.to_owned())
@@ -777,13 +781,14 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
     let _ = connection.flush();
 }
 
-/// Report the change waiting for `request` on `landing`'s side of it, if one is.
-fn land(script: &Mutex<Script>, request: &str, landing: Landing) {
+/// Report the change waiting for the command endpoint on `landing`'s side of
+/// the request it is answering, if one is.
+fn land(script: &Mutex<Script>, landing: Landing) {
     let mut held = lock(script);
     let due = held
         .pending
         .as_ref()
-        .is_some_and(|pending| pending.request == request && pending.landing == landing);
+        .is_some_and(|pending| pending.landing == landing);
     if let Some(pending) = due.then(|| held.pending.take()).flatten() {
         held.connection = pending.connection;
         held.job = pending.job;
