@@ -673,18 +673,22 @@ function status(answer) {
  * A string with every `${{ }}` in it evaluated, or the one value an expression
  * that is the whole string evaluates to.
  *
+ * `functions` are the functions beyond the library's own the text may call,
+ * such as `hashFiles`, each with the arity it declares.
+ *
  * @param {string} text
  * @param {Record<string, any>} contexts
  * @param {string} where
+ * @param {Map<string, FunctionDefinition>} [functions]
  * @returns {unknown}
  */
-export function template(text, contexts, where) {
+export function template(text, contexts, where, functions = new Map()) {
   const whole = /^\$\{\{([\s\S]*?)\}\}$/.exec(text.trim());
   if (whole && !whole[1].includes("}}")) {
-    return plain(evaluate(whole[1].trim(), contexts, where));
+    return plain(evaluate(whole[1].trim(), contexts, where, functions));
   }
   return text.replace(/\$\{\{([\s\S]*?)\}\}/g, (_, inner) =>
-    String(plain(evaluate(inner.trim(), contexts, where)) ?? ""),
+    String(plain(evaluate(inner.trim(), contexts, where, functions)) ?? ""),
   );
 }
 
@@ -707,14 +711,15 @@ function plain(value) {
  */
 function evaluate(expression, contexts, where, functions = new Map()) {
   const lexed = new Lexer(expression).lex();
-  const info = [...functions.keys()].map((name) => ({ name, minArgs: 0, maxArgs: 0 }));
+  const info = [...functions].map(([name, { minArgs, maxArgs }]) => ({ name, minArgs, maxArgs }));
   let parsed;
   try {
     parsed = new Parser(lexed.tokens, Object.keys(contexts), info).parse();
   } catch (refused) {
     throw new Unresolved(`${where}: \`${expression}\` does not parse: ${refused.message}`);
   }
-  const named = new Map([...functions].map(([name, fn]) => [name, { ...fn, name }]));
+  // The library looks a function up by its lowercased name.
+  const named = new Map([...functions].map(([name, fn]) => [name.toLowerCase(), { ...fn, name }]));
   try {
     const top = dictionary(contexts, "", true);
     if (!(top instanceof data.Dictionary)) {

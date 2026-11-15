@@ -747,11 +747,13 @@ describe("the macOS jobs' own steps, walked as the forge runs them", () => {
     const ran = [];
     let failed = false;
     for (const [index, step] of workflows.get("ci.yml").jobs[key].steps.entries()) {
+      // A pull request's: a save conditioned on the ref reads no step output.
       const contexts = {
-        github: { event_name: "pull_request" },
+        github: { event_name: "pull_request", ref: "refs/pull/1/merge" },
         inputs: null,
         needs: {},
         vars: {},
+        steps: {},
       };
       const runs = condition(
         step.if,

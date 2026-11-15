@@ -27,7 +27,7 @@ from repo_checks import gate_time_budget
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gate_time_budget import OVER, REFUSED, WITHIN, check_budget, measure
 from repo_checks.model import Repo, toolchain_tools
-from standin_jobs_api import Jobs, serving
+from standin_jobs_api import Jobs, serving, slowed
 from treecopy import REPO_ROOT
 
 RECORDED = Path(__file__).parent / "recorded"
@@ -37,6 +37,19 @@ REPOSITORY = "nickderobertis/printobserver"
 #: shards and an aggregator, and both macOS contexts carried after the combined
 #: `macos-aarch64 (gate, integration)` job's 2,573 s.
 COMBINED = 40235536077
+#: The combined macOS job of that run, and its recorded 2,579 s path.
+MACOS_JOB = "macos-aarch64 (gate, integration)"
+MACOS_SECONDS = 2579
+#: The line `budgets.yaml` holds every required context to, read from it alone.
+THRESHOLD = int(
+    next(
+        budget.threshold
+        for budget in list_budgets(paths=[REPO_ROOT / "budgets.yaml"]).budgets
+        if budget.id == "gate-time"
+    )
+)
+#: The macOS path of `COMBINED` stretched past that line by the line itself.
+OVER_SECONDS = MACOS_SECONDS + THRESHOLD
 #: What `just` exports to every recipe, so the budget's command finds its package.
 PACKAGES = os.pathsep.join(
     str(REPO_ROOT / package)
@@ -449,10 +462,16 @@ def test_an_api_nothing_listens_on_is_refused(
 
 @pytest.fixture
 def checking(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
-    """The stand-in API, with the process environment a `gate-time` step's check runs under."""
+    """The stand-in API, with the process environment a `gate-time` step's check runs under.
+
+    It serves `COMBINED` with its combined macOS job run `THRESHOLD` seconds
+    longer, so the macOS contexts are over whatever line `budgets.yaml` holds
+    while `gate (linux-x86_64)`, which ended before that job started, is not.
+    """
     monkeypatch.delenv("ONEBUDGETSPEC_RESULT", raising=False)
     monkeypatch.setenv("PYTHONPATH", PACKAGES)
-    with serving(Jobs(REPOSITORY, COMBINED, 1, document(COMBINED))) as address:
+    over = slowed(document(COMBINED), MACOS_JOB, THRESHOLD)
+    with serving(Jobs(REPOSITORY, COMBINED, 1, over)) as address:
         yield address
 
 
@@ -465,7 +484,7 @@ def _step_environment(monkeypatch: pytest.MonkeyPatch, settings: dict[str, str])
 def test_the_check_passes_a_context_within_budget_its_breakdown_in_the_result(
     checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The real onebudgetspec check of `gate-time`: 1,559 s is within 1,800 s.
+    """The real onebudgetspec check of `gate-time`: 1,559 s is within the line `budgets.yaml` holds.
 
     The step says so in one line, and the per-job breakdown is the check
     result's own detail, where onebudgetspec carries it.
@@ -474,9 +493,9 @@ def test_the_check_passes_a_context_within_budget_its_breakdown_in_the_result(
 
     equal(check_budget(Repo(REPO_ROOT), environ), WITHIN)
 
-    equal(capsys.readouterr().out, "gate-time: within: 1559 s against 1800 s\n")
+    equal(capsys.readouterr().out, f"gate-time: within: 1559 s against {THRESHOLD} s\n")
     (checked,) = check(paths=["budgets.yaml"], ids=["gate-time"], cwd=REPO_ROOT).results
-    equal((checked.verdict, checked.actual, checked.threshold), ("within", 1559.0, 1800.0))
+    equal((checked.verdict, checked.actual, checked.threshold), ("within", 1559.0, THRESHOLD))
     detail = json.loads(checked.detail or "{}")
     equal([job["name"] for job in detail["jobs"]], ["gate (linux-x86_64)"])
     equal(detail["initial_queue_seconds"], 3.0)
@@ -486,13 +505,13 @@ def test_the_check_passes_a_context_within_budget_its_breakdown_in_the_result(
 def test_the_check_fails_a_context_over_budget_on_a_pull_request(
     checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """2,579 s of `gate (macos-aarch64)` is over, and the required context fails."""
+    """`gate (macos-aarch64)` over the line is over, and the required context fails."""
     environ = _step_environment(monkeypatch, environment(checking, "gate", "macos-aarch64"))
 
     equal(check_budget(Repo(REPO_ROOT), environ), OVER)
 
     said = capsys.readouterr()
-    contains(said.err, "gate-time: over: 2579 s against 1800 s")
+    contains(said.err, f"gate-time: over: {OVER_SECONDS} s against {THRESHOLD} s")
     contains(said.err, "sharding it behind its own required name (`just gate-shards`)")
     contains(said.out, '"name": "macos-aarch64 (gate, integration)"')
 
@@ -512,7 +531,8 @@ def test_the_release_sweep_reports_an_over_budget_figure_and_passes(
 
     contains(
         capsys.readouterr().out,
-        "gate-time: over, reported and not enforced on the release sweep: 2579 s against 1800 s",
+        "gate-time: over, reported and not enforced on the release sweep: "
+        f"{OVER_SECONDS} s against {THRESHOLD} s",
     )
 
 
@@ -531,7 +551,7 @@ def test_only_the_release_pull_request_is_spared(
 
     equal(check_budget(Repo(REPO_ROOT), environ), OVER)
 
-    contains(capsys.readouterr().err, "gate-time: over: 2579 s")
+    contains(capsys.readouterr().err, f"gate-time: over: {OVER_SECONDS} s")
 
 
 def test_the_check_refuses_by_name_with_no_run_id(
@@ -573,11 +593,11 @@ def test_the_held_cli_is_the_one_the_sdk_brings() -> None:
 
 
 def test_the_budget_is_registered_as_the_task_states() -> None:
-    """Seconds, at most 1,800, no label, and its command the `gate_time_budget` subcommand."""
+    """Seconds, at most 3,600 (the interim one-hour line), no label, and its command."""
     (registered,) = list_budgets(paths=[REPO_ROOT / "budgets.yaml"]).budgets
 
     equal(registered.id, "gate-time")
-    equal((registered.unit, registered.direction, registered.threshold), ("seconds", "max", 1800.0))
+    equal((registered.unit, registered.direction, registered.threshold), ("seconds", "max", 3600.0))
     equal(registered.labels, [])
     equal(registered.measure, "reported")
     equal(registered.command, ["uv", "run", "python", "-m", "repo_checks", "gate_time_budget"])

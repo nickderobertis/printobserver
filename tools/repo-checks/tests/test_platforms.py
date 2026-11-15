@@ -350,9 +350,9 @@ def test_a_carrier_that_stopped_running_what_it_carries_is_refused(
 ) -> None:
     """The macOS integration job owes the integration tier its cell ran."""
     broken = tree()
+    # The macOS job's release-program save, then its bring-up.
     carried = (
         "          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}\n"
-        "      - run: just release-program\n"
         "      - run: just octoprint-up\n"
     )
     broken.edit(
