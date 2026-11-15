@@ -2,10 +2,16 @@
 ;
 ; Homes, lays a square perimeter at Z 0.2 inside X 90..110 and Y 90..110, and
 ; a second over it that is 2.0 mm tall only by the reader's own rules, then
-; dwells for two minutes before a third perimeter at Z 6.0 the journeys never
+; dwells for thirty seconds before a third perimeter at Z 6.0 the journeys never
 ; let it reach: a print stopped in the dwell laid a part 2.0 mm tall over that
 ; square. Heats nothing. The short dwells after the long one keep the third
 ; perimeter's lines out of what is sent ahead of it.
+;
+; The dwell is as long as the journey waits for and no longer. The virtual
+; printer answers nothing while it dwells, so the connection drop the journey
+; types at the terminal lands as the dwell ends, and every second of it is a
+; second the journey waits; what it needs is only that the supervisor reads the
+; part's height before then, which it does within its next poll.
 ;
 ; The second perimeter is written in every form the reader follows, so that
 ; reading 2.0 mm over exactly that square needs each of them read right: an
@@ -37,7 +43,7 @@ G1 X90 Y110 E1 F1200
 G1 Z2.4 E0.5 F600
 G1 Z2.0 F600
 G1 X90 Y90 Z1.8 E1 F1200
-G4 S120
+G4 S30
 G4 P10
 G4 P10
 G4 P10

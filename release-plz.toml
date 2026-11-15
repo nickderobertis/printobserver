@@ -52,7 +52,7 @@ semver_check = true
 # here and on for one package below because release-plz tags and releases PER
 # PACKAGE, in release order, and under a shared name the second package to
 # publish dies creating a ref the first already created — with every crate
-# after it unpublished. `tests/repo-e2e/tests/test_release_tag_journey.py`
+# after it unpublished. `tests/repo-e2e-independent/tests/test_release_tag_journey.py`
 # holds this.
 git_tag_name = "v{{ version }}"
 git_release_name = "v{{ version }}"
@@ -66,7 +66,7 @@ git_release_enable = false
 # next version into that shared field, which moves every crate, but rewrites
 # the requirements of only the crates it released, and `cargo update` then
 # refuses a sibling requiring the version just moved past.
-# `tests/repo-e2e/tests/test_release_path_journey.py` holds this by drafting a
+# `tests/repo-e2e-independent/tests/test_release_path_journey.py` holds this by drafting a
 # release of one crate and requiring every crate to move with it.
 [[package]]
 name = "printobserver-types"

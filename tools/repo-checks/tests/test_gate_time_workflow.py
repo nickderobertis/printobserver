@@ -89,6 +89,10 @@ ADDED = {
         ("real-prints-lfs", "lint"),
         ("real-prints-lfs", "test"),
         ("real-prints-lfs", "typecheck"),
+        ("repo-e2e-independent", "format-check"),
+        ("repo-e2e-independent", "lint"),
+        ("repo-e2e-independent", "test-e2e"),
+        ("repo-e2e-independent", "typecheck"),
     },
     "integration (macos-aarch64)": set(),
 }

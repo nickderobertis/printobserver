@@ -1443,7 +1443,19 @@ def manager(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Manager:
-    """One adapter this host walks the journey through."""
+    """One adapter this host walks the journey through.
+
+    A real manager is held for the journey (`host_service_manager`): the script
+    route's proofs, in another group, run the per-user installer, which refuses
+    a host this journey's registration is on. A journey that only runs another
+    one in a subprocess holds nothing, so the one it runs can take the manager.
+    """
+    if request.param in {
+        ServiceManager.WINDOWS_SERVICE,
+        ServiceManager.SYSTEMD,
+        ServiceManager.LAUNCHD,
+    }:
+        request.getfixturevalue("host_service_manager")
     match request.param:
         case ServiceManager.WINDOWS_SERVICE:
             return WindowsService(_service_name(ServiceManager.WINDOWS_SERVICE), program)

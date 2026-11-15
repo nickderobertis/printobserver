@@ -76,6 +76,8 @@ pythonpath = [
     "tools/obico-env",
     "tools/printer-smoke",
     "tests/skilltest",
+    # The end-to-end tier's shared helpers, which both of its projects import.
+    "tests/repo-e2e/tests",
 ]
 
 [tool.coverage.run]
@@ -110,6 +112,7 @@ root = [
     "python/printobserver-sdk/tests",
     "python/printobserver-sdk/integration",
     "tests/repo-e2e/tests",
+    "tests/repo-e2e-independent/tests",
     "tools/octoprint-env",
     "tools/octoprint-env/tests",
     "tools/obico-env",

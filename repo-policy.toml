@@ -31,8 +31,9 @@ tiers = [
     "test-e2e",
 ]
 # The one spelling of the project tag a project's `project.json` carries to
-# declare that its `test` target exercises no platform-dependent behaviour, so
-# CI may run it once, on linux-x86_64, instead of on every supported platform. A
+# declare that its `test` or `test-e2e` target exercises no platform-dependent
+# behaviour, so CI may run it once, on linux-x86_64, instead of on every
+# supported platform. A
 # project without it runs on every platform, as before. The owner of a project's
 # tests decides whether it carries the tag. Nothing selects by it yet: `just
 # check-repo`'s `project-tags` accepts it and refuses any other tag in the
@@ -1002,7 +1003,7 @@ install = "cargo install cargo-llvm-cov --locked"
 
 # Held at the newest release on 2026-09-14. It reports a forge's refusal in a
 # different shape from 0.3.164, the release the `0.2.0` run used, and
-# `tests/repo-e2e/tests/test_release_tag_journey.py` records the shape this one
+# `tests/repo-e2e-independent/tests/test_release_tag_journey.py` records the shape this one
 # prints: a bump re-reads that recording.
 #
 # Not bootstrapped: compiling it cost a cold Windows gate cell about thirteen
