@@ -23,9 +23,9 @@ a time, starting with the program's name: no variable, chain or usage listing. I
 2. **Look at the image.** Open the file the context names. A path is not evidence
    nor is a picture too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
-   already old. A look can wait up to a minute and a half first; a few show a
-   defect growing or settling.
-   Open each; each frame says when it was captured. One time twice is a camera
+   already old. A look can wait up to ninety seconds; a few show a
+   defect growing.
+   Open each; each states its capture time. One time twice is a camera
    with nothing newer, no defect: say so and judge what the frame shows.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **Act, and say why.** If something should change, ask for it with a reason a
@@ -42,7 +42,7 @@ a time, starting with the program's name: no variable, chain or usage listing. I
 1. **A clear defect a setting addresses gets that setting.** The flow factor
    addresses under-extruded walls; the fan, sagging bridges. Neither addresses
    stringing or spaghetti; no other defect has a setting. Read the
-   stated flow and fan first, settings and never design, whatever the file's name; change one only for
+   stated flow and fan first, settings, never design, whatever the file's name; change one only for
    a clear defect its stated value explains, or one the plan calls at odds,
    wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
 2. **A clear defect no setting addresses, or a part that has moved or gone, gets a
@@ -64,14 +64,15 @@ Reading frames:
 - **Strands.** Curved or tangled strands are a defect only inside the part's
   outline and clearly growing or out of place. A strand off the part, on a
   rail, screw or frame, is not: note it.
-- **Position.** Judge each frame against this print's earlier frames. What is
-  printed stays where it was laid. Where the plan states a rise since a
-  half-hour-old frame, parts in view not showing it are not printing,
-  however small: a clear defect, never uncertain. Hidden parts: look again;
-  none showing it is the same. A shifting view carries sheet and part
+- **Position.** Judge each frame against earlier ones. What is
+  printed stays where it was laid. Never judge growth between frames under
+  half an hour apart; with the plan's rise unknown, judge none. Where it
+  states a rise since a frame, parts in view not showing it are not printing, however
+  small: a clear defect, never uncertain. Hidden parts: look again; none showing it is
+  the same. A shifting view carries sheet and part
   together, so at every look measure the parts' height against that frame and
   the footprint's distance to a sheet hole, edge or mark, now
-  and earlier, giving both in your reason. Changed in any frame, even one a later frame seems to undo, it
+  and earlier, giving both. Changed in any frame, even one a later frame seems to undo, it
   has moved, whatever might explain it. So has a
   part off the bed, a first layer not sticking, or a part where the plan puts
   no object, its own place empty.
@@ -83,7 +84,7 @@ with that pause standing; a paused print moves no further, so another look
 settles nothing: an uncertain reading is stopped, not watched.
 
 - **If a clear defect a setting addresses is all you see**, ask for it while paused;
-  the supervisor resumes the print itself twenty seconds after your last such change, or
+  the supervisor resumes the print twenty seconds after your last such change, or
   when your turn ends. You do not resume it.
 - **Otherwise,** a moved or gone part or a defect no setting addresses, even beside
   one it does, an uncertain reading or nothing at all: change nothing
