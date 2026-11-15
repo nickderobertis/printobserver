@@ -77,6 +77,23 @@ const LINE_LIMIT: usize = 4096;
 /// no slicer's output, and its further types are not recorded.
 const TYPE_LIMIT: usize = 64;
 
+/// How long before a check an earlier frame is, at the least, for the height
+/// laid since it to be one a camera shows: half an hour.
+const RISE_WINDOW_S: i64 = 30 * 60;
+
+/// How many layers below the current one a frame shows, and so how far down a
+/// bridge or an overhang the fan should still be cooling is looked for.
+const LAYERS_SHOWN_BELOW: usize = 5;
+
+/// The flow factor under which a wall is laid starved of material.
+const FLOW_WELL_UNDER_ONE: f64 = 0.9;
+
+/// The types a part-cooling fan holds up: what is laid over air.
+const OVER_AIR: [&str; 2] = ["Bridge infill", "Overhang perimeter"];
+
+/// The types a wall is laid as.
+const WALLS: [&str; 2] = ["Perimeter", "External perimeter"];
+
 /// The most objects one index names, for the same reason.
 const OBJECT_LIMIT: usize = 1024;
 
@@ -304,6 +321,24 @@ impl GcodeIndex {
             unknown.push(PlanFact::Objects);
         }
         unknown.sort_unstable();
+        let in_force =
+            |set: &Option<SetValue>| set.as_ref().and_then(|set| set.changed.or(set.file));
+        let mut at_odds = Vec::new();
+        if let Some(index) = layer_index {
+            let shown = self.layers[index.saturating_sub(LAYERS_SHOWN_BELOW)..=index]
+                .iter()
+                .fold(0, |bits, layer| bits | layer.types);
+            if in_force(&fan_percent).is_some_and(|fan| fan <= 0.0)
+                && shown & self.type_bits(&OVER_AIR) != 0
+            {
+                at_odds.push(PlanMismatch::FanOffOverBridges);
+            }
+            if in_force(&flow_factor).is_some_and(|flow| flow < FLOW_WELL_UNDER_ONE)
+                && self.layers[index].types & self.type_bits(&WALLS) != 0
+            {
+                at_odds.push(PlanMismatch::FlowLowOverWalls);
+            }
+        }
         SlicerPlan {
             layer: layer_index.map(|index| index + 1),
             layers: (!self.layers.is_empty()).then_some(self.layers.len()),
@@ -315,8 +350,27 @@ impl GcodeIndex {
             fan_percent,
             object_count: self.labelled_objects.then_some(self.objects.len()),
             objects: self.objects.clone(),
+            rise: None,
+            at_odds,
             unknown,
         }
+    }
+
+    /// The bits of the type table the named types hold, those the file names.
+    fn type_bits(&self, names: &[&str]) -> u64 {
+        self.type_names
+            .iter()
+            .enumerate()
+            .filter(|(_, name)| names.contains(&name.as_str()))
+            .fold(0, |bits, (bit, _)| bits | (1 << bit))
+    }
+
+    /// The height the current layer has risen above the one a position
+    /// reached, in millimetres to a tenth: nothing where either has no height.
+    #[must_use]
+    pub fn risen_since(&self, earlier: i64, z_now: Option<f64>) -> Option<f64> {
+        let z_then = self.plan_at(earlier).z_mm?;
+        Some((((z_now? - z_then) * 10.0).round() / 10.0).max(0.0))
     }
 }
 
@@ -368,6 +422,34 @@ pub struct SetValue {
 /// each edge read to the nearest tenth, then each least edge rounded down and
 /// each most edge up, so that it holds every move laying that object down.
 pub type BedArea = [i64; 4];
+
+/// How far the plan has risen since an earlier frame of this print: the
+/// height a camera should show the parts to have gained since then.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct Rise {
+    /// How many whole minutes before this read that earlier frame was
+    /// captured: the latest periodic observation's frame at least half an hour
+    /// old.
+    pub minutes_ago: i64,
+    /// The Z the plan has added since the position that frame's job had
+    /// reached, in millimetres.
+    pub z_added_mm: f64,
+}
+
+/// A setting in force that the plan at this height says is wrong for what is
+/// being laid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum PlanMismatch {
+    /// The part-cooling fan is off while the current layer or the few below
+    /// it, which a frame shows, bridge or overhang.
+    FanOffOverBridges,
+    /// The flow factor is well under one while the current layer lays walls.
+    FlowLowOverWalls,
+}
 
 /// A fact of the plan the print's file does not state.
 #[derive(
@@ -436,6 +518,13 @@ pub struct SlicerPlan {
     /// the file's object numbers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub objects: Vec<BedArea>,
+    /// How far the plan has risen since an earlier frame; absent before any
+    /// frame is half an hour old.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rise: Option<Rise>,
+    /// Each setting in force the plan at this height says is wrong.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub at_odds: Vec<PlanMismatch>,
     /// The facts the file does not state, which are therefore unknown rather
     /// than absent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -465,6 +554,11 @@ impl Sample for SlicerPlan {
             }),
             object_count: Some(1),
             objects: vec![[100, 99, 150, 117]],
+            rise: Some(Rise {
+                minutes_ago: 62,
+                z_added_mm: 4.8,
+            }),
+            at_odds: vec![PlanMismatch::FlowLowOverWalls],
             unknown: vec![PlanFact::Objects],
         }
     }
@@ -481,6 +575,8 @@ impl Sample for SlicerPlan {
             fan_percent: None,
             object_count: None,
             objects: Vec::new(),
+            rise: None,
+            at_odds: Vec::new(),
             unknown: Vec::new(),
         }
     }
@@ -1421,7 +1517,49 @@ impl crate::supervisor::Supervisor {
         let (flow, fan) = self
             .changes_since(print.id, &index, position, interventions)
             .await?;
-        Ok(Some(index.plan_with(position, flow, fan)))
+        let mut plan = index.plan_with(position, flow, fan);
+        plan.rise = self.rise_of(print.id, &index, plan.z_mm).await?;
+        Ok(Some(plan))
+    }
+
+    /// How far the plan has risen since the latest periodic observation's
+    /// frame at least [`RISE_WINDOW_S`] old, when one carries a position.
+    async fn rise_of(
+        &self,
+        print_id: PrintId,
+        index: &GcodeIndex,
+        z_now: Option<f64>,
+    ) -> Result<Option<Rise>, crate::error::CoreError> {
+        use printobserver_types::EventPayload as _;
+
+        use crate::kinds::PeriodicObservationPayload;
+
+        let now = self.clock().now();
+        let Ok(until) = now.plus_seconds(-RISE_WINDOW_S) else {
+            return Ok(None);
+        };
+        let events = self
+            .stores()
+            .events
+            .history(crate::store::HistoryQuery {
+                print_id,
+                kinds: printobserver_types::EventKind::new(PeriodicObservationPayload::KIND)
+                    .into_iter()
+                    .collect(),
+                since: None,
+                until: Some(until),
+                limit: Some(1),
+            })
+            .await?;
+        Ok(events.first().and_then(|event| {
+            let observed = event.payload_as::<PeriodicObservationPayload>()?.ok()?;
+            let earlier = observed.job?.file_position_bytes?;
+            let captured = observed.frame_captured_at.unwrap_or(event.received_at);
+            Some(Rise {
+                minutes_ago: (now.as_utc().timestamp() - captured.as_utc().timestamp()) / 60,
+                z_added_mm: index.risen_since(earlier, z_now)?,
+            })
+        }))
     }
 
     /// One print's index, built from its file when there is none yet.

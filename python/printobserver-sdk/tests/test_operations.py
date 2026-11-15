@@ -195,12 +195,14 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
         '0198f0a1-2b3c-7d4e-8f90-123456789abc", "raw": "0198f0a1-2b3c'
         '-7d4e-8f90-123456789abc", "received_at": "0198f0a1-2b3c-7d4e'
         '-8f90-123456789abc", "source": "0198f0a1-2b3c-7d4e-8f90-1234'
-        '56789abc"}], "slicer": {"fan_percent": {"changed": 1.5, "fil'
-        'e": 1.5}, "final_z_mm": 1.5, "flow_factor": {"changed": 1.5,'
-        ' "file": 1.5}, "layer": 7, "layers": 7, "minutes_left": 7, "'
-        'object_count": 7, "objects": [[7]], "types": ["0198f0a1-2b3c'
-        '-7d4e-8f90-123456789abc"], "unknown": ["layer"], "z_mm": 1.5'
-        '}}, "image_path": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+        '56789abc"}], "slicer": {"at_odds": ["fan_off_over_bridges"],'
+        ' "fan_percent": {"changed": 1.5, "file": 1.5}, "final_z_mm":'
+        ' 1.5, "flow_factor": {"changed": 1.5, "file": 1.5}, "layer":'
+        ' 7, "layers": 7, "minutes_left": 7, "object_count": 7, "obje'
+        'cts": [[7]], "rise": {"minutes_ago": 7, "z_added_mm": 1.5}, '
+        '"types": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "unknown"'
+        ': ["layer"], "z_mm": 1.5}}, "image_path": "0198f0a1-2b3c-7d4'
+        'e-8f90-123456789abc"}'
     )
 
     with Host(200, answer) as host:

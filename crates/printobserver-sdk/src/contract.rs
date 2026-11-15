@@ -1491,6 +1491,19 @@ pub enum PlanFact {
     Objects,
 }
 
+/// A setting in force that the plan at this height says is wrong for what is
+/// being laid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanMismatch {
+    /// The part-cooling fan is off while the current layer or the few below
+    /// it, which a frame shows, bridge or overhang.
+    #[serde(rename = "fan_off_over_bridges")]
+    FanOffOverBridges,
+    /// The flow factor is well under one while the current layer lays walls.
+    #[serde(rename = "flow_low_over_walls")]
+    FlowLowOverWalls,
+}
+
 /// The decision policy took on one request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PolicyDecision {
@@ -2687,6 +2700,20 @@ pub struct Reported {
     pub value: f64,
 }
 
+/// How far the plan has risen since an earlier frame of this print: the
+/// height a camera should show the parts to have gained since then.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Rise {
+    /// How many whole minutes before this read that earlier frame was
+    /// captured: the latest periodic observation's frame at least half an
+    /// hour
+    /// old.
+    pub minutes_ago: i64,
+    /// The Z the plan has added since the position that frame's job had
+    /// reached, in millimetres.
+    pub z_added_mm: f64,
+}
+
 /// One adjustable as the print's file set it at the current position, and as
 /// a change made through this program since then left it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2802,6 +2829,9 @@ pub struct SignalPosition {
 /// it printed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SlicerPlan {
+    /// Each setting in force the plan at this height says is wrong.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at_odds: Option<Vec<PlanMismatch>>,
     /// The part-cooling fan speed, in percent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fan_percent: Option<SetValue>,
@@ -2830,6 +2860,10 @@ pub struct SlicerPlan {
     /// the file's object numbers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objects: Option<Vec<Vec<i64>>>,
+    /// How far the plan has risen since an earlier frame; absent before any
+    /// frame is half an hour old.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rise: Option<Rise>,
     /// What the current layer lays material as, in the order the file first
     /// names each: `Perimeter`, `Support material`, `Bridge infill`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

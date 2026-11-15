@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-194 types. The set is every type any crate declares under
+196 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -8892,6 +8892,21 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "PlanMismatch": {
+      "description": "A setting in force that the plan at this height says is wrong for what is\nbeing laid.",
+      "oneOf": [
+        {
+          "const": "fan_off_over_bridges",
+          "description": "The part-cooling fan is off while the current layer or the few below\nit, which a frame shows, bridge or overhang.",
+          "type": "string"
+        },
+        {
+          "const": "flow_low_over_walls",
+          "description": "The flow factor is well under one while the current layer lays walls.",
+          "type": "string"
+        }
+      ]
+    },
     "PrintContext": {
       "additionalProperties": false,
       "description": "Everything a supervision turn is given about one print.",
@@ -9256,6 +9271,27 @@ Declared by `printobserver-server`.
       "title": "Reported",
       "type": "object"
     },
+    "Rise": {
+      "additionalProperties": false,
+      "description": "How far the plan has risen since an earlier frame of this print: the\nheight a camera should show the parts to have gained since then.",
+      "properties": {
+        "minutes_ago": {
+          "description": "How many whole minutes before this read that earlier frame was\ncaptured: the latest periodic observation's frame at least half an hour\nold.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "z_added_mm": {
+          "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "minutes_ago",
+        "z_added_mm"
+      ],
+      "type": "object"
+    },
     "SetValue": {
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
@@ -9283,6 +9319,13 @@ Declared by `printobserver-server`.
       "additionalProperties": false,
       "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
       "properties": {
+        "at_odds": {
+          "description": "Each setting in force the plan at this height says is wrong.",
+          "items": {
+            "$ref": "#/$defs/PlanMismatch"
+          },
+          "type": "array"
+        },
         "fan_percent": {
           "anyOf": [
             {
@@ -9360,6 +9403,17 @@ Declared by `printobserver-server`.
             "type": "array"
           },
           "type": "array"
+        },
+        "rise": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rise"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far the plan has risen since an earlier frame; absent before any\nframe is half an hour old."
         },
         "types": {
           "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
@@ -16138,6 +16192,30 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "PlanFact"
+}
+```
+
+### PlanMismatch
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A setting in force that the plan at this height says is wrong for what is\nbeing laid.",
+  "oneOf": [
+    {
+      "const": "fan_off_over_bridges",
+      "description": "The part-cooling fan is off while the current layer or the few below\nit, which a frame shows, bridge or overhang.",
+      "type": "string"
+    },
+    {
+      "const": "flow_low_over_walls",
+      "description": "The flow factor is well under one while the current layer lays walls.",
+      "type": "string"
+    }
+  ],
+  "title": "PlanMismatch"
 }
 ```
 
@@ -23583,6 +23661,21 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "PlanMismatch": {
+      "description": "A setting in force that the plan at this height says is wrong for what is\nbeing laid.",
+      "oneOf": [
+        {
+          "const": "fan_off_over_bridges",
+          "description": "The part-cooling fan is off while the current layer or the few below\nit, which a frame shows, bridge or overhang.",
+          "type": "string"
+        },
+        {
+          "const": "flow_low_over_walls",
+          "description": "The flow factor is well under one while the current layer lays walls.",
+          "type": "string"
+        }
+      ]
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -23849,6 +23942,27 @@ Declared by `printobserver-core`.
       "title": "Reported",
       "type": "object"
     },
+    "Rise": {
+      "additionalProperties": false,
+      "description": "How far the plan has risen since an earlier frame of this print: the\nheight a camera should show the parts to have gained since then.",
+      "properties": {
+        "minutes_ago": {
+          "description": "How many whole minutes before this read that earlier frame was\ncaptured: the latest periodic observation's frame at least half an hour\nold.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "z_added_mm": {
+          "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "minutes_ago",
+        "z_added_mm"
+      ],
+      "type": "object"
+    },
     "SetValue": {
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
@@ -23876,6 +23990,13 @@ Declared by `printobserver-core`.
       "additionalProperties": false,
       "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
       "properties": {
+        "at_odds": {
+          "description": "Each setting in force the plan at this height says is wrong.",
+          "items": {
+            "$ref": "#/$defs/PlanMismatch"
+          },
+          "type": "array"
+        },
         "fan_percent": {
           "anyOf": [
             {
@@ -23953,6 +24074,17 @@ Declared by `printobserver-core`.
             "type": "array"
           },
           "type": "array"
+        },
+        "rise": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rise"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far the plan has risen since an earlier frame; absent before any\nframe is half an hour old."
         },
         "types": {
           "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
@@ -31604,6 +31736,36 @@ Declared by `printobserver-types`.
 }
 ```
 
+### Rise
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "How far the plan has risen since an earlier frame of this print: the\nheight a camera should show the parts to have gained since then.",
+  "properties": {
+    "minutes_ago": {
+      "description": "How many whole minutes before this read that earlier frame was\ncaptured: the latest periodic observation's frame at least half an hour\nold.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "z_added_mm": {
+      "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "minutes_ago",
+    "z_added_mm"
+  ],
+  "title": "Rise",
+  "type": "object"
+}
+```
+
 ### SafetyEnvelope
 
 Declared by `printobserver-core`.
@@ -32597,6 +32759,42 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "PlanMismatch": {
+      "description": "A setting in force that the plan at this height says is wrong for what is\nbeing laid.",
+      "oneOf": [
+        {
+          "const": "fan_off_over_bridges",
+          "description": "The part-cooling fan is off while the current layer or the few below\nit, which a frame shows, bridge or overhang.",
+          "type": "string"
+        },
+        {
+          "const": "flow_low_over_walls",
+          "description": "The flow factor is well under one while the current layer lays walls.",
+          "type": "string"
+        }
+      ]
+    },
+    "Rise": {
+      "additionalProperties": false,
+      "description": "How far the plan has risen since an earlier frame of this print: the\nheight a camera should show the parts to have gained since then.",
+      "properties": {
+        "minutes_ago": {
+          "description": "How many whole minutes before this read that earlier frame was\ncaptured: the latest periodic observation's frame at least half an hour\nold.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "z_added_mm": {
+          "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "minutes_ago",
+        "z_added_mm"
+      ],
+      "type": "object"
+    },
     "SetValue": {
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
@@ -32625,6 +32823,13 @@ Declared by `printobserver-core`.
   "additionalProperties": false,
   "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
   "properties": {
+    "at_odds": {
+      "description": "Each setting in force the plan at this height says is wrong.",
+      "items": {
+        "$ref": "#/$defs/PlanMismatch"
+      },
+      "type": "array"
+    },
     "fan_percent": {
       "anyOf": [
         {
@@ -32702,6 +32907,17 @@ Declared by `printobserver-core`.
         "type": "array"
       },
       "type": "array"
+    },
+    "rise": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Rise"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "How far the plan has risen since an earlier frame; absent before any\nframe is half an hour old."
     },
     "types": {
       "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",

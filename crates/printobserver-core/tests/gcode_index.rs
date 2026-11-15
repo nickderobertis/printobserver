@@ -13,7 +13,8 @@ use core::pin::pin;
 use core::task::{Context, Poll, Waker};
 
 use printobserver_core::gcode_index::{Claimed, GcodeIndexes};
-use printobserver_core::{GcodeIndex, IndexBuilder, PlanFact, SetValue};
+
+use printobserver_core::{GcodeIndex, IndexBuilder, PlanFact, PlanMismatch, SetValue};
 use printobserver_printer_api::GcodeSink as _;
 use printobserver_types::PrintId;
 
@@ -508,4 +509,84 @@ fn past_in(text: &str, needle: &str) -> i64 {
         .find('\n')
         .map_or(text.len(), |newline| at + newline + 1);
     i64::try_from(end).expect("a small offset")
+}
+
+/// A file of `layers` layers of walls, the one at `bridged` (counting from 1)
+/// bridging, the fan set off before the first and the flow at `flow`.
+fn bridging(layers: usize, bridged: usize, flow: u32) -> String {
+    let mut text = format!("M83\nM221 S{flow}\nM107\n");
+    for layer in 1..=layers {
+        let _ = write!(text, ";LAYER_CHANGE\n;Z:{}\n", layer * 2);
+        text.push_str(";TYPE:Perimeter\nG1 X0 Y0\nG1 X10 Y0 E1\n");
+        if layer == bridged {
+            text.push_str(";TYPE:Bridge infill\nG1 X10 Y10 E1\n");
+        }
+    }
+    text
+}
+
+/// The fan off is wrong for the plan while the current layer or any of the
+/// five below it — what a frame shows — bridges, and not once the bridge is
+/// further down or the fan is on again; flow well under one is wrong while
+/// the current layer lays walls, and a change put back to normal clears both.
+#[test]
+fn a_setting_the_plan_at_this_height_says_is_wrong_is_named() {
+    let text = bridging(9, 2, 100);
+    let index = indexed(&text);
+    let end = i64::try_from(text.len()).expect("small");
+    let at_layer = |layer: usize| {
+        let marker = format!(";Z:{}\n", layer * 2);
+        let at = text.find(&marker).expect("the layer is there") + marker.len();
+        i64::try_from(at).expect("small")
+    };
+
+    assert_eq!(
+        index.plan_at(at_layer(2)).at_odds,
+        vec![PlanMismatch::FanOffOverBridges]
+    );
+    assert_eq!(
+        index.plan_at(at_layer(7)).at_odds,
+        vec![PlanMismatch::FanOffOverBridges],
+        "a bridge five layers down, which a frame shows, was not counted"
+    );
+    assert!(
+        index.plan_at(at_layer(8)).at_odds.is_empty(),
+        "a bridge six layers down was counted"
+    );
+    assert!(
+        index
+            .plan_with(at_layer(2), None, Some(100.0))
+            .at_odds
+            .is_empty(),
+        "a fan put back on was still named as off"
+    );
+    assert!(index.plan_at(end).at_odds.is_empty());
+
+    let starved = bridging(1, 0, 30);
+    let index = indexed(&starved);
+    let end = i64::try_from(starved.len()).expect("small");
+    assert_eq!(
+        index.plan_at(end).at_odds,
+        vec![PlanMismatch::FlowLowOverWalls]
+    );
+    assert!(
+        index.plan_with(end, Some(1.0), None).at_odds.is_empty(),
+        "a flow put back to one was still named as low"
+    );
+}
+
+/// The height the plan has risen since a position is the current layer's Z
+/// less that position's, to a tenth, and nothing where either has none.
+#[test]
+fn the_rise_since_a_position_is_the_z_added_since_it() {
+    let text = bridging(9, 0, 100);
+    let index = indexed(&text);
+    assert_eq!(
+        index.risen_since(0, Some(18.0)),
+        None,
+        "a position before any layer has a height"
+    );
+    let first = i64::try_from(text.find(";Z:2\n").expect("layer 1") + 5).expect("small");
+    assert_eq!(index.risen_since(first, Some(18.0)), Some(16.0));
+    assert_eq!(index.risen_since(first, None), None);
 }

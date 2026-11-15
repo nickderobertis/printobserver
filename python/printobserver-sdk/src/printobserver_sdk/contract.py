@@ -1555,6 +1555,11 @@ PlanFact: TypeAlias = Literal[
 ]
 
 
+# A setting in force that the plan at this height says is wrong for what is
+# being laid.
+PlanMismatch: TypeAlias = Literal["fan_off_over_bridges", "flow_low_over_walls"]
+
+
 class PolicyDecisionRejected(TypedDict):
     """The `rejected` arm of `PolicyDecision`.
 
@@ -3113,6 +3118,23 @@ class Reported(TypedDict):
     value: float
 
 
+class Rise(TypedDict):
+    """`Rise`, as the contracts declare it.
+
+    How far the plan has risen since an earlier frame of this print: the
+    height a camera should show the parts to have gained since then.
+    """
+
+    # How many whole minutes before this read that earlier frame was
+    # captured: the latest periodic observation's frame at least half an
+    # hour
+    # old.
+    minutes_ago: int
+    # The Z the plan has added since the position that frame's job had
+    # reached, in millimetres.
+    z_added_mm: float
+
+
 class SetValue(TypedDict):
     """`SetValue`, as the contracts declare it.
 
@@ -3271,6 +3293,8 @@ class SlicerPlan(TypedDict):
     it printed.
     """
 
+    # Each setting in force the plan at this height says is wrong.
+    at_odds: NotRequired[list[PlanMismatch]]
     # The part-cooling fan speed, in percent.
     fan_percent: NotRequired[SetValue | None]
     # The final layer's height, in millimetres.
@@ -3291,6 +3315,9 @@ class SlicerPlan(TypedDict):
     # `[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of
     # the file's object numbers.
     objects: NotRequired[list[list[int]]]
+    # How far the plan has risen since an earlier frame; absent before any
+    # frame is half an hour old.
+    rise: NotRequired[Rise | None]
     # What the current layer lays material as, in the order the file first
     # names each: `Perimeter`, `Support material`, `Bridge infill`.
     types: NotRequired[list[str]]
@@ -7004,6 +7031,12 @@ SHAPES: dict[str, object] = json.loads(
    "objects"
   ]
  },
+ "PlanMismatch": {
+  "enum": [
+   "fan_off_over_bridges",
+   "flow_low_over_walls"
+  ]
+ },
  "PolicyDecision": {
   "union": {
    "tag_field": "",
@@ -9350,6 +9383,28 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "Rise": {
+  "struct": {
+   "fields": {
+    "minutes_ago": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "z_added_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "SetValue": {
   "struct": {
    "fields": {
@@ -9579,6 +9634,16 @@ SHAPES: dict[str, object] = json.loads(
  "SlicerPlan": {
   "struct": {
    "fields": {
+    "at_odds": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlanMismatch"
+      },
+      "non_empty": false
+     }
+    },
     "fan_percent": {
      "paired_with": "",
      "required": false,
@@ -9653,6 +9718,15 @@ SHAPES: dict[str, object] = json.loads(
        "non_empty": true
       },
       "non_empty": false
+     }
+    },
+    "rise": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Rise"
+      }
      }
     },
     "types": {

@@ -5,8 +5,10 @@ budgets:
       Agent tokens added per check by the new context facts: the model input
       tokens one scheduled check adds to the print's conversation through this
       plan — the context answer's new fields (layer, Z, extrusion types, final
-      height, slicer time left, flow factor, fan speed, and the objects with
-      their bed areas), as the labelled lines `printobserver context` prints
+      height, slicer time left, flow factor, fan speed, the objects with
+      their bed areas, and — at their longest, as the manager's ruling a9 added
+      them — the height risen since a frame half an hour back and both
+      settings named as at odds with the plan), as the labelled lines `printobserver context` prints
       them, plus the turn prompt template's bytes beyond its bytes at commit
       0f1c113e — converted from bytes to tokens at the tokens-per-byte ratio
       spike-check-costs measured. Detail: added bytes per field, bytes per

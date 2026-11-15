@@ -10,7 +10,9 @@
 use printobserver_core::kinds::GcodeIndexedPayload;
 use printobserver_core::records::{InterventionOutcome, PrintAction};
 use printobserver_core::store::PrintStore as _;
-use printobserver_core::{Actor, PrintRecord, SetValue};
+use printobserver_core::{
+    Actor, PeriodicObservationPayload, PrintRecord, Rise, SetValue, block_on,
+};
 use printobserver_printer_api::{PrinterError, PrinterState};
 use printobserver_types::{EventPayload as _, PrintId};
 
@@ -546,4 +548,56 @@ fn a_print_whose_file_name_is_no_file_is_not_planned() {
 
     assert_eq!(context.slicer, None);
     assert_eq!(world.printer.gcode_reads("a/b.gcode"), 0);
+}
+
+/// Until a periodic observation is half an hour old the plan states no rise;
+/// once one is, the plan states when that observation was taken and the Z the
+/// file has added since the position its job had reached.
+#[test]
+fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    assert!(
+        world
+            .store
+            .events_of(print.id)
+            .iter()
+            .any(|event| event.kind().as_str() == PeriodicObservationPayload::KIND),
+        "the observation is not recorded"
+    );
+
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the job is planned");
+    assert_eq!(
+        plan.rise, None,
+        "a frame of this moment was given as an earlier one"
+    );
+
+    world.clock.advance(29 * 60);
+    world.printer.reports_position(Some(past("M221 S95")), None);
+    let plan = world.context(print.id).expect("the context reads").slicer;
+    assert_eq!(
+        plan.and_then(|plan| plan.rise),
+        None,
+        "a frame under half an hour old was given as the earlier one"
+    );
+
+    world.clock.advance(2 * 60);
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the job is planned");
+    assert_eq!(
+        plan.rise,
+        Some(Rise {
+            minutes_ago: 31,
+            z_added_mm: 0.2,
+        }),
+        "the rise since the observation half an hour back is not the file's"
+    );
 }

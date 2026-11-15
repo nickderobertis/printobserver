@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use peak_alloc::PeakAlloc;
-use printobserver_core::{GcodeIndex, IndexBuilder, PrintContext};
+use printobserver_core::{GcodeIndex, IndexBuilder, PlanMismatch, PrintContext, Rise};
 use printobserver_printer_api::GcodeSink as _;
 use printobserver_types::contract::Sample;
 use printobserver_types::labelled::{self, fields};
@@ -79,9 +79,10 @@ const LONG_PLATE: [(&str, f64); 6] = [
 
 /// The plan's facts the budget `agent-context-added-tokens` counts: the layer
 /// and its height, the extrusion types, the final height, the slicer's time
-/// left, the flow factor and fan speed in force, and the objects with their
-/// bed areas.
-const COUNTED_FACTS: [&str; 10] = [
+/// left, the flow factor and fan speed in force, the objects with their bed
+/// areas, the height risen since an earlier frame, and the settings the plan
+/// says are wrong.
+const COUNTED_FACTS: [&str; 12] = [
     "layer",
     "layers",
     "z_mm",
@@ -92,6 +93,8 @@ const COUNTED_FACTS: [&str; 10] = [
     "fan_percent",
     "object_count",
     "objects",
+    "rise",
+    "at_odds",
 ];
 
 /// How many objects the long plate labels: eight guards and eight pads.
@@ -224,6 +227,17 @@ fn rendered(index: &GcodeIndex) -> Rendered {
     );
     let objects = plan.objects.len();
     let layer = plan.layer;
+    let mut plan = plan;
+    // The two facts read beside the index, at their longest: a rise since a
+    // frame half an hour back, and both settings named as wrong for the plan.
+    plan.rise = Some(Rise {
+        minutes_ago: 102,
+        z_added_mm: 12.4,
+    });
+    plan.at_odds = vec![
+        PlanMismatch::FanOffOverBridges,
+        PlanMismatch::FlowLowOverWalls,
+    ];
     let mut with_plan = PrintContext::sample_full();
     with_plan.slicer = Some(plan);
     // The labelled lines `printobserver context` prints, through the one

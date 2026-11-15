@@ -1201,6 +1201,12 @@ export type PlanFact =
   | "fan_percent"
   | "objects";
 
+/**
+ * A setting in force that the plan at this height says is wrong for what is
+ * being laid.
+ */
+export type PlanMismatch = "fan_off_over_bridges" | "flow_low_over_walls";
+
 /** The decision policy took on one request. */
 export type PolicyDecision = "accepted" | { rejected: RejectionReason };
 
@@ -1908,6 +1914,24 @@ export interface Reported {
 }
 
 /**
+ * How far the plan has risen since an earlier frame of this print: the
+ * height a camera should show the parts to have gained since then.
+ */
+export interface Rise {
+  /**
+   * How many whole minutes before this read that earlier frame was
+   * captured: the latest periodic observation's frame at least half an hour
+   * old.
+   */
+  minutes_ago: number;
+  /**
+   * The Z the plan has added since the position that frame's job had
+   * reached, in millimetres.
+   */
+  z_added_mm: number;
+}
+
+/**
  * One adjustable as the print's file set it at the current position, and as
  * a change made through this program since then left it.
  */
@@ -1965,6 +1989,8 @@ export interface SignalPosition {
  * it printed.
  */
 export interface SlicerPlan {
+  /** Each setting in force the plan at this height says is wrong. */
+  at_odds?: Array<PlanMismatch>;
   /** The part-cooling fan speed, in percent. */
   fan_percent?: SetValue | null;
   /** The final layer's height, in millimetres. */
@@ -1988,6 +2014,11 @@ export interface SlicerPlan {
    * the file's object numbers.
    */
   objects?: Array<Array<number>>;
+  /**
+   * How far the plan has risen since an earlier frame; absent before any
+   * frame is half an hour old.
+   */
+  rise?: Rise | null;
   /**
    * What the current layer lays material as, in the order the file first
    * names each: `Perimeter`, `Support material`, `Bridge infill`.
@@ -5081,6 +5112,12 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "objects"
   ]
  },
+ "PlanMismatch": {
+  "enum": [
+   "fan_off_over_bridges",
+   "flow_low_over_walls"
+  ]
+ },
  "PolicyDecision": {
   "union": {
    "tag_field": "",
@@ -7427,6 +7464,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "Rise": {
+  "struct": {
+   "fields": {
+    "minutes_ago": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "z_added_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "SetValue": {
   "struct": {
    "fields": {
@@ -7656,6 +7715,16 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
  "SlicerPlan": {
   "struct": {
    "fields": {
+    "at_odds": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlanMismatch"
+      },
+      "non_empty": false
+     }
+    },
     "fan_percent": {
      "paired_with": "",
      "required": false,
@@ -7730,6 +7799,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "non_empty": true
       },
       "non_empty": false
+     }
+    },
+    "rise": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Rise"
+      }
      }
     },
     "types": {

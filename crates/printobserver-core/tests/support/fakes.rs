@@ -1331,6 +1331,8 @@ impl EventStore for FakeStore {
             .rev()
             .filter(|event| event.print_id == Some(query.print_id))
             .filter(|event| query.kinds.is_empty() || query.kinds.contains(event.kind()))
+            .filter(|event| query.since.is_none_or(|since| event.received_at >= since))
+            .filter(|event| query.until.is_none_or(|until| event.received_at <= until))
             .take(limit)
             .cloned()
             .collect();

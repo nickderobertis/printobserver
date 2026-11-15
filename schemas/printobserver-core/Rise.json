@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "How far the plan has risen since an earlier frame of this print: the\nheight a camera should show the parts to have gained since then.",
+  "properties": {
+    "minutes_ago": {
+      "description": "How many whole minutes before this read that earlier frame was\ncaptured: the latest periodic observation's frame at least half an hour\nold.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "z_added_mm": {
+      "description": "The Z the plan has added since the position that frame's job had\nreached, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "minutes_ago",
+    "z_added_mm"
+  ],
+  "title": "Rise",
+  "type": "object"
+}
