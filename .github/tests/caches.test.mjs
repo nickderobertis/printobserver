@@ -429,16 +429,12 @@ class StoreRun {
       (step) => action(step) === RESTORE && String(step.with.path) === EXEMPT,
     );
     const outputs = restore ? hit(String(restore.id), answer) : {};
-    /** whether the cell restores the store */
     this.restores = restore !== undefined && cell.runs(restore, run, outputs);
-    /** whether it runs the fetch */
     this.fetches = cell.steps.some((step) => step.run === FETCH && cell.runs(step, run, outputs));
     const save = cell.steps.find(
       (step) => action(step) === SAVE && String(step.with.path) === EXEMPT,
     );
-    /** whether it saves the store */
     this.saves = save !== undefined && cell.runs(save, run, outputs);
-    /** the key it looks up and the one it saves under */
     this.keys = [restore, save].map((step) => (step ? cell.input(step, "key", run, outputs) : ""));
   }
 }
