@@ -576,6 +576,9 @@ def _json_lines(text: str) -> list[dict[str, Any]]:
 #: How much of what a failed turn's harness runs printed its record keeps.
 HARNESS_SAID_CHARS = 1500
 
+#: How much of a prints answer the replay could not read its refusal quotes.
+PRINTS_SAID_CHARS = 2000
+
 
 def _harness_said(runs: list[Run]) -> str:
     """The end of what a turn's harness runs printed, which is where a run says why it failed.
@@ -881,10 +884,11 @@ class Replay:
 
     def _prints(self) -> list[HeldPrint]:
         """The prints the server holds, once they have what is read from them."""
-        answered = json.loads(self._client("prints"))
+        said = self._client("prints")
+        answered = json.loads(said)
         prints = answered.get("prints") if isinstance(answered, dict) else None
         if not isinstance(prints, list) or not all(map(is_held_print, prints)):
-            msg = "the server's prints answered no list of prints"
+            msg = f"the server's prints answered no list of prints: {said[:PRINTS_SAID_CHARS]}"
             raise ReplayError(msg)
         return cast("list[HeldPrint]", prints)
 

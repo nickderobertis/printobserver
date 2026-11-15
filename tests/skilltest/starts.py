@@ -36,6 +36,7 @@ import doubles
 from cases import REPO, Request, StartCase, StartRequest, instant, step_matches
 from replay import (
     INSTALLER,
+    PRINTS_SAID_CHARS,
     REQUESTED,
     SKILL,
     START_DEADLINE_S,
@@ -635,9 +636,11 @@ class StartsReplay:
     def _actions(self) -> list[RecordedRequest]:
         """Every action an operator requested, of every print, with when it was recorded."""
         found = []
-        prints = self._client("prints").get("prints")
+        answered = self._client("prints")
+        prints = answered.get("prints")
         if not isinstance(prints, list) or not all(map(is_held_print, prints)):
-            msg = "the server's prints answered no list of prints"
+            said = json.dumps(answered)[:PRINTS_SAID_CHARS]
+            msg = f"the server's prints answered no list of prints: {said}"
             raise ReplayError(msg)
         for held in prints:
             events = self._client("history", "--print-id", held["id"], "--limit", "1000").get(
