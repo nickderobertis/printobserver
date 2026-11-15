@@ -1350,6 +1350,7 @@ def _remove_task(task: str, program: Path) -> None:
 
 
 @WINDOWS_ONLY
+@pytest.mark.usefixtures("host_service_manager")
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_place(
     program: Path, tmp_path: Path, machine: Machine
@@ -1516,6 +1517,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
 
 
 @WINDOWS_ONLY
+@pytest.mark.usefixtures("host_service_manager")
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_on_windows_an_ordinary_account_installs_with_no_administrator_rights(
     tmp_path: Path, program: Path
@@ -2167,6 +2169,7 @@ def test_the_piped_form_that_stopped_keeps_the_session_and_leaves_a_failing_stat
 
 
 @WINDOWS_ONLY
+@pytest.mark.usefixtures("host_service_manager")
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_on_windows_the_migration_refuses_an_account_this_machine_does_not_have(
     migrating: Migrating, serviced: Serviced, tmp_path: Path
@@ -2331,6 +2334,7 @@ def test_a_copy_that_cannot_be_read_back_deletes_nothing(
 
 
 @WINDOWS_ONLY
+@pytest.mark.usefixtures("host_service_manager")
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 def test_on_windows_a_server_started_from_a_shell_keeps_the_shells_window(
     installing: Installing,

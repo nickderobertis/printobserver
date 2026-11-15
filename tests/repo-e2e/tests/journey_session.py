@@ -16,18 +16,23 @@ from __future__ import annotations
 
 import os
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 from journey import REPO_ROOT, GateCopy
 from repo_checks import gate_shards, windows_lint, workers
+from repo_checks.tree_lock import TreeLock
 
 #: How many tests the part's own deselection took out of this session.
 LEFT_TO_ANOTHER_PART = pytest.StashKey[int]()
 
 #: How many test files the per-file summary names, slowest first.
 SLOWEST_FILES = 25
+
+#: The lock a journey holds while this host's own service manager has, or may
+#: be given, a `printobserver` registration of the journey's making.
+HOST_SERVICE_MANAGER_LOCK = "e2e-host-service-manager.lock"
 
 
 def worker_count(project: str) -> Callable[[pytest.Config], int]:
@@ -148,6 +153,27 @@ def no_ambient_gate_base(monkeypatch: pytest.MonkeyPatch) -> None:
     # a tier a journey drives in a copy is never one of its parts.
     for name in gate_shards.PARTS:
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture
+def host_service_manager() -> Iterator[None]:
+    """Hold this host's service manager for the journey, against every other journey.
+
+    The service journeys register `printobserver` with the host's real manager —
+    a LaunchDaemon, a Windows service, a scheduled task — and the script route's
+    proofs run the per-user installer, which refuses a host where the service is
+    registered and registers a task or a user unit of its own. Those journeys
+    are in different xdist groups, because they share nothing else, so each
+    takes this lock, exclusively, for as long as it holds the registration or
+    could meet one: the operating system's own lock on a file under this
+    checkout's `target`, which a killed worker leaves free.
+    """
+    held = TreeLock(REPO_ROOT, HOST_SERVICE_MANAGER_LOCK)
+    held.lock(exclusive=True)
+    try:
+        yield
+    finally:
+        held.release()
 
 
 @pytest.fixture(scope="session")

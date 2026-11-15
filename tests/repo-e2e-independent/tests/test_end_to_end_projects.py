@@ -45,6 +45,7 @@ ASSIGNED = {
             "test_gate_copy_journey.py",
             "test_gate_tier_journey.py",
             "test_host_portability_journey.py",
+            "test_host_service_lock.py",
             "test_install_powershell_script_journey.py",
             "test_install_script_journey.py",
             "test_isolation_copies.py",

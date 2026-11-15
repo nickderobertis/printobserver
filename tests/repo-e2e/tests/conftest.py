@@ -12,6 +12,9 @@ from journey_session import (
     gate_copy as gate_copy,
 )
 from journey_session import (
+    host_service_manager as host_service_manager,
+)
+from journey_session import (
     no_ambient_gate_base as no_ambient_gate_base,
 )
 from journey_session import (
