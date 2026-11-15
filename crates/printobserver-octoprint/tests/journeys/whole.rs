@@ -192,6 +192,22 @@ fn a_download_cut_short_is_answered_as_the_connection_dropping() {
     );
 }
 
+/// A download answered with bytes that are no HTTP response is answered as
+/// malformed, and the sink is handed nothing of them.
+#[test]
+fn a_download_that_is_no_response_is_answered_as_malformed() {
+    let stub = downloading(Reply::Raw(b"G28\nG1 X1 Y1\n".to_vec()));
+    let mut sink = Kept::everything();
+
+    let read = block_on(printer_of_stub(&stub).read_gcode(named("held.gcode"), &mut sink));
+
+    assert!(
+        matches!(&read, Err(PrinterError::Malformed { .. })),
+        "{read:?}"
+    );
+    assert!(sink.bytes.is_empty());
+}
+
 /// An instance nobody is listening at is answered as unreachable.
 #[test]
 fn an_instance_that_is_not_there_is_unreachable() {

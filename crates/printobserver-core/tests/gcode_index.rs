@@ -613,3 +613,25 @@ fn the_rise_since_a_position_counts_the_layers_that_lay_the_part() {
          layer rather than from the part's own top"
     );
 }
+
+/// A command written in lower case, or with its words run together, is read
+/// as the same command: a move lays its object's material, and a flow and a
+/// fan are set.
+#[test]
+fn a_lowercase_or_compact_command_is_read_as_the_same_command() {
+    let text = "\
+m83
+m486 s0
+g1 x0 y0
+g1 x10 y0 e1
+G1X10Y20E1
+M486S-1
+m221 s95
+M106S127.5
+";
+    let plan = indexed(text).plan_at(i64::try_from(text.len()).expect("small"));
+
+    assert_eq!(plan.objects, vec![[0, 0, 10, 20]], "{:?}", plan.objects);
+    assert_eq!(plan.flow_factor.and_then(|set| set.file), Some(0.95));
+    assert_eq!(plan.fan_percent.and_then(|set| set.file), Some(50.0));
+}
