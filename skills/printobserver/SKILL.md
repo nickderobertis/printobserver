@@ -63,20 +63,19 @@ Reading frames:
   the part's shape would make them solid; texture its shape explains, ribs or
   lattice, is not.
 - **Strands.** Curved or tangled strands are a defect only inside the part's
-  outline and clearly growing or out of place. A strand off the part, on a
-  rail, screw or frame, is not.
-- **Position.** Judge each frame against earlier ones. Judge growth only
-  against a frame half an hour old or more, and only where the plan states the
-  rise since it, which is what should show, never proof it printed: the
-  tallest part still printing then stood the height now less that rise, so
-  compare its height then and now; finished parts do not grow. Unclear or
-  barely taller is not printing: a clear defect, never uncertain. Hidden
-  parts: look again first. A shifting view carries sheet and part together, so
-  measure each footprint's distance to a sheet hole, edge or mark, now and
-  earlier, giving both. Changed in any frame, even one a later frame seems to
-  undo, it has moved, whatever might explain it. So has a part off the bed, a
-  first layer not sticking, or a part where the plan puts no object, its own
-  place empty.
+  outline and growing, absent from an earlier frame included, or out of place;
+  off the part, on a rail, screw or frame, not.
+- **Position.** Judge growth only against a frame half an hour old or more,
+  and only where the plan states the rise since it, which is what should show,
+  never proof it printed: the tallest part still printing then stood the
+  height now less that rise, so compare its height then and now; finished
+  parts do not grow. Unclear or barely taller is not printing: a clear defect,
+  never uncertain. Hidden parts: look again first. A shifting view carries
+  sheet and part together, so at every look measure each footprint's distance
+  to a sheet hole, edge or mark, now and earlier, giving both. Changed in any
+  frame, even one a later frame seems to undo, it has moved, whatever might
+  explain it. So has a part off the bed, a first layer not sticking, or a part
+  where the plan puts no object, its own place empty.
 
 ## When the detector has already paused the print
 
