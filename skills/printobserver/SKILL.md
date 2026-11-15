@@ -65,11 +65,12 @@ Reading frames:
   outline and clearly growing or out of place. A strand off the part, on a
   rail, screw or frame, is not: note it.
 - **Position.** Judge each frame against this print's earlier frames. What is
-  printed stays where it was laid. Where the plan states its rise since a
-  frame half an hour back, parts lacking it are not printing, however
-  small: a clear defect, never uncertain. A shifting view carries sheet and part
+  printed stays where it was laid. Where the plan states a rise since a
+  half-hour-old frame, parts in view not showing it are not printing,
+  however small: a clear defect, never uncertain. Hidden parts: look again;
+  none showing it is the same. A shifting view carries sheet and part
   together, so at every look measure the parts' height against that frame and
-  the footprint's distance to one of the sheet's holes, edges or marks, now
+  the footprint's distance to a sheet hole, edge or mark, now
   and earlier, giving both in your reason. Changed in any frame, even one a later frame seems to undo, it
   has moved, whatever might explain it. So has a
   part off the bed, a first layer not sticking, or a part where the plan puts
@@ -77,7 +78,7 @@ Reading frames:
 
 ## When the detector has already paused the print
 
-The situation says whether the detector paused the print. The order holds
+The order holds
 with that pause standing; a paused print moves no further, so another look
 settles nothing: an uncertain reading is stopped, not watched.
 
@@ -105,7 +106,7 @@ ask for nothing; say what and where.
 
 ## When to escalate instead
 
-Also escalate when the machine is clearly beyond your adjustments, or the safe
+Escalate when the machine is clearly beyond your adjustments, or the safe
 thing is beyond what you may ask: pause the print, giving as your reason what
 the person must check.
 A person's resume in the record settles what they resumed over.
