@@ -590,3 +590,47 @@ fn the_rise_since_a_position_is_the_z_added_since_it() {
     assert_eq!(index.risen_since(first, Some(18.0)), Some(16.0));
     assert_eq!(index.risen_since(first, None), None);
 }
+
+/// A layer height below the bed or past any machine's reach is no height, and
+/// relative moves that each stay within reach but together leave it do not
+/// carry the reckoning out of it.
+#[test]
+fn a_height_or_a_place_out_of_reach_is_not_read() {
+    let text = "\
+;LAYER_CHANGE
+;Z:-0.2
+;LAYER_CHANGE
+;Z:20000
+;LAYER_CHANGE
+;Z:0.6
+M83
+G91
+M486 S0
+G1 X9000 E1
+G1 X9000 E1
+M486 S-1
+";
+    let index = indexed(text);
+    let end = i64::try_from(text.len()).expect("small");
+    // Inside each layer: past its change, short of the next one's.
+    let inside = |next: &str| {
+        i64::try_from(text.find(next).expect("the next layer is there")).expect("small")
+    };
+    assert_eq!(
+        index.plan_at(inside(";LAYER_CHANGE\n;Z:20000")).z_mm,
+        None,
+        "a height below the bed was read"
+    );
+    assert_eq!(
+        index.plan_at(inside(";LAYER_CHANGE\n;Z:0.6")).z_mm,
+        None,
+        "a height past any machine was read"
+    );
+    let plan = index.plan_at(end);
+    assert_eq!(plan.z_mm, Some(0.6));
+    assert_eq!(
+        plan.objects,
+        vec![[0, 0, 9000, 0]],
+        "relative moves carried the reckoning past any machine's reach"
+    );
+}

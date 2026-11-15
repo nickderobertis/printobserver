@@ -189,6 +189,15 @@ impl Indexing {
     /// A server checking every second, over a scripted instance holding the
     /// files given and printing the first of them at a position.
     async fn open(files: &[(&str, &[u8])], position: i64) -> Self {
+        Self::open_with(files, position, |_| {}).await
+    }
+
+    /// The same, with the configuration as one journey edits it.
+    async fn open_with(
+        files: &[(&str, &[u8])],
+        position: i64,
+        edit: impl FnOnce(&mut toml::Value),
+    ) -> Self {
         let octoprint = ScriptedOctoPrint::start();
         for (name, bytes) in files {
             octoprint.holds_file(name, bytes.to_vec(), 1_000.0);
@@ -208,6 +217,7 @@ impl Indexing {
             "supervisor.observation_interval_s",
             toml::Value::Integer(1),
         );
+        edit(&mut configured);
         let config = ServerConfig::load(write(root.path(), &configured))
             .expect("the journey's configuration is accepted");
         let server = start(&config, root.path()).await;
@@ -362,26 +372,96 @@ impl Indexing {
     /// Set the part-cooling fan as the operator, through the server, and read
     /// the print's context after it.
     async fn operator_sets_the_fan(&self, print_id: &str, percent: f64) -> Value {
+        self.operator_sets(print_id, "set_fan_percent", "percent", percent)
+            .await
+    }
+
+    /// Ask one adjustment as the operator, through the server, and read the
+    /// print's context after it.
+    async fn operator_sets(
+        &self,
+        print_id: &str,
+        operation: &str,
+        field: &str,
+        value: f64,
+    ) -> Value {
         let response = self
             .client
             .post(format!(
                 "http://{}{}",
                 self.server.address(),
-                printobserver_server::operation("set_fan_percent")
-                    .expect("the fan is an operation")
+                printobserver_server::operation(operation)
+                    .expect("the adjustment is an operation")
                     .full_path()
                     .replace("{print_id}", print_id)
             ))
             .json(&json!({
-                "reason": "the bridge needs more cooling",
+                "reason": "the journey is moving a setting the plan reads",
                 "actor": "operator",
-                "percent": percent,
+                field: value,
             }))
             .send()
             .await
             .expect("the server answers");
-        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let status = response.status();
+        assert_eq!(
+            status,
+            reqwest::StatusCode::OK,
+            "{operation}: {}",
+            response.text().await.unwrap_or_default()
+        );
         self.context(print_id).await.0
+    }
+
+    /// Stop this server, write down in its store a periodic observation of the
+    /// print taken `minutes` ago with its job at `position`, and start another
+    /// server over that store: what an earlier check would have left there.
+    async fn observed_earlier(self, print_id: &str, position: i64, minutes: i64) -> Self {
+        use printobserver_core::store::EventStore as _;
+        use printobserver_types::contract::Sample as _;
+
+        let Self {
+            root,
+            config,
+            server,
+            octoprint,
+            client,
+        } = self;
+        server.stop().await;
+        let taken = Timestamp::now()
+            .plus_seconds(-minutes * 60)
+            .expect("a moment");
+        let mut job = printobserver_printer_api::JobSnapshot::sample_full();
+        job.file_name = Some(FIRST.to_owned());
+        job.file_position_bytes = Some(position);
+        let store = SqliteStore::open(&config.state_dir).expect("the store opens");
+        store
+            .append_event(printobserver_core::store::EventDraft {
+                print_id: Some(print_id.parse().expect("a print id")),
+                source: printobserver_types::EventSource::new("printobserver"),
+                received_at: taken,
+                body: printobserver_types::EventBody::of(
+                    &printobserver_core::PeriodicObservationPayload {
+                        interval_s: 120,
+                        printer: None,
+                        job: Some(job),
+                        frame_captured_at: Some(taken),
+                    },
+                )
+                .expect("an observation's body"),
+                raw: None,
+            })
+            .await
+            .expect("the observation is written down");
+        drop(store);
+        let server = start(&config, root.path()).await;
+        Self {
+            root,
+            config,
+            server,
+            octoprint,
+            client,
+        }
     }
 
     /// Neither the context a turn read nor the prompt its harness was started
@@ -648,5 +728,67 @@ async fn a_file_without_types_estimates_flow_fan_or_objects_says_so_and_is_check
         "the checks did not go on"
     );
     assert_eq!(world.builds(&print_id).await, 1);
+    world.server.stop().await;
+}
+
+/// A check is told how far the plan has risen since a frame half an hour or
+/// more back — the Z the file added since the position that observation's job
+/// had reached — and which setting in force the plan at this height says is
+/// wrong: the fan off over the layers that bridge, and the flow well under one
+/// over walls, each set through the operator's own surface.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_check_is_told_the_plans_rise_and_the_settings_at_odds_with_it() {
+    let world = Indexing::open_with(&[(FIRST, BUBBLER)], IN_BRIDGE.position, |configured| {
+        set(
+            configured,
+            "safety.allowed.flowrate.min",
+            toml::Value::Float(0.8),
+        );
+    })
+    .await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    let print_id = world.active(None).await;
+    let world = world
+        .observed_earlier(&print_id, IN_SUPPORT.position, 40)
+        .await;
+
+    let turn = world
+        .checked_at(&print_id, FIRST, BUBBLER, IN_BRIDGE.position)
+        .await;
+    assert_eq!(
+        turn["slicer"]["rise"],
+        json!({ "minutes_ago": 40, "z_added_mm": 4.8 }),
+        "the check was not told the Z added since layer 23's {} mm",
+        IN_SUPPORT.z_mm
+    );
+    assert!(
+        turn["slicer"].get("at_odds").is_none(),
+        "{}",
+        turn["slicer"]
+    );
+
+    let fan_off = world
+        .operator_sets(&print_id, "set_fan_percent", "percent", 0.0)
+        .await;
+    assert_eq!(
+        fan_off["slicer"]["at_odds"],
+        json!(["fan_off_over_bridges"]),
+        "the fan off over a bridging layer was not named"
+    );
+    let starved = world
+        .operator_sets(&print_id, "set_flowrate_factor", "factor", 0.85)
+        .await;
+    assert_eq!(
+        starved["slicer"]["at_odds"],
+        json!(["fan_off_over_bridges", "flow_low_over_walls"]),
+        "the flow well under one over walls was not named"
+    );
+    let restored = world
+        .operator_sets(&print_id, "set_fan_percent", "percent", 100.0)
+        .await;
+    assert_eq!(
+        restored["slicer"]["at_odds"],
+        json!(["flow_low_over_walls"])
+    );
     world.server.stop().await;
 }

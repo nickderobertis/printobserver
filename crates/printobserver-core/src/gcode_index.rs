@@ -796,7 +796,13 @@ impl IndexBuilder {
             if let Some(layer) = self.layers.last_mut()
                 && layer.z_mm.is_none()
             {
-                layer.z_mm = z.trim().parse::<f64>().ok().filter(|z| z.is_finite());
+                // A height is a place on the Z axis: no lower than the bed and
+                // no further than any machine reaches.
+                layer.z_mm = z
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|z| (0.0..=AXIS_LIMIT).contains(z));
             }
         } else if let Some(name) = comment.strip_prefix("TYPE:") {
             let name = name.trim();
@@ -872,14 +878,17 @@ impl IndexBuilder {
         }
     }
 
-    /// Move one axis to a place, or by a distance, when it is within reach.
+    /// Move one axis to a place, or by a distance, when where it lands is
+    /// within reach: a run of distances each within reach can carry the head
+    /// past it, and a place beyond it is no place a head can be.
     fn place(&mut self, axis: usize, value: f64, relative: bool) {
-        if value.abs() <= AXIS_LIMIT {
-            self.at[axis] = if relative {
-                self.at[axis] + value
-            } else {
-                value
-            };
+        let landed = if relative {
+            self.at[axis] + value
+        } else {
+            value
+        };
+        if landed.abs() <= AXIS_LIMIT {
+            self.at[axis] = landed;
         }
     }
 
