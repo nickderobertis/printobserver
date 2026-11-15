@@ -11,7 +11,7 @@ use printobserver_core::kinds::GcodeIndexedPayload;
 use printobserver_core::records::{InterventionOutcome, PrintAction};
 use printobserver_core::store::PrintStore as _;
 use printobserver_core::{
-    Actor, PeriodicObservationPayload, PrintRecord, Rise, SetValue, block_on,
+    Actor, PeriodicObservationPayload, PlanFact, PrintRecord, Rise, SetValue, block_on,
 };
 use printobserver_printer_api::{PrinterError, PrinterState};
 use printobserver_types::{EventPayload as _, PrintId};
@@ -578,6 +578,11 @@ fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
         plan.rise, None,
         "a frame of this moment was given as an earlier one"
     );
+    assert!(
+        plan.unknown.contains(&PlanFact::Rise),
+        "a rise not yet known was left out rather than stated unknown: {:?}",
+        plan.unknown
+    );
 
     world.clock.advance(29 * 60);
     world.printer.reports_position(Some(past("M221 S95")), None);
@@ -601,6 +606,11 @@ fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
             z_added_mm: 0.2,
         }),
         "the rise since the observation half an hour back is not the file's"
+    );
+    assert!(
+        !plan.unknown.contains(&PlanFact::Rise),
+        "{:?}",
+        plan.unknown
     );
 }
 

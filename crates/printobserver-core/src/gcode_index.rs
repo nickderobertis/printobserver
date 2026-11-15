@@ -510,6 +510,10 @@ pub enum PlanFact {
     FanPercent,
     /// The file labels no objects.
     Objects,
+    /// No frame of this print is half an hour old with a position to rise
+    /// from, so how far the parts should have grown is not known, and no
+    /// growth can be judged from frames closer together.
+    Rise,
 }
 
 /// What the slicer planned at the print's current file position: the shape
@@ -1566,6 +1570,10 @@ impl crate::supervisor::Supervisor {
             .await?;
         let mut plan = index.plan_with(position, flow, fan);
         plan.rise = self.rise_of(print.id, &index, position).await?;
+        if plan.rise.is_none() {
+            plan.unknown.push(PlanFact::Rise);
+            plan.unknown.sort_unstable();
+        }
         Ok(Some(plan))
     }
 

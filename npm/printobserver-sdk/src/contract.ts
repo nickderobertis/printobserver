@@ -1199,7 +1199,8 @@ export type PlanFact =
   | "minutes_left"
   | "flow_factor"
   | "fan_percent"
-  | "objects";
+  | "objects"
+  | "rise";
 
 /**
  * A setting in force that the plan at this height says is wrong for what is
@@ -5110,7 +5111,8 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "minutes_left",
    "flow_factor",
    "fan_percent",
-   "objects"
+   "objects",
+   "rise"
   ]
  },
  "PlanMismatch": {

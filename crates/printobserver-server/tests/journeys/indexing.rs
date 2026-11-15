@@ -161,6 +161,8 @@ fn plan_of(planned: &Planned) -> Value {
         "fan_percent": { "file": planned.fan },
         "object_count": 1,
         "objects": objects(),
+        // No frame of a journey this short is half an hour old.
+        "unknown": ["rise"],
     })
 }
 
@@ -708,7 +710,8 @@ async fn a_file_without_types_estimates_flow_fan_or_objects_says_so_and_is_check
             "minutes_left",
             "flow_factor",
             "fan_percent",
-            "objects"
+            "objects",
+            "rise"
         ])
     );
     for absent in [

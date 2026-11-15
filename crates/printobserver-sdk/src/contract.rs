@@ -1489,6 +1489,11 @@ pub enum PlanFact {
     /// The file labels no objects.
     #[serde(rename = "objects")]
     Objects,
+    /// No frame of this print is half an hour old with a position to rise
+    /// from, so how far the parts should have grown is not known, and no
+    /// growth can be judged from frames closer together.
+    #[serde(rename = "rise")]
+    Rise,
 }
 
 /// A setting in force that the plan at this height says is wrong for what is

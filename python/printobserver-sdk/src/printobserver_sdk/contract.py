@@ -1551,7 +1551,7 @@ class PeriodicObservationPayload(TypedDict):
 
 # A fact of the plan the print's file does not state.
 PlanFact: TypeAlias = Literal[
-    "layer", "final_z", "types", "minutes_left", "flow_factor", "fan_percent", "objects"
+    "layer", "final_z", "types", "minutes_left", "flow_factor", "fan_percent", "objects", "rise"
 ]
 
 
@@ -7029,7 +7029,8 @@ SHAPES: dict[str, object] = json.loads(
    "minutes_left",
    "flow_factor",
    "fan_percent",
-   "objects"
+   "objects",
+   "rise"
   ]
  },
  "PlanMismatch": {

@@ -8889,6 +8889,11 @@ Declared by `printobserver-server`.
           "const": "objects",
           "description": "The file labels no objects.",
           "type": "string"
+        },
+        {
+          "const": "rise",
+          "description": "No frame of this print is half an hour old with a position to rise\nfrom, so how far the parts should have grown is not known, and no\ngrowth can be judged from frames closer together.",
+          "type": "string"
         }
       ]
     },
@@ -16188,6 +16193,11 @@ Declared by `printobserver-core`.
     {
       "const": "objects",
       "description": "The file labels no objects.",
+      "type": "string"
+    },
+    {
+      "const": "rise",
+      "description": "No frame of this print is half an hour old with a position to rise\nfrom, so how far the parts should have grown is not known, and no\ngrowth can be judged from frames closer together.",
       "type": "string"
     }
   ],
@@ -23657,6 +23667,11 @@ Declared by `printobserver-core`.
         {
           "const": "objects",
           "description": "The file labels no objects.",
+          "type": "string"
+        },
+        {
+          "const": "rise",
+          "description": "No frame of this print is half an hour old with a position to rise\nfrom, so how far the parts should have grown is not known, and no\ngrowth can be judged from frames closer together.",
           "type": "string"
         }
       ]
@@ -32755,6 +32770,11 @@ Declared by `printobserver-core`.
         {
           "const": "objects",
           "description": "The file labels no objects.",
+          "type": "string"
+        },
+        {
+          "const": "rise",
+          "description": "No frame of this print is half an hour old with a position to rise\nfrom, so how far the parts should have grown is not known, and no\ngrowth can be judged from frames closer together.",
           "type": "string"
         }
       ]
