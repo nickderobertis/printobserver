@@ -66,9 +66,9 @@ Reading frames:
   outline and clearly growing or out of place. A strand off the part, on a
   rail, screw or frame, is not: note it.
 - **Position.** Judge each frame against this print's earlier frames. What is
-  printed stays where it was laid and rises with the plan: parts barely risen
-  through an hour of printing are not printing, whatever the nozzle does or
-  hides: a clear defect. A shifting view carries sheet and part
+  printed stays where it was laid and rises with the plan's Z: parts lacking
+  the Z added since earlier frames are not printing, however small or busy
+  the nozzle: a clear defect, never uncertain. A shifting view carries sheet and part
   together, so at every look measure the footprint's distance to one of the
   sheet's holes, edges or marks, now and earlier, giving both in your reason. Changed in any frame, even one a later frame seems to undo, it
   has moved, whatever might explain it. So has a
@@ -86,7 +86,7 @@ settles nothing: an uncertain reading is stopped, not watched.
   when your turn ends. You do not resume it.
 - **Otherwise,** a moved or gone part or a defect no setting addresses, even beside
   one it does, an uncertain reading or nothing at all: change nothing
-  and acknowledge with the disposition stop, never watch; it stays paused for a
+  and acknowledge with the disposition stop; it stays paused for a
   person to read your reason.
 
 ## When you are asked to start a print
