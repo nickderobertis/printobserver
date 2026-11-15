@@ -30,7 +30,7 @@ from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from cases import Case, MachineState, Moment, instant
 from repo_checks.loopback import LoopbackServer
@@ -528,7 +528,8 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
                     "origin": "local",
                     "type": "machinecode",
                     "size": timeline.case.gcode_size,
-                    "refs": {"download": f"http://{host}/downloads/files/local/{name}"},
+                    # Percent-encoded, as OctoPrint writes the link.
+                    "refs": {"download": f"http://{host}/downloads/files/local/{quote(name)}"},
                 },
             )
 

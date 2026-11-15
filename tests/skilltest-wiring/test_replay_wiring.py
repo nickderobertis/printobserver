@@ -780,6 +780,21 @@ def test_the_printer_reports_the_temperatures_the_gcode_asks_for_at_its_position
     equal(tools[0]["bed"]["target_c"]["value"], 60.0)
 
 
+def test_a_gcode_named_with_spaces_is_planned_through_the_real_adapter(scratch: Path) -> None:
+    """The stand-in's download link reaches the file whatever its name holds.
+
+    The case's G-code is named with spaces, so a link written with its name raw
+    is one the adapter cannot follow, and every turn would be handed no plan.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    truth(" " in case.gcode.name, describing="the case's G-code to be named with spaces")
+    last = max(moment.file_position_bytes for moment in case.moments)
+    gcode = b";LAYER_CHANGE\n;Z:0.2\n" + b";\n" * (last // 2 + 1)
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
+    plans = [json.loads(turn["ran"][0]["out"])["context"].get("slicer") for turn in done.turns]
+    equal([plan and plan.get("layer") for plan in plans], [1] * len(case.moments))
+
+
 def test_an_unfetched_frame_is_refused_naming_the_recipe() -> None:
     """A checkout's pointer is no picture, and the replay says what to run."""
     case = read_case("under-extrusion-lace")
