@@ -12,15 +12,15 @@ it going as it should, and which bounded adjustment, if any, is right now?
 
 ## The normal workflow
 
-Six steps, every turn. [The command surface](reference/command-surface.md)
+Six steps a turn. [The command surface](reference/command-surface.md)
 and [common operations](reference/common-operations.md) hold the commands: read
 them with your file tools. Your shell takes one whole command at
-a time, starting with the program's name: no variable, chain, pipe or usage listing. If it refuses one, rewrite it so; never leave it undone.
+a time, starting with the program's name: no variable, chain, pipe, redirection or usage listing. If it refuses one, rewrite it; never leave it undone.
 
 1. **Read the context.** After the first read, since the newest event it
    named. The print, heaters, bounds, events, picture and the slicer's
-   plan: layer, heights, types, objects' bed areas, time left, flow, fan, its
-   rise, settings at odds.
+   plan: layer, heights, types, objects' areas, time left, flow, fan, rise,
+   settings at odds.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    nor is a picture too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
@@ -31,7 +31,7 @@ a time, starting with the program's name: no variable, chain, pipe or usage list
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **Act, and say why.** If something should change, ask for it with a reason a
    reader can act on and, if temporary, how long.
-   [The intervention policy](reference/intervention-policy.md) has the details. After a setting, look again.
+   After a setting, look again.
 6. **Record what you saw.** Acknowledge this turn's failure or observation, with
    a reason giving what you saw and made of it: disposition stop with every
    pause, yours or the detector's; watch after a setting, or when uncertain on a
@@ -65,18 +65,18 @@ Reading frames:
 - **Strands.** Curved or tangled strands are a defect only inside the part's
   outline and clearly growing or out of place. A strand off the part, on a
   rail, screw or frame, is not.
-- **Position.** Judge each frame against earlier ones. What is
-  printed stays where it was laid. Never judge growth between frames under
-  half an hour apart; with the rise unknown, none. Where the plan
-  states how far its top rose since a frame, the tallest part still printing
-  shows that; finished parts do not grow. None showing it: not printing, a
-  clear defect, never uncertain. Hidden parts: look again first. A shifting view carries sheet and part
-  together, so at every look measure the parts' height against that frame and
-  the footprint's distance to a sheet hole, edge or mark, now
-  and earlier, giving both. Changed in any frame, even one a later frame seems to undo, it
-  has moved, whatever might explain it. So has a
-  part off the bed, a first layer not sticking, or a part where the plan puts
-  no object, its own place empty.
+- **Position.** Judge each frame against earlier ones. Judge growth only
+  against a frame half an hour old or more, and only where the plan states the
+  rise since it, which is what should show, never proof it printed: the
+  tallest part still printing then stood the height now less that rise, so
+  compare its height then and now; finished parts do not grow. Unclear or
+  barely taller is not printing: a clear defect, never uncertain. Hidden
+  parts: look again first. A shifting view carries sheet and part together, so
+  measure each footprint's distance to a sheet hole, edge or mark, now and
+  earlier, giving both. Changed in any frame, even one a later frame seems to
+  undo, it has moved, whatever might explain it. So has a part off the bed, a
+  first layer not sticking, or a part where the plan puts no object, its own
+  place empty.
 
 ## When the detector has already paused the print
 
@@ -115,5 +115,6 @@ A person's resume in the record settles what they resumed over.
 ## Elsewhere
 
 [API and clients](reference/api-and-clients.md),
+[the intervention policy](reference/intervention-policy.md),
 [the schemas](reference/schemas.md), [the architecture](reference/architecture.md)
 and [testing](reference/testing.md).
