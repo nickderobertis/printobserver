@@ -681,8 +681,8 @@ impl IndexBuilder {
             ('M', Some(83)) => self.extruder = Positioning::Relative,
             ('M', Some(73)) => self.estimate(&words[1..]),
             ('M', Some(221)) => self.flow_factor(&words[1..]),
-            ('M', Some(106)) => self.fan_speed(&words[1..], false),
-            ('M', Some(107)) => self.fan_speed(&words[1..], true),
+            ('M', Some(106)) => self.fan_speed(&words[1..], Fan::Set),
+            ('M', Some(107)) => self.fan_speed(&words[1..], Fan::Off),
             ('M', Some(486)) => self.object(raw, &words[1..]),
             _ => {}
         }
@@ -765,7 +765,12 @@ impl IndexBuilder {
         grow(&mut draft.bounds, start[0], start[1]);
         grow(&mut draft.bounds, end[0], end[1]);
         if code >= 2 {
-            for [x, y] in arc_extremes(words, code == 2, start, end) {
+            let turn = if code == 2 {
+                Turn::Clockwise
+            } else {
+                Turn::CounterClockwise
+            };
+            for [x, y] in arc_extremes(words, turn, start, end) {
                 grow(&mut draft.bounds, x, y);
             }
         }
@@ -838,14 +843,13 @@ impl IndexBuilder {
     }
 
     /// `M106 S<speed>` or `M107`: the part-cooling fan, in percent.
-    fn fan_speed(&mut self, words: &[Word], off: bool) {
+    fn fan_speed(&mut self, words: &[Word], command: Fan) {
         if number(words, 'P').is_some_and(|fan| fan != 0.0) {
             return;
         }
-        let speed = if off {
-            0.0
-        } else {
-            number(words, 'S').unwrap_or(FAN_FULL)
+        let speed = match command {
+            Fan::Off => 0.0,
+            Fan::Set => number(words, 'S').unwrap_or(FAN_FULL),
         };
         let percent = (speed.clamp(0.0, FAN_FULL) / FAN_FULL * 100.0).round();
         push_changed(&mut self.fan, self.read, percent);
@@ -919,6 +923,25 @@ fn grow(bounds: &mut Option<[f64; 4]>, x: f64, y: f64) {
     });
 }
 
+/// Which way an arc turns: `G2` clockwise, `G3` counter-clockwise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Turn {
+    /// `G2`.
+    Clockwise,
+    /// `G3`.
+    CounterClockwise,
+}
+
+/// What a part-cooling fan command does: `M106` sets a speed, `M107` turns
+/// the fan off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fan {
+    /// `M106`, at its `S` speed or full.
+    Set,
+    /// `M107`.
+    Off,
+}
+
 /// The points of an arc's circle at which it reaches furthest along X or Y,
 /// of the part of the circle the arc sweeps: what an arc lays beyond its two
 /// ends.
@@ -929,7 +952,7 @@ fn grow(bounds: &mut Option<[f64; 4]>, x: f64, y: f64) {
 /// whole circle.
 fn arc_extremes(
     words: &Move,
-    clockwise: bool,
+    turn: Turn,
     start: [f64; 3],
     end: [f64; 3],
 ) -> impl Iterator<Item = [f64; 2]> {
@@ -940,7 +963,7 @@ fn arc_extremes(
                 start[1] + words.j.unwrap_or(0.0),
             ])
         },
-        |radius| centre_of_radius(radius, clockwise, start, end),
+        |radius| centre_of_radius(radius, turn, start, end),
     );
     let reach = centre.map(|centre| {
         let radius = (start[0] - centre[0]).hypot(start[1] - centre[1]);
@@ -949,10 +972,9 @@ fn arc_extremes(
         let tau = core::f64::consts::TAU;
         // How far the arc turns, counter-clockwise from `from`, as a positive
         // sweep: a clockwise arc is the same sweep taken from its end.
-        let (base, sweep) = if clockwise {
-            (to, (from - to).rem_euclid(tau))
-        } else {
-            (from, (to - from).rem_euclid(tau))
+        let (base, sweep) = match turn {
+            Turn::Clockwise => (to, (from - to).rem_euclid(tau)),
+            Turn::CounterClockwise => (from, (to - from).rem_euclid(tau)),
         };
         let sweep = if sweep < 1e-9 { tau } else { sweep };
         (0..4).filter_map(move |quarter| {
@@ -972,19 +994,17 @@ fn arc_extremes(
 /// clockwise or counter-clockwise turn of a short arc puts it, and on the other
 /// side for a negative radius, which asks for the long way round. Nothing when
 /// the chord is longer than the circle allows, or the arc ends where it began.
-fn centre_of_radius(
-    radius: f64,
-    clockwise: bool,
-    start: [f64; 3],
-    end: [f64; 3],
-) -> Option<[f64; 2]> {
+fn centre_of_radius(radius: f64, turn: Turn, start: [f64; 3], end: [f64; 3]) -> Option<[f64; 2]> {
     let chord = [end[0] - start[0], end[1] - start[1]];
     let length = chord[0].hypot(chord[1]);
     if length <= TRAVEL_MM || length > 2.0 * radius.abs() {
         return None;
     }
     let rise = (radius * radius - length * length / 4.0).max(0.0).sqrt();
-    let left = if clockwise { -1.0 } else { 1.0 };
+    let left = match turn {
+        Turn::Clockwise => -1.0,
+        Turn::CounterClockwise => 1.0,
+    };
     let side = left * radius.signum() * rise / length;
     Some([
         start[0] + chord[0] / 2.0 - chord[1] * side,
