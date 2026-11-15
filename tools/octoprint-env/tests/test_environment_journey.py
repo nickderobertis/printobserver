@@ -90,10 +90,11 @@ def test_the_scripted_environment_installs_starts_holds_a_print_and_stops(
     _installs_again_over_the_instance_it_made(first, provisioned)
 
     one = _starts_answering_and_connected(first)
+    one_returned = time.monotonic()
     two = _starts_answering_and_connected(second)
     _two_instances_do_not_collide(one, two)
 
-    _holds_a_print_for_the_minimum_it_states(one)
+    _holds_a_print_for_the_minimum_it_states(one, one_returned)
 
     _stops_leaving_no_process(one)
     _stops_leaving_no_process(two)
@@ -192,8 +193,12 @@ def _two_instances_do_not_collide(one: dict[str, object], two: dict[str, object]
         )
 
 
-def _holds_a_print_for_the_minimum_it_states(started: dict[str, object]) -> None:
-    """A print that is running when the start returns and after the stated minimum."""
+def _holds_a_print_for_the_minimum_it_states(started: dict[str, object], returned: float) -> None:
+    """A print that is running when the start returns and after the stated minimum.
+
+    The minimum is counted from `returned`, the moment the start returned, so the
+    journey's own work since then is part of the wait rather than added to it.
+    """
     url = str(started["url"])
     key = key_from(str(started["api_key_file"]))
     stated = int(str(started["hold_seconds"]))
@@ -212,8 +217,12 @@ def _holds_a_print_for_the_minimum_it_states(started: dict[str, object]) -> None
         describing=f"a running print when the start returned, not `{job_state(url, key)}`",
     )
 
-    time.sleep(stated)
+    time.sleep(max(0.0, returned + stated - time.monotonic()))
 
+    truth(
+        time.monotonic() - returned >= stated,
+        describing=f"the stated {stated}s to have passed since the start returned",
+    )
     equal(job_file(url, key), HOLD_PRINT, describing="the file still selected")
     after = job_state(url, key)
     truth(
