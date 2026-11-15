@@ -41,6 +41,7 @@ from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
+from shell_lines import is_compound
 
 INSTALLER = REPO / "scripts" / "install.sh"
 SKILL = REPO / "skills" / "printobserver"
@@ -381,6 +382,8 @@ class TestRecord(TypedDict):
     passed: bool
     turns: int
     sessions: list[str]
+    #: Each `printobserver` command a conversation ran beside another, by conversation.
+    compound_commands: dict[str, list[str]]
     decision_points: list[DecisionRecord]
 
 
@@ -488,6 +491,25 @@ class Replayed:
             if point.why_not
         )
 
+    def compound_commands(self) -> dict[str, list[str]]:
+        """Each `printobserver` command a conversation ran beside another, by conversation.
+
+        A turn is its ledger entry's session's; with no entry to read, the print's last.
+        """
+        sessions = [session["session_name"] for session in self.ledger["sessions"]]
+        found: dict[str, list[str]] = {session: [] for session in sessions}
+        turns = self.ledger["turns"]
+        for number, point in enumerate(self.points):
+            session = (
+                turns[number]["session_name"]
+                if len(turns) == len(self.points)
+                else (sessions[-1] if sessions else "")
+            )
+            found.setdefault(session, []).extend(
+                command for command in point.commands if is_compound(command)
+            )
+        return found
+
     def as_record(self) -> TestRecord:
         """The replay as `results/latest.json` carries it."""
         return {
@@ -495,6 +517,7 @@ class Replayed:
             "passed": self.passed,
             "turns": len(self.points),
             "sessions": [session["session_name"] for session in self.ledger["sessions"]],
+            "compound_commands": self.compound_commands(),
             "decision_points": [point.as_record() for point in self.points],
         }
 

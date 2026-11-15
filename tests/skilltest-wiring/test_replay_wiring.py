@@ -10,6 +10,7 @@ stamped with the name of the frame it stands for.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
@@ -677,6 +678,28 @@ def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
     case = read_case("jar-top-wrong-material-first-layer-detach")
     done = mock_replay(case, [{"commands": [CONTEXT]}, {"commands": [PAUSE]}], scratch)
     truth(done.replayed.passed, describing=f"every decision point: {done.replayed.failures()}")
+
+
+def test_a_supervision_turns_compound_command_is_reported_under_its_conversation(
+    scratch: Path,
+) -> None:
+    """A piped read is written down under the session it ran in, and the record carries it.
+
+    With no ledger turn to read a decision point's session from, it is the print's last.
+    """
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    # This mock writes a turn's words into the transcript as one line, as a pipe reads.
+    piped = [*CONTEXT, "|", "head", "-5"]
+    done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
+    replayed = done.replayed
+    sessions = [session["session_name"] for session in replayed.ledger["sessions"]]
+    equal(len(sessions), 1)
+    ran = [line for line in replayed.points[0].commands if "| head" in line]
+    equal(len(ran), 1)
+    equal(replayed.compound_commands(), {sessions[0]: ran})
+    equal(replayed.as_record()["compound_commands"], {sessions[0]: ran})
+    unattributed = dataclasses.replace(replayed, ledger={**replayed.ledger, "turns": []})
+    equal(unattributed.compound_commands(), {sessions[0]: ran})
 
 
 def test_a_printer_that_cannot_be_read_still_gets_its_scheduled_check(scratch: Path) -> None:
@@ -1416,6 +1439,7 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "passed": True,
         "turns": 2,
         "sessions": [],
+        "compound_commands": {},
         "decision_points": points,
     }
     return points, test_record
@@ -1480,6 +1504,9 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         ("repeated", {**test_record, "decision_points": [points[0], points[0]]}),
         ("reordered", {**test_record, "decision_points": points[::-1]}),
         ("sessions", {**test_record, "sessions": [3]}),
+        ("no compound report", {k: v for k, v in test_record.items() if k != "compound_commands"}),
+        ("a conversation unreported", {**test_record, "sessions": ["operator-2026-10-07"]}),
+        ("compound", {**test_record, "compound_commands": {"": [3]}}),
         (
             "why",
             {**test_record, "decision_points": [{**points[0], "why_not": 3}, points[1]]},
