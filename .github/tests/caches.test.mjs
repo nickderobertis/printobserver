@@ -116,7 +116,10 @@ const FETCH = "just real-prints-fetch";
 
 /**
  * The functions a cache key may call beyond the library's own. `hashFiles`
- * stands for the digest of what it names, the same on both runs.
+ * stands for the digest of what it names, the same on both runs. It takes any
+ * arguments rather than restating the runner's signature: which arguments the
+ * runner accepts is actionlint's to hold, under `just lint-workflows`, and all
+ * this reads is that one call renders alike under both runs.
  *
  * @type {Map<string, import("@actions/expressions/funcs/info").FunctionDefinition>}
  */
@@ -125,8 +128,8 @@ const FUNCTIONS = new Map([
     "hashFiles",
     {
       name: "hashFiles",
-      minArgs: 1,
-      maxArgs: 255,
+      minArgs: 0,
+      maxArgs: Number.MAX_SAFE_INTEGER,
       call: (...args) =>
         new data.StringData(`<hashFiles(${args.map((arg) => arg.coerceString()).join(", ")})>`),
     },

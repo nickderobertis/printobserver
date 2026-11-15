@@ -1307,15 +1307,13 @@ context is waited on.
 
 **Every required gate and integration context is held to `gate-time`'s line,
 inside itself.** The root `budgets.yaml` registers `gate-time` and is the one
-place its threshold is written: today an interim line, held while the suites
-are cut and the job set reshaped, after which a measured line replaces it.
-Every job reporting one of the ten contexts ends with the `gate-time` step,
-which fails that context over budget — so the merge path refuses the change
-with no protection change — except on the release pull request's full sweep,
-where it only reports. The figure is the critical path of the context's jobs'
-own running time: the longest job behind it, then the aggregator. A job queued for a runner is GitHub's
-capacity rather than this repository's work, so every queue is reported and
-none is charged. A context over budget is brought under by making its work
+place its threshold is written. Every job reporting one of the ten contexts
+ends with the `gate-time` step, which fails that context over budget — so the
+merge path refuses the change with no protection change — except on the
+release pull request's full sweep, where it only reports. The figure is the
+critical path of the context's jobs' own running time: the longest job behind
+it, then the aggregator. A job queued for a runner is GitHub's capacity rather
+than this repository's work, so every queue is reported and none is charged. A context over budget is brought under by making its work
 faster or sharding it behind its own required name, never by loosening the
 budget.
 

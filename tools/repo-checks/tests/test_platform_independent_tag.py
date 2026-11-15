@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -168,9 +169,26 @@ def shard_counts() -> dict[str, int]:
     return counts
 
 
-def selections(repo: Repo, base: str) -> list[tuple[str, str, str, str, list[str]]]:
+@dataclass(frozen=True, slots=True)
+class Selection:
+    """What the tier selection answered for one tier under one platform's shard step."""
+
+    platform: str
+    step: str
+    tier: str
+    #: Why the run reaches what it does, the base read as `<base>`.
+    reason: str
+    #: The Nx invocation it makes, the base read as `<base>`.
+    invocation: tuple[str, ...]
+
+    def __str__(self) -> str:
+        """Where it was made, as a failure names it."""
+        return f"{self.tier} on {self.platform}, {self.step}"
+
+
+def selections(repo: Repo, base: str) -> list[Selection]:
     """What the tier selection answers for every tier, platform and shard step, in order."""
-    answered: list[tuple[str, str, str, str, list[str]]] = []
+    answered: list[Selection] = []
     for platform, count in sorted(shard_counts().items()):
         for steps in plan(repo, count):
             for step in steps:
@@ -183,9 +201,15 @@ def selections(repo: Repo, base: str) -> list[tuple[str, str, str, str, list[str
                     invocation, reason = command(repo, tier, ["test"], environ)
                     # The base is the one thing the two repositories' commits
                     # make differ, so it is read as the base rather than as a SHA.
-                    said = reason.replace(base, "<base>").replace(base[:12], "<base>")
-                    named = [part.replace(base, "<base>") for part in invocation]
-                    answered.append((platform, str(step), tier, said, named))
+                    answered.append(
+                        Selection(
+                            platform=platform,
+                            step=str(step),
+                            tier=tier,
+                            reason=reason.replace(base, "<base>").replace(base[:12], "<base>"),
+                            invocation=tuple(part.replace(base, "<base>") for part in invocation),
+                        )
+                    )
     return answered
 
 
@@ -202,11 +226,7 @@ def test_the_tier_selection_selects_exactly_what_it_does_with_the_tag_absent(
     tagged_answers = selections(with_tag, base_with)
 
     equal(len(tagged_answers), len(untagged), describing="selections made")
-    for (platform, step, tier, reason, invocation), (*_, reason_with, invocation_with) in zip(
-        untagged, tagged_answers, strict=True
-    ):
-        where = f"{tier} on {platform}, {step}"
-        equal(reason_with, reason, describing=f"the reason for {where}")
-        equal(invocation_with, invocation, describing=f"the invocation for {where}")
-    narrowed = [one for one in untagged if "--exclude=" in " ".join(one[4])]
+    for before, after in zip(untagged, tagged_answers, strict=True):
+        equal(after, before, describing=f"the selection for {before}")
+    narrowed = [one for one in untagged if any("--exclude=" in part for part in one.invocation)]
     truth(bool(narrowed), describing="a selection narrowed by a project tag")
