@@ -1,12 +1,13 @@
 """How many xdist workers each of this repository's xdist suites runs on, read off the host.
 
-Three suites run under pytest-xdist — the end-to-end tier, `repo-checks` and
-`release-artifacts` — and each asks `pytest_xdist_auto_num_workers` what
+Four suites run under pytest-xdist — the end-to-end tier's two projects,
+`repo-checks` and `release-artifacts` — and each asks `pytest_xdist_auto_num_workers` what
 `-n auto` is. This is the one answer all three take. It starts from the
 host's logical processors, bounded by its memory at `MEMORY_PER_WORKER_GIB` a
 worker:
 
-- The end-to-end tier is its own Nx invocation, and keeps that whole budget.
+- The end-to-end tier is its own Nx invocation, and keeps that whole budget:
+  Nx runs its two projects one after the other, so each keeps all of it.
 - Where the root `justfile` starts it beside the test tier — everywhere but
   Windows, by its `E2E_BESIDE_TESTS` — the test tier's suites run on one worker
   each, as they ran before they were parallelised. The end-to-end tier is the
@@ -97,7 +98,14 @@ SUITES = (
     Suite("repo-e2e", "test-e2e"),
     Suite("repo-checks", "test"),
     Suite("release-artifacts", "test"),
+    Suite("repo-e2e-independent", "test-e2e"),
 )
+
+#: The targets `nx.json` declares `"parallelism": false`, whose tasks Nx runs one
+#: after another however many it may run at once: the end-to-end tier's two
+#: projects share the repository root's builds, so neither runs beside the other
+#: and each keeps the host. `test_worker_share.py` holds this to `nx.json`.
+ONE_AT_A_TIME = frozenset({END_TO_END})
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +134,7 @@ def together(suite: Suite, *, parallelism: int) -> tuple[Suite, ...]:
     Nx runs at most `parallelism` of one target's tasks at once, so where fewer
     slots than suites are open the ones assumed beside `suite` are those with
     the most work, which is the share that leaves `suite` the least. They come
-    in `SUITES`' order.
+    in `SUITES`' order. A suite of a target `ONE_AT_A_TIME` names runs alone.
 
     Raises:
         ValueError: If `suite` is not one `SUITES` names.
@@ -134,7 +142,11 @@ def together(suite: Suite, *, parallelism: int) -> tuple[Suite, ...]:
     if suite not in SUITES:
         msg = f"{suite} is not one of the xdist suites {', '.join(map(str, SUITES))}"
         raise ValueError(msg)
-    peers = [other for other in SUITES if other.target == suite.target and other != suite]
+    peers = [
+        other
+        for other in SUITES
+        if other.target == suite.target and other != suite and suite.target not in ONE_AT_A_TIME
+    ]
     running = {suite, *peers[: max(1, parallelism) - 1]}
     return tuple(other for other in SUITES if other in running)
 

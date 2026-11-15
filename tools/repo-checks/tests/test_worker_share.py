@@ -1,7 +1,7 @@
 """The xdist suites that can run at once never ask for more than the host holds.
 
-`repo_checks.workers` is the one answer the end-to-end tier, `repo-checks` and
-`release-artifacts` take for `-n auto`. Here it is asked for every suite on the
+`repo_checks.workers` is the one answer the end-to-end tier's two projects,
+`repo-checks` and `release-artifacts` take for `-n auto`. Here it is asked for every suite on the
 hosts the gate runs on, at the parallelism this workspace's own `nx.json`
 declares, and every set of suites one Nx invocation can run together is summed
 against the host. The end-to-end tier is an invocation of its own and keeps the
@@ -37,13 +37,18 @@ HOSTS = {
     "a workstation": workers.Host(cpus=20, memory_gib=94.0, free_disk_gib=400.0),
 }
 
+#: The end-to-end tier's suites, and the test tier's.
+_END_TO_END = [suite for suite in workers.SUITES if suite.target == workers.END_TO_END]
+_TEST_TIER = [suite for suite in workers.SUITES if suite.target != workers.END_TO_END]
+
 
 def _running_together(parallelism: int) -> list[tuple[workers.Suite, ...]]:
     """Every set of xdist suites one Nx invocation can have running at the same moment."""
     sets: list[tuple[workers.Suite, ...]] = []
     for target in sorted({suite.target for suite in workers.SUITES}):
         suites = [suite for suite in workers.SUITES if suite.target == target]
-        for size in range(1, min(parallelism, len(suites)) + 1):
+        at_once = 1 if target in workers.ONE_AT_A_TIME else parallelism
+        for size in range(1, min(at_once, len(suites)) + 1):
             sets.extend(itertools.combinations(suites, size))
     return sets
 
@@ -88,19 +93,19 @@ def test_the_hosted_runners_shares_are_the_ones_the_gate_was_sized_for() -> None
     }
 
     equal(parallelism, 3, describing="the parallelism `nx.json` declares")
-    equal(shares["the hosted Linux runners", True], (4, 1, 1), describing="Linux")
-    equal(shares["the hosted macOS runner", True], (3, 1, 1), describing="macOS")
-    equal(shares["the hosted Windows runners", False], (3, 1, 1), describing="Windows")
-    equal(shares["a workstation", False], (20, 10, 10), describing="tiers in turn, untraced")
+    equal(shares["the hosted Linux runners", True], (4, 1, 1, 4), describing="Linux")
+    equal(shares["the hosted macOS runner", True], (3, 1, 1, 3), describing="macOS")
+    equal(shares["the hosted Windows runners", False], (3, 1, 1, 3), describing="Windows")
+    equal(shares["a workstation", False], (20, 10, 10, 20), describing="tiers in turn, untraced")
 
 
 @pytest.mark.parametrize("beside", [True, False], ids=["tiers-overlapping", "tiers-in-turn"])
 def test_the_end_to_end_tier_keeps_the_host_whether_or_not_the_test_tier_is_beside_it(
     beside: bool,
 ) -> None:
-    """A separate invocation is not divided with: the tier's share is the whole budget."""
-    tier = workers.Suite("repo-e2e", "test-e2e")
-    for described, host in HOSTS.items():
+    """A separate invocation is not divided with: each of the tier's projects keeps the budget."""
+    for tier, described in itertools.product(_END_TO_END, HOSTS):
+        host = HOSTS[described]
         equal(
             workers.together(tier, parallelism=3),
             (tier,),
@@ -115,7 +120,7 @@ def test_the_end_to_end_tier_keeps_the_host_whether_or_not_the_test_tier_is_besi
 
 def test_the_test_tier_beside_the_end_to_end_tier_runs_one_worker_a_suite() -> None:
     """However large the host, a test-tier suite overlapping the end-to-end tier takes one."""
-    for suite in workers.SUITES[1:]:
+    for suite in _TEST_TIER:
         for described, host in HOSTS.items():
             equal(
                 workers.share(host, suite, parallelism=3, beside=True),
@@ -132,7 +137,7 @@ def test_a_traced_test_tier_runs_one_worker_a_suite_even_with_the_tiers_in_turn(
     """Where the test tier traces the whole system, its suites leave the host to the trace."""
     traced = HOSTS["the hosted Windows runners"]
     untraced = workers.Host(cpus=4, memory_gib=16.0, free_disk_gib=14.0, reserved=1)
-    for suite in workers.SUITES[1:]:
+    for suite in _TEST_TIER:
         equal(workers.share(traced, suite, parallelism=3, beside=False), 1, describing=f"{suite}")
         contains(
             workers.said(traced, suite, parallelism=3, beside=False),
@@ -140,7 +145,7 @@ def test_a_traced_test_tier_runs_one_worker_a_suite_even_with_the_tiers_in_turn(
         )
     equal(
         [workers.share(untraced, suite, parallelism=3, beside=False) for suite in workers.SUITES],
-        [3, 2, 1],
+        [3, 2, 1, 3],
         describing="the same host, untraced",
     )
 
@@ -241,3 +246,14 @@ def test_the_choice_is_said_with_what_it_was_chosen_from(
     else:
         contains(said, f"at Nx parallelism {workers.nx_parallelism(REPO_ROOT)}")
         contains(said, "repo-checks:test", describing="the suite it shares the host with")
+
+
+def test_the_targets_run_one_at_a_time_are_the_ones_nx_json_declares_so() -> None:
+    """A target the shares count as running alone is one Nx is told never to run two of."""
+    graph = json.loads((REPO_ROOT / "nx.json").read_text(encoding="utf-8"))
+    for target in sorted(workers.ONE_AT_A_TIME):
+        equal(
+            graph["targetDefaults"][target].get("parallelism"),
+            False,
+            describing=f"nx.json's `parallelism` for `{target}`",
+        )

@@ -105,6 +105,7 @@ def test_each_client_is_installed_and_proved_against_a_real_server(
 
 
 @pytest.mark.parametrize(("identifier", "recipe"), ROUTE_CASES)
+@pytest.mark.usefixtures("host_service_manager")
 def test_each_route_leaves_a_runnable_program_on_the_path(identifier: str, recipe: str) -> None:
     """A route installs a program that runs and reports its own version.
 

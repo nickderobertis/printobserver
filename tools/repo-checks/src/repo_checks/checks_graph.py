@@ -284,8 +284,9 @@ def platform_independent_tag(repo: Repo) -> str:
     """The tag declaring a project's tests platform-independent, as `repo-policy.toml` spells it.
 
     `[gate]`'s `platform_independent_tag` is its one source. A project carrying
-    it declares that its `test` target exercises no platform-dependent
-    behaviour; its absence means the project's tests run on every platform.
+    it declares that its `test` or `test-e2e` target exercises no
+    platform-dependent behaviour; its absence means the project's tests run on
+    every platform.
 
     Raises:
         PolicyValueError: If `[gate]` declares no such string, or one outside the

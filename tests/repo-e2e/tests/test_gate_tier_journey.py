@@ -156,20 +156,25 @@ def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
     )
 
 
+#: The projects carrying the end-to-end tier's target, by their directory.
+END_TO_END_PROJECTS = ("tests/repo-e2e", "tests/repo-e2e-independent")
+
+
 def standing_in_for_the_suite(copy: GateCopy) -> None:
-    """Commit, on the copy's `main`, a `test-e2e` target that does nothing.
+    """Commit, on the copy's `main`, `test-e2e` targets that do nothing.
 
     The project graph's edges, and so which projects a change selects, are the
-    copy's own and unchanged. Only what selection would then run is replaced:
-    the suite, and the build it waits on, which is a task-graph edge and
-    selects nothing.
+    copy's own and unchanged. Only what selection would then run is replaced,
+    in each of the tier's two projects: the suite, and any build it waits on,
+    which is a task-graph edge and selects nothing.
     """
-    project = copy.root / "tests" / "repo-e2e" / "project.json"
-    declared = json.loads(project.read_text(encoding="utf-8"))
-    declared["targets"]["test-e2e"]["command"] = "echo the suite runs as this journey"
-    declared["targets"]["test-e2e"].pop("dependsOn")
-    project.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
-    copy.git("commit", "-q", "-am", "test: stand in for the end-to-end suite")
+    for directory in END_TO_END_PROJECTS:
+        project = copy.root / directory / "project.json"
+        declared = json.loads(project.read_text(encoding="utf-8"))
+        declared["targets"]["test-e2e"]["command"] = "echo the suite runs as this journey"
+        declared["targets"]["test-e2e"].pop("dependsOn", None)
+        project.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
+    copy.git("commit", "-q", "-am", "test: stand in for the end-to-end suites")
 
 
 def test_the_sweep_runs_every_gate_eligible_project(gate_copy: Callable[..., GateCopy]) -> None:
@@ -242,12 +247,31 @@ def test_the_affected_coverage_report_rules_on_no_code_its_run_did_not_measure(
 def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
     gate_copy: Callable[..., GateCopy],
 ) -> None:
-    """A change to the Python client measures that client, and the report rules on it alone."""
+    """A change to the Python client measures that client, and the report rules on it alone.
+
+    The client's own `test` target is run, through Nx as the test tier runs it,
+    rather than the whole affected tier: the change reaches `printer-smoke` too,
+    whose suite measures no coverage and so gives the report nothing to read,
+    and the tier's selection is what the `format-check` journeys above prove.
+    """
     copy = as_a_clone(gate_copy())
     branch_with_a_change(copy, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
 
-    tested = copy.just("test", environment=QUIET, timeout=1800)
-    passing(tested, describing="`just test` over a change to the Python client")
+    tested = capture(
+        [
+            "bunx",
+            "nx",
+            "run-many",
+            "-t",
+            "test",
+            "--projects=printobserver-sdk-python",
+            "--output-style=stream",
+        ],
+        copy.root,
+        timeout=1800,
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET),
+    )
+    passing(tested, describing="the Python client's own `test` target")
     reported = copy.just("coverage", environment=QUIET)
 
     passing(reported, describing="`just coverage` over the client's own run")

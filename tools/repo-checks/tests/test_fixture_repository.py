@@ -26,7 +26,12 @@ from repo_checks.shell import run
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 #: The suites whose fixture repositories are made by the helper, and nothing else.
-SUITES = ("tools/repo-checks/tests", "tools/release-artifacts/tests", "tests/repo-e2e/tests")
+SUITES = (
+    "tools/repo-checks/tests",
+    "tools/release-artifacts/tests",
+    "tests/repo-e2e/tests",
+    "tests/repo-e2e-independent/tests",
+)
 
 #: What making a repository looks like in a suite's source: `init` as an
 #: argument of its own, the command spelled whole, or the long flag naming the

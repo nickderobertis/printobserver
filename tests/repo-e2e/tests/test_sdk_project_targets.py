@@ -76,13 +76,36 @@ def test_every_gate_target_is_reached_by_the_check_recipe(project: str, target: 
     contains(fanned_out, target, describing=f"the Nx targets `just {target}` fans out over")
 
 
+def _with_one_test(copy: GateCopy, body: str) -> GateCopy:
+    """The copy with the Python client's suite reduced to one test, `body`'s.
+
+    The `test` target is run as committed, over a suite holding that test alone:
+    whether the target passes a passing test and fails a failing one is a fact
+    about the target, and the client's own suite is what every gate's `test`
+    tier runs over the committed tree.
+    """
+    for test in (copy.root / PY_TESTS).parent.glob("test_*.py"):
+        test.unlink()
+    copy.write(
+        PY_TESTS,
+        f'"""One journey."""\n\n\ndef test_the_target_runs_this() -> None:\n{body}',
+    )
+    return copy
+
+
 def test_the_committed_project_passes_every_python_target(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """The clean project the defect copies are made from passes its own targets."""
+    """The clean project the defect copies are made from passes its own targets.
+
+    Its `test` target passes over the suite the failing-test copy is made from:
+    the same one test, holding.
+    """
     clean = gate_copy()
 
     for target in GATE_TARGETS:
+        if target == "test":
+            _with_one_test(clean, '    """This assertion holds."""\n    assert 1 + 1 == 2\n')
         passing(_run_target(clean, PYTHON_PROJECT, target), describing=f"{PYTHON_PROJECT}:{target}")
 
 
@@ -194,16 +217,13 @@ def test_the_python_test_target_fails_on_a_failing_test(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
     """`pytest` over the project, failing on a red assertion."""
-    broken = gate_copy()
-    broken.write(
-        PY_TESTS,
-        '"""A failing journey."""\n\n\ndef test_the_target_must_fail() -> None:\n'
-        '    """This assertion is meant to fail."""\n    assert 1 + 1 == 3\n',
+    broken = _with_one_test(
+        gate_copy(), '    """This assertion is meant to fail."""\n    assert 1 + 1 == 3\n'
     )
 
     code, said = _run_target(broken, PYTHON_PROJECT, "test")
 
-    failing((code, said), naming="test_the_target_must_fail")
+    failing((code, said), naming="test_the_target_runs_this")
 
 
 def test_the_typescript_format_target_fails_on_an_unformatted_file(
