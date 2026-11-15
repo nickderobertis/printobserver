@@ -13,7 +13,7 @@ from __future__ import annotations
 import shutil
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import pytest
 from release_artifacts.__main__ import main
@@ -414,32 +414,42 @@ def test_a_toolchain_that_cannot_say_what_it_is_is_refused(
 def test_the_integration_job_caches_the_directory_under_the_key_the_command_prints(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The committed workflow caches the kept directory under the key the command prints.
+    """The committed workflow restores and saves the kept directory under the printed key.
 
-    The job appends the command's line to `GITHUB_OUTPUT`, caches the directory
-    this tool keeps the program in under that key, then prepares the program
-    before the tier. A directory or field renamed on either side, or a
-    preparation moved after the tier, would leave the tier building it again.
+    The job appends the command's line to `GITHUB_OUTPUT`, restores the
+    directory this tool keeps the program in under that key, prepares the
+    program, and saves the directory under the same key, all before the tier.
+    A directory or field renamed on either side, or a preparation moved after
+    the tier, would leave the tier building it again.
     """
     workflow = load_workflow(REPO_ROOT / ".github" / "workflows" / "ci.yml")
     steps = steps_of(jobs_of(workflow)["integration"])
     runs = [str(step.get("run", "")).strip() for step in steps]
     keyed = runs.index('just release-program-key >> "$GITHUB_OUTPUT"')
     outputs = f"steps.{steps[keyed]['id']}.outputs"
-    cached = next(step for step in steps if str(step.get("uses", "")).startswith("actions/cache@"))
 
-    equal(cached["with"]["path"], DIRECTORY, describing="the directory the job caches")
-    contains(
-        cached["with"]["key"],
-        f"${{{{ {outputs}.{KEY_FIELD} }}}}",
-        describing="the key the job caches it under",
-    )
+    def caching(action: str) -> dict[str, Any]:
+        return next(
+            step
+            for step in steps
+            if str(step.get("uses", "")).startswith(f"{action}@")
+            and step.get("with", {}).get("path") == DIRECTORY
+        )
+
+    restored, saved = caching("actions/cache/restore"), caching("actions/cache/save")
+    for step, named in ((restored, "restores"), (saved, "saves")):
+        contains(
+            step["with"]["key"],
+            f"${{{{ {outputs}.{KEY_FIELD} }}}}",
+            describing=f"the key the job {named} it under",
+        )
     truth(
         keyed
-        < steps.index(cached)
+        < steps.index(restored)
         < runs.index("just release-program")
+        < steps.index(saved)
         < runs.index("just test-integration"),
-        describing=f"the key, the cache, the preparation and the tier in that order: {runs}",
+        describing=f"the key, the restore, the preparation, the save and the tier in order: {runs}",
     )
     _key(REPO_ROOT, capsys)
 
