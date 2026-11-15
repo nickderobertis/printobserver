@@ -1926,11 +1926,12 @@ export interface Rise {
    */
   minutes_ago: number;
   /**
-   * The height the plan has the parts gain since the position that frame's
-   * job had reached, in millimetres: the rise of every layer since that
-   * lays anything but supports.
+   * How far the print's highest point should have risen since the position
+   * that frame's job had reached, in millimetres: the rise of every layer
+   * since that lays anything but supports. It is the plate's, not every
+   * part's: a part the plan has finished does not grow with it.
    */
-  z_added_mm: number;
+  top_risen_mm: number;
 }
 
 /**
@@ -7477,7 +7478,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "scalar": "integer"
      }
     },
-    "z_added_mm": {
+    "top_risen_mm": {
      "paired_with": "",
      "required": true,
      "shape": {

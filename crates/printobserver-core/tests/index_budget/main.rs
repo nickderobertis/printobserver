@@ -232,7 +232,7 @@ fn rendered(index: &GcodeIndex) -> Rendered {
     // frame half an hour back, and both settings named as wrong for the plan.
     plan.rise = Some(Rise {
         minutes_ago: 102,
-        z_added_mm: 12.4,
+        top_risen_mm: 12.4,
     });
     plan.at_odds = vec![
         PlanMismatch::FanOffOverBridges,

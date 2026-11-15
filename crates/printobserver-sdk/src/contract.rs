@@ -2714,10 +2714,11 @@ pub struct Rise {
     /// hour
     /// old.
     pub minutes_ago: i64,
-    /// The height the plan has the parts gain since the position that frame's
-    /// job had reached, in millimetres: the rise of every layer since that
-    /// lays anything but supports.
-    pub z_added_mm: f64,
+    /// How far the print's highest point should have risen since the position
+    /// that frame's job had reached, in millimetres: the rise of every layer
+    /// since that lays anything but supports. It is the plate's, not every
+    /// part's: a part the plan has finished does not grow with it.
+    pub top_risen_mm: f64,
 }
 
 /// One adjustable as the print's file set it at the current position, and as

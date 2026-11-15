@@ -470,10 +470,11 @@ pub struct Rise {
     /// captured: the latest periodic observation's frame at least half an hour
     /// old.
     pub minutes_ago: i64,
-    /// The height the plan has the parts gain since the position that frame's
-    /// job had reached, in millimetres: the rise of every layer since that
-    /// lays anything but supports.
-    pub z_added_mm: f64,
+    /// How far the print's highest point should have risen since the position
+    /// that frame's job had reached, in millimetres: the rise of every layer
+    /// since that lays anything but supports. It is the plate's, not every
+    /// part's: a part the plan has finished does not grow with it.
+    pub top_risen_mm: f64,
 }
 
 /// A setting in force that the plan at this height says is wrong for what is
@@ -598,7 +599,7 @@ impl Sample for SlicerPlan {
             objects: vec![[100, 99, 150, 117]],
             rise: Some(Rise {
                 minutes_ago: 62,
-                z_added_mm: 4.8,
+                top_risen_mm: 4.8,
             }),
             at_odds: vec![PlanMismatch::FlowLowOverWalls],
             unknown: vec![PlanFact::Objects],
@@ -1612,7 +1613,7 @@ impl crate::supervisor::Supervisor {
             let captured = observed.frame_captured_at.unwrap_or(event.received_at);
             Some(Rise {
                 minutes_ago: (now.as_utc().timestamp() - captured.as_utc().timestamp()) / 60,
-                z_added_mm: index.risen_since(earlier, position)?,
+                top_risen_mm: index.risen_since(earlier, position)?,
             })
         }))
     }

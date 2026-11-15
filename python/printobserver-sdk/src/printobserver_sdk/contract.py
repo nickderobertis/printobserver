@@ -3130,10 +3130,11 @@ class Rise(TypedDict):
     # hour
     # old.
     minutes_ago: int
-    # The height the plan has the parts gain since the position that frame's
-    # job had reached, in millimetres: the rise of every layer since that
-    # lays anything but supports.
-    z_added_mm: float
+    # How far the print's highest point should have risen since the position
+    # that frame's job had reached, in millimetres: the rise of every layer
+    # since that lays anything but supports. It is the plate's, not every
+    # part's: a part the plan has finished does not grow with it.
+    top_risen_mm: float
 
 
 class SetValue(TypedDict):
@@ -9395,7 +9396,7 @@ SHAPES: dict[str, object] = json.loads(
       "scalar": "integer"
      }
     },
-    "z_added_mm": {
+    "top_risen_mm": {
      "paired_with": "",
      "required": true,
      "shape": {

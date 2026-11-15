@@ -760,7 +760,7 @@ async fn a_check_is_told_the_plans_rise_and_the_settings_at_odds_with_it() {
         .await;
     assert_eq!(
         turn["slicer"]["rise"],
-        json!({ "minutes_ago": 40, "z_added_mm": 4.8 }),
+        json!({ "minutes_ago": 40, "top_risen_mm": 4.8 }),
         "the check was not told the Z added since layer 23's {} mm",
         IN_SUPPORT.z_mm
     );

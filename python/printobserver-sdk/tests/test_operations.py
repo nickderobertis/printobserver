@@ -199,10 +199,10 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
         ' "fan_percent": {"changed": 1.5, "file": 1.5}, "final_z_mm":'
         ' 1.5, "flow_factor": {"changed": 1.5, "file": 1.5}, "layer":'
         ' 7, "layers": 7, "minutes_left": 7, "object_count": 7, "obje'
-        'cts": [[7]], "rise": {"minutes_ago": 7, "z_added_mm": 1.5}, '
-        '"types": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "unknown"'
-        ': ["layer"], "z_mm": 1.5}}, "image_path": "0198f0a1-2b3c-7d4'
-        'e-8f90-123456789abc"}'
+        'cts": [[7]], "rise": {"minutes_ago": 7, "top_risen_mm": 1.5}'
+        ', "types": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "unknow'
+        'n": ["layer"], "z_mm": 1.5}}, "image_path": "0198f0a1-2b3c-7'
+        'd4e-8f90-123456789abc"}'
     )
 
     with Host(200, answer) as host:

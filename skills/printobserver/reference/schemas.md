@@ -9285,15 +9285,15 @@ Declared by `printobserver-server`.
           "format": "int64",
           "type": "integer"
         },
-        "z_added_mm": {
-          "description": "The height the plan has the parts gain since the position that frame's\njob had reached, in millimetres: the rise of every layer since that\nlays anything but supports.",
+        "top_risen_mm": {
+          "description": "How far the print's highest point should have risen since the position\nthat frame's job had reached, in millimetres: the rise of every layer\nsince that lays anything but supports. It is the plate's, not every\npart's: a part the plan has finished does not grow with it.",
           "format": "double",
           "type": "number"
         }
       },
       "required": [
         "minutes_ago",
-        "z_added_mm"
+        "top_risen_mm"
       ],
       "type": "object"
     },
@@ -23966,15 +23966,15 @@ Declared by `printobserver-core`.
           "format": "int64",
           "type": "integer"
         },
-        "z_added_mm": {
-          "description": "The height the plan has the parts gain since the position that frame's\njob had reached, in millimetres: the rise of every layer since that\nlays anything but supports.",
+        "top_risen_mm": {
+          "description": "How far the print's highest point should have risen since the position\nthat frame's job had reached, in millimetres: the rise of every layer\nsince that lays anything but supports. It is the plate's, not every\npart's: a part the plan has finished does not grow with it.",
           "format": "double",
           "type": "number"
         }
       },
       "required": [
         "minutes_ago",
-        "z_added_mm"
+        "top_risen_mm"
       ],
       "type": "object"
     },
@@ -31766,15 +31766,15 @@ Declared by `printobserver-core`.
       "format": "int64",
       "type": "integer"
     },
-    "z_added_mm": {
-      "description": "The height the plan has the parts gain since the position that frame's\njob had reached, in millimetres: the rise of every layer since that\nlays anything but supports.",
+    "top_risen_mm": {
+      "description": "How far the print's highest point should have risen since the position\nthat frame's job had reached, in millimetres: the rise of every layer\nsince that lays anything but supports. It is the plate's, not every\npart's: a part the plan has finished does not grow with it.",
       "format": "double",
       "type": "number"
     }
   },
   "required": [
     "minutes_ago",
-    "z_added_mm"
+    "top_risen_mm"
   ],
   "title": "Rise",
   "type": "object"
@@ -32803,15 +32803,15 @@ Declared by `printobserver-core`.
           "format": "int64",
           "type": "integer"
         },
-        "z_added_mm": {
-          "description": "The height the plan has the parts gain since the position that frame's\njob had reached, in millimetres: the rise of every layer since that\nlays anything but supports.",
+        "top_risen_mm": {
+          "description": "How far the print's highest point should have risen since the position\nthat frame's job had reached, in millimetres: the rise of every layer\nsince that lays anything but supports. It is the plate's, not every\npart's: a part the plan has finished does not grow with it.",
           "format": "double",
           "type": "number"
         }
       },
       "required": [
         "minutes_ago",
-        "z_added_mm"
+        "top_risen_mm"
       ],
       "type": "object"
     },

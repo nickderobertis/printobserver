@@ -603,7 +603,7 @@ fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
         plan.rise,
         Some(Rise {
             minutes_ago: 31,
-            z_added_mm: 0.2,
+            top_risen_mm: 0.2,
         }),
         "the rise since the observation half an hour back is not the file's"
     );
