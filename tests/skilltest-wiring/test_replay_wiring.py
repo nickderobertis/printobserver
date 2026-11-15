@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import sys
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -113,6 +114,17 @@ REPLAYS = {
 }
 CONTEXT = ["printobserver", "context", "--print-id", "{print}", "--json"]
 LOOK = ["printobserver", "look", "--print-id", "{print}", "--json"]
+#: How long a waiting look waits: long enough to see, short enough to wait out.
+LOOK_WAIT_S = 5
+LOOK_WAITING = [
+    "printobserver",
+    "look",
+    "--print-id",
+    "{print}",
+    "--wait-s",
+    str(LOOK_WAIT_S),
+    "--json",
+]
 PAUSE = [
     "printobserver",
     "pause",
@@ -161,7 +173,12 @@ class Scripted:
 
 
 def mock_replay(
-    case: Case, turns: list[ScriptedRun], scratch: Path, gcode: bytes | None = None
+    case: Case,
+    turns: list[ScriptedRun],
+    scratch: Path,
+    gcode: bytes | None = None,
+    *,
+    real_waits: bool = False,
 ) -> Scripted:
     """Run one case's whole replay, its turns scripted, and read back what happened."""
     script = scratch / "script.json"
@@ -176,7 +193,11 @@ def mock_replay(
         encoding="utf-8",
     )
     replay = Replay(
-        case, [sys.executable, str(MOCK_TURN), str(script)], picture=stamped, gcode=gcode
+        case,
+        [sys.executable, str(MOCK_TURN), str(script)],
+        picture=stamped,
+        gcode=gcode,
+        real_waits=real_waits,
     )
     try:
         replayed = replay.run()
@@ -793,6 +814,73 @@ def test_a_gcode_named_with_spaces_is_planned_through_the_real_adapter(scratch: 
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
     plans = [json.loads(turn["ran"][0]["out"])["context"].get("slicer") for turn in done.turns]
     equal([plan and plan.get("layer") for plan in plans], [1] * len(case.moments))
+
+
+def _looked(done: Scripted) -> list[dict[str, object]]:
+    """What each look of the first turn handed the agent.
+
+    The frame, when it was captured, how long the look waited, where the job
+    stood, and when the look's event was received, to the second.
+    """
+    seen = []
+    for at, entry in enumerate(e for e in done.turns[0]["ran"] if e["words"][1] == "look"):
+        answered = json.loads(entry["out"])
+        payload = answered["event"]["payload"]
+        seen.append(
+            {
+                "frame": done.seen_frame(0, at),
+                "frame_captured_at": payload["frame_captured_at"],
+                "waited_s": payload["waited_s"],
+                "file_position_bytes": answered["job"]["file_position_bytes"],
+                "received_at": answered["event"]["received_at"][:19],
+            }
+        )
+    return seen
+
+
+def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
+    tmp_path: Path,
+) -> None:
+    """A look's wait passes on the replay's clock and hands the agent the same.
+
+    It passes at once, and hands the agent exactly what waiting it out in real
+    time hands it.
+
+    The frame, its capture time and the wait are compared whole, and the look's
+    received time to the second. The job's position is read off the replay's
+    clock a few milliseconds after the frame is fetched, and those milliseconds
+    are the host's, which no two runs share, waiting in real time or not: it is
+    held to a tenth of a second of the recording's own rate.
+    """
+    # One frame lies between this case's two events: the first look moves the
+    # clock to it, and the second, with nothing newer, moves it by its wait alone.
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    turn: ScriptedRun = {"commands": [LOOK_WAITING, LOOK_WAITING]}
+    for each in ("real", "jumped"):
+        (tmp_path / each).mkdir()
+    real_at = time.monotonic()
+    real = mock_replay(case, [turn], tmp_path / "real", real_waits=True)
+    real_s = time.monotonic() - real_at
+    jumped_at = time.monotonic()
+    jumped = mock_replay(case, [turn], tmp_path / "jumped")
+    jumped_s = time.monotonic() - jumped_at
+    looked, expected = _looked(jumped), _looked(real)
+    positions = [int(str(look.pop("file_position_bytes"))) for look in looked]
+    wanted = [int(str(look.pop("file_position_bytes"))) for look in expected]
+    equal(looked, expected)
+    equal(expected[0]["frame"], expected[1]["frame"])
+    rate = (wanted[1] - wanted[0]) / LOOK_WAIT_S
+    truth(rate > 0, describing="the job to move on while the second look waits")
+    for had, want in zip(positions, wanted, strict=True):
+        truth(
+            abs(had - want) <= rate / 10,
+            describing=f"the job at {had} to stand where waiting it out puts it, {want}",
+        )
+    equal([look["waited_s"] for look in _looked(jumped)], [LOOK_WAIT_S, LOOK_WAIT_S])
+    truth(
+        jumped_s < real_s - LOOK_WAIT_S,
+        describing=f"the jumped replay ({jumped_s:.1f} s) to skip the real waits ({real_s:.1f} s)",
+    )
 
 
 def test_an_unfetched_frame_is_refused_naming_the_recipe() -> None:

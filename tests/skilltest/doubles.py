@@ -228,9 +228,22 @@ class Timeline:
         return self.case.moments[self.index]
 
     def now(self) -> datetime:
-        """The replay's current time, which is what the server's clock answers."""
-        moved = datetime.now(UTC) + self.offset
+        """The replay's current time, which is what the server's clock answers.
+
+        The offset is read back from the clock file rather than held here: a look
+        on the server passes its wait by moving that file on, and the time every
+        double reads has to move with it.
+        """
+        moved = datetime.now(UTC) + self._offset()
         return min(moved, self.ceiling) if self.ceiling else moved
+
+    def _offset(self) -> timedelta:
+        """The offset the clock file holds now, or the one last written here."""
+        try:
+            words = self.clock.read_text("ascii").split()
+            return timedelta(milliseconds=int(words[0]))
+        except OSError, ValueError, IndexError:
+            return self.offset
 
     def _set_clock(self, when: datetime) -> None:
         """Move the clock to an instant, and tell the server, which reads the file each time."""

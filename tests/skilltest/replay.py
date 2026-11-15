@@ -58,6 +58,10 @@ CLIENT_DEADLINE_S = 120
 #: this many harness runs per entry has gone wrong.
 RUN_ALLOWANCE_PER_ENTRY = 3
 POLL_S = 0.5
+
+#: Set in the server's environment, its looks wait in real time rather than
+#: passing their waits on the replay's clock.
+REAL_WAITS = "PRINTOBSERVER_REPLAY_REAL_WAITS"
 #: What may be asked for, as the server's own schema declares it.
 PRINT_ACTION = Draft202012Validator(
     json.loads((REPO / "schemas/printobserver-core/PrintAction.json").read_text(encoding="utf-8"))
@@ -623,9 +627,17 @@ class Replay:
         target: list[str],
         picture: Callable[[str], bytes] | None = None,
         gcode: bytes | None = None,
+        *,
+        real_waits: bool = False,
     ) -> None:
-        """Lay the install out and start the doubles; nothing runs until [`Replay.run`]."""
+        """Lay the install out and start the doubles; nothing runs until [`Replay.run`].
+
+        A look's wait passes on the replay's clock at once; `real_waits` has the
+        server wait it out in real time instead, which is what a jumped replay is
+        compared against.
+        """
         self.case = case
+        self.real_waits = real_waits
         self.target = target
         self.root = Path(tempfile.mkdtemp())
         self.state = self.root / "state"
@@ -934,7 +946,10 @@ class Replay:
         self.server = start(
             [str(self.bin / f"printobserver{suffix}"), "server", "--config", str(config)],
             cwd=self.state,
-            env=neutral_environment(self.bin, self.home),
+            env={
+                **neutral_environment(self.bin, self.home),
+                **({REAL_WAITS: "1"} if self.real_waits else {}),
+            },
         )
         self._keep_the_log(self.server)
         try:

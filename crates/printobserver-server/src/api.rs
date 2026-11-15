@@ -1036,9 +1036,9 @@ async fn look(
     }
     let supervisor = Arc::clone(&state.supervisor);
     let taken = tokio::task::spawn_blocking(move || {
-        let started = std::time::Instant::now();
-        let arrived = supervisor.await_arrivals(print_id, Duration::from_secs(u64::from(wait_s)));
-        printobserver_core::block_on(supervisor.take_look(print_id, started.elapsed(), arrived))
+        let (arrived, waited) =
+            supervisor.await_look_arrivals(print_id, Duration::from_secs(u64::from(wait_s)));
+        printobserver_core::block_on(supervisor.take_look(print_id, waited, arrived))
     })
     .await;
     match taken {
