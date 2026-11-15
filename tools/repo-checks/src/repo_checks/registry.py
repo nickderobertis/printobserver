@@ -60,6 +60,7 @@ CHECKS: dict[str, Check] = {
     "node-install": checks_repo.node_install,
     "workspace": checks_repo.workspace,
     "graph-edges": checks_graph.graph_edges,
+    "project-tags": checks_graph.project_tags,
     "module-names": checks_repo.module_names,
     "octoprint-client": checks_repo.octoprint_client,
     "supervisor-spawn-free": checks_supervisor.spawn_free,

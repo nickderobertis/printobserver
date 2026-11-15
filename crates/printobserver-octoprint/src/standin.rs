@@ -106,6 +106,34 @@ enum Upgrade {
     Endless,
 }
 
+/// On which side of a request a [`ScriptedOctoPrint::reports_at_next_command`]
+/// change lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Landing {
+    /// Before the request is answered, so the request itself meets it.
+    Before,
+    /// Once the request is answered and before its reply is written, so the
+    /// request does not meet it and its client's next request does.
+    After,
+}
+
+/// The command endpoint's request, as its method and its path.
+const COMMAND_REQUEST: &str = "POST /api/printer/command";
+
+/// What [`ScriptedOctoPrint::reports`] would report, held until the next
+/// request to the command endpoint.
+#[derive(Debug)]
+struct Pending {
+    /// Which side of that request it lands on.
+    landing: Landing,
+    /// Free text rather than a closed set, as [`Script`]'s own: a journey
+    /// scripts `OctoPrint`'s own words, "Offline after error" among them,
+    /// which this stand-in reads by prefix.
+    connection: String,
+    /// Replaces [`Script`]'s whole job, file and progress included.
+    job: JobScript,
+}
+
 /// What the stand-in holds.
 #[derive(Debug)]
 struct Script {
@@ -167,6 +195,8 @@ struct Script {
     /// How long it holds every download before it answers, as a slow link or
     /// a busy instance would.
     download_delay: core::time::Duration,
+    /// A change of state waiting for its request.
+    pending: Option<Pending>,
 }
 
 /// One file the stand-in holds.
@@ -251,6 +281,7 @@ impl ScriptedOctoPrint {
             download_bytes: 0,
             whole_downloads: Vec::new(),
             download_delay: core::time::Duration::ZERO,
+            pending: None,
         }));
         let sockets = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
@@ -303,6 +334,26 @@ impl ScriptedOctoPrint {
         let mut held = self.held();
         connection.clone_into(&mut held.connection);
         held.job = job;
+    }
+
+    /// Report this connection state and this job from the next line sent
+    /// through the command endpoint on, landing on `landing`'s side of it. A
+    /// journey uses it to start a job at a point in the watch's own sequence of
+    /// requests — as its probe is sent, or once that probe is answered — rather
+    /// than at a moment on the clock that probe may or may not have reached.
+    pub fn reports_at_next_command(&self, landing: Landing, connection: &str, job: JobScript) {
+        self.held().pending = Some(Pending {
+            landing,
+            connection: connection.to_owned(),
+            job,
+        });
+    }
+
+    /// Whether a change [`ScriptedOctoPrint::reports_at_next_command`] holds is still waiting
+    /// for its request.
+    #[must_use]
+    pub fn reporting_pending(&self) -> bool {
+        self.held().pending.is_some()
     }
 
     /// Record a print of `file`, of `size` bytes, as having just succeeded:
@@ -734,7 +785,15 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
         return;
     }
     let (status, body) = if admitted {
-        answer(&request, script, sockets)
+        let commanded = format!("{} {}", request.method, request.path) == COMMAND_REQUEST;
+        if commanded {
+            land(script, Landing::Before);
+        }
+        let answered = answer(&request, script, sockets);
+        if commanded {
+            land(script, Landing::After);
+        }
+        answered
     } else {
         (403, r#"{"error":"Forbidden"}"#.to_owned())
     };
@@ -745,6 +804,20 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
     );
     let _ = connection.write_all(reply.as_bytes());
     let _ = connection.flush();
+}
+
+/// Report the change waiting for the command endpoint on `landing`'s side of
+/// the request it is answering, if one is.
+fn land(script: &Mutex<Script>, landing: Landing) {
+    let mut held = lock(script);
+    let due = held
+        .pending
+        .as_ref()
+        .is_some_and(|pending| pending.landing == landing);
+    if let Some(pending) = due.then(|| held.pending.take()).flatten() {
+        held.connection = pending.connection;
+        held.job = pending.job;
+    }
 }
 
 /// Whether a connection state is one `GET /api/printer` refuses.

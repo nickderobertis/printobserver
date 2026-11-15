@@ -40,6 +40,7 @@ CHECKS: dict[str, Closure] = {
     "graph-edges": Closure(
         (PROJECTS, "**/*.py", "**/Cargo.toml", "**/package.json", "pyproject.toml")
     ),
+    "project-tags": Closure((POLICY, PROJECTS)),
     "module-names": Closure(("pyproject.toml", "**/*.py")),
     "octoprint-client": Closure((POLICY, "crates/**/*.rs", "crates/*/Cargo.toml")),
     "supervisor-spawn-free": Closure((POLICY, "crates/printobserver-oneharness/src/")),

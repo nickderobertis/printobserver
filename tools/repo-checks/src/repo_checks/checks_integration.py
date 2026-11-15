@@ -361,7 +361,9 @@ def _step_condition_findings(repo: Repo, job: dict[str, Any], where: str) -> lis
     """Only teardown, owned scratch cleanup and failure evidence may be conditional.
 
     An upload under `failure()` runs only once the tier has already failed, so
-    it carries that failure's evidence out and skips no verification.
+    it carries that failure's evidence out and skips no verification. A cache
+    save verifies nothing either: it keeps what a step built for a later run,
+    and the workflow saves only from a run on `main`, under whatever condition.
     """
     bring_down = f"just {repo.policy['integration']['bring_down']}"
     findings: list[str] = []
@@ -374,6 +376,8 @@ def _step_condition_findings(repo: Repo, job: dict[str, Any], where: str) -> lis
             continue
         uses = str(step.get("uses", ""))
         if uses.startswith("actions/upload-artifact@") and condition == "failure()":
+            continue
+        if uses.startswith("actions/cache/save@") and not run_line:
             continue
         findings.append(
             f"{where} runs `{run_line or step.get('uses')}` under the condition "
