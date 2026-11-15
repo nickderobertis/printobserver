@@ -12,7 +12,7 @@
     "typecheck": {
       "command": "uv run -q ty check tests/repo-e2e-independent && uv run -q ty check --python-platform win32 tests/repo-e2e-independent"
     },
-    "test-e2e": { "metadata": { "description": "llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason." },
+    "test-e2e": { "metadata": { "description": "llmlint: ignore[expensive_tests_stay_behind_their_own_edge, external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reasons." },
       "command": "uv run -q pytest tests/repo-e2e-independent/tests -n auto --dist loadgroup --durations=15"
     }
   }

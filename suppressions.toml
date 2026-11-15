@@ -963,6 +963,12 @@ site = "test-e2e"
 reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `test-e2e`: the rule is about the edge this project's end-to-end target hangs from, decided here once rather than per journey. It is the tier's own target name, so the shard planner's part selection and Nx's one-at-a-time `test-e2e` run (`nx.json`) hold it as they hold `repo-e2e`'s, and its journeys drive exactly the projects its `implicitDependencies` name. It depends on no build: none of its journeys runs the debug program."
 
 [[suppression]]
+rule = "external_service_suite_stays_out_of_the_affected_tier"
+file = "tests/repo-e2e-independent/project.json"
+site = "test-e2e"
+reason = "The rule is about wiring an external-service suite into the pull-request gate, and this target wires in none that was not there: `test_release_tag_journey.py`, whose stand-in registry forwards reads of crates that are not this workspace's to crates.io, ran in `tests/repo-e2e`'s `test-e2e` target in the same tier until this change moved it here, unchanged, because nothing it drives behaves differently by platform. The entry for `justfile` at the `install-tools release-plz` line records why the release journeys are in the end-to-end tier at all. Moving them behind a workflow of their own is a change to the workflows, which the change that moved them was told to leave alone, and would take the release-tag proof off every pull request."
+
+[[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/project.json"
 site = "implicitDependencies"
