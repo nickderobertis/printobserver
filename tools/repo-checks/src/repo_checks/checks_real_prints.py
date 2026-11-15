@@ -1017,7 +1017,7 @@ def real_prints_lfs_ci(repo: Repo) -> list[str]:
             if not isinstance(switch, dict) or CI_STEPS_SWITCH not in switch:
                 findings.append(
                     f"{where} carries {CI_STEPS} without setting `{CI_STEPS_SWITCH}` in its "
-                    f"`env`, so every one of those steps is skipped: set it to `\"true\"`, or "
+                    f'`env`, so every one of those steps is skipped: set it to `"true"`, or '
                     f"to the expression naming the runs that need the store"
                 )
             findings.extend(
