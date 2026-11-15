@@ -12,7 +12,7 @@ it going as it should, and which bounded adjustment, if any, is right now?
 
 ## The normal workflow
 
-Six steps in order, every turn. [The command surface](reference/command-surface.md)
+Six steps, every turn. [The command surface](reference/command-surface.md)
 and [common operations](reference/common-operations.md) hold the commands: read
 them with your file tools. Your shell takes one whole command at
 a time, starting with the program's name: no variable, chain or usage listing. If it refuses one, rewrite it so; never leave it undone.
@@ -23,7 +23,7 @@ a time, starting with the program's name: no variable, chain or usage listing. I
 2. **Look at the image.** Open the file the context names. A path is not evidence
    nor is a picture too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** At least once: the event's frame is
-   already old. A look can wait up to ninety seconds; a few show a
+   already old. A look can wait up to a minute and a half first; a few show a
    defect growing.
    Open each; each states its capture time. One time twice is a camera
    with nothing newer, no defect: say so and judge what the frame shows.
@@ -63,10 +63,10 @@ Reading frames:
   lattice, is not.
 - **Strands.** Curved or tangled strands are a defect only inside the part's
   outline and clearly growing or out of place. A strand off the part, on a
-  rail, screw or frame, is not: note it.
+  rail, screw or frame, is not.
 - **Position.** Judge each frame against earlier ones. What is
   printed stays where it was laid. Never judge growth between frames under
-  half an hour apart; with the plan's rise unknown, judge none. Where it
+  half an hour apart; with the rise unknown, judge none. Where it
   states a rise since a frame, parts in view not showing it are not printing, however
   small: a clear defect, never uncertain. Hidden parts: look again; none showing it is
   the same. A shifting view carries sheet and part
@@ -84,7 +84,7 @@ with that pause standing; a paused print moves no further, so another look
 settles nothing: an uncertain reading is stopped, not watched.
 
 - **If a clear defect a setting addresses is all you see**, ask for it while paused;
-  the supervisor resumes the print twenty seconds after your last such change, or
+  the supervisor resumes the print itself twenty seconds after your last such change, or
   when your turn ends. You do not resume it.
 - **Otherwise,** a moved or gone part or a defect no setting addresses, even beside
   one it does, an uncertain reading or nothing at all: change nothing
