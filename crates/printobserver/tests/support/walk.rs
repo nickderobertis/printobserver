@@ -510,8 +510,9 @@ pub fn invocations(driven: &Driven, world: &World) -> Vec<Invocation> {
 }
 
 /// The invocations of one command a walk over a real machine runs, by their
-/// index in [`invocations`]: the fewest, in that order, that between them give
-/// every option form, both renderings and both ways of being configured.
+/// index in [`invocations`]: taken in that order, each one that spells
+/// something no earlier choice did, so between them they give every option
+/// form, both renderings and both ways of being configured.
 ///
 /// Each of a command's invocations asks the machine for the same thing in its
 /// own spelling, so a real machine proves nothing more of the command for being
