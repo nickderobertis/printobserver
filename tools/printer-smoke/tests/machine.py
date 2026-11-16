@@ -77,6 +77,7 @@ FAULTS = (
     "cancel-not-taken",
     "bounds-widened",
     "start-names-no-print",
+    "context-states-no-print-state",
 )
 
 #: A print's identifier, as the supervisor mints one.
@@ -288,7 +289,11 @@ class Machine:
             # and nothing of the job but the print's state.
             return 200, {
                 "context": {
-                    "print": {"id": self.print_id, "state": self.printer.connection},
+                    "print": (
+                        {"id": self.print_id}
+                        if "context-states-no-print-state" in self.faults
+                        else {"id": self.print_id, "state": self.printer.connection}
+                    ),
                     "printer": {"tools": [], "bed": {}},
                     "bounds": {"allowed": self._bounds()},
                     "interventions": [],
