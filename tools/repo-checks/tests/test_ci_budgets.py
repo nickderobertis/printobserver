@@ -1,12 +1,13 @@
-"""The `gate-time` budget, measured from recorded jobs-API documents over real HTTP.
+"""The `ci-check-time` and `ci-job-count` budgets, measured from recorded runs over real HTTP.
 
-Each run here serves one document under `recorded/` — the forge's own answer
-for a real run — from a stand-in jobs API on loopback, and drives the real
-`repo_checks gate_time_budget` against it: in this process for the measurement,
-and through the real `onebudgetspec check` of the committed `budgets.yaml` for
-the verdict, which runs that command the way the `gate-time` step does. A
-refusal is driven by removing or corrupting a field of a recorded document.
-What is asserted is the reported result, never a timing of this suite's own.
+Each test serves runs recorded from the forge — the jobs-API document of a real
+pull-request run under `recorded/`, or one derived from it — from a stand-in
+Actions API on loopback, and drives the real `repo_checks` budget commands
+against it: in this process for each measurement, and through the real
+`onebudgetspec check` of the committed `budgets.yaml` for the verdict, which runs
+those commands the way the `budgets` job's step does. A refusal is driven by
+removing or corrupting a field of a recorded document. What is asserted is the
+reported result, never a timing of this suite's own.
 """
 
 from __future__ import annotations
@@ -17,40 +18,40 @@ import os
 import secrets
 import tomllib
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
-from onebudgetspec_sdk import check, list_budgets
-from repo_checks import gate_time_budget
+from onebudgetspec_sdk import list_budgets
+from repo_checks import ci_budgets
+from repo_checks.ci_budgets import (
+    CHECK_TIME,
+    JOB_COUNT,
+    OVER,
+    REFUSED,
+    WITHIN,
+    check_budgets,
+    measure_check_time,
+    measure_job_count,
+)
 from repo_checks.expect import contains, equal, truth
-from repo_checks.gate_time_budget import OVER, REFUSED, WITHIN, check_budget, measure
 from repo_checks.model import Repo, toolchain_tools
-from standin_jobs_api import Jobs, serving, slowed
+from standin_jobs_api import Forge, Run, serving, slowed
 from treecopy import REPO_ROOT
 
 RECORDED = Path(__file__).parent / "recorded"
 REPOSITORY = "nickderobertis/printobserver"
-#: A finished pull-request run at bb2fc63, every required context completed:
-#: `gate (linux-x86_64)` one job of 1,559 s, `gate (windows-aarch64)` four
-#: shards and an aggregator, and both macOS contexts carried after the combined
-#: `macos-aarch64 (gate, integration)` job's 2,573 s.
-COMBINED = 40235536077
-#: The combined macOS job of that run, and its recorded 2,579 s path.
-MACOS_JOB = "macos-aarch64 (gate, integration)"
-MACOS_SECONDS = 2579
-#: The line `budgets.yaml` holds every required context to, read from it alone.
-THRESHOLD = int(
-    next(
-        budget.threshold
-        for budget in list_budgets(paths=[REPO_ROOT / "budgets.yaml"]).budgets
-        if budget.id == "gate-time"
-    )
-)
-#: The macOS path of `COMBINED` stretched past that line by the line itself.
-OVER_SECONDS = MACOS_SECONDS + THRESHOLD
-#: What `just` exports to every recipe, so the budget's command finds its package.
+#: A finished whole-graph pull-request run at bb2fc63, 24 jobs, every one of
+#: which took a runner: its longest, the combined macOS job, ran 2,573 s.
+RECORDED_RUN = 40235536077
+HEAD_SHA = "bb2fc636106ef454d12b9a0901d271015e9d7dc9"
+LONGEST = "macos-aarch64 (gate, integration)"
+LONGEST_SECONDS = 2573.0
+#: A second run the same push started, in another workflow.
+SIBLING_RUN = 40235536099
+#: What `just` exports to every recipe, so a budget's command finds its package.
 PACKAGES = os.pathsep.join(
     str(REPO_ROOT / package)
     for package in (
@@ -59,6 +60,29 @@ PACKAGES = os.pathsep.join(
         "tools/release-artifacts/src",
     )
 )
+
+
+@dataclass(frozen=True)
+class Registered:
+    """What the committed `budgets.yaml` registers for one budget, as onebudgetspec lists it."""
+
+    command: list[str]
+    unit: str
+    direction: str
+    threshold: float
+
+
+def registered(budget: str) -> Registered:
+    """One budget as the committed `budgets.yaml` registers it."""
+    (found,) = (
+        one for one in list_budgets(paths=[REPO_ROOT / "budgets.yaml"]).budgets if one.id == budget
+    )
+    return Registered(list(found.command), str(found.unit), str(found.direction), found.threshold)
+
+
+#: The lines the committed `budgets.yaml` holds, read from it alone.
+CHECK_TIME_LINE = int(registered(CHECK_TIME).threshold)
+JOB_COUNT_LINE = int(registered(JOB_COUNT).threshold)
 
 
 def document(run: int) -> dict[str, Any]:
@@ -74,17 +98,52 @@ def job(recorded: dict[str, Any], name: str) -> dict[str, Any]:
     return next(entry for entry in recorded["jobs"] if entry["name"] == name)
 
 
-def environment(address: str, kind: str, platform: str, **extra: str) -> dict[str, str]:
-    """What a `gate-time` step's command sees: the run, the context, and the API."""
+def skipped(entry: dict[str, Any]) -> None:
+    """`entry` as the forge records a job its condition skipped: completed with no runner."""
+    entry.update(status="completed", conclusion="skipped", runner_name=None, runner_id=None)
+    entry["started_at"] = entry["completed_at"] = entry["created_at"]
+    entry["steps"] = []
+
+
+def measuring(recorded: dict[str, Any]) -> dict[str, Any]:
+    """`recorded` with the `budgets` job running, started at the last job's end, as it measures."""
+    derived = copy.deepcopy(recorded)
+    last = max(entry["completed_at"] for entry in derived["jobs"])
+    started = datetime.strptime(last, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    stamp = started.strftime("%Y-%m-%dT%H:%M:%SZ")
+    derived["jobs"].append(
+        {
+            "name": "budgets",
+            "status": "in_progress",
+            "conclusion": None,
+            "created_at": stamp,
+            "started_at": stamp,
+            "completed_at": None,
+            "labels": ["ubuntu-24.04"],
+            "runner_name": "GitHub Actions 1",
+            "steps": [{"name": "Set up job", "status": "completed", "started_at": stamp}],
+        }
+    )
+    derived["total_count"] = len(derived["jobs"])
+    return derived
+
+
+def forge_of(*documents: tuple[int, str, dict[str, Any]]) -> Forge:
+    """A stand-in serving each `(run, workflow, document)` as one pull-request run of `HEAD_SHA`."""
+    return Forge(
+        REPOSITORY,
+        [Run(run, 1, HEAD_SHA, "pull_request", workflow, doc) for run, workflow, doc in documents],
+    )
+
+
+def environment(address: str, **extra: str) -> dict[str, str]:
+    """What the `budgets` job's step hands a budget's command: the run, and the API."""
     return {
         "GITHUB_API_URL": address,
         "GITHUB_REPOSITORY": REPOSITORY,
-        "GITHUB_RUN_ID": str(COMBINED),
+        "GITHUB_RUN_ID": str(RECORDED_RUN),
         "GITHUB_RUN_ATTEMPT": "1",
-        "GATE_TIME_KIND": kind,
-        "PRINTOBSERVER_PLATFORM": platform,
         "GITHUB_EVENT_NAME": "pull_request",
-        "GITHUB_HEAD_REF": "nick/255/printobserver-release-declaration",
         **extra,
     }
 
@@ -104,480 +163,347 @@ def reported(written: Path) -> tuple[float, dict[str, Any]]:
 
 
 @pytest.fixture
-def api() -> Iterator[tuple[Jobs, str]]:
-    """The stand-in jobs API serving the recorded run."""
-    jobs = Jobs(REPOSITORY, COMBINED, 1, document(COMBINED))
-    with serving(jobs) as address:
-        yield jobs, address
+def served() -> Iterator[Callable[[Forge], str]]:
+    """Serve one stand-in forge for the test, yielding its address."""
+    stack: list[Any] = []
+
+    def serve(forge: Forge) -> str:
+        context = serving(forge)
+        stack.append(context)
+        return context.__enter__()
+
+    yield serve
+    for context in reversed(stack):
+        context.__exit__(None, None, None)
 
 
-def test_an_unsharded_gate_is_measured_with_its_breakdown(
-    api: tuple[Jobs, str], result: Path
+def test_the_longest_job_is_the_figure_and_every_job_is_in_the_breakdown(
+    served: Callable[[Forge], str], result: Path
 ) -> None:
-    """`gate (linux-x86_64)` ran 1,559 s as one job, its three seconds of queue reported apart."""
-    jobs, address = api
+    """The recorded run's longest job, 2,573 s, with each job's start, end, queue and steps."""
+    forge = forge_of((RECORDED_RUN, "ci", measuring(document(RECORDED_RUN))))
+    address = served(forge)
 
-    equal(measure(environment(address, "gate", "linux-x86_64")), 0)
+    equal(measure_check_time(environment(address)), 0)
 
     value, detail = reported(result)
-    equal(value, 1559.0)
-    equal(detail["context"], "gate (linux-x86_64)")
-    equal((detail["kind"], detail["platform"]), ("gate", "linux-x86_64"))
-    equal((detail["run_id"], detail["run_attempt"]), (COMBINED, 1))
-    equal(detail["initial_queue_seconds"], 3.0)
-    equal(detail["measured_to_source"], "completion")
-    equal([entry["name"] for entry in detail["jobs"]], ["gate (linux-x86_64)"])
-    only = detail["jobs"][0]
+    equal(value, LONGEST_SECONDS)
+    equal(detail["longest"], LONGEST)
     equal(
-        (only["started_at"], only["completed_at"], only["queue_seconds"]),
-        ("2026-10-25T21:28:10Z", "2026-10-25T21:54:09Z", 3.0),
+        (detail["run_id"], detail["run_attempt"], detail["event"]),
+        (RECORDED_RUN, 1, "pull_request"),
     )
-    steps = {step["name"]: step["seconds"] for step in only["steps"]}
-    equal(steps['Run just check "$(just gate-tier)"'], 1494.0)
-    equal(len(only["steps"]), 17)
-    equal(jobs.authorized, [None], describing="the token is sent to the forge's API alone")
+    names = [entry["name"] for entry in detail["jobs"]]
+    equal(len(names), 24, describing="every job of the run but the one measuring it")
+    truth("budgets" not in names, describing="the measuring job left out of the breakdown")
+    longest = next(entry for entry in detail["jobs"] if entry["name"] == LONGEST)
+    equal(longest["seconds"], LONGEST_SECONDS)
+    truth(longest["queue_seconds"] is not None, describing="its queue reported")
+    truth(longest["steps"], describing="its steps reported")
+    truth(detail["wall_seconds"] >= LONGEST_SECONDS, describing="the clock span beside the figure")
+    equal(forge.authorized, [None, None], describing="no token sent to a stand-in")
 
 
-def test_a_sharded_gate_spans_its_shards_to_its_aggregator(
-    api: tuple[Jobs, str], result: Path
+def test_a_job_its_condition_skipped_ran_for_no_time(
+    served: Callable[[Forge], str], result: Path
 ) -> None:
-    """`gate (windows-aarch64)`: its longest shard's 1,155 s, then its aggregator's 9 s."""
-    _, address = api
+    """With the longest job skipped, the next longest, 1,559 s, is the figure."""
+    recorded = measuring(document(RECORDED_RUN))
+    skipped(job(recorded, LONGEST))
+    address = served(forge_of((RECORDED_RUN, "ci", recorded)))
 
-    equal(measure(environment(address, "gate", "windows-aarch64")), 0)
-
-    value, detail = reported(result)
-    equal(value, 1164.0)
-    equal(
-        [entry["name"] for entry in detail["jobs"]],
-        ["gate (windows-aarch64)", *(f"gate-shard (windows-aarch64, {k}/4)" for k in range(1, 5))],
-    )
-    equal([entry["queue_seconds"] for entry in detail["jobs"]], [1.0, 2.0, 1.0, 1.0, 2.0])
-    equal(detail["initial_queue_seconds"], 1.0)
-
-
-#: A pull-request run at 65bf8ff while the account's runners were saturated:
-#: `gate (windows-aarch64)`'s five shards started over fourteen minutes, and its
-#: aggregator queued 717 s for a runner after the last of them ended.
-SATURATED = 40310931115
-
-
-def test_a_runner_queue_is_reported_and_never_part_of_the_figure(result: Path) -> None:
-    """The longest shard's 1,584 s and the aggregator's own 9 s, not the 2,633 s waited."""
-    with serving(Jobs(REPOSITORY, SATURATED, 1, document(SATURATED))) as address:
-        settings = {
-            **environment(address, "gate", "windows-aarch64"),
-            "GITHUB_RUN_ID": str(SATURATED),
-        }
-        equal(measure(settings), 0)
+    equal(measure_check_time(environment(address)), 0)
 
     value, detail = reported(result)
-    equal(value, 1593.0)
-    equal(detail["wall_seconds"], 2633.0)
-    queues = {job["name"]: job["queue_seconds"] for job in detail["jobs"]}
-    equal(queues["gate (windows-aarch64)"], 717.0)
-    equal(queues["gate-shard (windows-aarch64, 2/5)"], 561.0)
+    equal((value, detail["longest"]), (1559.0, "gate (linux-x86_64)"))
+    gone = next(entry for entry in detail["jobs"] if entry["name"] == LONGEST)
+    equal((gone["seconds"], gone["queue_seconds"]), (0.0, None))
 
 
-def _requeued(recorded: dict[str, Any], seconds: int) -> dict[str, Any]:
-    """`recorded` with its n-th job left queued n times `seconds` longer, each running as long."""
-    derived = copy.deepcopy(recorded)
-    for n, entry in enumerate(derived["jobs"], start=1):
-        for holder in (entry, *(entry.get("steps") or ())):
-            for field in ("started_at", "completed_at"):
-                if holder.get(field):
-                    moved = datetime.fromisoformat(holder[field]).timestamp() + n * seconds
-                    holder[field] = datetime.fromtimestamp(moved, UTC).strftime(
-                        "%Y-%m-%dT%H:%M:%SZ"
-                    )
-    return derived
-
-
-def test_two_runs_differing_only_in_queueing_read_one_figure(result: Path) -> None:
-    """Each job held minutes longer for a runner than the last, and the figure does not move."""
-    figures, walls = [], []
-    for seconds in (0, 300):
-        recorded = _requeued(document(SATURATED), seconds)
-        with serving(Jobs(REPOSITORY, SATURATED, 1, recorded)) as address:
-            settings = {
-                **environment(address, "gate", "windows-aarch64"),
-                "GITHUB_RUN_ID": str(SATURATED),
-            }
-            equal(measure(settings), 0)
-        value, detail = reported(result)
-        figures.append(value)
-        walls.append(detail["wall_seconds"])
-
-    equal(figures, [1593.0, 1593.0])
-    truth(
-        walls[1] > walls[0],
-        describing=f"the second run waited longer from first start to end: {walls}",
-    )
-
-
-def test_the_combined_macos_job_is_behind_its_integration_context(
-    api: tuple[Jobs, str], result: Path
+def test_the_measuring_job_is_never_the_figure(
+    served: Callable[[Forge], str], result: Path
 ) -> None:
-    """`integration (macos-aarch64)`: the combined job's 2,573 s, then its carrier's 7 s."""
-    _, address = api
+    """A `budgets` job recorded as having run longer than every other job is still left out."""
+    recorded = measuring(document(RECORDED_RUN))
+    mine = job(recorded, "budgets")
+    mine.update(status="completed", conclusion="success", completed_at="2099-01-01T00:00:00Z")
+    address = served(forge_of((RECORDED_RUN, "ci", recorded)))
 
-    equal(measure(environment(address, "integration", "macos-aarch64")), 0)
+    equal(measure_check_time(environment(address)), 0)
 
-    value, detail = reported(result)
-    equal(value, 2580.0)
-    equal(
-        [entry["name"] for entry in detail["jobs"]],
-        ["integration (macos-aarch64)", "macos-aarch64 (gate, integration)"],
-    )
-    combined = {step["name"]: step["seconds"] for step in detail["jobs"][1]["steps"]}
-    equal(combined["Run just test-integration"], 681.0)
+    equal(reported(result)[0], LONGEST_SECONDS)
 
 
-def _in_flight(recorded: dict[str, Any], name: str, step_started: str | None) -> dict[str, Any]:
-    """`recorded` with job `name` still running, inside a `gate-time` step where one is given."""
-    derived = copy.deepcopy(recorded)
-    running = job(derived, name)
-    running.update(status="in_progress", conclusion=None, completed_at=None)
-    if step_started is not None:
-        running["steps"].append(
-            {
-                "name": "gate-time",
-                "status": "in_progress",
-                "conclusion": None,
-                "number": len(running["steps"]) + 1,
-                "started_at": step_started,
-                "completed_at": None,
-            }
-        )
-    return derived
-
-
-def test_a_running_aggregator_is_measured_to_its_gate_time_step(result: Path) -> None:
-    """Read from inside the step, the span ends where the forge recorded that step's start."""
-    derived = _in_flight(document(COMBINED), "gate (linux-x86_64)", "2026-10-25T21:58:10Z")
-    with serving(Jobs(REPOSITORY, COMBINED, 1, derived)) as address:
-        now = datetime(2026, 10, 25, 23, 0, tzinfo=UTC)
-        equal(measure(environment(address, "gate", "linux-x86_64"), now=now), 0)
-
-    value, detail = reported(result)
-    equal(value, 1800.0)
-    equal((detail["measured_to"], detail["measured_to_source"]), ("2026-10-25T21:58:10Z", "step"))
-
-
-def test_a_skipped_gate_time_step_is_read_as_never_started(result: Path) -> None:
-    """A job that failed before its budget step ran is measured to its completion instead."""
-    derived = document(COMBINED)
-    job(derived, "gate (linux-x86_64)")["steps"].append(
-        {
-            "name": "gate-time",
-            "status": "completed",
-            "conclusion": "skipped",
-            "number": 18,
-            "started_at": "2026-10-25T21:54:09Z",
-            "completed_at": "2026-10-25T21:54:09Z",
-        }
-    )
-    with serving(Jobs(REPOSITORY, COMBINED, 1, derived)) as address:
-        equal(measure(environment(address, "gate", "linux-x86_64")), 0)
-
-    value, detail = reported(result)
-    equal(value, 1559.0)
-    equal(detail["measured_to_source"], "completion")
-
-
-def test_a_step_the_forge_has_not_recorded_yet_is_measured_to_the_clock(result: Path) -> None:
-    """Before the forge records the step's start, the moment of measuring is that start."""
-    derived = _in_flight(document(COMBINED), "gate (linux-x86_64)", None)
-    with serving(Jobs(REPOSITORY, COMBINED, 1, derived)) as address:
-        now = datetime(2026, 10, 25, 21, 58, 11, tzinfo=UTC)
-        equal(measure(environment(address, "gate", "linux-x86_64"), now=now), 0)
-
-    value, detail = reported(result)
-    equal(value, 1801.0)
-    equal(detail["measured_to_source"], "clock")
-
-
-def test_every_page_of_jobs_is_read(
-    api: tuple[Jobs, str], result: Path, monkeypatch: pytest.MonkeyPatch
+def test_every_job_that_took_a_runner_across_the_pushs_runs_is_counted(
+    served: Callable[[Forge], str], result: Path
 ) -> None:
-    """Twenty-four jobs at ten a page are three pages, and a context on the last is found."""
-    jobs, address = api
-    monkeypatch.setattr(gate_time_budget, "PAGE", 10)
+    """24 jobs in one run, the measuring job, and one of a second run; a skipped job is not one."""
+    recorded = measuring(document(RECORDED_RUN))
+    skipped(job(recorded, "classify"))
+    sibling = {"total_count": 1, "jobs": [copy.deepcopy(job(document(RECORDED_RUN), "pr-title"))]}
+    forge = forge_of((RECORDED_RUN, "ci", recorded), (SIBLING_RUN, "notignored", sibling))
+    address = served(forge)
 
-    equal(measure(environment(address, "integration", "macos-aarch64")), 0)
+    equal(measure_job_count(environment(address)), 0)
 
-    equal([path.rsplit("page=", 1)[-1] for path in jobs.asked], ["1", "2", "3"])
-    truth(result.is_file(), describing="a result read off three pages")
+    value, detail = reported(result)
+    equal(value, 25.0, describing="24 - 1 skipped + budgets + 1 of the sibling run")
+    equal(detail["runs"], [RECORDED_RUN, SIBLING_RUN])
+    equal((detail["head_sha"], detail["event"]), (HEAD_SHA, "pull_request"))
+    equal(detail["per_family"], {"Linux": 14, "Windows": 10, "macOS": 1})
+    counted = {(entry["workflow"], entry["name"]) for entry in detail["jobs"]}
+    truth(("ci", "budgets") in counted, describing="the measuring job counted")
+    truth(("notignored", "pr-title") in counted, describing="the sibling run's job counted")
+    truth(("ci", "classify") not in counted, describing="a skipped job not counted")
+    runner = next(entry for entry in detail["jobs"] if entry["name"] == LONGEST)["runner"]
+    equal(runner, "macos-15")
+
+
+def test_a_run_of_another_commit_or_event_is_not_this_pushs(
+    served: Callable[[Forge], str], result: Path
+) -> None:
+    """Only the runs of the current run's own commit and event are read."""
+    other = Run(SIBLING_RUN, 1, "0" * 40, "pull_request", "ci", document(RECORDED_RUN))
+    pushed = Run(SIBLING_RUN + 1, 1, HEAD_SHA, "push", "warm", document(RECORDED_RUN))
+    forge = forge_of((RECORDED_RUN, "ci", measuring(document(RECORDED_RUN))))
+    forge.runs = [*forge.runs, other, pushed]
+    address = served(forge)
+
+    equal(measure_job_count(environment(address)), 0)
+
+    equal(reported(result)[1]["runs"], [RECORDED_RUN])
+
+
+def test_jobs_are_read_page_by_page(
+    served: Callable[[Forge], str], result: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With ten jobs a page, the 25 recorded are read over three pages and all counted."""
+    monkeypatch.setattr(ci_budgets, "PAGE", 10)
+    forge = forge_of((RECORDED_RUN, "ci", measuring(document(RECORDED_RUN))))
+    address = served(forge)
+
+    equal(measure_job_count(environment(address)), 0)
+
+    equal(reported(result)[0], 25.0)
+    pages = [path for path in forge.asked if "/jobs?" in path]
+    equal(len(pages), 3, describing="the pages of jobs asked")
 
 
 @pytest.mark.parametrize(
     ("unset", "naming"),
     [
-        ("GITHUB_RUN_ID", "GITHUB_RUN_ID is not set, so there is no run"),
         ("GITHUB_REPOSITORY", "GITHUB_REPOSITORY is not set"),
-        ("GATE_TIME_KIND", "GATE_TIME_KIND is not set"),
-        ("PRINTOBSERVER_PLATFORM", "PRINTOBSERVER_PLATFORM is not set"),
+        ("GITHUB_RUN_ID", "GITHUB_RUN_ID is not set"),
     ],
 )
-def test_a_measurement_with_nothing_to_name_is_refused_by_name(
-    api: tuple[Jobs, str],
-    result: Path,
+def test_a_measurement_with_no_run_named_refuses(
+    served: Callable[[Forge], str],
     capsys: pytest.CaptureFixture[str],
     unset: str,
     naming: str,
 ) -> None:
-    """No run, repository or context: nothing is read and nothing is reported."""
-    jobs, address = api
-    environ = {k: v for k, v in environment(address, "gate", "linux-x86_64").items() if k != unset}
+    """Nothing named to read is a refusal naming what is missing, never a figure of zero."""
+    address = served(forge_of((RECORDED_RUN, "ci", document(RECORDED_RUN))))
+    named = environment(address)
+    del named[unset]
 
-    equal(measure(environ), REFUSED)
+    equal(measure_check_time(named), REFUSED)
+    equal(measure_job_count(named), REFUSED)
 
-    contains(capsys.readouterr().err, naming)
-    truth(not result.exists(), describing="no figure reported")
-    if unset in {"GITHUB_RUN_ID", "GITHUB_REPOSITORY"}:
-        equal(jobs.asked, [], describing="what was asked of the API")
+    said = capsys.readouterr().err
+    contains(said, f"{CHECK_TIME}: refused: {naming}")
+    contains(said, f"{JOB_COUNT}: refused: {naming}")
 
 
 @pytest.mark.parametrize(
-    ("fields", "naming"),
+    ("given", "naming"),
     [
-        ({"GATE_TIME_KIND": "release"}, "GATE_TIME_KIND='release' names no required context"),
         ({"GITHUB_RUN_ID": "latest"}, "GITHUB_RUN_ID='latest' is not a number"),
-        ({"GITHUB_RUN_ATTEMPT": "1; x"}, "GITHUB_RUN_ATTEMPT='1; x' is not a number"),
-        ({"GITHUB_REPOSITORY": "printobserver"}, "'printobserver' is not `owner/name`"),
-        ({"GITHUB_API_URL": "http://example.com"}, "is neither https://api.github.com nor"),
-        ({"GITHUB_API_URL": "https://[::1"}, "is neither https://api.github.com nor"),
+        ({"GITHUB_RUN_ATTEMPT": "first"}, "GITHUB_RUN_ATTEMPT='first' is not a number"),
+        ({"GITHUB_REPOSITORY": "printobserver"}, "is not `owner/name`"),
+        ({"GITHUB_API_URL": "http://example.com"}, "neither https://api.github.com nor"),
         ({"GITHUB_RUN_ID": "1"}, "answered 404"),
     ],
 )
-def test_a_measurement_that_names_no_readable_run_is_refused(
-    api: tuple[Jobs, str],
-    result: Path,
+def test_a_run_named_wrongly_refuses(
+    served: Callable[[Forge], str],
     capsys: pytest.CaptureFixture[str],
-    fields: dict[str, str],
+    given: dict[str, str],
     naming: str,
 ) -> None:
-    """A context, run or address this cannot read from is refused naming it."""
-    _, address = api
+    """A run, attempt, repository or address that names nothing readable is refused."""
+    address = served(forge_of((RECORDED_RUN, "ci", document(RECORDED_RUN))))
 
-    equal(measure({**environment(address, "gate", "linux-x86_64"), **fields}), REFUSED)
+    equal(measure_check_time({**environment(address), **given}), REFUSED)
 
     contains(capsys.readouterr().err, naming)
-    truth(not result.exists(), describing="no figure reported")
 
 
-def _without_aggregator(recorded: dict[str, Any]) -> None:
-    recorded["jobs"] = [e for e in recorded["jobs"] if e["name"] != "gate (windows-aarch64)"]
-    recorded["total_count"] = len(recorded["jobs"])
+def test_a_forge_refusing_the_read_refuses(
+    served: Callable[[Forge], str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An error answer is a refusal naming it."""
+    forge = forge_of((RECORDED_RUN, "ci", document(RECORDED_RUN)))
+    forge.status = 502
+    address = served(forge)
 
+    equal(measure_job_count(environment(address)), REFUSED)
 
-def _corrupt_start(recorded: dict[str, Any]) -> None:
-    job(recorded, "gate-shard (windows-aarch64, 2/4)")["started_at"] = "yesterday"
-
-
-def _undercounted(recorded: dict[str, Any]) -> None:
-    recorded["total_count"] = len(recorded["jobs"]) + 5
-
-
-def _no_count(recorded: dict[str, Any]) -> None:
-    del recorded["total_count"]
-
-
-def _boolean_count(recorded: dict[str, Any]) -> None:
-    recorded["total_count"] = True
-
-
-def _nameless_job(recorded: dict[str, Any]) -> None:
-    recorded["jobs"][3]["name"] = ["gate (windows-aarch64)"]
-
-
-def _nameless_step(recorded: dict[str, Any]) -> None:
-    job(recorded, "gate (windows-aarch64)")["steps"][0]["status"] = {"completed": True}
+    contains(capsys.readouterr().err, "answered 502")
 
 
 @pytest.mark.parametrize(
-    ("derive", "naming"),
+    ("corrupt", "naming"),
     [
-        (_without_aggregator, "gate (windows-aarch64): no job of that name"),
-        (_corrupt_start, "has started_at='yesterday', not an instant"),
-        (_undercounted, "answered 24 of the 29 jobs it counts"),
-        (_no_count, "answered `total_count` None, not a count of jobs"),
-        (_boolean_count, "answered `total_count` True, not a count of jobs"),
-        (_nameless_job, "answered job 3 with no name"),
-        (_nameless_step, "answered a step with no name or status"),
+        (lambda doc: doc.update(total_count=99), "answered 24 of the 99 it counts"),
+        (lambda doc: doc.update(total_count="24"), "not a count"),
+        (lambda doc: doc["jobs"][0].update(started_at="soon"), "started_at='soon', not an instant"),
+        (lambda doc: doc["jobs"][0].update(status="paused"), "say nothing of whether it ran"),
+        (lambda doc: doc["jobs"][0].pop("created_at"), "no created_at"),
+        (lambda doc: doc["jobs"][0].update(steps=[{"status": "x"}]), "a step with no name"),
     ],
 )
-def test_a_context_whose_jobs_cannot_be_read_is_refused_rather_than_zero(
-    result: Path,
+def test_jobs_this_cannot_read_refuse(
+    served: Callable[[Forge], str],
     capsys: pytest.CaptureFixture[str],
-    derive: Callable[[dict[str, Any]], None],
+    corrupt: Callable[[dict[str, Any]], object],
     naming: str,
 ) -> None:
-    """A document no span can be read from reports no figure at all."""
-    derived = document(COMBINED)
-    derive(derived)
-    with serving(Jobs(REPOSITORY, COMBINED, 1, derived)) as address:
-        equal(measure(environment(address, "gate", "windows-aarch64")), REFUSED)
+    """A jobs document of another shape is refused naming the field, never read as zero."""
+    recorded = document(RECORDED_RUN)
+    corrupt(recorded)
+    address = served(forge_of((RECORDED_RUN, "ci", recorded)))
+
+    equal(measure_check_time(environment(address)), REFUSED)
 
     contains(capsys.readouterr().err, naming)
-    truth(not result.exists(), describing="no figure reported")
 
 
-@pytest.mark.parametrize(
-    ("raw", "status", "naming"),
-    [
-        (b"<html>busy</html>", 200, "answered a body that is not JSON"),
-        (b"[]", 200, "answered list, not a jobs document"),
-        (None, 502, "answered 502"),
-    ],
-)
-def test_a_forge_answering_no_jobs_document_is_refused(
-    result: Path,
-    capsys: pytest.CaptureFixture[str],
-    raw: bytes | None,
-    status: int,
-    naming: str,
+def test_a_body_that_is_not_json_refuses(
+    served: Callable[[Forge], str], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Garbage or an error from the API is a refusal naming the address, never zero."""
-    jobs = Jobs(REPOSITORY, COMBINED, 1, document(COMBINED), raw=raw, status=status)
-    with serving(jobs) as address:
-        equal(measure(environment(address, "gate", "linux-x86_64")), REFUSED)
+    """Garbage in place of the jobs is refused."""
+    forge = forge_of((RECORDED_RUN, "ci", document(RECORDED_RUN)))
+    forge.raw = b"<html>rate limited</html>"
+    address = served(forge)
 
-    contains(capsys.readouterr().err, naming)
-    truth(not result.exists(), describing="no figure reported")
+    equal(measure_check_time(environment(address)), REFUSED)
+
+    contains(capsys.readouterr().err, "a body that is not JSON")
 
 
-def test_an_api_nothing_listens_on_is_refused(
-    result: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """An unreachable API is said to be unreachable."""
-    with serving(Jobs(REPOSITORY, COMBINED, 1, document(COMBINED))) as address:
-        pass
-
-    equal(measure(environment(address, "gate", "linux-x86_64")), REFUSED)
-
-    contains(capsys.readouterr().err, "could not be reached")
-    truth(not result.exists(), describing="no figure reported")
+def test_the_token_goes_to_the_forge_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`GITHUB_TOKEN` is sent to the forge's own API and to no stand-in."""
+    secret = secrets.token_hex(8)
+    found = ci_budgets.forge({"GITHUB_REPOSITORY": REPOSITORY, "GITHUB_TOKEN": secret})
+    equal((found.address, found.token), ("https://api.github.com", secret))
+    local = ci_budgets.forge(
+        {
+            "GITHUB_REPOSITORY": REPOSITORY,
+            "GITHUB_TOKEN": secret,
+            "GITHUB_API_URL": "http://127.0.0.1:9",
+        }
+    )
+    equal(local.token, None)
+    monkeypatch.delenv("GITHUB_API_URL", raising=False)
+    equal(
+        ci_budgets.api_address({"GITHUB_API_URL": "https://api.github.com/"}), ci_budgets.FORGE_API
+    )
 
 
 @pytest.fixture
-def checking(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
-    """The stand-in API, with the process environment a `gate-time` step's check runs under.
+def check_run(
+    served: Callable[[Forge], str], monkeypatch: pytest.MonkeyPatch
+) -> Callable[[dict[str, Any], str], int]:
+    """Run the `budgets` job's step over one served run, under one event, as the job runs it.
 
-    It serves `COMBINED` with its combined macOS job run `THRESHOLD` seconds
-    longer, so the macOS contexts are over whatever line `budgets.yaml` holds
-    while `gate (linux-x86_64)`, which ended before that job started, is not.
+    The real `onebudgetspec check` of the committed `budgets.yaml` runs each
+    budget's registered command in a subprocess, which reads the stand-in.
     """
-    monkeypatch.delenv("ONEBUDGETSPEC_RESULT", raising=False)
-    monkeypatch.setenv("PYTHONPATH", PACKAGES)
-    over = slowed(document(COMBINED), MACOS_JOB, THRESHOLD)
-    with serving(Jobs(REPOSITORY, COMBINED, 1, over)) as address:
-        yield address
+
+    def run(recorded: dict[str, Any], event: str) -> int:
+        address = served(forge_of((RECORDED_RUN, "ci", recorded)))
+        for name, value in environment(address, GITHUB_EVENT_NAME=event).items():
+            monkeypatch.setenv(name, value)
+        monkeypatch.setenv("PYTHONPATH", PACKAGES)
+        monkeypatch.delenv("ONEBUDGETSPEC_RESULT", raising=False)
+        return check_budgets(Repo(REPO_ROOT))
+
+    return run
 
 
-def _step_environment(monkeypatch: pytest.MonkeyPatch, settings: dict[str, str]) -> dict[str, str]:
-    for name, value in settings.items():
-        monkeypatch.setenv(name, value)
-    return settings
-
-
-def test_the_check_passes_a_context_within_budget_its_breakdown_in_the_result(
-    checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_the_step_passes_a_run_within_both_lines(
+    check_run: Callable[[dict[str, Any], str], int], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The real onebudgetspec check of `gate-time`: 1,559 s is within the line `budgets.yaml` holds.
+    """With every job inside the line and the jobs under the count, both are within."""
+    recorded = measuring(document(RECORDED_RUN))
+    recorded["jobs"] = [
+        entry for entry in recorded["jobs"] if entry["name"] in {"llmlint", "pr-title", "budgets"}
+    ]
+    recorded["total_count"] = len(recorded["jobs"])
 
-    The step says so in one line, and the per-job breakdown is the check
-    result's own detail, where onebudgetspec carries it.
-    """
-    environ = _step_environment(monkeypatch, environment(checking, "gate", "linux-x86_64"))
+    equal(check_run(recorded, "pull_request"), WITHIN)
 
-    equal(check_budget(Repo(REPO_ROOT), environ), WITHIN)
-
-    equal(capsys.readouterr().out, f"gate-time: within: 1559 s against {THRESHOLD} s\n")
-    (checked,) = check(paths=["budgets.yaml"], ids=["gate-time"], cwd=REPO_ROOT).results
-    equal((checked.verdict, checked.actual, checked.threshold), ("within", 1559.0, THRESHOLD))
-    detail = json.loads(checked.detail or "{}")
-    equal([job["name"] for job in detail["jobs"]], ["gate (linux-x86_64)"])
-    equal(detail["initial_queue_seconds"], 3.0)
-    truth(bool(detail["jobs"][0]["steps"]), describing="each step's recorded duration")
+    said = capsys.readouterr().out
+    contains(said, f"{CHECK_TIME}: within: 261 seconds against {CHECK_TIME_LINE}")
+    contains(said, f"{JOB_COUNT}: within: 3 jobs against {JOB_COUNT_LINE}")
 
 
-def test_the_check_fails_a_context_over_budget_on_a_pull_request(
-    checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_the_step_fails_a_pull_request_over_either_line(
+    check_run: Callable[[dict[str, Any], str], int], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`gate (macos-aarch64)` over the line is over, and the required context fails."""
-    environ = _step_environment(monkeypatch, environment(checking, "gate", "macos-aarch64"))
+    """The recorded 25-job run, its longest job stretched past the line, is over both."""
+    recorded = slowed(measuring(document(RECORDED_RUN)), LONGEST, CHECK_TIME_LINE)
 
-    equal(check_budget(Repo(REPO_ROOT), environ), OVER)
+    equal(check_run(recorded, "pull_request"), OVER)
 
     said = capsys.readouterr()
-    contains(said.err, f"gate-time: over: {OVER_SECONDS} s against {THRESHOLD} s")
-    contains(said.err, "sharding it behind its own required name (`just gate-shards`)")
-    contains(said.out, '"name": "macos-aarch64 (gate, integration)"')
+    over = int(LONGEST_SECONDS) + CHECK_TIME_LINE
+    contains(said.err, f"{CHECK_TIME}: over: {over} seconds against {CHECK_TIME_LINE}")
+    contains(said.err, f"{JOB_COUNT}: over: 25 jobs against {JOB_COUNT_LINE}")
+    contains(said.err, "no job is sharded and the line is not loosened")
+    contains(said.out, f'"longest": "{LONGEST}"')
 
 
-def test_the_release_sweep_reports_an_over_budget_figure_and_passes(
-    checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_the_step_reports_and_passes_off_a_pull_request(
+    check_run: Callable[[dict[str, Any], str], int], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """On the release pull request's full sweep the figure is reported and not enforced."""
-    environ = _step_environment(
-        monkeypatch,
-        environment(
-            checking, "gate", "macos-aarch64", GITHUB_HEAD_REF="release-plz-2026-10-25T21-00-00Z"
-        ),
-    )
+    """On a push, over either line is reported and not enforced: each line holds a pull request."""
+    recorded = slowed(measuring(document(RECORDED_RUN)), LONGEST, CHECK_TIME_LINE)
 
-    equal(check_budget(Repo(REPO_ROOT), environ), WITHIN)
+    equal(check_run(recorded, "push"), WITHIN)
 
-    contains(
-        capsys.readouterr().out,
-        "gate-time: over, reported and not enforced on the release sweep: "
-        f"{OVER_SECONDS} s against {THRESHOLD} s",
-    )
+    said = capsys.readouterr().out
+    contains(said, f"{CHECK_TIME}: over, reported and not enforced off a pull request")
+    contains(said, f"{JOB_COUNT}: over, reported and not enforced off a pull request")
 
 
-@pytest.mark.parametrize("event", ["push", "workflow_dispatch"])
-def test_only_the_release_pull_request_is_spared(
-    checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], event: str
+def test_the_step_errs_where_a_figure_cannot_be_read(
+    check_run: Callable[[dict[str, Any], str], int], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A push, and a dispatch by hand — which takes the `all` tier too — are enforced.
+    """A run the commands refuse to read is an error of the step, not a pass."""
+    recorded = document(RECORDED_RUN)
+    recorded["total_count"] = 99
 
-    The forge hands neither a head branch, so neither is the release pull request.
-    """
-    environ = _step_environment(
-        monkeypatch,
-        environment(checking, "gate", "macos-aarch64", GITHUB_EVENT_NAME=event, GITHUB_HEAD_REF=""),
+    equal(check_run(recorded, "pull_request"), REFUSED)
+
+    contains(capsys.readouterr().err, f"{CHECK_TIME}: error:")
+
+
+def test_both_lines_are_registered_with_their_commands() -> None:
+    """The committed `budgets.yaml` registers both, with the commands `repo_checks` answers."""
+    check_time, job_count = registered(CHECK_TIME), registered(JOB_COUNT)
+    equal(
+        check_time.command,
+        ["uv", "run", "python", "-m", "repo_checks", "ci_check_time_budget"],
     )
-
-    equal(check_budget(Repo(REPO_ROOT), environ), OVER)
-
-    contains(capsys.readouterr().err, f"gate-time: over: {OVER_SECONDS} s")
-
-
-def test_the_check_refuses_by_name_with_no_run_id(
-    checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """With no run named, the check errors naming the variable rather than passing on zero."""
-    environ = _step_environment(monkeypatch, environment(checking, "gate", "linux-x86_64"))
-    monkeypatch.delenv("GITHUB_RUN_ID")
-
-    equal(check_budget(Repo(REPO_ROOT), environ), REFUSED)
-
-    contains(capsys.readouterr().err, "GITHUB_RUN_ID is not set")
-
-
-def test_the_check_refuses_a_context_whose_jobs_cannot_be_read(
-    checking: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A context the run has no job for is an error of the check, on the release sweep too."""
-    environ = _step_environment(
-        monkeypatch,
-        environment(checking, "gate", "freebsd-riscv64", GITHUB_HEAD_REF="release-plz-x"),
-    )
-
-    equal(check_budget(Repo(REPO_ROOT), environ), REFUSED)
-
-    contains(capsys.readouterr().err, "gate (freebsd-riscv64): no job of that name")
+    equal(job_count.command, ["uv", "run", "python", "-m", "repo_checks", "ci_job_count_budget"])
+    equal((check_time.unit, check_time.direction), ("seconds", "max"))
+    equal((job_count.unit, job_count.direction, JOB_COUNT_LINE), ("jobs", "max", 8))
+    truth(0 < CHECK_TIME_LINE <= 3600, describing="the check-time line within the one-hour cap")
+    truth(CHECK_TIME_LINE % 60 == 0, describing="the check-time line in whole minutes")
+    ids = [one.id for one in list_budgets(paths=[REPO_ROOT / "budgets.yaml"]).budgets]
+    truth("gate-time" not in ids, describing="the per-context line it replaces gone")
 
 
 def test_the_held_cli_is_the_one_the_sdk_brings() -> None:
@@ -590,67 +516,3 @@ def test_the_held_cli_is_the_one_the_sdk_brings() -> None:
     equal(locked["onebudgetspec-cli"], held.version)
     equal(locked["onebudgetspec-sdk"], held.version)
     contains("\n".join(project["dependency-groups"]["dev"]), f"onebudgetspec-sdk=={held.version}")
-
-
-def test_the_budget_is_registered_as_the_task_states() -> None:
-    """Seconds, at most 3,600 (the interim one-hour line), no label, and its command."""
-    (registered,) = list_budgets(paths=[REPO_ROOT / "budgets.yaml"]).budgets
-
-    equal(registered.id, "gate-time")
-    equal((registered.unit, registered.direction, registered.threshold), ("seconds", "max", 3600.0))
-    equal(registered.labels, [])
-    equal(registered.measure, "reported")
-    equal(registered.command, ["uv", "run", "python", "-m", "repo_checks", "gate_time_budget"])
-
-
-def test_the_token_goes_to_the_forge_s_api_and_never_to_another_address(
-    result: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With `GITHUB_TOKEN` set, a stand-in is read without it, and the forge's API with it.
-
-    The forge's own address is the stand-in's for the second read, so the same
-    real HTTP request the step makes shows what it carries.
-    """
-    credential = f"job-{secrets.token_hex(8)}"
-    jobs = Jobs(REPOSITORY, COMBINED, 1, document(COMBINED))
-    with serving(jobs) as address:
-        settings = {**environment(address, "gate", "linux-x86_64"), "GITHUB_TOKEN": credential}
-        equal(measure(settings), 0)
-        monkeypatch.setattr(gate_time_budget, "FORGE_API", address)
-        equal(measure(settings), 0)
-
-    equal(jobs.authorized, [None, f"Bearer {credential}"])
-    truth(result.is_file(), describing="a figure reported")
-
-
-def test_the_forge_s_own_api_is_the_default_address() -> None:
-    """Unset or blank, the address is the forge's; its trailing slash is not part of it."""
-    equal(gate_time_budget.api_address({}), "https://api.github.com")
-    equal(gate_time_budget.api_address({"GITHUB_API_URL": " "}), "https://api.github.com")
-    equal(
-        gate_time_budget.api_address({"GITHUB_API_URL": "https://api.github.com/"}),
-        "https://api.github.com",
-    )
-
-
-def test_a_job_whose_steps_are_unrecorded_or_unreadable_still_has_its_span(result: Path) -> None:
-    """Steps the forge left out, or recorded with no instant, break down to nothing."""
-    derived = document(COMBINED)
-    del job(derived, "gate (windows-aarch64)")["steps"]
-    job(derived, "gate-shard (windows-aarch64, 1/4)")["steps"][0]["started_at"] = "soon"
-    with serving(Jobs(REPOSITORY, COMBINED, 1, derived)) as address:
-        equal(measure(environment(address, "gate", "windows-aarch64")), 0)
-
-    value, detail = reported(result)
-    equal(value, 1164.0)
-    equal(detail["jobs"][0]["steps"], [])
-    equal(detail["jobs"][1]["steps"][0]["seconds"], None)
-
-
-def test_the_check_refuses_a_tree_registering_no_budget(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """With no `budgets.yaml` to check, the step errors with onebudgetspec's own words."""
-    equal(check_budget(Repo(tmp_path), {}), REFUSED)
-
-    contains(capsys.readouterr().err, "gate-time: refused:")

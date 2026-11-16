@@ -1,4 +1,4 @@
-"""This repository's two CI lines: how long a pull-request push's longest job ran, and how many jobs it ran.
+"""This repository's two CI lines: a pull-request push's longest job, and how many jobs it ran.
 
 The root `budgets.yaml` registers both, and `ci.yml`'s `budgets` job checks them
 once every other job of the run has ended. Three verbs of `python -m
@@ -540,7 +540,9 @@ def sibling_runs(found: Forge, run: Run) -> list[Run]:
             or isinstance(attempt, bool)
             or not isinstance(attempt, int)
         ):
-            msg = f"a run of {run.head_sha[:12]} answered id={identifier!r}, run_attempt={attempt!r}"
+            msg = (
+                f"a run of {run.head_sha[:12]} answered id={identifier!r}, run_attempt={attempt!r}"
+            )
             raise BudgetError(msg)
         if identifier == run.run_id:
             runs.append(run)
@@ -580,7 +582,9 @@ def job_count(run: Run, runs: Sequence[Run], jobs: Sequence[Job]) -> JobCount:
     )
 
 
-def measure_check_time(environ: Mapping[str, str] | None = None, now: datetime | None = None) -> int:
+def measure_check_time(
+    environ: Mapping[str, str] | None = None, now: datetime | None = None
+) -> int:
     """`ci-check-time`'s command: report the figure and its breakdown, or refuse naming why."""
     environment = os.environ if environ is None else environ
     try:
