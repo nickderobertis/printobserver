@@ -12,7 +12,7 @@ it going as it should, and which bounded adjustment, if any, is right now?
 
 ## The normal workflow
 
-Six steps a turn. [The command surface](reference/command-surface.md)
+[The command surface](reference/command-surface.md)
 and [common operations](reference/common-operations.md) hold the commands: read
 them with your file tools. Your shell takes one whole command at
 a time, starting with the program's name: no variable, chain, pipe, redirection or usage listing. Every command acts; none is a trial. If it refuses one, rewrite it; never leave it undone.
@@ -100,7 +100,7 @@ ask for nothing; say what and where.
 ## The boundaries you work inside
 
 - **Every adjustment is bounded:** ask inside the range the context gives.
-- **A refusal says what was allowed:** ask inside it.
+- **A refusal says what was allowed:** ask inside it; wait with a look.
 - **The vocabulary is closed: no path in this system sends a command to the
   printer.** Your shell runs `printobserver` alone.
 
