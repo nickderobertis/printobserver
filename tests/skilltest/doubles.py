@@ -177,6 +177,16 @@ class CameraFrame(NamedTuple):
     captured: datetime
 
 
+@dataclass(frozen=True)
+class JobRead:
+    """One read of the job: how far the replay's clock stood from real time, and where."""
+
+    #: The offset the clock answered this read by.
+    offset: timedelta
+    #: The file position it answered.
+    position: int
+
+
 @dataclass
 class Timeline:
     """The replay's current time: which event it stands at, and which frame was last answered.
@@ -215,6 +225,8 @@ class Timeline:
     stopped: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     heaters: Heaters = field(default_factory=Heaters)
+    #: Every read of the job, in order.
+    job_reads: list[JobRead] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -234,8 +246,13 @@ class Timeline:
         on the server passes its wait by moving that file on, and the time every
         double reads has to move with it.
         """
-        moved = datetime.now(UTC) + self._offset()
-        return min(moved, self.ceiling) if self.ceiling else moved
+        return self._clock()[0]
+
+    def _clock(self) -> tuple[datetime, timedelta]:
+        """The replay's current time, and the offset from real time it was read by."""
+        offset = self._offset()
+        moved = datetime.now(UTC) + offset
+        return (min(moved, self.ceiling) if self.ceiling else moved), offset
 
     def _offset(self) -> timedelta:
         """The offset the clock file holds now, or the one last written here."""
@@ -346,8 +363,8 @@ class Timeline:
             numbered(self.picture(answered.name), len(self.fetches)), answered.captured
         )
 
-    def position(self) -> int:
-        """The job's file position at the replay's current time, as the recording has it.
+    def position(self, at: datetime | None = None) -> int:
+        """The job's file position at an instant, by default the replay's current time.
 
         The event's own until a look has been taken, and short of the next event's.
         """
@@ -360,7 +377,7 @@ class Timeline:
             high = following[0].file_position_bytes - 1
         else:
             high = later.position - 1 if later else self.case.gcode_size - 1
-        return max(low, min(self.case.position_at(self.now()), high))
+        return max(low, min(self.case.position_at(at or self.now()), high))
 
     def _print_time(self) -> int:
         """How long the job has been running: now, less when the recording says it started."""
@@ -374,7 +391,9 @@ class Timeline:
             # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
             if not self.moment.printer_state.answers:
                 return JsonAnswer(503, {"error": "the printer's serial port is gone"})
-            position = self.position()
+            at, offset = self._clock()
+            position = self.position(at)
+            self.job_reads.append(JobRead(offset, position))
             size = self.case.gcode_size
             job: JobDocument = {
                 "job": {

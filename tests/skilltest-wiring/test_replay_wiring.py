@@ -168,6 +168,8 @@ class Scripted:
     replayed: Replayed
     turns: list[Seen]
     images: dict[str, str]
+    #: Every read of the job the stood-in instance answered, in order.
+    job_reads: list[doubles.JobRead] = dataclasses.field(default_factory=list)
 
     def seen_frame(self, turn: int, look: int) -> str:
         """The frame the `look`th scripted look of one turn answered."""
@@ -210,10 +212,11 @@ def mock_replay(
             for path in replay.state.glob("images/*/*")
             if path.is_file()
         }
+        job_reads = list(replay.timeline.job_reads)
     finally:
         replay.clean_up()
     seen = (scratch / "seen.jsonl").read_text(encoding="utf-8").splitlines()
-    return Scripted(replayed, [json.loads(line) for line in seen], images)
+    return Scripted(replayed, [json.loads(line) for line in seen], images, job_reads)
 
 
 @pytest.fixture
@@ -875,6 +878,27 @@ def _looked(done: Scripted) -> list[Looked]:
     return seen
 
 
+def _offsets_at(done: Scripted, looked: list[Looked]) -> list[timedelta]:
+    """The clock's offset from real time at the job read each look answered.
+
+    Each look's read is the first after the previous look's to place the job
+    where that look said it stood.
+    """
+    offsets, at = [], 0
+    for look in looked:
+        at = next(
+            (
+                index
+                for index in range(at, len(done.job_reads))
+                if done.job_reads[index].position == look.file_position_bytes
+            ),
+            -1,
+        )
+        truth(at >= 0, describing=f"a read of the job that placed it at {look.file_position_bytes}")
+        offsets.append(done.job_reads[at].offset)
+    return offsets
+
+
 def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
     tmp_path: Path,
 ) -> None:
@@ -885,9 +909,12 @@ def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
 
     The frame, its capture time and the wait are compared whole, and the look's
     received time to the second. The job's position is read off the replay's
-    clock a few milliseconds after the frame is fetched, and those milliseconds
-    are the host's, which no two runs share, waiting in real time or not: it is
-    held to a tenth of a second of the recording's own rate.
+    clock some milliseconds after the frame is fetched, and those milliseconds
+    are the host's, which no two runs share, so the two runs' positions are not
+    compared. What says the job stood where waiting it out puts it is the clock
+    each position was read by: between the two looks' reads of the job, the
+    jumped replay's clock moved on from real time by exactly the wait, and the
+    real-time replay's not at all.
     """
     # One frame lies between this case's two events: the first look moves the
     # clock to it, and the second, with nothing newer, moves it by its wait alone.
@@ -902,20 +929,19 @@ def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
     jumped = mock_replay(case, [turn], tmp_path / "jumped")
     jumped_s = time.monotonic() - jumped_at
     looked, expected = _looked(jumped), _looked(real)
-    positions = [look.file_position_bytes for look in looked]
-    wanted = [look.file_position_bytes for look in expected]
     equal(
         [replace(look, file_position_bytes=0) for look in looked],
         [replace(look, file_position_bytes=0) for look in expected],
     )
     equal(expected[0].frame, expected[1].frame)
-    rate = (wanted[1] - wanted[0]) / LOOK_WAIT_S
-    truth(rate > 0, describing="the job to move on while the second look waits")
-    for had, want in zip(positions, wanted, strict=True):
+    for runs in (looked, expected):
         truth(
-            abs(had - want) <= rate / 10,
-            describing=f"the job at {had} to stand where waiting it out puts it, {want}",
+            runs[1].file_position_bytes > runs[0].file_position_bytes,
+            describing="the job to move on while the second look waits",
         )
+    jumped_offsets, real_offsets = _offsets_at(jumped, looked), _offsets_at(real, expected)
+    equal(jumped_offsets[1] - jumped_offsets[0], timedelta(seconds=LOOK_WAIT_S))
+    equal(real_offsets[1] - real_offsets[0], timedelta())
     equal([look.waited_s for look in looked], [LOOK_WAIT_S, LOOK_WAIT_S])
     truth(
         jumped_s < real_s - LOOK_WAIT_S,
