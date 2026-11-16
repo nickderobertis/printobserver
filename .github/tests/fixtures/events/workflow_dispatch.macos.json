@@ -1,6 +1,6 @@
 {
   "inputs": {
-    "job": "gate",
+    "job": "test",
     "platform": "macos-aarch64"
   },
   "ref": "refs/heads/main",

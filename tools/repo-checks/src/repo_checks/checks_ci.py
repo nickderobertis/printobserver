@@ -13,8 +13,6 @@ from repo_checks import install_path as ip
 from repo_checks import release_declaration
 from repo_checks.checks_release import Workflow
 from repo_checks.checks_service import service_management_scripts
-from repo_checks.checks_shards import is_shard_job, sharded_platforms
-from repo_checks.gate_shards import SHARD_RECIPE
 from repo_checks.model import (
     PolicyValueError,
     Repo,
@@ -103,6 +101,7 @@ class JobKind(StrEnum):
     GATE = "gate"
     INTEGRATION = "integration"
     LLMLINT = "llmlint"
+    WARM = "warm"
     INSTALL = "install"
     ARTIFACT = "artifact"
     OTHER = "other"
@@ -154,10 +153,30 @@ def platform_dependent_kinds(repo: Repo) -> frozenset[JobKind]:
     return frozenset(kinds)
 
 
-def _runs_check(commands: list[str]) -> bool:
-    """Whether a job runs the gate recipe, or one shard of it, at whichever tier it names."""
-    return any(
-        command.split()[:2] in (["just", "check"], ["just", SHARD_RECIPE]) for command in commands
+#: The recipe one platform's `test` job runs its half of the gate with, the
+#: recipe the `lint` job runs the other half with, and the recipe a cache-warm
+#: job compiles one platform's `test` job's work with.
+GATE_RECIPE = "ci-test"
+LINT_RECIPE = "ci-lint"
+WARM_RECIPE = "ci-warm"
+
+
+def _runs(commands: list[str], recipe: str) -> bool:
+    """Whether a job runs `recipe`, at whichever tier it names."""
+    return any(command.split()[:2] == ["just", recipe] for command in commands)
+
+
+def carriers(repo: Repo) -> frozenset[str]:
+    """Every `<workflow>:<job>` `repo-policy.toml`'s `workflows.carried` names as a carrier.
+
+    A carrier runs the cells it carries for other jobs, so what it is held to is
+    the record `_carried` reads rather than a matrix of its own.
+    """
+    declared = policy_table(repo, "workflows").get(CARRIED, [])
+    return frozenset(
+        str(entry.get("carrier", ""))
+        for entry in (declared if isinstance(declared, list) else [])
+        if isinstance(entry, dict)
     )
 
 
@@ -170,12 +189,14 @@ def _job_kind(
     that deserialization boundary; every field this reads is narrowed before use.
     """
     commands = run_commands(job)
+    if _runs(commands, GATE_RECIPE) and "just bootstrap" in commands:
+        return JobKind.GATE
     if bring_up and bring_up in commands:
         return JobKind.INTEGRATION
-    if _runs_check(commands) and "just bootstrap" in commands:
-        return JobKind.GATE
     if any(command.startswith("just lint-llm-diff") for command in commands):
         return JobKind.LLMLINT
+    if _runs(commands, WARM_RECIPE):
+        return JobKind.WARM
     if any(command in path.canonical for command in commands):
         return JobKind.INSTALL
     if any(command in artifact for command in commands):
@@ -645,13 +666,20 @@ def platforms(repo: Repo) -> list[str]:
     bring_up = _bring_up_command(repo)
     artifact = artifact_commands(repo)
     routed = route_commands(repo)
-    sharded = sharded_platforms(repo)
+    carrying = carriers(repo)
+    workflows = _workflows(repo)
+    gated = _gate_cells(workflows, path, bring_up, artifact)
     job_names: set[str] = set()
-    for file_name, workflow in _workflows(repo).items():
+    for file_name, workflow in workflows.items():
         for job_name, job in jobs_of(workflow).items():
             job_names.add(job_name)
             kind = _job_kind(job, path, bring_up, artifact)
             entries = _matrix_platforms(job)
+            if f"{file_name}:{job_name}" in carrying:
+                # A carrier runs its cells for the jobs it carries them for, and
+                # `_carried` holds it to running on that platform's runner and
+                # every command those cells were for.
+                continue
             if kind == JobKind.INTEGRATION:
                 # The printer integration job's matrix is the `integration-tier`
                 # check's: it is the one matrix the virtual-printer exclusions
@@ -681,7 +709,12 @@ def platforms(repo: Repo) -> list[str]:
             takes_a_route = kind == JobKind.INSTALL or any(
                 command in routed for command in run_commands(job)
             )
-            wanted = installed_ids if takes_a_route else declared_ids
+            # A cache-warm job compiles each `test` cell's work for that cell, so
+            # its cells are exactly the gate job's: a platform whose `test` job
+            # is carried elsewhere has no leg here, and none is owed.
+            wanted = (
+                gated if kind == JobKind.WARM else installed_ids if takes_a_route else declared_ids
+            )
             cells = [MatrixCell.read(entry, f"{file_name}: job `{job_name}`") for entry in entries]
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix has a cell whose `id` is not a "
@@ -690,16 +723,18 @@ def platforms(repo: Repo) -> list[str]:
                 if "id" not in cell.fields
             )
             ids = [cell.fields["id"] for cell in cells if "id" in cell.fields]
-            # A shard job's cells are one platform's shards, held by the
-            # `sharded-jobs` check; the gate job carries every other platform.
-            shard = is_shard_job(job)
-            carried = ids if shard else [*ids, *sharded.get(file_name, {})]
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix names platform `{found}` in more "
                 f"than one cell: the second is a check run repeating the first under the "
                 f"same name"
                 for found in sorted(repeated(ids))
-                if not shard
+            )
+            findings.extend(
+                f"{file_name}: job `{job_name}` warms the caches of the `test` cells "
+                f"{', '.join(f'`{one}`' for one in gated)}, and its matrix names `{found}`, "
+                f"whose `test` cell nothing restores a warmed cache for"
+                for found in ids
+                if kind == JobKind.WARM and found not in gated
             )
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix names platform `{found}`, "
@@ -724,7 +759,7 @@ def platforms(repo: Repo) -> list[str]:
                 f"{file_name}: job `{job_name}`'s matrix omits platform `{missing}`, "
                 f"which AGENTS.md's supported-platform list names and no exclusion records"
                 for missing in wanted
-                if not shard and missing not in carried and (missing, job_name) not in excluded
+                if missing not in ids and (missing, job_name) not in excluded
             )
             findings.extend(
                 f"{file_name}: job `{job_name}`'s matrix runs `{cell.fields['id']}` on "
@@ -747,6 +782,22 @@ def platforms(repo: Repo) -> list[str]:
         if job not in job_names
     )
     return findings
+
+
+def _gate_cells(
+    workflows: Mapping[str, dict[str, Any]],
+    path: ip.InstallPath,
+    bring_up: str,
+    artifact: tuple[str, ...],
+) -> list[str]:
+    """The platforms the gate job's matrix names, in its order: the `test` cells a warm job keeps."""
+    return [
+        str(entry.get("id"))
+        for workflow in workflows.values()
+        for job in jobs_of(workflow).values()
+        if _job_kind(job, path, bring_up, artifact) == JobKind.GATE
+        for entry in _matrix_platforms(job) or []
+    ]
 
 
 def install_path_section(repo: Repo) -> list[str]:
@@ -1154,16 +1205,20 @@ def continuous_integration(repo: Repo) -> list[str]:
             elif kind == JobKind.INSTALL:
                 install.append((file_name, job_name, job))
 
-    # A shard of a sharded gate is a gate job too, held to every rule below;
-    # the complete gate is the job running `just check` itself.
-    if not any(
-        any(command.split()[:2] == ["just", "check"] for command in run_commands(job))
-        for _, _, job in gates
-    ):
+    if not gates:
         return [
-            "the committed configuration declares no complete-gate job "
-            "(a job whose steps run both `just bootstrap` and `just check`)"
+            "the committed configuration declares no gate job "
+            f"(a job whose steps run both `just bootstrap` and `just {GATE_RECIPE}`)"
         ]
+    if not any(
+        _runs(run_commands(job), LINT_RECIPE) and "just bootstrap" in run_commands(job)
+        for workflow in _workflows(repo).values()
+        for job in jobs_of(workflow).values()
+    ):
+        findings.append(
+            "the committed configuration declares no job running the gate's other half "
+            f"(a job whose steps run both `just bootstrap` and `just {LINT_RECIPE}`)"
+        )
     for file_name, job_name, job in gates:
         gate_commands = run_commands(job)
         for command in gate_commands:

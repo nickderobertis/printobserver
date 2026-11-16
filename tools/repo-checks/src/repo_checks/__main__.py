@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import NamedTuple, Protocol
 
 from repo_checks import (
+    ci_budgets,
     commands,
     gate_tier,
-    gate_time_budget,
     gh_release,
     git_lfs_release,
     just_pin,
@@ -68,7 +68,9 @@ COMMANDS = (
     "lint-windows-target",
     "docs-schemas-write",
     "probe-registries",
-    "gate_time_budget",
+    "ci_check_time_budget",
+    "ci_job_count_budget",
+    "ci_budgets",
     "telemetry_budget",
 )
 
@@ -103,8 +105,8 @@ def main(argv: list[str] | None = None) -> int:
         "argument",
         nargs="?",
         help=(
-            "the commit-message file, for commit-msg; `measure` (the default) or `check`, for "
-            "gate_time_budget; the telemetry file, for telemetry_budget; the tool, for "
+            "the commit-message file, for commit-msg; the telemetry file, for "
+            "telemetry_budget; the tool, for "
             "tool-version and "
             "install-tools; the release, for install-gh, install-git-lfs, "
             "install-release-plz and install-powershell"
@@ -191,13 +193,12 @@ def main(argv: list[str] | None = None) -> int:
             return commands.coverage(repo, measured)
         case "probe-registries":
             return release_probes.probe_registries(repo)
-        case "gate_time_budget":
-            verb = parsed.argument or "measure"
-            if verb not in {"measure", "check"}:
-                parser.error("gate_time_budget takes `measure` (the default) or `check`")
-            if verb == "check":
-                return gate_time_budget.check_budget(repo)
-            return gate_time_budget.measure()
+        case "ci_check_time_budget":
+            return ci_budgets.measure_check_time()
+        case "ci_job_count_budget":
+            return ci_budgets.measure_job_count()
+        case "ci_budgets":
+            return ci_budgets.check_budgets(repo)
         case "telemetry_budget":
             return telemetry_budget.measure(parsed.argument, parsed.figure)
         case "lint-windows-target":
