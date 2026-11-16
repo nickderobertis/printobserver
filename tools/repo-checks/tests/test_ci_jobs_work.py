@@ -36,7 +36,7 @@ import os
 import re
 import sys
 from collections import Counter
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -226,7 +226,13 @@ class Copy:
     def environment(self, record: Path, extra: Mapping[str, str]) -> dict[str, str]:
         """What a step runs under: this host's, doubles first, and the pull request's."""
         return {
-            **{k: v for k, v in os.environ.items() if not k.startswith(("NX_", "GITHUB_"))},
+            # Nothing of the run around this suite: not its base, not its forge
+            # context, and not the side of the tag the suite itself was run on.
+            **{
+                k: v
+                for k, v in os.environ.items()
+                if not k.startswith(("NX_", "GITHUB_")) and k != SIDE
+            },
             "PATH": os.pathsep.join([str(self.programs), os.environ["PATH"]]),
             "HOME": str(self.root.parent / "home"),
             RECORD: str(record),
@@ -627,10 +633,3 @@ def test_a_tagged_projects_end_to_end_run_per_platform_or_nowhere_is_found(
     said = "\n".join(findings(ran.lint, ran.tested, ran.whole, ran.tag))
 
     truth(naming in said, describing=f"a finding naming {naming!r} in:\n{said}")
-
-
-@pytest.fixture(autouse=True)
-def _no_ambient_side(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """No side of the tag leaks into the runs from the job running this suite."""
-    monkeypatch.delenv(SIDE, raising=False)
-    yield
