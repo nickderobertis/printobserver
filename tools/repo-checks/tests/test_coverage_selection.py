@@ -296,12 +296,28 @@ def test_a_platform_below_the_floor_fails_naming_it(
             id="no-lint-half",
         ),
         pytest.param(
-            lambda data: (data / "linux-x86_64").unlink(), "no platform's data", id="no-platform"
+            lambda data: [
+                (data / name).unlink() for name in ("linux-x86_64", "linux-x86_64.include")
+            ],
+            "no platform's data",
+            id="no-platform",
         ),
         pytest.param(
             lambda data: (data / "linux-x86_64").rename(data / "solaris-sparc"),
             "`solaris-sparc` under",
             id="no-such-platform",
+        ),
+        pytest.param(
+            lambda data: (data / "linux-x86_64.include").write_text(
+                "tools/nowhere/src\n", encoding="utf-8"
+            ),
+            "names tools/nowhere/src, which `pyproject.toml` declares no coverage source",
+            id="an-undeclared-source",
+        ),
+        pytest.param(
+            lambda data: (data / "linux-x86_64").unlink(),
+            "and it kept no data at",
+            id="sources-and-no-data",
         ),
         pytest.param(
             lambda data: (data / "linux-x86_64").rename(data / "linux-nonsense"),

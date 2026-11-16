@@ -618,11 +618,16 @@ def _included_path(data: Path) -> Path:
     return data.with_name(f"{data.name}{INCLUDED_SUFFIX}")
 
 
-def _included(data: Path) -> tuple[str, ...] | None:
+def _included(repo: Repo, data: Path) -> tuple[str, ...] | None:
     """The sources a kept half reported over, none for every source.
 
+    Each must be one `pyproject.toml` declares, so a record can only name what a
+    report is over, never narrow it to something else; and a half naming any
+    must have kept the data measuring them.
+
     Raises:
-        ValueError: If the half kept no such record, so what it reached is unknown.
+        ValueError: If the half kept no such record, names a source no
+            configuration declares, or names sources and kept no data.
     """
     record = _included_path(data)
     if not record.is_file():
@@ -630,8 +635,27 @@ def _included(data: Path) -> tuple[str, ...] | None:
         raise ValueError(msg)
     text = record.read_text(encoding="utf-8")
     if text == ANY_SOURCE:
-        return None
-    return tuple(line for line in text.splitlines() if line)
+        named: tuple[str, ...] | None = None
+    else:
+        named = tuple(line for line in text.splitlines() if line)
+        declared = set(_declared_sources(repo))
+        unknown = [one for one in named if one not in declared]
+        if unknown:
+            msg = (
+                f"{record} names {', '.join(unknown)}, which `pyproject.toml` declares no "
+                f"coverage source"
+            )
+            raise ValueError(msg)
+    if named != () and not data.is_file():
+        msg = f"{record} names the sources that half reached, and it kept no data at {data}"
+        raise ValueError(msg)
+    return named
+
+
+def _declared_sources(repo: Repo) -> list[str]:
+    """Every coverage source `pyproject.toml` declares."""
+    sources = repo.read_toml("pyproject.toml")["tool"]["coverage"]["run"]["source"]
+    return [one for one in sources if isinstance(one, str)] if isinstance(sources, list) else []
 
 
 def _host_of(repo: Repo, platform: str) -> str | None:
@@ -663,14 +687,16 @@ def coverage_combine(repo: Repo, directory: Path) -> int:
     """
     floor = repo.policy["gate"]["coverage"]["python"]
     lint = directory / LINT_DATA
+    # A half is named by its data or by its record of what it reached, so one
+    # that recorded sources and lost its data is refused rather than unseen.
     platforms = (
         sorted(
-            path.name
-            for path in directory.iterdir()
-            if path.is_file()
-            and path.name != LINT_DATA
-            and not path.name.endswith(INCLUDED_SUFFIX)
-            and not path.name.startswith(".")
+            {
+                path.name.removesuffix(INCLUDED_SUFFIX)
+                for path in directory.iterdir()
+                if path.is_file() and not path.name.startswith(".")
+            }
+            - {LINT_DATA}
         )
         if directory.is_dir()
         else []
@@ -697,7 +723,7 @@ def coverage_combine(repo: Repo, directory: Path) -> int:
             continue
         halves = (lint, directory / platform)
         try:
-            reached = [_included(half) for half in halves]
+            reached = [_included(repo, half) for half in halves]
         except ValueError as error:
             print(f"coverage-combine: refused: {error}", file=sys.stderr)
             failed = True
@@ -711,14 +737,6 @@ def coverage_combine(repo: Repo, directory: Path) -> int:
             totals.append(f"{platform} not measured: neither half's tests reached a source")
             continue
         present = [half for half in halves if half.is_file()]
-        if not present:
-            print(
-                f"coverage-combine: refused: {platform} and lint reached Python sources and "
-                f"kept no data for them",
-                file=sys.stderr,
-            )
-            failed = True
-            continue
         combined = directory / f".combined-{platform}"
         combined.unlink(missing_ok=True)
         merged = run(

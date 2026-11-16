@@ -184,6 +184,9 @@ def render(text: str, cell: Cell, outputs: Mapping[str, Mapping[str, str]]) -> s
 
     def value(found: re.Match[str]) -> str:
         inner = found["inner"]
+        chosen = re.fullmatch(r"matrix\.platform\.id == '([\w-]+)'", inner)
+        if chosen:
+            return str(cell.matrix["id"] == chosen[1]).lower()
         if inner.startswith("matrix.platform."):
             return cell.matrix[inner.removeprefix("matrix.platform.")]
         step = re.fullmatch(r"steps\.([\w-]+)\.outputs\.([\w-]+)", inner)
@@ -212,6 +215,10 @@ def runs(step: dict[str, Any], failed: bool) -> bool:
             return True
         case "failure()":
             return failed
+        case condition if "env.REAL_PRINTS_STORE" in condition:
+            # The real-print store's steps compile nothing, and fetch over the
+            # network: `caches.test.mjs` holds them, on the leg that runs them.
+            return False
         case condition:
             msg = f"`if: {condition}` is no condition a run step of these jobs carries"
             raise AssertionError(msg)
@@ -644,3 +651,60 @@ def test_a_tagged_projects_end_to_end_run_per_platform_or_nowhere_is_found(
     said = "\n".join(findings(ran.lint, ran.tested, ran.whole, ran.tag))
 
     truth(naming in said, describing=f"a finding naming {naming!r} in:\n{said}")
+
+
+WARM = ".github/workflows/warm.yml"
+#: The targets whose tasks compile what a cache keeps.
+COMPILING = ("test", "build", "lint")
+
+
+def compiled(work: Work, targets: tuple[str, ...] = COMPILING) -> set[str]:
+    """The tasks of `targets` a job ran."""
+    return {task for task in work.tasks if task.split(":", 1)[0] in targets}
+
+
+@pytest.fixture(scope="module")
+def warmed(doubled: Callable[[], Copy]) -> dict[str, Work]:
+    """Each committed `warm.yml` leg's work, run step by step as a push to `main` runs it."""
+    copy = doubled()
+    repo = Repo(copy.root)
+    graph = {project.name: set(project.targets) for project in projects(repo)}
+    workflow = load_workflow(copy.root / WARM)
+    records = copy.root.parent / "records"
+    records.mkdir(exist_ok=True)
+    legs: dict[str, Work] = {}
+    for entry in jobs_of(workflow)["warm"]["strategy"]["matrix"]["platform"]:
+        cell = Cell("warm", str(entry["id"]), {str(k): str(v) for k, v in entry.items()})
+        record = records / f"warm-{cell.platform}.jsonl"
+        copy.run_job(workflow, cell, record)
+        legs[cell.platform] = work(record, graph)
+    return legs
+
+
+def test_each_warm_leg_compiles_what_its_platforms_jobs_compile(
+    committed: Ran, warmed: dict[str, Work]
+) -> None:
+    """A leg runs its `test` cell's test and build tasks, and Linux's the `lint` job's lints too.
+
+    What a cache keeps is what the tasks writing it compiled, so a leg running
+    the same tasks as the job restoring its cache fills that cache with what
+    the job compiles; the release build the end-to-end tier's install journeys
+    make is warmed beside them.
+    """
+    equal(
+        sorted(warmed),
+        sorted(platform for platform in committed.tested if platform != MACOS),
+        describing="the platforms a leg warms: every `test` cell's",
+    )
+    for platform, leg in sorted(warmed.items()):
+        equal(
+            compiled(leg, ("test", "build")),
+            compiled(committed.tested[platform], ("test", "build")),
+            describing=f"the test and build tasks `warm ({platform})` compiles",
+        )
+        lints = compiled(committed.lint, ("lint",)) if platform == "linux-x86_64" else set()
+        equal(compiled(leg, ("lint",)), lints, describing=f"the lints `warm ({platform})` runs")
+        truth(
+            "cargo build --release --locked -p printobserver" in {unit.name for unit in leg.units},
+            describing=f"`warm ({platform})` building the install journeys' release program",
+        )
