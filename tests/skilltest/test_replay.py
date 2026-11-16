@@ -66,6 +66,11 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             any(point.opened for point in replayed.points),
             describing="the transcript to say what the agent opened",
         )
+        expect.equal(
+            {session: [] for session in replayed.compound_commands()},
+            replayed.compound_commands(),
+            describing="each printobserver command run on its own",
+        )
         expect.truth(replayed.passed, describing=f"every decision point:\n{replayed.failures()}")
     finally:
         replay.clean_up()

@@ -64,6 +64,8 @@ def type_name(shape: TypeExpr) -> str:
             return name
         case Scalar(kind):
             return SCALARS[kind]
+        case ListOf(item, _, length) if length is not None:
+            return f"[{type_name(item)}; {length}]"
         case ListOf(item):
             return f"Vec<{type_name(item)}>"
         case MapOf(value):
@@ -187,7 +189,7 @@ def _field(entry: Field, indent: str, *, public: bool = True) -> list[str]:
     """
     declared = type_name(entry.type)
     lines = doc_lines(entry.doc, indent)
-    if isinstance(entry.type, ListOf) and entry.type.non_empty:
+    if isinstance(entry.type, ListOf) and entry.type.non_empty and entry.type.length is None:
         # A list the schema says is never empty is a `Vec` here, which can be:
         # the generator has no non-empty type yet, and suppressions.toml says so.
         lines.append(f"{indent}{NON_EMPTY_DIRECTIVE}")

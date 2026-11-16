@@ -290,6 +290,16 @@ impl World {
         block_on(self.core.context(print_id))
     }
 
+    /// Read one print's context the way a supervision turn does, since an
+    /// event or not.
+    pub fn agent_context(
+        &self,
+        print_id: PrintId,
+        since: Option<printobserver_types::EventId>,
+    ) -> Result<printobserver_core::AgentContext, CoreError> {
+        block_on(self.core.agent_context(print_id, since))
+    }
+
     /// Wait until a condition the fakes can observe holds, or give up.
     ///
     /// # Panics

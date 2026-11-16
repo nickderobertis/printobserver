@@ -1,0 +1,1064 @@
+//! Every check of a print is told what the slicer planned at the print's
+//! current height, from one read of its G-code.
+//!
+//! The server here is the real composition: the `OctoPrint` adapter against
+//! the scripted `OctoPrint`, the durable store, and the real `OneHarness`
+//! engine with only the paid provider process replaced by this crate's
+//! responder. The scripted instance serves a real `PrusaSlicer` slice
+//! (`tests/fixtures/real-prints/bubbler-guard-and-pad.gcode`, the plain copy of
+//! the file the `bubbler-guard-and-pad-pla-healthy` case printed, byte for
+//! byte — a plain copy because that case's files are Git LFS pointers until
+//! the real-print suite fetches them), and moves the job's file position
+//! through it. Each scheduled check runs a turn, and the responder does what a
+//! supervising agent is told to: it reads the print's context through the
+//! running API with its turn's own credential, and writes down what it was
+//! answered. So what a check's turn was handed is read off the far side of
+//! the process boundary, and how often the file was read is read off the far
+//! side of the printer's — the scripted instance counts every download it
+//! answered from the first byte — and how often an index was built is read
+//! off the print's own history, through the running server.
+//!
+//! The values asserted at each position were worked out from the file apart
+//! from the reader: its `;LAYER_CHANGE` and `;Z:` lines, the `;TYPE:` in force
+//! under each move of the layer that feeds filament while it travels, the last
+//! `M73 P.. R..` and `M106` lines the position has passed, and the extremes of
+//! every move laying material between `M486 S0` and `M486 S-1`.
+
+use core::time::Duration;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use printobserver_core::store::Stores;
+use printobserver_obico::{ObicoVision, ObicoVisionConfig};
+use printobserver_octoprint::OctoPrintPrinter;
+use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
+use printobserver_oneharness::{EnvAssignment, OneharnessSupervisor};
+use printobserver_server::{Ports, Running, Server, ServerConfig, agent_config};
+use printobserver_store_sqlite::SqliteStore;
+use printobserver_types::Timestamp;
+use printobserver_types::serde_json::{Value, json};
+use tempfile::TempDir;
+
+use crate::world::{OPERATOR, document, presenting, set, write};
+
+/// The real slice the scripted instance serves, byte for byte.
+const BUBBLER: &[u8] = include_bytes!("../fixtures/real-prints/bubbler-guard-and-pad.gcode");
+
+/// The name the first print's file is held under.
+const FIRST: &str = "bubbler-guard-and-pad.gcode";
+
+/// The name the second print's file is held under: the same slice, a second
+/// file on the instance.
+const SECOND: &str = "bubbler-guard-and-pad-again.gcode";
+
+/// The name of a file the instance does not hold when its print starts, and
+/// is given later.
+const LATE: &str = "bubbler-guard-and-pad-late.gcode";
+
+/// How long the scripted instance holds every download, so that a check and a
+/// context read can be made to arrive while one build is under way.
+const SLOW_LINK: Duration = Duration::from_secs(3);
+
+/// How long a journey waits for something the server does on its own clock.
+const PATIENCE: Duration = Duration::from_secs(90);
+
+/// What the file plans at one position, as worked out from the file.
+struct Planned {
+    /// The byte the scripted job reports it has read to: a point inside the
+    /// layer, past its `;LAYER_CHANGE` and short of the next.
+    position: i64,
+    /// The layer, counting the first as 1, as the `;LAYER_CHANGE` lines
+    /// before the position count it.
+    layer: u64,
+    /// The `;Z:` the layer's change states, in millimetres.
+    z_mm: f64,
+    /// What the layer lays material as, in the order the file first names each.
+    types: &'static [&'static str],
+    /// The slicer's minutes left by the position.
+    minutes: i64,
+    /// The part-cooling fan the file had set by the position, in percent.
+    fan: f64,
+}
+
+/// Inside layer 23, which prints the support under the guard's overhang.
+const IN_SUPPORT: Planned = Planned {
+    position: 246_536,
+    layer: 23,
+    z_mm: 4.6,
+    types: &[
+        "Support material",
+        "Perimeter",
+        "External perimeter",
+        "Internal infill",
+    ],
+    minutes: 142,
+    fan: 99.0,
+};
+
+/// Inside layer 60, which prints the first overhang perimeter.
+const IN_OVERHANG: Planned = Planned {
+    position: 523_686,
+    layer: 60,
+    z_mm: 9.0,
+    types: &[
+        "Perimeter",
+        "External perimeter",
+        "Solid infill",
+        "Internal infill",
+        "Overhang perimeter",
+    ],
+    minutes: 135,
+    fan: 99.0,
+};
+
+/// Inside layer 63, which bridges over the overhang.
+const IN_BRIDGE: Planned = Planned {
+    position: 554_564,
+    layer: 63,
+    z_mm: 9.4,
+    types: &[
+        "Perimeter",
+        "External perimeter",
+        "Solid infill",
+        "Internal infill",
+        "Overhang perimeter",
+        "Bridge infill",
+    ],
+    minutes: 135,
+    fan: 99.0,
+};
+
+/// Inside layer 400, a plain wall high up the guard.
+const HIGH_UP: Planned = Planned {
+    position: 3_695_119,
+    layer: 400,
+    z_mm: 75.6,
+    types: &["External perimeter"],
+    minutes: 62,
+    fan: 100.0,
+};
+
+/// The `;Z:` of the file's last layer change.
+const FINAL_Z_MM: f64 = 142.0;
+
+/// The one object the file labels, and the bed area its material covers:
+/// 83.0 to 167.3 mm in X and 86.8 to 133.3 mm in Y, widened to whole
+/// millimetres.
+fn objects() -> Value {
+    json!([[83, 86, 168, 134]])
+}
+
+/// The plan a context should carry at one position, with no change made
+/// through this program.
+fn plan_of(planned: &Planned) -> Value {
+    json!({
+        "layer": planned.layer,
+        "z_mm": planned.z_mm,
+        "final_z_mm": FINAL_Z_MM,
+        "types": planned.types,
+        "minutes_left": planned.minutes,
+        "flow_factor": { "file": 1.0 },
+        "fan_percent": { "file": planned.fan },
+        "object_count": 1,
+        "objects": objects(),
+        // No frame of a journey this short is half an hour old.
+        "unknown": ["rise"],
+    })
+}
+
+/// What a G-code line looks like, any one of which in what a turn was handed
+/// is the file itself reaching the agent.
+const GCODE_TEXT: [&str; 6] = [";LAYER_CHANGE", ";TYPE:", ";Z:", "G1 X", "M73 P", "M486 S"];
+
+/// A server composed as `Server::start` composes it, over the scripted
+/// instance, with the provider process the responder.
+struct Indexing {
+    /// The state directory and the responder's records, which outlive a
+    /// restart and are removed with the journey.
+    root: TempDir,
+    /// The configuration, which a restart starts again from.
+    config: ServerConfig,
+    /// The server; a restart replaces it over the same state directory.
+    server: Running,
+    /// The scripted `OctoPrint`, which outlives a restart, so its count of
+    /// downloads spans every server the journey starts.
+    octoprint: ScriptedOctoPrint,
+    /// A client presenting the operator's credential.
+    client: reqwest::Client,
+}
+
+impl Indexing {
+    /// A server checking every second, over a scripted instance holding the
+    /// files given and printing the first of them at a position.
+    async fn open(files: &[(&str, &[u8])], position: i64) -> Self {
+        Self::open_with(files, position, |_| {}).await
+    }
+
+    /// The same, with the configuration as one journey edits it.
+    async fn open_with(
+        files: &[(&str, &[u8])],
+        position: i64,
+        edit: impl FnOnce(&mut toml::Value),
+    ) -> Self {
+        let octoprint = ScriptedOctoPrint::start();
+        for (name, bytes) in files {
+            octoprint.holds_file(name, bytes.to_vec(), 1_000.0);
+        }
+        octoprint.delays_downloads(SLOW_LINK);
+        let (first, bytes) = files[0];
+        octoprint.reports("Printing", printing(first, bytes, position));
+        let root = TempDir::new().expect("a journey's own root");
+        let mut configured = document(root.path(), &octoprint.base_url());
+        set(
+            &mut configured,
+            "octoprint.api_key",
+            toml::Value::String(octoprint.api_key()),
+        );
+        set(
+            &mut configured,
+            "supervisor.observation_interval_s",
+            toml::Value::Integer(1),
+        );
+        edit(&mut configured);
+        let config = ServerConfig::load(write(root.path(), &configured))
+            .expect("the journey's configuration is accepted");
+        let server = start(&config, root.path()).await;
+        Self {
+            root,
+            config,
+            server,
+            octoprint,
+            client: presenting(OPERATOR),
+        }
+    }
+
+    /// Stop this server and start another over the same state directory.
+    async fn restart(self) -> Self {
+        let Self {
+            root,
+            config,
+            server,
+            octoprint,
+            client,
+        } = self;
+        server.stop().await;
+        let server = start(&config, root.path()).await;
+        Self {
+            root,
+            config,
+            server,
+            octoprint,
+            client,
+        }
+    }
+
+    /// One JSON read of the versioned surface, and when it was sent and
+    /// answered.
+    async fn get(&self, path: &str) -> (Value, Timestamp, Timestamp) {
+        let sent = Timestamp::now();
+        let response = self
+            .client
+            .get(format!("{}{path}", self.server.base_url()))
+            .send()
+            .await
+            .expect("the server answers");
+        let status = response.status();
+        let body: Value = response.json().await.expect("a JSON answer");
+        assert_eq!(status, reqwest::StatusCode::OK, "{path}: {body}");
+        (body, sent, Timestamp::now())
+    }
+
+    /// The print the scripted job is, once the server has adopted it.
+    async fn active(&self, other_than: Option<&str>) -> String {
+        let deadline = std::time::Instant::now() + PATIENCE;
+        loop {
+            let (listed, _, _) = self.get("/prints").await;
+            if let Some(active) = listed["active"].as_str()
+                && Some(active) != other_than
+            {
+                return active.to_owned();
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the running job was never adopted: {listed}"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    /// The print's context, as the operator reads it, and when it was asked
+    /// and answered.
+    async fn context(&self, print_id: &str) -> (Value, Timestamp, Timestamp) {
+        let (answer, sent, answered) = self.get(&format!("/prints/{print_id}/context")).await;
+        (answer["context"].clone(), sent, answered)
+    }
+
+    /// The print's events of one kind, newest first, read through the server.
+    async fn history(&self, print_id: &str, kind: &str) -> Vec<Value> {
+        let (answer, _, _) = self
+            .get(&format!("/prints/{print_id}/history?limit=1000"))
+            .await;
+        answer["events"]
+            .as_array()
+            .expect("a history answers its events")
+            .iter()
+            .filter(|event| event["kind"] == json!(kind))
+            .cloned()
+            .collect()
+    }
+
+    /// How many indexes the server built for a print, by its own record.
+    async fn builds(&self, print_id: &str) -> usize {
+        self.history(print_id, "gcode_indexed").await.len()
+    }
+
+    /// Every context the responder was answered, in the order its turns read
+    /// them.
+    fn turns(&self) -> Vec<Value> {
+        std::fs::read_to_string(responder_log(self.root.path()))
+            .unwrap_or_default()
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                let done: Value = printobserver_types::serde_json::from_str(line)
+                    .unwrap_or_else(|error| panic!("the responder wrote {line:?}: {error}"));
+                assert_eq!(done["operation"], json!("context"), "{done}");
+                assert_eq!(done["status"], json!(200), "{done}");
+                done["body"]["context"].clone()
+            })
+            .collect()
+    }
+
+    /// Move the job to a position, and wait for a scheduled check's turn to
+    /// read the print's context there; answer what that turn was handed.
+    async fn checked_at(&self, print_id: &str, file: &str, bytes: &[u8], position: i64) -> Value {
+        self.octoprint
+            .reports("Printing", printing(file, bytes, position));
+        let deadline = std::time::Instant::now() + PATIENCE;
+        loop {
+            // A context states no job position, so a turn is placed by the check
+            // that prompted it: its newest observation, which the history holds
+            // whole.
+            let observed_there: Vec<Value> = self
+                .history(print_id, "periodic_observation")
+                .await
+                .into_iter()
+                .filter(|event| event["payload"]["job"]["file_position_bytes"] == json!(position))
+                .map(|event| event["id"].clone())
+                .collect();
+            if let Some(turn) = self.turns().into_iter().rev().find(|turn| {
+                turn["print"]["id"] == json!(print_id)
+                    && turn["recent_events"]
+                        .as_array()
+                        .and_then(|events| {
+                            events
+                                .iter()
+                                .find(|event| event["kind"] == json!("periodic_observation"))
+                        })
+                        .is_some_and(|newest| observed_there.contains(&newest["id"]))
+            }) {
+                self.handed_no_gcode(&turn);
+                // The observation the history holds whole is stated in the turn
+                // as what it was, and the snapshots it took nowhere but once.
+                for event in turn["recent_events"].as_array().into_iter().flatten() {
+                    for snapshot in ["printer", "job"] {
+                        assert_eq!(
+                            event["payload"].get(snapshot),
+                            None,
+                            "an event repeats the {snapshot} snapshot the context states once: \
+                             {event}"
+                        );
+                    }
+                }
+                return turn;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "no check's turn read the context at byte {position}"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Wait for this many more scheduled checks of a print to have run their
+    /// turns past the ones counted already.
+    async fn more_checks(&self, print_id: &str, more: usize) {
+        let of_the_print = |turns: Vec<Value>| {
+            turns
+                .into_iter()
+                .filter(|turn| turn["print"]["id"] == json!(print_id))
+                .count()
+        };
+        let before = of_the_print(self.turns());
+        let deadline = std::time::Instant::now() + PATIENCE;
+        while of_the_print(self.turns()) < before + more {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{more} more checks of {print_id} never ran their turns"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Set the part-cooling fan as the operator, through the server, and read
+    /// the print's context after it.
+    async fn operator_sets_the_fan(&self, print_id: &str, percent: f64) -> Value {
+        self.operator_sets(print_id, "set_fan_percent", "percent", percent)
+            .await
+    }
+
+    /// Ask one adjustment as the operator, through the server, and read the
+    /// print's context after it.
+    async fn operator_sets(
+        &self,
+        print_id: &str,
+        operation: &str,
+        field: &str,
+        value: f64,
+    ) -> Value {
+        let response = self
+            .client
+            .post(format!(
+                "http://{}{}",
+                self.server.address(),
+                printobserver_server::operation(operation)
+                    .expect("the adjustment is an operation")
+                    .full_path()
+                    .replace("{print_id}", print_id)
+            ))
+            .json(&json!({
+                "reason": "the journey is moving a setting the plan reads",
+                "actor": "operator",
+                field: value,
+            }))
+            .send()
+            .await
+            .expect("the server answers");
+        let status = response.status();
+        assert_eq!(
+            status,
+            reqwest::StatusCode::OK,
+            "{operation}: {}",
+            response.text().await.unwrap_or_default()
+        );
+        self.context(print_id).await.0
+    }
+
+    /// Stop this server, write down in its store a periodic observation of the
+    /// print taken `minutes` ago with its job at `position`, and start another
+    /// server over that store: what an earlier check would have left there.
+    async fn observed_earlier(self, print_id: &str, position: i64, minutes: i64) -> Self {
+        use printobserver_core::store::EventStore as _;
+        use printobserver_types::contract::Sample as _;
+
+        let Self {
+            root,
+            config,
+            server,
+            octoprint,
+            client,
+        } = self;
+        server.stop().await;
+        let taken = Timestamp::now()
+            .plus_seconds(-minutes * 60)
+            .expect("a moment");
+        let mut job = printobserver_printer_api::JobSnapshot::sample_full();
+        job.file_name = Some(FIRST.to_owned());
+        job.file_position_bytes = Some(position);
+        let store = SqliteStore::open(&config.state_dir).expect("the store opens");
+        store
+            .append_event(printobserver_core::store::EventDraft {
+                print_id: Some(print_id.parse().expect("a print id")),
+                source: printobserver_types::EventSource::new("printobserver"),
+                received_at: taken,
+                body: printobserver_types::EventBody::of(
+                    &printobserver_core::PeriodicObservationPayload {
+                        interval_s: 120,
+                        printer: None,
+                        job: Some(job),
+                        frame_captured_at: Some(taken),
+                    },
+                )
+                .expect("an observation's body"),
+                raw: None,
+            })
+            .await
+            .expect("the observation is written down");
+        drop(store);
+        let server = start(&config, root.path()).await;
+        Self {
+            root,
+            config,
+            server,
+            octoprint,
+            client,
+        }
+    }
+
+    /// Neither the context a turn read nor the prompt its harness was started
+    /// with carries a line of G-code.
+    fn handed_no_gcode(&self, turn: &Value) {
+        let seen = std::fs::read_to_string(responder_seen(self.root.path()))
+            .expect("the harness wrote down what it was started with");
+        let read = turn.to_string();
+        for marker in GCODE_TEXT {
+            assert!(
+                !read.contains(marker),
+                "a turn's context carried G-code ({marker}): {read}"
+            );
+            assert!(
+                !seen.contains(marker),
+                "a turn's prompt carried G-code ({marker}): {seen}"
+            );
+        }
+    }
+}
+
+/// The scripted job printing one file at a position, ten minutes in: the
+/// running time is fixed so that moving the position alone is one job going
+/// on rather than a new one.
+fn printing(file: &str, bytes: &[u8], position: i64) -> JobScript {
+    JobScript::printing(
+        file,
+        i64::try_from(bytes.len()).expect("a file's size"),
+        position,
+        600,
+    )
+}
+
+/// Where the responder appends what it did, beside the state directory so a
+/// restart goes on appending to it.
+fn responder_log(root: &Path) -> PathBuf {
+    root.join("responder.log")
+}
+
+/// Where the responder writes what it was last started with.
+fn responder_seen(root: &Path) -> PathBuf {
+    root.join("responder-seen.json")
+}
+
+/// Start the real server over the real four, the agent composed exactly as
+/// `Server::start` composes it with only its harness the responder, which
+/// reads the print's context on every turn.
+async fn start(config: &ServerConfig, root: &Path) -> Running {
+    let stores = Stores::of(Arc::new(
+        SqliteStore::open(&config.state_dir).expect("the store opens"),
+    ));
+    let mut composed = agent_config(config).expect("the agent is composed");
+    composed.harness_bin = Some(PathBuf::from(env!(
+        "CARGO_BIN_EXE_printobserver-server-responder"
+    )));
+    let answer = json!({
+        "result": json!({
+            "summary": "the layer is going down as the slicer planned it",
+            "confidence": "high",
+            "should_continue": true,
+            "did": "read the print's context",
+            "why": "nothing in it called for a change",
+            "escalating": false,
+        })
+        .to_string(),
+        "session_id": "SID-INDEXING",
+        "thread_id": "SID-INDEXING",
+    });
+    for assignment in [
+        format!("MOCK_STDOUT={answer}"),
+        format!(
+            "PRINTOBSERVER_RESPONDER_LOG={}",
+            responder_log(root).display()
+        ),
+        format!(
+            "PRINTOBSERVER_RESPONDER_SEEN={}",
+            responder_seen(root).display()
+        ),
+        format!(
+            "PRINTOBSERVER_RESPONDER_ACTIONS={}",
+            json!([{ "operation": "context", "body": {} }])
+        ),
+    ] {
+        composed
+            .harness_env
+            .push(EnvAssignment::new(&assignment).expect("an assignment"));
+    }
+    Server::start_with(
+        config.clone(),
+        Ports {
+            printer: Arc::new(OctoPrintPrinter::new(config.octoprint.clone()))
+                as Arc<dyn printobserver_printer_api::PrinterPort>,
+            stores,
+            vision: Arc::new(
+                ObicoVision::new(ObicoVisionConfig::default()).expect("the adapter is built"),
+            ),
+            agent: Arc::new(OneharnessSupervisor::open(composed).expect("the agent opens"))
+                as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
+        },
+    )
+    .await
+    .expect("the server starts against the scripted instance")
+}
+
+/// When the server received an event, read from the history it answered.
+fn received_at(event: &Value) -> Timestamp {
+    printobserver_types::serde_json::from_value(event["received_at"].clone())
+        .expect("an event carries when it was received")
+}
+
+/// One read and one build serve every check and every context read of a
+/// print, the first of them a scheduled check and a context read arriving
+/// while that one build is under way; each check's turn is handed the plan at
+/// its own position — a support layer's and an overhang layer's types among
+/// them — and no line of the file. A second print is read and built once of
+/// its own, and a server restarted part-way through a print builds once more
+/// and then never again.
+#[tokio::test(flavor = "multi_thread")]
+async fn one_read_of_a_prints_gcode_plans_every_check_of_it() {
+    let world = Indexing::open(&[(FIRST, BUBBLER), (SECOND, BUBBLER)], IN_SUPPORT.position).await;
+    let print_id = world.active(None).await;
+
+    // The first scheduled check runs as the job is adopted, and the one
+    // download is held for three seconds: whichever of the check and this read
+    // arrives first starts the build, and the other arrives while it is held.
+    let (context, sent, answered) = world.context(&print_id).await;
+    assert_eq!(context["slicer"], plan_of(&IN_SUPPORT));
+    let first_check = world
+        .history(&print_id, "periodic_observation")
+        .await
+        .into_iter()
+        .last()
+        .expect("a scheduled check ran while the file was read");
+    let at = received_at(&first_check);
+    let held_from = Timestamp::from_unix_seconds(
+        sent.as_utc().timestamp() - i64::try_from(SLOW_LINK.as_secs()).expect("seconds"),
+    )
+    .expect("a moment");
+    assert!(
+        held_from < at && at <= answered,
+        "the first check, at {at:?}, did not arrive while the one download was held for the \
+         read sent at {sent:?} and answered by {answered:?}"
+    );
+    assert!(
+        answered.as_utc().timestamp_millis() - sent.as_utc().timestamp_millis() > 1_000,
+        "the read was answered without waiting on the held download"
+    );
+
+    let turn = world
+        .checked_at(&print_id, FIRST, BUBBLER, IN_SUPPORT.position)
+        .await;
+    assert_eq!(turn["slicer"], plan_of(&IN_SUPPORT));
+    for planned in [&IN_OVERHANG, &IN_BRIDGE] {
+        let turn = world
+            .checked_at(&print_id, FIRST, BUBBLER, planned.position)
+            .await;
+        assert_eq!(turn["slicer"], plan_of(planned), "at {}", planned.position);
+        let (read, _, _) = world.context(&print_id).await;
+        assert_eq!(read["slicer"], plan_of(planned));
+    }
+
+    // A change made through this program stands beside what the file set,
+    // until the file sets the same thing again.
+    let changed = world.operator_sets_the_fan(&print_id, 80.0).await;
+    assert_eq!(
+        changed["slicer"]["fan_percent"],
+        json!({ "file": IN_BRIDGE.fan, "changed": 80.0 })
+    );
+    let turn = world
+        .checked_at(&print_id, FIRST, BUBBLER, HIGH_UP.position)
+        .await;
+    assert_eq!(
+        turn["slicer"],
+        plan_of(&HIGH_UP),
+        "the file's own later fan command did not take over from the change"
+    );
+
+    world.more_checks(&print_id, 2).await;
+    assert_eq!(world.octoprint.whole_downloads(FIRST), 1);
+    assert_eq!(world.builds(&print_id).await, 1);
+
+    let world = world.restart().await;
+    let turn = world
+        .checked_at(&print_id, FIRST, BUBBLER, IN_OVERHANG.position)
+        .await;
+    assert_eq!(turn["slicer"], plan_of(&IN_OVERHANG));
+    world.more_checks(&print_id, 3).await;
+    world.context(&print_id).await;
+    assert_eq!(
+        world.octoprint.whole_downloads(FIRST),
+        2,
+        "a restarted server did not build its own index once"
+    );
+    assert_eq!(world.builds(&print_id).await, 2);
+
+    world
+        .octoprint
+        .reports("Printing", printing(SECOND, BUBBLER, IN_BRIDGE.position));
+    let second = world.active(Some(&print_id)).await;
+    let turn = world
+        .checked_at(&second, SECOND, BUBBLER, IN_BRIDGE.position)
+        .await;
+    assert_eq!(turn["slicer"], plan_of(&IN_BRIDGE));
+    world.more_checks(&second, 2).await;
+    world.context(&second).await;
+    assert_eq!(world.octoprint.whole_downloads(SECOND), 1);
+    assert_eq!(world.builds(&second).await, 1);
+    assert_eq!(world.octoprint.whole_downloads(FIRST), 2);
+    assert_eq!(world.builds(&print_id).await, 2);
+    world.server.stop().await;
+}
+
+/// The same slice with its `;TYPE:`, `M73`, flow, fan and object lines taken
+/// out: every check still runs, and the context says the extrusion types, the
+/// time left, the flow, the fan and the objects are unknown — with no value,
+/// count or place for any of them — while it goes on naming the layers the
+/// file does mark.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_without_types_estimates_flow_fan_or_objects_says_so_and_is_checked_all_the_same() {
+    let stripped: Vec<u8> = String::from_utf8(BUBBLER.to_vec())
+        .expect("the slice is text")
+        .split_inclusive('\n')
+        .filter(|line| {
+            ![";TYPE:", "M73 ", "M221", "M106", "M107", "M486"]
+                .iter()
+                .any(|stripped| line.starts_with(stripped))
+        })
+        .collect::<String>()
+        .into_bytes();
+    let world = Indexing::open(&[("unlabelled.gcode", &stripped)], 200_000).await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    let print_id = world.active(None).await;
+
+    let turn = world
+        .checked_at(&print_id, "unlabelled.gcode", &stripped, 200_000)
+        .await;
+    world.more_checks(&print_id, 2).await;
+
+    let plan = &turn["slicer"];
+    assert_eq!(
+        plan["unknown"],
+        json!([
+            "types",
+            "minutes_left",
+            "flow_factor",
+            "fan_percent",
+            "objects",
+            "rise"
+        ])
+    );
+    for absent in [
+        "types",
+        "minutes_left",
+        "flow_factor",
+        "fan_percent",
+        "object_count",
+        "objects",
+    ] {
+        assert!(plan.get(absent).is_none(), "{absent} was invented: {plan}");
+    }
+    assert_eq!(plan["final_z_mm"], json!(FINAL_Z_MM));
+    assert!(
+        plan["layer"].is_u64(),
+        "the layers the file marks were not read: {plan}"
+    );
+    assert!(
+        world.history(&print_id, "periodic_observation").await.len() >= 3,
+        "the checks did not go on"
+    );
+    assert_eq!(world.builds(&print_id).await, 1);
+    world.server.stop().await;
+}
+
+/// A check is told how far the plan has risen since a frame half an hour or
+/// more back — that frame's capture time, the part's top at the position that
+/// observation's job had reached, and the Z the file added since — and which setting in force the plan at this height says is
+/// wrong: the fan off over the layers that bridge, and the flow well under one
+/// over walls, each set through the operator's own surface.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_check_is_told_the_plans_rise_and_the_settings_at_odds_with_it() {
+    let world = Indexing::open_with(&[(FIRST, BUBBLER)], IN_BRIDGE.position, |configured| {
+        set(
+            configured,
+            "safety.allowed.flowrate.min",
+            toml::Value::Float(0.8),
+        );
+    })
+    .await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    let print_id = world.active(None).await;
+    let world = world
+        .observed_earlier(&print_id, IN_SUPPORT.position, 40)
+        .await;
+
+    let turn = world
+        .checked_at(&print_id, FIRST, BUBBLER, IN_BRIDGE.position)
+        .await;
+    assert_eq!(
+        turn["slicer"]["rise"]["mm"],
+        json!([IN_SUPPORT.z_mm, 4.8]),
+        "the check was not told layer 23's {} mm and the Z added since, to the bridge's {} mm",
+        IN_SUPPORT.z_mm,
+        IN_BRIDGE.z_mm
+    );
+    let since: Timestamp = turn["slicer"]["rise"]["since"]
+        .as_str()
+        .and_then(|since| since.parse().ok())
+        .unwrap_or_else(|| panic!("the rise names no frame: {}", turn["slicer"]));
+    let ago_s = Timestamp::now().as_utc().timestamp() - since.as_utc().timestamp();
+    assert!(
+        (39 * 60..=41 * 60).contains(&ago_s),
+        "the rise names a frame {ago_s}s old rather than the observation 40 minutes back"
+    );
+    assert!(
+        turn["slicer"].get("at_odds").is_none(),
+        "{}",
+        turn["slicer"]
+    );
+
+    let fan_off = world
+        .operator_sets(&print_id, "set_fan_percent", "percent", 0.0)
+        .await;
+    assert_eq!(
+        fan_off["slicer"]["at_odds"],
+        json!(["fan_off_over_bridges"]),
+        "the fan off over a bridging layer was not named"
+    );
+    let starved = world
+        .operator_sets(&print_id, "set_flowrate_factor", "factor", 0.85)
+        .await;
+    assert_eq!(
+        starved["slicer"]["at_odds"],
+        json!(["fan_off_over_bridges", "flow_low_over_walls"]),
+        "the flow well under one over walls was not named"
+    );
+    let restored = world
+        .operator_sets(&print_id, "set_fan_percent", "percent", 100.0)
+        .await;
+    assert_eq!(
+        restored["slicer"]["at_odds"],
+        json!(["flow_low_over_walls"])
+    );
+    world.server.stop().await;
+}
+
+/// A print whose file the instance cannot serve is planned by nothing and
+/// builds nothing: its checks go on with no plan, and the read made once the
+/// file can be served builds the plan, once, for every read after it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_the_instance_cannot_serve_yet_is_planned_once_it_can() {
+    let world = Indexing::open(&[(FIRST, BUBBLER)], IN_SUPPORT.position).await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    let first = world.active(None).await;
+    world
+        .octoprint
+        .reports("Printing", printing(LATE, BUBBLER, IN_SUPPORT.position));
+    let print_id = world.active(Some(&first)).await;
+
+    world.more_checks(&print_id, 2).await;
+    let (unplanned, _, _) = world.context(&print_id).await;
+    assert!(
+        unplanned.get("slicer").is_none_or(Value::is_null),
+        "a file nobody could read was planned: {unplanned}"
+    );
+    assert_eq!(world.builds(&print_id).await, 0);
+
+    world.octoprint.holds_file(LATE, BUBBLER.to_vec(), 1_000.0);
+    let (planned, _, _) = world.context(&print_id).await;
+    assert_eq!(planned["slicer"], plan_of(&IN_SUPPORT));
+    world.more_checks(&print_id, 2).await;
+    let turn = world
+        .turns()
+        .into_iter()
+        .rfind(|turn| turn["print"]["id"] == json!(print_id))
+        .expect("a check of the print ran its turn");
+    world.handed_no_gcode(&turn);
+    assert_eq!(turn["slicer"], plan_of(&IN_SUPPORT));
+    world.context(&print_id).await;
+    assert_eq!(world.octoprint.whole_downloads(LATE), 1);
+    assert_eq!(world.builds(&print_id).await, 1);
+    world.server.stop().await;
+}
+
+/// Every payload field a turn's context leaves out of an event: the snapshots
+/// it states once, the agent's own assessment, and the bookkeeping.
+const UNREAD_PAYLOAD_FIELDS: [&str; 8] = [
+    "printer",
+    "job",
+    "assessment",
+    "interval_s",
+    "session_name",
+    "harness_identity",
+    "delivered",
+    "waited_s",
+];
+
+/// A turn's context states each fact once and nothing no decision reads: a
+/// heater reading outside what a heater can read is left out rather than
+/// stated, every event says what happened without the snapshots, the
+/// assessment or the bookkeeping, an event left with nothing else to say
+/// carries no payload at all, and the error a job stopped on is stated.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turns_context_states_each_fact_once_and_nothing_no_decision_reads() {
+    let world = Indexing::open(&[(FIRST, BUBBLER)], IN_SUPPORT.position).await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    world.octoprint.targets(900.0, 60.0);
+    let print_id = world.active(None).await;
+    world.more_checks(&print_id, 2).await;
+
+    let turn = world
+        .turns()
+        .into_iter()
+        .rfind(|turn| turn["print"]["id"] == json!(print_id))
+        .expect("a check of the print ran its turn");
+    let tool = &turn["printer"]["tools"][0];
+    assert_eq!(tool["actual_c"], json!(25.0), "{tool}");
+    assert!(
+        tool.get("target_c").is_none(),
+        "a target no heater can be set to was stated: {tool}"
+    );
+    assert_eq!(turn["printer"]["bed"]["target_c"], json!(60.0), "{turn}");
+    let events = turn["recent_events"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a turn reads the print's events: {turn}"));
+    assert!(
+        events
+            .iter()
+            .any(|event| event["kind"] == json!("agent_assessment")),
+        "no earlier turn's assessment is among the events: {turn}"
+    );
+    for event in events {
+        for unread in UNREAD_PAYLOAD_FIELDS {
+            assert!(
+                event["payload"].get(unread).is_none(),
+                "an event carries {unread}, which no decision reads: {event}"
+            );
+        }
+        if event["kind"] == json!("agent_assessment") {
+            assert!(
+                event.get("payload").is_none(),
+                "an assessment, with nothing left to say, still carries a payload: {event}"
+            );
+        }
+    }
+
+    world.octoprint.reports(
+        "Offline after error",
+        JobScript {
+            state: "Offline after error".to_owned(),
+            error: Some("Printer halted. kill() called!".to_owned()),
+            ..JobScript::idle()
+        },
+    );
+    let deadline = std::time::Instant::now() + PATIENCE;
+    let stopped = loop {
+        let (context, _, _) = world.context(&print_id).await;
+        if context.get("job_error").is_some() {
+            break context;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the error the job stopped on was never stated: {context}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    assert_eq!(
+        stopped["job_error"],
+        json!({ "text": "Printer halted. kill() called!", "source": "printer" })
+    );
+    world.server.stop().await;
+}
+
+/// The plan is answered only while the print's own job runs at a known place,
+/// and a bounded change through the operator's surface stands in it only while
+/// its intervention does: a job reporting no position is planned by nothing and
+/// reads no file, a bounded fan change is stated until it expires and then no
+/// longer, and a print that is over is planned by nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_plan_follows_the_running_job_and_a_bounded_change_until_it_expires() {
+    let world = Indexing::open(&[(FIRST, BUBBLER)], IN_BRIDGE.position).await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    world.octoprint.reports(
+        "Printing",
+        JobScript {
+            filepos: None,
+            completion: None,
+            ..printing(FIRST, BUBBLER, IN_BRIDGE.position)
+        },
+    );
+    let print_id = world.active(None).await;
+    world.more_checks(&print_id, 2).await;
+    let (placeless, _, _) = world.context(&print_id).await;
+    assert!(
+        placeless.get("slicer").is_none(),
+        "a job at no known place was planned: {placeless}"
+    );
+    assert_eq!(world.octoprint.whole_downloads(FIRST), 0);
+
+    let turn = world
+        .checked_at(&print_id, FIRST, BUBBLER, IN_BRIDGE.position)
+        .await;
+    assert_eq!(turn["slicer"], plan_of(&IN_BRIDGE));
+    let response = world
+        .client
+        .post(format!(
+            "http://{}{}",
+            world.server.address(),
+            printobserver_server::operation("set_fan_percent")
+                .expect("the adjustment is an operation")
+                .full_path()
+                .replace("{print_id}", &print_id)
+        ))
+        .json(&json!({
+            "reason": "the journey bounds a fan change the plan reads",
+            "actor": "operator",
+            "percent": 80.0,
+            "duration_s": 2,
+        }))
+        .send()
+        .await
+        .expect("the server answers");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let (bounded, _, _) = world.context(&print_id).await;
+    assert_eq!(
+        bounded["slicer"]["fan_percent"],
+        json!({ "file": IN_BRIDGE.fan, "changed": 80.0 })
+    );
+    let deadline = std::time::Instant::now() + PATIENCE;
+    loop {
+        let (read, _, _) = world.context(&print_id).await;
+        if read["slicer"]["fan_percent"] == json!({ "file": IN_BRIDGE.fan }) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "an expired change still stands: {}",
+            read["slicer"]
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    // Over, with the file still selected at the place it stopped, as
+    // `OctoPrint` goes on reporting a job once its print has ended.
+    world.octoprint.reports(
+        "Operational",
+        JobScript {
+            state: "Operational".to_owned(),
+            ..printing(FIRST, BUBBLER, HIGH_UP.position)
+        },
+    );
+    let deadline = std::time::Instant::now() + PATIENCE;
+    loop {
+        let (read, _, _) = world.context(&print_id).await;
+        if read["print"]["state"] != json!("printing") {
+            assert!(
+                read.get("slicer").is_none(),
+                "a print that is over was planned: {read}"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the print never ended: {read}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(world.builds(&print_id).await, 1);
+    world.server.stop().await;
+}

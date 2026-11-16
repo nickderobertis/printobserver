@@ -212,7 +212,13 @@ def type_of(schema: dict[str, Any] | bool) -> TypeExpr:
             msg = "an array property declares no item shape"
             raise ContractError(msg)
         least = schema.get("minItems", 0)
-        return ListOf(type_of(items), non_empty=isinstance(least, int) and least >= 1)
+        most = schema.get("maxItems")
+        fixed = isinstance(least, int) and least >= 1 and most == least
+        return ListOf(
+            type_of(items),
+            non_empty=isinstance(least, int) and least >= 1,
+            length=least if fixed else None,
+        )
     if declared == "object":
         return MapOf(_map_value(schema))
     if isinstance(declared, str):

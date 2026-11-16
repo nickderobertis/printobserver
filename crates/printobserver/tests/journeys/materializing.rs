@@ -61,7 +61,7 @@ fn driven(world: &World, command: &str) -> Vec<String> {
         .into_iter()
         .find(|one| one.command.name == command)
         .unwrap_or_else(|| panic!("this walk drives no `{command}`"));
-    super::failures::succeeding(&found)
+    walk::naming_the_print_and_spool_now(&super::failures::succeeding(&found), world)
 }
 
 /// The path a materialized answer prints opens, and its contents are the image.

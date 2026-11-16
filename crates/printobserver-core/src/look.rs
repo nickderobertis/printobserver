@@ -151,6 +151,34 @@ impl Supervisor {
         self.inboxes().wait_and_take(print_id, wait)
     }
 
+    /// Wait up to `wait` for anything to arrive for one print's running turn,
+    /// take it, and answer how long the wait was.
+    ///
+    /// Nothing pending and the wait passed on a replay's clock
+    /// ([`Timestamp::pass_replay_time`]) answers at once, having waited all of
+    /// `wait`: on that clock nothing arrives during a turn, so the whole wait
+    /// is what waiting it out would have been.
+    ///
+    /// **This blocks the calling thread** for as long as it waits; call it
+    /// where a blocking wait is expected.
+    #[must_use]
+    pub fn await_look_arrivals(
+        &self,
+        print_id: PrintId,
+        wait: Duration,
+    ) -> (Vec<Arrival>, Duration) {
+        let started = std::time::Instant::now();
+        let pending = self.inboxes().wait_and_take(print_id, Duration::ZERO);
+        if !pending.is_empty() {
+            return (pending, started.elapsed());
+        }
+        if printobserver_types::Timestamp::pass_replay_time(wait) {
+            return (pending, wait);
+        }
+        let arrived = self.inboxes().wait_and_take(print_id, wait);
+        (arrived, started.elapsed())
+    }
+
     /// Take a frame, write one look down with it, and read the printer.
     ///
     /// # Errors
@@ -206,6 +234,22 @@ impl Supervisor {
             let _ = self
                 .record_position_from(&print, job, self.clock().now())
                 .await;
+        }
+        // A look's frame is one the plan's rise can later be measured from,
+        // when it was this print's file the job had reached a place in.
+        if let (Some(captured), Some(job)) = (
+            event
+                .payload_as::<CameraLookPayload>()
+                .and_then(Result::ok)
+                .and_then(|look| look.frame_captured_at),
+            &job,
+        ) && print.ended_at.is_none()
+            && job.file_name.is_some()
+            && job.file_name == print.file_name
+            && let Some(position) = job.file_position_bytes
+        {
+            self.gcode_indexes()
+                .note_look(print.id, captured, position, self.clock().now());
         }
         let detector_paused = self.detector_paused(print.id)
             && printer

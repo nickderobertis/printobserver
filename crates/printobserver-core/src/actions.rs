@@ -204,12 +204,23 @@ impl Supervisor {
         let intervention = self
             .open_bounded_intervention(print_id, &action, &issued, snapshot.as_ref(), requested_at)
             .await?;
+        // Where the print had last been read to have got: what places this
+        // change against the commands its file sets the same thing with.
+        let file_position_bytes = self
+            .stores()
+            .filament
+            .file_position(print_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|position| position.bytes);
         self.append_action_event(
             print_id,
             source,
             EventBody::of(&ActionExecutedPayload {
                 action_id: issued.record.id,
                 intervention_id: intervention.as_ref().map(|opened| opened.id),
+                file_position_bytes,
             })?,
         )
         .await?;
