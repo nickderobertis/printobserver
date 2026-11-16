@@ -954,3 +954,101 @@ async fn a_turns_context_states_each_fact_once_and_nothing_no_decision_reads() {
     );
     world.server.stop().await;
 }
+
+/// The plan is answered only while the print's own job runs at a known place,
+/// and a bounded change through the operator's surface stands in it only while
+/// its intervention does: a job reporting no position is planned by nothing and
+/// reads no file, a bounded fan change is stated until it expires and then no
+/// longer, and a print that is over is planned by nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_plan_follows_the_running_job_and_a_bounded_change_until_it_expires() {
+    let world = Indexing::open(&[(FIRST, BUBBLER)], IN_BRIDGE.position).await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    world.octoprint.reports(
+        "Printing",
+        JobScript {
+            filepos: None,
+            completion: None,
+            ..printing(FIRST, BUBBLER, IN_BRIDGE.position)
+        },
+    );
+    let print_id = world.active(None).await;
+    world.more_checks(&print_id, 2).await;
+    let (placeless, _, _) = world.context(&print_id).await;
+    assert!(
+        placeless.get("slicer").is_none(),
+        "a job at no known place was planned: {placeless}"
+    );
+    assert_eq!(world.octoprint.whole_downloads(FIRST), 0);
+
+    let turn = world
+        .checked_at(&print_id, FIRST, BUBBLER, IN_BRIDGE.position)
+        .await;
+    assert_eq!(turn["slicer"], plan_of(&IN_BRIDGE));
+    let response = world
+        .client
+        .post(format!(
+            "http://{}{}",
+            world.server.address(),
+            printobserver_server::operation("set_fan_percent")
+                .expect("the adjustment is an operation")
+                .full_path()
+                .replace("{print_id}", &print_id)
+        ))
+        .json(&json!({
+            "reason": "the journey bounds a fan change the plan reads",
+            "actor": "operator",
+            "percent": 80.0,
+            "duration_s": 2,
+        }))
+        .send()
+        .await
+        .expect("the server answers");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let (bounded, _, _) = world.context(&print_id).await;
+    assert_eq!(
+        bounded["slicer"]["fan_percent"],
+        json!({ "file": IN_BRIDGE.fan, "changed": 80.0 })
+    );
+    let deadline = std::time::Instant::now() + PATIENCE;
+    loop {
+        let (read, _, _) = world.context(&print_id).await;
+        if read["slicer"]["fan_percent"] == json!({ "file": IN_BRIDGE.fan }) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "an expired change still stands: {}",
+            read["slicer"]
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    // Over, with the file still selected at the place it stopped, as
+    // `OctoPrint` goes on reporting a job once its print has ended.
+    world.octoprint.reports(
+        "Operational",
+        JobScript {
+            state: "Operational".to_owned(),
+            ..printing(FIRST, BUBBLER, HIGH_UP.position)
+        },
+    );
+    let deadline = std::time::Instant::now() + PATIENCE;
+    loop {
+        let (read, _, _) = world.context(&print_id).await;
+        if read["print"]["state"] != json!("printing") {
+            assert!(
+                read.get("slicer").is_none(),
+                "a print that is over was planned: {read}"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the print never ended: {read}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(world.builds(&print_id).await, 1);
+    world.server.stop().await;
+}

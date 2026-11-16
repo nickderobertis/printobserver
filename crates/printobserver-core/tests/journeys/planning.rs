@@ -99,6 +99,11 @@ fn flow(factor: f64) -> PrintAction {
 /// at a known position, and for nothing else: a job reporting no position, a
 /// job of another file and a print that is over each answer none, and none of
 /// them reads the file.
+///
+/// A job at no known place and a print that is over are proven end to end by
+/// `indexing::the_plan_follows_the_running_job_and_a_bounded_change_until_it_expires`;
+/// another file's job is a print of its own there, so the core's rule for it
+/// is held here.
 #[test]
 fn the_plan_is_answered_only_for_the_print_the_running_job_is() {
     let (world, print) = printing_at(None);
@@ -281,6 +286,10 @@ fn a_change_stands_beside_the_files_until_the_file_sets_it_again() {
 
 /// A bounded change stands while its intervention does, and no longer once
 /// the intervention has expired and put the prior value back.
+///
+/// Proven end to end by
+/// `indexing::the_plan_follows_the_running_job_and_a_bounded_change_until_it_expires`;
+/// here the expiry is driven by the fake clock rather than waited out.
 #[test]
 fn a_bounded_change_stands_until_its_intervention_expires() {
     let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
@@ -399,6 +408,9 @@ G1 X20 Y20 E1
 
 /// A file setting the same value again after a change through this program
 /// puts its value back over the change, which no longer stands.
+///
+/// Proven end to end by `indexing::one_read_of_a_prints_gcode_plans_every_check_of_it`,
+/// where the file's own later fan command takes over from the operator's.
 #[test]
 fn a_file_repeating_a_value_takes_over_from_a_change_made_before_it() {
     let world = World::new();
@@ -442,6 +454,10 @@ fn a_file_repeating_a_value_takes_over_from_a_change_made_before_it() {
 /// A store that cannot say where the print had got leaves the action taken,
 /// and the change is placed at the file's start: whatever the file set since
 /// takes over from it.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// `SQLite` store fails a read only when its file is damaged, which cannot be
+/// caused from outside the process without failing every other read too.
 #[test]
 fn an_action_whose_place_cannot_be_read_is_placed_at_the_files_start() {
     let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
@@ -474,6 +490,10 @@ fn an_action_whose_place_cannot_be_read_is_placed_at_the_files_start() {
 
 /// An executed action whose payload is unreadable, or whose request is not in
 /// the print's history, changes nothing the plan answers.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// server writes only well-formed records of requests it took, so neither
+/// record can be made through it.
 #[test]
 fn an_unreadable_or_unmatched_action_record_changes_nothing() {
     use printobserver_core::store::{EventDraft, EventStore as _};
@@ -521,6 +541,10 @@ fn an_unreadable_or_unmatched_action_record_changes_nothing() {
 /// every store read of the context does, rather than answering a plan that
 /// quietly leaves the print's changes out — while the print's recent events,
 /// read before it, were read.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// `SQLite` store fails a read only when its file is damaged, which cannot be
+/// caused from outside the process without failing every other read too.
 #[test]
 fn the_actions_the_store_cannot_read_fail_the_context_read() {
     let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
@@ -631,6 +655,11 @@ fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
 
 /// An observation whose job had no position says nothing of how far the plan
 /// has risen since, and the context is answered all the same.
+///
+/// Over the fakes rather than through the running server, by choice: the rise
+/// reads an observation half an hour old, which the running server makes only
+/// by running for half an hour; its stated rise is proven end to end by
+/// `indexing::a_check_is_told_the_plans_rise_and_the_settings_at_odds_with_it`.
 #[test]
 fn an_observation_with_no_position_gives_no_rise() {
     let (world, print) = printing_at(None);
@@ -650,6 +679,10 @@ fn an_observation_with_no_position_gives_no_rise() {
 
 /// A store that cannot read the print's observations fails the context read
 /// rather than leaving the rise out in silence, and heals with it.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// `SQLite` store fails a read only when its file is damaged, which cannot be
+/// caused from outside the process without failing every other read too.
 #[test]
 fn the_observations_the_store_cannot_read_fail_the_context_read() {
     let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
