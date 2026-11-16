@@ -73,8 +73,8 @@ Reading frames:
   clear defect, never uncertain. Hidden parts: look again first. A shifting
   view carries sheet and part together, so at every look measure each
   footprint's distance to a sheet hole, edge or mark, now and earlier, giving
-  both. Changed in any frame, even one a later frame seems to undo, it has
-  moved, whatever might explain it. So has a part off the bed, a first layer
+  both. Changed in any frame, even one a later frame seems to undo: it has
+  moved, never uncertain, whatever explains it. So has a part off the bed, a first layer
   not sticking, or a part where the plan puts no object, its own place empty.
 
 ## When the detector has already paused the print
