@@ -19,13 +19,13 @@ from journey_session import (
     no_ambient_host_independence as no_ambient_host_independence,
 )
 from journey_session import (
-    worker_count,
-)
-from journey_session import (
     pytest_terminal_summary as pytest_terminal_summary,
 )
 from journey_session import (
     shared_venv as shared_venv,
+)
+from journey_session import (
+    worker_count,
 )
 
 pytest_xdist_auto_num_workers = worker_count("repo-e2e")

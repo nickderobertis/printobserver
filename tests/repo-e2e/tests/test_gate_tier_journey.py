@@ -387,10 +387,13 @@ def test_each_side_of_a_split_test_tier_reports_its_own_ecosystem_of_the_change(
 
     The changed crate's and the client's own `test` targets are run, so each
     ecosystem has measurements to read, and `just coverage` is run once per side
-    of `lang:rust` as a sharded gate runs it. At the affected tier, through the
-    real graph's own answer, the Rust side reports the crate and rules on no
-    Python source, and the other side reports the client and rules on no crate,
-    so the two sides' floors together rule on what one unsharded report does.
+    of a project tag, as `just ci-lint` and `just ci-test` run it once per side
+    of `platform:independent`. The tag here is `lang:rust`, which splits this
+    change by ecosystem, so which side reported what can be read off the
+    reports. At the affected tier, through the real graph's own answer, the Rust
+    side reports the crate and rules on no Python source, and the other side
+    reports the client and rules on no crate, so the two sides' floors together
+    rule on what one report over every project does.
     """
     copy = as_a_clone(gate_copy())
     branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")

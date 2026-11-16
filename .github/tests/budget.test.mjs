@@ -39,14 +39,14 @@ function record(overrides = {}) {
             action: "opened",
             macos_jobs: 1,
             jobs: [
-              job("macos", true, "macos-aarch64"),
-              job("gate (linux-x86_64)", false, "linux-x86_64"),
+              job("test (macos-aarch64)", true, "macos-aarch64"),
+              job("test (linux-x86_64)", false, "linux-x86_64"),
             ],
           },
         ],
       },
       {
-        id: "workflow_dispatch.opted-in/gate",
+        id: "workflow_dispatch.opted-in/test",
         event_class: "workflow_dispatch.opted-in",
         lifecycle_step: null,
         manual: true,
@@ -56,7 +56,7 @@ function record(overrides = {}) {
             event: "workflow_dispatch",
             action: "",
             macos_jobs: 1,
-            jobs: [job("gate (macos-aarch64)", true, "")],
+            jobs: [job("test (macos-aarch64)", true, "")],
           },
         ],
       },
@@ -89,7 +89,7 @@ describe("a current record", () => {
     assert.match(ran.stdout, /ci\.yml=1, platform-dispatch\.yml=1/);
     assert.match(
       ran.stdout,
-      /ci\.yml on pull_request\.opened: macos \[macos-aarch64 on macos-15\]/,
+      /ci\.yml on pull_request\.opened: test \(macos-aarch64\) \[macos-aarch64 on macos-15\]/,
     );
   });
 
@@ -99,7 +99,7 @@ describe("a current record", () => {
     assert.match(ran.stdout, /^runs-per-change: 1\n/);
     assert.match(
       ran.stdout,
-      /1 pull request opened: ci\.yml on pull_request\.opened \(macos on macos-aarch64\)/,
+      /1 pull request opened: ci\.yml on pull_request\.opened \(test \(macos-aarch64\) on macos-aarch64\)/,
     );
     assert.doesNotMatch(ran.stdout, /platform-dispatch/);
   });

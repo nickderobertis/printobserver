@@ -435,10 +435,10 @@ def measured_for(repo: Repo, tier: str) -> Measured:
     the affected projects drops whole files and never a test that reached one.
 
     Narrowed to one side of a tag by `PRINTOBSERVER_GATE_PROJECTS`, as the test
-    tier beside it was, the report is over that side's projects alone. A sharded
-    gate splits on `lang:rust`, which every Rust crate carries and no Python
-    source's project does, so each side's report holds one ecosystem's whole
-    figure at its own floor, measured by the only tests that measure it.
+    tier beside it was, the report is over that side's projects alone, each
+    ecosystem at its own floor. The CI jobs split on `platform:independent`
+    (`just ci-measured`): `lint` reports the tagged projects' sources, which
+    their own tests measure, and each `test` job every other project's.
 
     Raises:
         TierError: If the tier or the base it is resolved against is refused,

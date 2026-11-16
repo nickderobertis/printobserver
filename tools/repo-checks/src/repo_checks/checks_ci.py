@@ -790,7 +790,7 @@ def _gate_cells(
     bring_up: str,
     artifact: tuple[str, ...],
 ) -> list[str]:
-    """The platforms the gate job's matrix names, in its order: the `test` cells a warm job keeps."""
+    """The platforms the gate job's matrix names, in order: the `test` cells a warm job keeps."""
     return [
         str(entry.get("id"))
         for workflow in workflows.values()

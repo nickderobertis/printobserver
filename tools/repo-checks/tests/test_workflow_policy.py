@@ -18,8 +18,8 @@ CLOSURE = closure("workflows")
 
 CI = ".github/workflows/ci.yml"
 
-#: The gate job's step that runs the gate, as the committed workflow spells it.
-GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+#: The gate job's step that runs its half of the gate, as the committed workflow spells it.
+GATE_STEP = "      - run: just ci-test\n"
 
 
 def test_the_committed_workflows_are_accepted(committed: Repo) -> None:

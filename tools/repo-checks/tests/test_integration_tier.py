@@ -50,10 +50,17 @@ above names, and the integration job runs on all of them.
 [//]: # (END virtual-printer-exclusions)"""
 
 
+#: The integration job's own key: the `test` job runs the tier in every cell but
+#: macOS's, which `test-macos` carries.
+TEST_JOB = "\n  test:\n"
+#: The one condition the integration job carries, as the committed workflow spells it.
+PULL_REQUEST_ONLY = "    if: github.event_name == 'pull_request'\n"
+
+
 def _integration_matrix_entry(tree: Tree, old: str, new: str) -> None:
-    """Edit the integration job's own matrix, which is the second one in the file."""
+    """Edit the integration job, the `test` job, from its own key onwards."""
     text = tree.read(CI)
-    start = text.index("  integration:")
+    start = text.index(TEST_JOB)
     head, tail = text[:start], text[start:]
     if old not in tail:
         message = f"{CI}'s integration job does not contain {old!r}; the fixture is stale"
@@ -315,18 +322,59 @@ def test_a_pull_request_trigger_dropping_a_default_activity_type_is_refused(
     refused(findings, "does not run on `synchronize`")
 
 
-def test_a_job_carrying_a_condition_that_skips_it_is_refused(tree: Callable[[], Tree]) -> None:
-    """A condition on the job is a narrowing the triggers do not show."""
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "github.event_name == 'push'",
+        "github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'",
+    ],
+    ids=["another event", "the pull-request condition narrowed further"],
+)
+def test_a_job_carrying_a_condition_that_skips_it_is_refused(
+    tree: Callable[[], Tree], condition: str
+) -> None:
+    """A condition on the job is a narrowing the triggers do not show.
+
+    Only the pull-request condition itself is admitted, so one that starts from
+    it and narrows it further is refused as surely as one naming another event.
+    """
     broken = tree()
-    _integration_matrix_entry(
-        broken,
-        "    runs-on: ${{ matrix.platform.runner }}\n",
-        "    if: github.event_name == 'push'\n    runs-on: ${{ matrix.platform.runner }}\n",
+    _integration_matrix_entry(broken, PULL_REQUEST_ONLY, f"    if: {condition}\n")
+
+    findings = integration_tier(broken.repo)
+
+    refused(findings, f"carries the condition `{condition}`, which skips it for some changes")
+
+
+def test_the_pull_request_condition_alone_is_admitted(tree: Callable[[], Tree]) -> None:
+    """A push to `main` merges a pull request whose own run already ran the tier.
+
+    The committed job carries exactly that condition, and the same job with it
+    taken off is accepted too: the condition is admitted, never required.
+    """
+    committed = tree()
+    test_job = committed.read(CI)[committed.read(CI).index(TEST_JOB) :]
+    contains(test_job, PULL_REQUEST_ONLY)
+    accepted(integration_tier(committed.repo), describing="the pull-request-only job")
+
+    _integration_matrix_entry(committed, PULL_REQUEST_ONLY, "")
+    accepted(integration_tier(committed.repo), describing="the job with no condition")
+
+
+def test_a_macos_cell_with_no_carrier_on_record_is_refused(tree: Callable[[], Tree]) -> None:
+    """The `test` matrix's four cells are accepted only because `test-macos` is on record.
+
+    Taking that record away leaves `macos-aarch64` a platform the integration
+    job omits with nothing excusing it.
+    """
+    broken = tree()
+    broken.edit(
+        "repo-policy.toml", 'carrier = "ci.yml:test-macos"\n', 'carrier = "ci.yml:nothing"\n'
     )
 
     findings = integration_tier(broken.repo)
 
-    refused(findings, "which skips it for some changes")
+    refused(findings, "omits platform `macos-aarch64`")
 
 
 def test_a_conditional_tier_step_is_refused(tree: Callable[[], Tree]) -> None:
@@ -366,30 +414,41 @@ def test_an_upload_skipped_on_some_changes_is_refused(tree: Callable[[], Tree]) 
     refused(integration_tier(broken.repo), "actions/upload-artifact@v4` under the condition")
 
 
-#: The integration job's save of the release program it built, as committed.
-RELEASE_PROGRAM_SAVE = (
-    "      - if: github.ref == 'refs/heads/main' && "
-    "steps.release-program-cache.outputs.cache-hit != 'true'\n"
-    "        uses: actions/cache/save@v4\n"
+#: The integration job's step building the release program, as committed.
+RELEASE_PROGRAM = "      - run: just release-program\n"
+#: Its restore of that program, as committed.
+RELEASE_PROGRAM_RESTORE = (
+    "      - uses: actions/cache/restore@v4\n        with:\n          path: .release-program\n"
 )
 
 
-def test_a_cache_save_taken_only_on_main_is_accepted(committed: Repo) -> None:
-    """A save verifies nothing, so a run that skips it skips no part of the tier."""
-    contains(committed.path(CI).read_text(encoding="utf-8"), RELEASE_PROGRAM_SAVE)
+def test_a_cache_save_taken_only_on_main_is_accepted(tree: Callable[[], Tree]) -> None:
+    """A save verifies nothing, so a run that skips it skips no part of the tier.
 
-    accepted(integration_tier(committed), describing="the main-only release-program save")
+    The committed job saves no cache — `warm.yml` does — so the save is added.
+    """
+    allowed = tree()
+    _integration_matrix_entry(
+        allowed,
+        RELEASE_PROGRAM,
+        RELEASE_PROGRAM + "      - if: github.ref == 'refs/heads/main'\n"
+        "        uses: actions/cache/save@v4\n"
+        "        with:\n"
+        "          path: .release-program\n"
+        "          key: release-program-${{ matrix.platform.id }}\n",
+    )
+
+    accepted(integration_tier(allowed.repo), describing="a main-only release-program save")
 
 
 def test_a_conditional_cache_restore_is_still_refused(tree: Callable[[], Tree]) -> None:
     """The exception is the save alone: a restore under a condition still narrows the run."""
     broken = tree()
-    broken.edit(
-        CI,
-        "      - id: release-program-cache\n        uses: actions/cache/restore@v4\n",
-        "      - id: release-program-cache\n"
-        "        if: github.event_name == 'push'\n"
-        "        uses: actions/cache/restore@v4\n",
+    _integration_matrix_entry(
+        broken,
+        RELEASE_PROGRAM_RESTORE,
+        "      - if: github.event_name == 'push'\n"
+        "        uses: actions/cache/restore@v4\n        with:\n          path: .release-program\n",
     )
 
     refused(integration_tier(broken.repo), "actions/cache/restore@v4` under the condition")

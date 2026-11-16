@@ -3,9 +3,9 @@
 What `cargo deny` and `cargo machete` refuse is theirs to decide and is proven
 by running `just supply-chain`; what this file holds is the wiring a forge runs
 and no local run can: that the policy enables every check without an allow-all,
-that both tools are held at a release like every other pinned tool, and that the
-job runs once, on Linux, on every pull request, without becoming a context the
-merge path waits on.
+that both tools are held at a release like every other pinned tool, and that it
+runs once, on Linux, on every pull request, as steps of the `lint` job rather
+than as a job — and so a context — of its own.
 """
 
 from __future__ import annotations
@@ -17,7 +17,14 @@ import pytest
 from repo_checks.checks_ci import status_contexts
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo, toolchain_tools
-from repo_checks.parsing import jobs_of, load_workflow, marker_block, recipes, run_commands
+from repo_checks.parsing import (
+    jobs_of,
+    load_workflow,
+    marker_block,
+    recipes,
+    run_commands,
+    steps_of,
+)
 from treecopy import REPO_ROOT
 
 #: The contexts a pull request must always report, read off AGENTS.md's record —
@@ -72,25 +79,40 @@ def test_both_tools_are_held_at_a_release_and_installed_by_the_recipe() -> None:
     contains(body, "cargo machete")
 
 
-def test_the_job_runs_once_on_linux_on_every_pull_request_and_gates_nothing() -> None:
-    """Its own job, one cell, no context of the fixed contract waiting on it."""
+def test_it_runs_once_on_linux_on_every_pull_request_as_steps_of_the_lint_job() -> None:
+    """Steps of `lint`, one cell, unconditional, and no job of its own to wait on.
+
+    The lockfile's graph is the same on every platform, so the supply chain runs
+    in the one job that runs once: `lint`, which every pull request runs. It is
+    no job of its own, so no context names it and no job's `needs` can wait on
+    it, and no other job runs it a second time.
+    """
     workflow = load_workflow(REPO_ROOT / ".github" / "workflows" / "ci.yml")
     jobs = jobs_of(workflow)
-    job = jobs["supply-chain"]
+    running = [name for name, job in jobs.items() if "just supply-chain" in run_commands(job)]
+    equal(running, ["lint"], describing="the ci.yml jobs running `just supply-chain`")
 
-    contains(run_commands(job), "just supply-chain")
+    job = jobs["lint"]
     truth(str(job["runs-on"]).startswith("ubuntu-"), describing=f"runs-on {job['runs-on']!r}")
-    equal(job.get("strategy"), None, describing="the supply-chain job's matrix")
-    equal(job.get("if"), None, describing="the supply-chain job's condition")
+    equal(job.get("strategy"), None, describing="the lint job's matrix")
+    equal(
+        job.get("if"),
+        "github.event_name == 'pull_request'",
+        describing="the lint job's condition",
+    )
     triggers = workflow.get("on", workflow.get(True))
     truth(isinstance(triggers, dict) and "pull_request" in triggers, describing="ci.yml's events")
-
-    reported = {context.job: context.name for context in status_contexts(Repo(REPO_ROOT))}
+    commands = run_commands(job)
     truth(
-        reported["supply-chain"] not in FIXED_CONTEXTS,
-        describing=f"`{reported['supply-chain']}` outside the fixed contract",
+        commands.index("just bootstrap") < commands.index("just supply-chain"),
+        describing="the supply chain running in the bootstrapped environment",
     )
-    for name, other in jobs.items():
-        needs = other.get("needs") or []
-        needed = [needs] if isinstance(needs, str) else list(needs)
-        truth("supply-chain" not in needed, describing=f"`{name}` not waiting on supply-chain")
+    (step,) = [one for one in steps_of(job) if one.get("run") == "just supply-chain"]
+    equal(step.get("if"), None, describing="the supply-chain step's condition")
+
+    reported = {context.name for context in status_contexts(Repo(REPO_ROOT))}
+    truth(
+        not any("supply-chain" in name for name in reported | FIXED_CONTEXTS),
+        describing="no status context named for the supply chain",
+    )
+    truth("supply-chain" not in jobs, describing="no `supply-chain` job for another to need")

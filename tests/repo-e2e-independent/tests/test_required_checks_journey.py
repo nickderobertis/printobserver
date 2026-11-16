@@ -15,15 +15,15 @@ from repo_checks.expect import failing, passing
 
 AGENTS = "AGENTS.md"
 CI = ".github/workflows/ci.yml"
-QUALIFIED = "    name: gate (${{ matrix.platform.id }})\n"
-X86 = "- `gate (linux-x86_64)`\n"
-AARCH64 = "- `gate (linux-aarch64)`\n"
+QUALIFIED = "    name: test (${{ matrix.platform.id }})\n"
+X86 = "- `test (linux-x86_64)`\n"
+AARCH64 = "- `test (linux-aarch64)`\n"
 
 
 def test_the_committed_record_is_accepted(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """The record, platform-qualified integration contexts included, is what CI reports."""
+    """The record, platform-qualified `test` contexts included, is what CI reports."""
     clean = gate_copy()
 
     result = clean.just("check-repo")
@@ -34,9 +34,9 @@ def test_the_committed_record_is_accepted(
 def test_a_stale_bare_matrix_job_name_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """`gate` is the job's key; its cells report under names carrying the platform."""
+    """`test` is the job's key; its cells report under names carrying the platform."""
     broken = gate_copy()
-    broken.edit(AGENTS, X86 + AARCH64, "- `gate`\n")
+    broken.edit(AGENTS, X86 + AARCH64, "- `test`\n")
 
     result = broken.just("check-repo")
 
@@ -46,23 +46,19 @@ def test_a_stale_bare_matrix_job_name_is_refused(
 def test_a_record_naming_only_some_of_a_jobs_cells_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """A tier required on one platform is a merge path the other never blocked.
-
-    The integration job is the one whose cells span several platforms: the
-    gate's `linux-x86_64` cell is sharded, leaving its job one cell.
-    """
+    """A tier required on one platform is a merge path the other never blocked."""
     broken = gate_copy()
-    broken.edit(AGENTS, "- `integration (linux-aarch64)`\n", "")
+    broken.edit(AGENTS, AARCH64, "")
 
     result = broken.just("check-repo")
 
-    failing(result, naming="some but not all of job `integration`'s status contexts as required")
+    failing(result, naming="some but not all of job `test`'s status contexts as required")
 
 
-def test_a_record_still_naming_the_runner_qualified_integration_contexts_is_refused(
+def test_a_record_still_naming_the_runner_qualified_contexts_is_refused(
     gate_copy: Callable[[], GateCopy],
 ) -> None:
-    """The integration job reports under its platform id alone, never its runner.
+    """The `test` job reports under its platform id alone, never its runner.
 
     A context carrying the runner label is renamed by a new runner image, so the
     job names its cells by platform and the record has to follow: the contexts
@@ -71,15 +67,15 @@ def test_a_record_still_naming_the_runner_qualified_integration_contexts_is_refu
     stale = gate_copy()
     stale.edit(
         AGENTS,
-        "- `integration (linux-x86_64)`\n",
-        "- `integration (linux-x86_64, ubuntu-24.04)`\n",
+        X86,
+        "- `test (linux-x86_64, ubuntu-24.04)`\n",
     )
 
     result = stale.just("check-repo")
 
     failing(
         result,
-        naming="`integration (linux-x86_64, ubuntu-24.04)` as a required check, but no "
+        naming="`test (linux-x86_64, ubuntu-24.04)` as a required check, but no "
         "committed workflow reports a status context by that name",
     )
 
@@ -104,7 +100,7 @@ def test_a_required_name_several_cells_report_under_is_refused(
 
     result = broken.just("check-repo")
 
-    failing(result, naming="2 matrix cells of job `gate` report under that one name")
+    failing(result, naming="2 matrix cells of job `test` report under that one name")
 
 
 def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
@@ -112,7 +108,7 @@ def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
 ) -> None:
     """A typo there would derive a context nothing reports, silently."""
     broken = gate_copy()
-    broken.edit(CI, QUALIFIED, "    name: gate (${{ matrix.platform.arch }})\n")
+    broken.edit(CI, QUALIFIED, "    name: test (${{ matrix.platform.arch }})\n")
 
     result = broken.just("check-repo")
 

@@ -34,14 +34,14 @@ from repo_checks.model import Repo
 from repo_checks.parsing import jobs_of, load_workflow, marker_block
 
 HARNESS_PACKAGE = "@anthropic-ai/claude-code"
-#: The judged tier's job, which is the one that runs the installer these
-#: journeys drive, and the workflow that declares it.
-LLMLINT_JOB = "llmlint"
+#: The job whose last steps are the judged tier, which is the one that runs the
+#: installer these journeys drive, and the workflow that declares it.
+LLMLINT_JOB = "lint"
 CI_WORKFLOW = ".github/workflows/ci.yml"
 
 
 def _installer_platforms() -> list[str]:
-    """The platforms the `llmlint` job runs on, read off its own `runs-on`.
+    """The platforms the `lint` job runs on, read off its own `runs-on`.
 
     Resolved through the supported-platform table rather than compared as a
     runner name, so this journey follows that job wherever the table says its
