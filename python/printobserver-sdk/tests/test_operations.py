@@ -163,11 +163,11 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
         ' "slicer": {"at_odds": ["fan_off_over_bridges"], "fan_percen'
         't": {"changed": 1.5, "file": 1.5}, "final_z_mm": 1.5, "flow_'
         'factor": {"changed": 1.5, "file": 1.5}, "layer": 7, "minutes'
-        '_left": 7, "object_count": 7, "objects": [[7]], "rise": {"mm'
-        '": [1.5], "since": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, '
-        '"types": ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "unknown"'
-        ': ["layer"], "z_mm": 1.5}}, "image_path": "0198f0a1-2b3c-7d4'
-        'e-8f90-123456789abc"}'
+        '_left": 7, "object_count": 7, "objects": [[7, 7, 7, 7]], "ri'
+        'se": {"mm": [1.5, 1.5], "since": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc"}, "types": ["0198f0a1-2b3c-7d4e-8f90-123456789ab'
+        'c"], "unknown": ["layer"], "z_mm": 1.5}}, "image_path": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc"}'
     )
 
     with Host(200, answer) as host:

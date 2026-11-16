@@ -2789,8 +2789,7 @@ pub struct Rise {
     /// far it should have risen since — the rise of every layer since that
     /// lays anything but supports. They are the plate's, not every part's: a
     /// part the plan has finished does not grow with it.
-    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
-    pub mm: Vec<f64>,
+    pub mm: [f64; 2],
     /// When that earlier frame was captured: the newest frame at least half
     /// an hour old that a periodic observation or a look at this print was
     /// given, as that observation or look states its capture time.
@@ -2939,7 +2938,7 @@ pub struct SlicerPlan {
     /// `[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of
     /// the file's object numbers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub objects: Option<Vec<Vec<i64>>>,
+    pub objects: Option<Vec<[i64; 4]>>,
     /// How far the plan has risen since an earlier frame; absent before any
     /// frame is half an hour old.
     #[serde(default, skip_serializing_if = "Option::is_none")]
