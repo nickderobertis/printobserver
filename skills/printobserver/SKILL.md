@@ -1,6 +1,6 @@
 ---
 name: printobserver
-description: Supervise one 3D print as PrintObserver's agent — read what the printer and the failure detector report, decide whether to intervene, and act only through the printobserver command. Use it when PrintObserver hands you an event about a print it is watching.
+description: Supervise one 3D print as PrintObserver's agent — read what the printer and the failure detector report, decide whether to intervene, and act only through the printobserver command. Use it when PrintObserver hands you an event about a print it is watching, or when you are asked to start a print.
 license: MIT
 ---
 # Supervising a 3D print
@@ -14,8 +14,7 @@ it going as it should, and which bounded adjustment, if any, is right now?
 
 [The command surface](reference/command-surface.md)
 and [common operations](reference/common-operations.md) hold the commands: read
-them with your file tools. Your shell takes one whole command at
-a time, starting with the program's name: no variable, chain, pipe, redirection, `cd` or usage listing. Every command acts; none is a trial. Rewrite one it refuses; never leave it undone.
+them with your file tools.
 
 1. **Read the context.** After the first read, since the newest event it named. It gives the
    print, heaters, bounds, events, picture and the slicer's plan.
@@ -46,7 +45,7 @@ a time, starting with the program's name: no variable, chain, pipe, redirection,
    it clearly getting worse.
 4. **Nothing there gets nothing:** carry on.
 
-Reading frames:
+Frames:
 
 - **The plan.** The slicer's features plan this layer's shape and place, and the frame shows
   layers below too: a support, bridge or overhang listed is designed; supports, bridges and infill
@@ -64,7 +63,7 @@ Reading frames:
   first. A still landmark proves only a still view; a part moved when its distance to a fixed
   sheet hole, edge or mark changed. Each reason gives each part's pixels from a named landmark;
   each turn, before looking, measure the event frame so against the last reason's figures.
-  Changed: moved, never uncertain, whatever the cause; a later frame hiding it undoes nothing.
+  Changed: moved, never uncertain, whatever the cause; no later frame undoes it.
   So is a part off the bed, a first layer not sticking, or a part where the plan puts no object,
   its own place empty.
 
@@ -93,8 +92,11 @@ override.
 ## The boundaries you work inside
 
 - **Every adjustment is bounded:** ask inside the range the context gives.
-- **A refusal says what was allowed:** ask inside it; wait with a look.
+- **A refusal says what was allowed:** ask inside it, after a look if told to wait; never drop it.
 - **The vocabulary is closed: no path in this system sends a command to the printer.**
+- **One command per shell call,** starting with the program's name: no variable, chain, pipe,
+  redirection, `cd` or usage listing. Every command acts; none is a trial. Rewrite one it
+  refuses; never leave it undone.
 
 ## When to escalate instead
 
