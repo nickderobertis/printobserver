@@ -96,7 +96,9 @@ fn context_sends_what_it_declares_and_answers_what_the_server_sent() {
     let answered = client
         .context(
             "0198f0a1-2b3c-7d4e-8f90-123456789abc",
-            Some("0198f0a1-2b3c-7d4e-8f90-123456789abc".to_owned()),
+            Some(parsed::<EventId>(
+                r#""0198f0a1-2b3c-7d4e-8f90-123456789abc""#,
+            )),
         )
         .expect("`context` is answered");
 

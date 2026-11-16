@@ -11545,7 +11545,7 @@ class GeneratedClient(GeneratedSurface):
         # for it, so this cast names that type.
         return cast(StatusAnswer, answered)
 
-    def context(self, print_id: PrintId, since: str | None = None) -> ContextAnswer:
+    def context(self, print_id: PrintId, since: EventId | None = None) -> ContextAnswer:
         """Call `context` on the configured supervisor.
 
         Raises:

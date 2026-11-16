@@ -3925,7 +3925,7 @@ impl Client {
     pub fn context(
         &self,
         print_id: &str,
-        since: Option<String>,
+        since: Option<EventId>,
     ) -> Result<ContextAnswer, ClientError> {
         let target = format!("/v1/prints/{print_id}/context");
         let mut asked: Vec<(String, String)> = Vec::new();

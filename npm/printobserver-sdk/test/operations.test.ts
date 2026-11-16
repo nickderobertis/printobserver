@@ -82,7 +82,7 @@ test("context sends what it declares and answers what the server sent", async ()
 
   const answered = await client.context(
     "0198f0a1-2b3c-7d4e-8f90-123456789abc",
-    "0198f0a1-2b3c-7d4e-8f90-123456789abc",
+    JSON.parse('"0198f0a1-2b3c-7d4e-8f90-123456789abc"') as EventId,
   );
 
   const received = host.received();

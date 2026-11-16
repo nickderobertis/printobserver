@@ -9606,7 +9606,7 @@ export class GeneratedClient extends GeneratedSurface {
    * the answer could not be read, and with `Refused` when the supervisor
    * said no.
    */
-  async context(printId: string, since?: string): Promise<ContextAnswer> {
+  async context(printId: string, since?: EventId): Promise<ContextAnswer> {
     const target = `/v1/prints/${printId}/context`;
     const asked: Array<[string, string]> = [];
     if (since !== undefined) {

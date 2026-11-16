@@ -43410,7 +43410,7 @@ Declared by `printobserver-server`.
           "repeated": false,
           "required": false,
           "shape": {
-            "type": "string"
+            "$ref": "#/$defs/EventId"
           }
         }
       ],
