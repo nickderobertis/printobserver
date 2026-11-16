@@ -550,7 +550,9 @@ def coverage(repo: Repo, measured: Measured | None = None, keep: Path | None = N
 
     python_total = "not measured: this run's tests reached no Python source"
     if scope.python != ():
-        python = run(["uv", "run", "-q", "coverage", "combine"], cwd=repo.root)
+        # Coverage through this interpreter, the environment `uv run` gave the
+        # recipe, so the report reads what that environment's suites wrote.
+        python = run([sys.executable, "-m", "coverage", "combine"], cwd=repo.root)
         if python.returncode not in (0, 1):
             print(python.stderr, file=sys.stderr)
             failed = True
@@ -568,9 +570,8 @@ def coverage(repo: Repo, measured: Measured | None = None, keep: Path | None = N
             shutil.copyfile(data, keep)
         report = run(
             [
-                "uv",
-                "run",
-                "-q",
+                sys.executable,
+                "-m",
                 "coverage",
                 "report",
                 *([] if keep is not None else [f"--fail-under={floors['python']}"]),
@@ -601,8 +602,17 @@ def coverage(repo: Repo, measured: Measured | None = None, keep: Path | None = N
     return 1 if failed else 0
 
 
-def _host_of(platform: str) -> str | None:
-    """The `sys.platform` a supported platform's hosts report, by its family."""
+def _host_of(repo: Repo, platform: str) -> str | None:
+    """The `sys.platform` the hosts of `platform` report, or none unless the list names it.
+
+    The whole identifier is held to `AGENTS.md`'s supported-platform list, so a
+    file named for no platform there — `linux-nonsense` as surely as
+    `solaris-sparc` — is refused rather than reported under its family.
+    """
+    from repo_checks.platforms import supported
+
+    if platform not in {one.id for one in supported(repo)}:
+        return None
     return next((host for prefix, host in HOSTS if platform.startswith(prefix)), None)
 
 
@@ -639,7 +649,7 @@ def coverage_combine(repo: Repo, directory: Path) -> int:
     failed = False
     totals: list[str] = []
     for platform in platforms:
-        host = _host_of(platform)
+        host = _host_of(repo, platform)
         if host is None:
             print(
                 f"coverage-combine: refused: `{platform}` under {directory} names no supported "

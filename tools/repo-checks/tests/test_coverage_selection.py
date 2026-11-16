@@ -14,7 +14,6 @@ under the floors `repo-policy.toml` records, which the reports enforce.
 from __future__ import annotations
 
 import os
-import shutil
 import sys
 import tomllib
 from collections.abc import Callable, Iterator
@@ -22,7 +21,7 @@ from pathlib import Path
 
 import pytest
 from repo_checks.checks_graph import RUST, platform_independent_tag, projects
-from repo_checks.commands import LINT_DATA, Measured, coverage_combine, measured_for
+from repo_checks.commands import LINT_DATA, Measured, coverage, coverage_combine, measured_for
 from repo_checks.expect import contains, equal, truth
 from repo_checks.gate_tier import PROJECTS_VARIABLE
 from repo_checks.model import Repo
@@ -166,9 +165,11 @@ def test_the_floors_are_the_repositorys_and_both_halves_run_the_coverage_recipe(
 
 
 #: What a copy carries for a combined report: the coverage configuration, the
-#: floors, and every source it reports over.
+#: floors, the supported-platform list its files are named by, and every source
+#: it reports over.
 REPORTED = Closure(
     (
+        "AGENTS.md",
         "pyproject.toml",
         "repo-policy.toml",
         "tools/repo-checks/src/",
@@ -179,26 +180,30 @@ REPORTED = Closure(
 )
 
 
-def kept(tree: Path, name: str, module: str) -> Path:
-    """The data one CI half keeps, measured by really importing `module` under coverage.
+def measured_by(tree: Path, module: str) -> None:
+    """Leave the parallel data a job's suite would, by really importing `module` under coverage.
 
     The run is configured by the copy's own `pyproject.toml`, as a job's tests
-    are, and combined into the one file the job uploads.
+    are, so it writes `.coverage.*` files beside it for `coverage` to combine.
     """
-    scratch = tree.parent / f"half-{name}"
-    scratch.mkdir()
-    script = scratch / "half.py"
+    script = tree.parent / f"measure-{module}.py"
     script.write_text(f"import {module}\n", encoding="utf-8")
     environment = {**os.environ, "PYTHONPATH": str(tree / "tools/repo-checks/src")}
-    for argv in (
-        ["run", f"--data-file={scratch / 'data'}", str(script)],
-        ["combine", f"--data-file={scratch / 'data'}", str(scratch)],
-    ):
-        done = run([sys.executable, "-m", "coverage", *argv], cwd=tree, env=environment)
-        equal(done.returncode, 0, describing=f"coverage {argv[0]}: {done.stdout}{done.stderr}")
+    done = run([sys.executable, "-m", "coverage", "run", str(script)], cwd=tree, env=environment)
+    equal(done.returncode, 0, describing=f"coverage run: {done.stdout}{done.stderr}")
+
+
+def kept(tree: Path, name: str, module: str) -> Path:
+    """The data one CI half keeps: `coverage` in keep mode over what `module`'s import measured.
+
+    That is `just coverage` as `just ci-measured` runs it, with the Rust half
+    out of this copy's reach, so it is the real command that writes the file
+    the job uploads.
+    """
+    measured_by(tree, module)
     into = tree / "coverage-data" / name
-    into.parent.mkdir(exist_ok=True)
-    shutil.copyfile(scratch / "data", into)
+    equal(coverage(Repo(tree), Measured(rust=()), keep=into), 0, describing=f"keeping {name}")
+    truth(into.is_file(), describing=f"the {name} half's data kept at {into}")
     return into
 
 
@@ -266,6 +271,11 @@ def test_a_platform_below_the_floor_fails_naming_it(
             "`solaris-sparc` under",
             id="no-such-platform",
         ),
+        pytest.param(
+            lambda data: (data / "linux-x86_64").rename(data / "linux-nonsense"),
+            "`linux-nonsense` under",
+            id="a-family-but-no-platform",
+        ),
     ],
 )
 def test_a_directory_missing_a_half_is_refused(
@@ -281,3 +291,21 @@ def test_a_directory_missing_a_half_is_refused(
     equal(coverage_combine(Repo(halves), halves / "coverage-data"), 1)
 
     contains(capsys.readouterr().err, naming)
+
+
+def test_a_kept_half_is_kept_below_the_floor_and_ruled_on_without_keep(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Keeping defers the Python floor to the combined report; without it, the floor rules here."""
+    tree = copy_tree(tmp_path / "tree", closure=REPORTED)
+
+    measured_by(tree, "repo_checks.expect")
+    equal(coverage(Repo(tree), Measured(rust=())), 1, describing="the floor without keep")
+    contains(capsys.readouterr().err, "Python line coverage is below the 95% floor")
+
+    measured_by(tree, "repo_checks.expect")
+    kept_at = tree / "coverage-data" / LINT_DATA
+    equal(coverage(Repo(tree), Measured(rust=()), keep=kept_at), 0, describing="keeping")
+    said = capsys.readouterr().out
+    contains(said, f"kept at {kept_at} for the `budgets` job's combined report")
+    truth(kept_at.is_file(), describing="the kept data")

@@ -142,17 +142,6 @@ jobs:
           path: coverage-data/lint
           if-no-files-found: error
           retention-days: 1
-      # The Rust supply-chain gate, at the releases `repo-policy.toml` holds the
-      # two tools at, installed prebuilt so the recipe's own install compiles
-      # nothing. The lockfile's graph is the same on every platform.
-      - id: deny
-        run: just tool-version cargo-deny >> "$GITHUB_OUTPUT"
-      - id: machete
-        run: just tool-version cargo-machete >> "$GITHUB_OUTPUT"
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny@${{ steps.deny.outputs.version }},cargo-machete@${{ steps.machete.outputs.version }}
-      - run: just supply-chain
       # A real `gh skill install` of the Agent Skill from a copy of the tree,
       # with no GitHub credentials, under the release `repo-policy.toml` holds
       # gh at, installed from that release's own archive ahead of the runner's.
@@ -168,6 +157,23 @@ jobs:
       - run: just lint-llm-diff
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # The Rust supply chain, last, so an advisory published upstream never
+      # hides the verdicts before it; at the releases `repo-policy.toml` holds
+      # the two tools at, installed prebuilt so the recipe's own install
+      # compiles nothing. It reports and gates nothing, as the job it was before
+      # this one did: a finding is a red step with its annotations and leaves
+      # `lint` green, because an advisory published upstream is no defect of the
+      # change under review, and fixing one is dependency work of its own.
+      - id: deny
+        run: just tool-version cargo-deny >> "$GITHUB_OUTPUT"
+      - id: machete
+        run: just tool-version cargo-machete >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@${{ steps.deny.outputs.version }},cargo-machete@${{ steps.machete.outputs.version }}
+      # llmlint: ignore[diagnostics_error_or_absent] suppressions.toml has the reason.
+      - run: just supply-chain
+        continue-on-error: true
 
   test:
     # The platform is in the name because that name is the status context a

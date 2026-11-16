@@ -85,6 +85,7 @@ jobs:
           key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
+      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
       - run: just ci-warm
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"

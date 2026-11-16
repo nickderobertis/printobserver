@@ -68,6 +68,8 @@ TIMEOUT = 30
 #: jobs API answers.
 UNSTARTED = frozenset({"queued", "waiting", "pending", "requested"})
 STATUSES = UNSTARTED | {"in_progress", "completed"}
+#: How a job the forge completed without handing it a runner can have concluded.
+NO_RUNNER_CONCLUSIONS = frozenset({"skipped", "cancelled"})
 
 #: Each runner family, by the prefix of the hosted-runner labels it answers to.
 FAMILIES = (("Linux", "ubuntu"), ("Windows", "windows"), ("macOS", "macos"))
@@ -463,8 +465,24 @@ def job_of(entry: Mapping[str, object], workflow: str) -> Job:
         )
         raise BudgetError(msg)
     started = _instant(entry.get("started_at"), where, "started_at")
+    completed = _instant(entry.get("completed_at"), where, "completed_at")
     if status in UNSTARTED or (status == "completed" and not runner):
+        # A job no runner picked up — still queued, or skipped or cancelled
+        # before one did — ran for no time; one that completed any other way
+        # had a runner, and a record saying otherwise is no record to read.
+        if status == "completed" and conclusion not in NO_RUNNER_CONCLUSIONS:
+            msg = (
+                f"{where} completed {conclusion!r} with no runner, which only a job "
+                f"skipped or cancelled before it started does"
+            )
+            raise BudgetError(msg)
         started = None
+    elif started is None or (status == "completed" and completed is None):
+        msg = (
+            f"{where} is {status} with started_at={entry.get('started_at')!r} and "
+            f"completed_at={entry.get('completed_at')!r}, which time no run"
+        )
+        raise BudgetError(msg)
     return Job(
         name=name,
         workflow=workflow,
@@ -473,7 +491,7 @@ def job_of(entry: Mapping[str, object], workflow: str) -> Job:
         labels=tuple(cast("list[str]", labels)),
         created_at=created,
         started_at=started,
-        completed_at=_instant(entry.get("completed_at"), where, "completed_at"),
+        completed_at=completed,
         steps=_steps(entry, where),
     )
 

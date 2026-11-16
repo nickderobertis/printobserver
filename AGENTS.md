@@ -1266,17 +1266,13 @@ merge path the other never blocked — and why `lint`, which runs once, appears
 with no platform in its name at all.
 
 **One pull-request push runs eight jobs, none of them sharded**, all of
-`ci.yml`: `lint`, one `test (<platform>)` per supported platform, `skilltest`
-and `budgets`. `lint` runs, once, the formatters, linters and type checkers over
-the affected projects, the Windows-target lint, `lint-workflows` and
-`check-repo` (`just ci-lint`), the measured tiers of the affected projects
-tagged `platform:independent`, and as steps the pull-request title, the
-suppressions comment, the supply chain, the skill install and the judged lint.
-Each `test` job runs the measured tiers — `test` with its coverage, `build` and
-`test-e2e` — of every other affected project (`just ci-test`), the per-project
-budgets and the printer integration tier. The two recipes together run every
-tier `just check` runs, each project's once, and a test drives both through the
-real recipes to hold that. Only `budgets` waits on another job.
+`ci.yml`: `lint` once, one `test (<platform>)` per supported platform,
+`skilltest` and `budgets`. `just ci-lint` and `just ci-test` split `just check`'s
+work by the `platform:independent` tag, so together they run every tier, each
+project's once, and a test drives both through the real recipes to hold that.
+Only `budgets` waits on another job. `lint`'s last step, the supply chain,
+reports and gates nothing, because an advisory published upstream is no defect
+of the change it lands on.
 
 **The Python coverage floor is ruled on by the required `budgets` context.** A
 Python source and the tests measuring it can sit on the two sides of the
@@ -1359,13 +1355,10 @@ still tells the release pull request apart, by its `release-plz-` head branch,
 for the one measurement only it pays for (`just budgets-release-pr`). The
 required check names are the same at either tier.
 
-Outside both tiers: the `test (<platform>)` jobs run `just test-integration` on
-every pull request whatever the affected set reaches; the `lint` job's steps
-lint the title, post the suppressions comment, run the supply chain, install the
-skill and run the judged lint on every pull request; the `skilltest` job runs the
-real-print suite where its first step says the change owes it; the Obico tier and
-the registry install-path proof run on their schedules; the real-printer smoke
-runs only by hand.
+Outside both tiers: the integration tier runs in every `test` job, the
+real-print suite where its own first step says it is owed, the Obico tier and
+the registry install-path proof on their schedules, and the real-printer smoke
+only by hand.
 
 **Which subjects release.** `repo-policy.toml`'s `commits.release_types` is the
 source: **`feat`, `fix` and `perf`** cut a release (and `!` / `BREAKING CHANGE`

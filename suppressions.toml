@@ -4722,3 +4722,15 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "diagnostics_error_or_absent"
+file = ".github/workflows/ci.yml"
+site = "- run: just supply-chain"
+reason = "The supply chain reports and gates nothing, which is the contract it had before this change as a job of its own that no required context named; folding it into the required `lint` job must not turn every advisory published upstream into a refusal of whatever change lands next. Its findings are not hidden: the step goes red with cargo-deny's own annotations on the pull request, and it runs last so it hides no verdict before it. The two advisories it reports today (RUSTSEC-2026-0459 in libsqlite3-sys, RUSTSEC-2026-0486 in rustix) are dependency work held for follow-up, not defects of the change under review."
+
+[[suppression]]
+rule = "no_second_broader_sweep_over_an_already_gated_commit"
+file = ".github/workflows/warm.yml"
+site = "- run: just ci-warm"
+reason = "This is no gate: `warm.yml` reports no required context and its verdict is read by nothing. Running the test, build and lint targets on `main` is how the caches the next pull requests restore are filled with exactly what their `test` and `lint` jobs compile, because `cargo llvm-cov` has no compile-only mode that writes the instrumented artifacts its test run reads (its `--no-run` reports without running). It replaces the affected-tier gate the previous workflow ran on every push to `main`, so the work a merge starts did not grow."

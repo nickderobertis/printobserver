@@ -80,7 +80,7 @@ def test_both_tools_are_held_at_a_release_and_installed_by_the_recipe() -> None:
 
 
 def test_it_runs_once_on_linux_on_every_pull_request_as_steps_of_the_lint_job() -> None:
-    """Steps of `lint`, one cell, unconditional, and no job of its own to wait on.
+    """Steps of `lint`, last, one cell, unconditional, gating nothing, and no job of its own.
 
     The lockfile's graph is the same on every platform, so the supply chain runs
     in the one job that runs once: `lint`, which every pull request runs. It is
@@ -107,8 +107,17 @@ def test_it_runs_once_on_linux_on_every_pull_request_as_steps_of_the_lint_job() 
         commands.index("just bootstrap") < commands.index("just supply-chain"),
         describing="the supply chain running in the bootstrapped environment",
     )
+    truth(
+        commands.index("just lint-llm-diff") < commands.index("just supply-chain"),
+        describing="the supply chain after the judged lint, hiding no verdict before it",
+    )
     (step,) = [one for one in steps_of(job) if one.get("run") == "just supply-chain"]
     equal(step.get("if"), None, describing="the supply-chain step's condition")
+    equal(
+        step.get("continue-on-error"),
+        True,
+        describing="the supply-chain step reporting and gating nothing, as its job did before",
+    )
 
     reported = {context.name for context in status_contexts(Repo(REPO_ROOT))}
     truth(

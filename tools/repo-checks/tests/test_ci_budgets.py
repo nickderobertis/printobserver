@@ -18,6 +18,7 @@ import os
 import secrets
 import tomllib
 from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -164,17 +165,9 @@ def reported(written: Path) -> tuple[float, dict[str, Any]]:
 
 @pytest.fixture
 def served() -> Iterator[Callable[[Forge], str]]:
-    """Serve one stand-in forge for the test, yielding its address."""
-    stack: list[Any] = []
-
-    def serve(forge: Forge) -> str:
-        context = serving(forge)
-        stack.append(context)
-        return context.__enter__()
-
-    yield serve
-    for context in reversed(stack):
-        context.__exit__(None, None, None)
+    """Serve stand-in forges for the test, each until it ends, yielding a way to start one."""
+    with ExitStack() as stack:
+        yield lambda forge: stack.enter_context(serving(forge))
 
 
 def test_the_longest_job_is_the_figure_and_every_job_is_in_the_breakdown(
@@ -361,6 +354,18 @@ def test_a_forge_refusing_the_read_refuses(
         (lambda doc: doc["jobs"][0].update(status="paused"), "say nothing of whether it ran"),
         (lambda doc: doc["jobs"][0].pop("created_at"), "no created_at"),
         (lambda doc: doc["jobs"][0].update(steps=[{"status": "x"}]), "a step with no name"),
+        (
+            lambda doc: doc["jobs"][0].update(status="in_progress", started_at=None),
+            "is in_progress with started_at=None",
+        ),
+        (
+            lambda doc: doc["jobs"][0].update(completed_at=None),
+            "is completed with started_at=",
+        ),
+        (
+            lambda doc: doc["jobs"][0].update(runner_name=None, conclusion="success"),
+            "completed 'success' with no runner",
+        ),
     ],
 )
 def test_jobs_this_cannot_read_refuse(
