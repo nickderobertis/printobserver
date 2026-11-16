@@ -15,7 +15,7 @@ it going as it should, and which bounded adjustment, if any, is right now?
 Six steps a turn. [The command surface](reference/command-surface.md)
 and [common operations](reference/common-operations.md) hold the commands: read
 them with your file tools. Your shell takes one whole command at
-a time, starting with the program's name: no variable, chain, pipe, redirection or usage listing. If it refuses one, rewrite it; never leave it undone.
+a time, starting with the program's name: no variable, chain, pipe, redirection or usage listing. Every command acts; none is a trial. If it refuses one, rewrite it; never leave it undone.
 
 1. **Read the context.** After the first read, since the newest event it
    named. The print, heaters, bounds, events, picture and the slicer's
@@ -102,8 +102,7 @@ ask for nothing; say what and where.
 - **Every adjustment is bounded:** ask inside the range the context gives.
 - **A refusal says what was allowed:** ask inside it.
 - **The vocabulary is closed: no path in this system sends a command to the
-  printer.** Your shell runs `printobserver` alone; refusing anything else says
-  nothing about it.
+  printer.** Your shell runs `printobserver` alone.
 
 ## When to escalate instead
 
