@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -305,20 +306,27 @@ def platform_independent_tag(repo: Repo) -> str:
     return tag
 
 
+#: The justfile variable spelling the tag for the two halves of the gate the
+#: CI jobs run, `just ci-lint` over its projects and `just ci-test` over the rest.
+JUSTFILE_TAG = re.compile(r'^PLATFORM_INDEPENDENT := "(?P<tag>[^"]*)"$', re.MULTILINE)
+
+
 def project_tags(repo: Repo) -> list[str]:
     """Every project tag in the `platform:` dimension is the one `repo-policy.toml` declares.
 
     A misspelt tag would leave a project's suite on every platform while its
     owner believed it ran once, so any other value of that dimension is refused
-    naming the declared spelling. The tag selects nothing yet: this is the
-    whole of what reads it.
+    naming the declared spelling. The justfile's `PLATFORM_INDEPENDENT`, which
+    the `lint` and `test` jobs' recipes select by, is held to it too: a recipe
+    selecting by another spelling would run every tagged suite on every
+    platform, or none of them anywhere.
     """
     try:
         declared = platform_independent_tag(repo)
         graph = projects(repo)
     except (PolicyValueError, ProjectFileError) as malformed:
         return [str(malformed)]
-    return [
+    findings = [
         f"{project.root}/project.json carries `{tag}`, which is no tag of the "
         f"`{PLATFORM_DIMENSION}:` dimension: the one `repo-policy.toml`'s "
         f"`gate.{PLATFORM_INDEPENDENT_KEY}` declares is `{declared}`"
@@ -326,3 +334,15 @@ def project_tags(repo: Repo) -> list[str]:
         for tag in sorted(project.tags)
         if tag.partition(":")[0] == PLATFORM_DIMENSION and tag != declared
     ]
+    spelled = JUSTFILE_TAG.search(repo.justfile)
+    if spelled is None:
+        findings.append(
+            "the justfile declares no `PLATFORM_INDEPENDENT := \"<tag>\"`, so the CI jobs' "
+            f"recipes select by no spelling of `gate.{PLATFORM_INDEPENDENT_KEY}`"
+        )
+    elif spelled["tag"] != declared:
+        findings.append(
+            f"the justfile's `PLATFORM_INDEPENDENT` is `{spelled['tag']}`, and the one "
+            f"`repo-policy.toml`'s `gate.{PLATFORM_INDEPENDENT_KEY}` declares is `{declared}`"
+        )
+    return findings
