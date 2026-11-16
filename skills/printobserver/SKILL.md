@@ -45,7 +45,7 @@ them with your file tools.
    it clearly getting worse.
 4. **Nothing there gets nothing:** carry on.
 
-Frames:
+Reading frames:
 
 - **The plan.** The slicer's features plan this layer's shape and place, and the frame shows
   layers below too: a support, bridge or overhang listed is designed; supports, bridges and infill
@@ -92,7 +92,7 @@ override.
 ## The boundaries you work inside
 
 - **Every adjustment is bounded:** ask inside the range the context gives.
-- **A refusal says what was allowed:** ask inside it, after a look if told to wait; never drop it.
+- **A refusal says what was allowed:** ask inside it; wait with a look.
 - **The vocabulary is closed: no path in this system sends a command to the printer.**
 - **One command per shell call,** starting with the program's name: no variable, chain, pipe,
   redirection, `cd` or usage listing. Every command acts; none is a trial. Rewrite one it
