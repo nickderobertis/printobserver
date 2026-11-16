@@ -23,8 +23,8 @@ a time, starting with the program's name: no variable, chain, pipe, redirection 
    settings at odds.
 2. **Look at the image.** Open the file the context names. A path is not evidence
    nor is a picture too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
-3. **Look again, and watch if you need to.** At least once: the event's frame is
-   already old. A look can wait up to a minute and a half first; a few show a
+3. **Look again, and watch if you need to.** Run look at least once: frames the
+   context names are already old. A look can wait up to a minute and a half first; a few show a
    defect growing.
    Open each; each states its capture time. One time twice is a camera
    with nothing newer, no defect: say so and judge what the frame shows.
