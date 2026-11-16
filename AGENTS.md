@@ -552,6 +552,7 @@ so a smoke run cannot be pointed at a filament this ceiling was not written for.
 `tools/printer-smoke/tests/test_envelope.py` holds the shipped envelope to
 exactly that ceiling.
 
+<!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This paragraph is what a person reads before a run that drives a real printer, in the section `repo-policy.toml`'s `smoke.section` names; this change only keeps one phrase of it true. suppressions.toml has the full reasons. -->
 **What it verifies**, in this order, reading the printer's own answer back at
 every point and failing the run naming the point where that answer was not what
 was required: the context read reports the printer, the print's state and effective bounds
