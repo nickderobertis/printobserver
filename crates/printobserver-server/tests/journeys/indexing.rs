@@ -767,8 +767,8 @@ async fn a_file_without_types_estimates_flow_fan_or_objects_says_so_and_is_check
 }
 
 /// A check is told how far the plan has risen since a frame half an hour or
-/// more back — the Z the file added since the position that observation's job
-/// had reached — and which setting in force the plan at this height says is
+/// more back — that frame's capture time, the part's top at the position that
+/// observation's job had reached, and the Z the file added since — and which setting in force the plan at this height says is
 /// wrong: the fan off over the layers that bridge, and the flow well under one
 /// over walls, each set through the operator's own surface.
 #[tokio::test(flavor = "multi_thread")]
@@ -791,10 +791,20 @@ async fn a_check_is_told_the_plans_rise_and_the_settings_at_odds_with_it() {
         .checked_at(&print_id, FIRST, BUBBLER, IN_BRIDGE.position)
         .await;
     assert_eq!(
-        turn["slicer"]["rise"],
-        json!({ "minutes_ago": 40, "top_risen_mm": 4.8 }),
-        "the check was not told the Z added since layer 23's {} mm",
-        IN_SUPPORT.z_mm
+        turn["slicer"]["rise"]["mm"],
+        json!([IN_SUPPORT.z_mm, 4.8]),
+        "the check was not told layer 23's {} mm and the Z added since, to the bridge's {} mm",
+        IN_SUPPORT.z_mm,
+        IN_BRIDGE.z_mm
+    );
+    let since: Timestamp = turn["slicer"]["rise"]["since"]
+        .as_str()
+        .and_then(|since| since.parse().ok())
+        .unwrap_or_else(|| panic!("the rise names no frame: {}", turn["slicer"]));
+    let ago_s = Timestamp::now().as_utc().timestamp() - since.as_utc().timestamp();
+    assert!(
+        (39 * 60..=41 * 60).contains(&ago_s),
+        "the rise names a frame {ago_s}s old rather than the observation 40 minutes back"
     );
     assert!(
         turn["slicer"].get("at_odds").is_none(),

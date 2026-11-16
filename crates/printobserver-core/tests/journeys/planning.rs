@@ -590,8 +590,8 @@ fn a_print_whose_file_name_is_no_file_is_not_planned() {
 }
 
 /// Until a periodic observation is half an hour old the plan states no rise;
-/// once one is, the plan states how long ago it was taken and the Z the file
-/// has added since the position its job had reached. This world has no
+/// once one is, the plan states when it was taken, the part's top the file had
+/// reached by its job's position, and the Z the file has added since. This world has no
 /// camera, so the observation carries no frame time and its received time
 /// stands in for it.
 #[test]
@@ -641,8 +641,8 @@ fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
     assert_eq!(
         plan.rise,
         Some(Rise {
-            minutes_ago: 31,
-            top_risen_mm: 0.2,
+            since: observed_at(&world, print.id),
+            mm: [0.2, 0.2],
         }),
         "the rise since the observation half an hour back is not the file's"
     );
@@ -650,6 +650,94 @@ fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
         !plan.unknown.contains(&PlanFact::Rise),
         "{:?}",
         plan.unknown
+    );
+}
+
+/// When the periodic observation was received that a world with no camera
+/// stands its frame time in by.
+fn observed_at(world: &World, print_id: PrintId) -> printobserver_types::Timestamp {
+    world
+        .store
+        .events_of(print_id)
+        .iter()
+        .find(|event| event.kind().as_str() == PeriodicObservationPayload::KIND)
+        .expect("the observation is recorded")
+        .received_at
+}
+
+/// The plan's rise is measured from the newest frame at least half an hour
+/// old that was seen, whether a periodic observation or a look was given it:
+/// a look younger than that leaves the observation as the frame; once the
+/// look is old enough it is the frame, with the part's top where the job then
+/// stood and the rise since.
+#[test]
+fn the_rise_is_measured_from_the_newest_half_hour_old_frame_a_look_was_given_too() {
+    let world = World::with_camera();
+    world.printer.holds_gcode(FILE, PLAN);
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Printing);
+    world.printer.reports_state(PrinterState::Printing);
+    let size = Some(i64::try_from(PLAN.len()).expect("small"));
+    world
+        .printer
+        .reports_position(Some(past("G1 X20 Y10 E1")), size);
+    let print = world.open_print(7);
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    let observation = world
+        .store
+        .events_of(print.id)
+        .iter()
+        .find_map(|event| event.payload_as::<PeriodicObservationPayload>()?.ok())
+        .and_then(|observed| observed.frame_captured_at)
+        .expect("the observation was given a frame");
+
+    world.clock.advance(60);
+    world.printer.reports_position(Some(past(";Z:0.4")), size);
+    let look = block_on(
+        world
+            .core
+            .take_look(print.id, std::time::Duration::ZERO, Vec::new()),
+    )
+    .expect("the look is taken");
+    let looked = look
+        .event
+        .payload_as::<printobserver_core::kinds::CameraLookPayload>()
+        .and_then(Result::ok)
+        .and_then(|look| look.frame_captured_at)
+        .expect("the look was given a frame");
+    assert!(looked > observation);
+
+    // The observation half an hour and thirty seconds old, the look thirty
+    // seconds short of it.
+    world.clock.advance(30 * 60 - 30);
+    world.printer.reports_position(Some(past("M221 S95")), size);
+    let rise = |world: &World| {
+        world
+            .context(print.id)
+            .expect("the context reads")
+            .slicer
+            .expect("the job is planned")
+            .rise
+    };
+    assert_eq!(
+        rise(&world),
+        Some(Rise {
+            since: observation,
+            mm: [0.2, 0.2],
+        }),
+        "a look under half an hour old was measured from"
+    );
+
+    world.clock.advance(60);
+    assert_eq!(
+        rise(&world),
+        Some(Rise {
+            since: looked,
+            mm: [0.4, 0.0],
+        }),
+        "the newer half-hour-old frame, the look's, was not measured from"
     );
 }
 

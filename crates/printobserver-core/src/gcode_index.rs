@@ -62,10 +62,10 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use printobserver_printer_api::GcodeSink;
-use printobserver_types::PrintId;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{PrintId, Timestamp};
 
 /// The longest line this reader holds; anything longer is no line it reads.
 ///
@@ -377,6 +377,15 @@ impl GcodeIndex {
     /// layer with a height.
     #[must_use]
     pub fn risen_since(&self, earlier: i64, now: i64) -> Option<f64> {
+        self.height_and_rise_since(earlier, now)
+            .map(|[_, risen]| risen)
+    }
+
+    /// The part's own top at an earlier position and the height it gains from
+    /// there to a later one, each in millimetres to a tenth, as
+    /// [`risen_since`](Self::risen_since) counts the gain.
+    #[must_use]
+    pub fn height_and_rise_since(&self, earlier: i64, now: i64) -> Option<[f64; 2]> {
         let at = |position| {
             self.layers
                 .iter()
@@ -394,6 +403,7 @@ impl GcodeIndex {
             .filter(lays_the_part)
             .find_map(|layer| layer.z_mm)
             .or(self.layers[then].z_mm)?;
+        let height = top;
         let mut risen = 0.0;
         for layer in self
             .layers
@@ -406,7 +416,8 @@ impl GcodeIndex {
             risen += (z - top).max(0.0);
             top = top.max(z);
         }
-        Some((risen * 10.0).round() / 10.0)
+        let tenth = |mm: f64| (mm * 10.0).round() / 10.0;
+        Some([tenth(height), tenth(risen)])
     }
 }
 
@@ -459,21 +470,22 @@ pub struct SetValue {
 /// each most edge up, so that it holds every move laying that object down.
 pub type BedArea = [i64; 4];
 
-/// How far the plan has risen since an earlier frame of this print: the
-/// height a camera should show the parts to have gained since then.
+/// How far the plan has risen since one earlier frame of this print that was
+/// seen: the height a camera should show the parts to have gained since then.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct Rise {
-    /// How many whole minutes before this read that earlier frame was
-    /// captured: the latest periodic observation's frame at least half an hour
-    /// old.
-    pub minutes_ago: i64,
-    /// How far the print's highest point should have risen since the position
-    /// that frame's job had reached, in millimetres: the rise of every layer
-    /// since that lays anything but supports. It is the plate's, not every
-    /// part's: a part the plan has finished does not grow with it.
-    pub top_risen_mm: f64,
+    /// When that earlier frame was captured: the newest frame at least half
+    /// an hour old that a periodic observation or a look at this print was
+    /// given, as that observation or look states its capture time.
+    pub since: Timestamp,
+    /// Two heights of the print's highest point, in millimetres: the first
+    /// is where the plan had it when that frame was captured, the second how
+    /// far it should have risen since — the rise of every layer since that
+    /// lays anything but supports. They are the plate's, not every part's: a
+    /// part the plan has finished does not grow with it.
+    pub mm: [f64; 2],
 }
 
 /// A setting in force that the plan at this height says is wrong for what is
@@ -593,8 +605,8 @@ impl Sample for SlicerPlan {
             object_count: Some(1),
             objects: vec![[100, 99, 150, 117]],
             rise: Some(Rise {
-                minutes_ago: 62,
-                top_risen_mm: 4.8,
+                since: Timestamp::sample_full(),
+                mm: [7.2, 4.8],
             }),
             at_odds: vec![PlanMismatch::FlowLowOverWalls],
             unknown: vec![PlanFact::Objects],
@@ -1393,6 +1405,12 @@ enum Slot {
 pub struct GcodeIndexes {
     /// One slot per print that has been asked for.
     slots: Mutex<BTreeMap<PrintId, Slot>>,
+    /// The frames each print's looks were given, by their capture time, with
+    /// the file position the job had reached as each was taken: a look's
+    /// record keeps no job, so a rise since one is measured from this. It is
+    /// this process's alone, as the indexes are: a restarted one measures
+    /// from periodic observations until its own looks are old enough.
+    looked: Mutex<BTreeMap<PrintId, Vec<(Timestamp, i64)>>>,
 }
 
 /// What asking for one print's index answered.
@@ -1516,6 +1534,46 @@ impl<'a> Future for Claim<'a> {
 const HELD_INDEXES: usize = 16;
 
 impl GcodeIndexes {
+    /// Remember that a look at one print was given a frame captured at
+    /// `captured`, with the job at `position`, and forget what no rise can be
+    /// measured from any more: every look older than the newest one already
+    /// half an hour old before `now`, and the looks of prints beyond
+    /// [`HELD_INDEXES`], oldest print first.
+    pub(crate) fn note_look(
+        &self,
+        print_id: PrintId,
+        captured: Timestamp,
+        position: i64,
+        now: Timestamp,
+    ) {
+        let mut looked = self.looked.lock().unwrap_or_else(PoisonError::into_inner);
+        let frames = looked.entry(print_id).or_default();
+        frames.push((captured, position));
+        frames.sort_by_key(|(captured, _)| *captured);
+        if let Ok(until) = now.plus_seconds(-RISE_WINDOW_S) {
+            let aged = frames.partition_point(|(captured, _)| *captured <= until);
+            frames.drain(..aged.saturating_sub(1));
+        }
+        while looked.len() > HELD_INDEXES {
+            let Some(oldest) = looked.keys().next().copied() else {
+                break;
+            };
+            let _ = looked.remove(&oldest);
+        }
+    }
+
+    /// The newest look at one print whose frame was captured no later than
+    /// `until`: its capture time and the job's position then.
+    fn newest_look_until(&self, print_id: PrintId, until: Timestamp) -> Option<(Timestamp, i64)> {
+        let looked = self.looked.lock().unwrap_or_else(PoisonError::into_inner);
+        looked
+            .get(&print_id)?
+            .iter()
+            .rev()
+            .find(|(captured, _)| *captured <= until)
+            .copied()
+    }
+
     /// Let go of finished indexes beyond [`HELD_INDEXES`], keeping `keep`.
     fn trim(&self, keep: PrintId) {
         let mut slots = self.held();
@@ -1572,8 +1630,9 @@ impl crate::supervisor::Supervisor {
         Ok(Some(plan))
     }
 
-    /// How far the plan has risen since the latest periodic observation's
-    /// frame at least [`RISE_WINDOW_S`] old, when one carries a position.
+    /// How far the plan has risen since the newest frame at least
+    /// [`RISE_WINDOW_S`] old that was seen — a periodic observation's, when it
+    /// carries a position, or a look's — and where the plan had the top then.
     async fn rise_of(
         &self,
         print_id: PrintId,
@@ -1601,13 +1660,27 @@ impl crate::supervisor::Supervisor {
                 limit: Some(1),
             })
             .await?;
-        Ok(events.first().and_then(|event| {
+        let observed = events.first().and_then(|event| {
             let observed = event.payload_as::<PeriodicObservationPayload>()?.ok()?;
             let earlier = observed.job?.file_position_bytes?;
-            let captured = observed.frame_captured_at.unwrap_or(event.received_at);
+            Some((
+                observed.frame_captured_at.unwrap_or(event.received_at),
+                earlier,
+            ))
+        });
+        let looked = self.gcode_indexes().newest_look_until(print_id, until);
+        let newest = match (observed, looked) {
+            (Some(observed), Some(looked)) => Some(if looked.0 > observed.0 {
+                looked
+            } else {
+                observed
+            }),
+            (observed, looked) => observed.or(looked),
+        };
+        Ok(newest.and_then(|(since, earlier)| {
             Some(Rise {
-                minutes_ago: (now.as_utc().timestamp() - captured.as_utc().timestamp()) / 60,
-                top_risen_mm: index.risen_since(earlier, position)?,
+                since,
+                mm: index.height_and_rise_since(earlier, position)?,
             })
         }))
     }

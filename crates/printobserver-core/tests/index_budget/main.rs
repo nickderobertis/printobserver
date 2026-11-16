@@ -228,10 +228,14 @@ fn rendered(index: &GcodeIndex) -> Rendered {
     let layer = plan.layer;
     let mut plan = plan;
     // The two facts read beside the index, at their longest: a rise since a
-    // frame half an hour back, and both settings named as wrong for the plan.
+    // frame half an hour back, named by a capture time to the nanosecond, from
+    // a top as high as the plate's own, and both settings named as wrong for
+    // the plan.
     plan.rise = Some(Rise {
-        minutes_ago: 102,
-        top_risen_mm: 12.4,
+        since: "2026-10-08T20:48:30.123456789Z"
+            .parse()
+            .expect("a capture time"),
+        mm: [129.6, 12.4],
     });
     plan.at_odds = vec![
         PlanMismatch::FanOffOverBridges,

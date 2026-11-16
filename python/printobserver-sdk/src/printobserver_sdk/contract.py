@@ -3213,20 +3213,22 @@ class Reported(TypedDict):
 class Rise(TypedDict):
     """`Rise`, as the contracts declare it.
 
-    How far the plan has risen since an earlier frame of this print: the
-    height a camera should show the parts to have gained since then.
+    How far the plan has risen since one earlier frame of this print that
+    was
+    seen: the height a camera should show the parts to have gained since
+    then.
     """
 
-    # How many whole minutes before this read that earlier frame was
-    # captured: the latest periodic observation's frame at least half an
-    # hour
-    # old.
-    minutes_ago: int
-    # How far the print's highest point should have risen since the position
-    # that frame's job had reached, in millimetres: the rise of every layer
-    # since that lays anything but supports. It is the plate's, not every
-    # part's: a part the plan has finished does not grow with it.
-    top_risen_mm: float
+    # Two heights of the print's highest point, in millimetres: the first
+    # is where the plan had it when that frame was captured, the second how
+    # far it should have risen since — the rise of every layer since that
+    # lays anything but supports. They are the plate's, not every part's: a
+    # part the plan has finished does not grow with it.
+    mm: list[float]
+    # When that earlier frame was captured: the newest frame at least half
+    # an hour old that a periodic observation or a look at this print was
+    # given, as that observation or look states its capture time.
+    since: Timestamp
 
 
 class SetValue(TypedDict):
@@ -9592,18 +9594,21 @@ SHAPES: dict[str, object] = json.loads(
  "Rise": {
   "struct": {
    "fields": {
-    "minutes_ago": {
+    "mm": {
      "paired_with": "",
      "required": true,
      "shape": {
-      "scalar": "integer"
+      "list": {
+       "scalar": "number"
+      },
+      "non_empty": true
      }
     },
-    "top_risen_mm": {
+    "since": {
      "paired_with": "",
      "required": true,
      "shape": {
-      "scalar": "number"
+      "ref": "Timestamp"
      }
     }
    },

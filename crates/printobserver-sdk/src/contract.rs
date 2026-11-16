@@ -2780,20 +2780,21 @@ pub struct Reported {
     pub value: f64,
 }
 
-/// How far the plan has risen since an earlier frame of this print: the
-/// height a camera should show the parts to have gained since then.
+/// How far the plan has risen since one earlier frame of this print that was
+/// seen: the height a camera should show the parts to have gained since then.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Rise {
-    /// How many whole minutes before this read that earlier frame was
-    /// captured: the latest periodic observation's frame at least half an
-    /// hour
-    /// old.
-    pub minutes_ago: i64,
-    /// How far the print's highest point should have risen since the position
-    /// that frame's job had reached, in millimetres: the rise of every layer
-    /// since that lays anything but supports. It is the plate's, not every
-    /// part's: a part the plan has finished does not grow with it.
-    pub top_risen_mm: f64,
+    /// Two heights of the print's highest point, in millimetres: the first
+    /// is where the plan had it when that frame was captured, the second how
+    /// far it should have risen since — the rise of every layer since that
+    /// lays anything but supports. They are the plate's, not every part's: a
+    /// part the plan has finished does not grow with it.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
+    pub mm: Vec<f64>,
+    /// When that earlier frame was captured: the newest frame at least half
+    /// an hour old that a periodic observation or a look at this print was
+    /// given, as that observation or look states its capture time.
+    pub since: Timestamp,
 }
 
 /// One adjustable as the print's file set it at the current position, and as

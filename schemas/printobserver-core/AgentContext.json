@@ -487,22 +487,26 @@
     },
     "Rise": {
       "additionalProperties": false,
-      "description": "How far the plan has risen since an earlier frame of this print: the\nheight a camera should show the parts to have gained since then.",
+      "description": "How far the plan has risen since one earlier frame of this print that was\nseen: the height a camera should show the parts to have gained since then.",
       "properties": {
-        "minutes_ago": {
-          "description": "How many whole minutes before this read that earlier frame was\ncaptured: the latest periodic observation's frame at least half an hour\nold.",
-          "format": "int64",
-          "type": "integer"
+        "mm": {
+          "description": "Two heights of the print's highest point, in millimetres: the first\nis where the plan had it when that frame was captured, the second how\nfar it should have risen since — the rise of every layer since that\nlays anything but supports. They are the plate's, not every part's: a\npart the plan has finished does not grow with it.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
         },
-        "top_risen_mm": {
-          "description": "How far the print's highest point should have risen since the position\nthat frame's job had reached, in millimetres: the rise of every layer\nsince that lays anything but supports. It is the plate's, not every\npart's: a part the plan has finished does not grow with it.",
-          "format": "double",
-          "type": "number"
+        "since": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a periodic observation or a look at this print was\ngiven, as that observation or look states its capture time."
         }
       },
       "required": [
-        "minutes_ago",
-        "top_risen_mm"
+        "since",
+        "mm"
       ],
       "type": "object"
     },

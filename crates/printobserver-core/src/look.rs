@@ -235,6 +235,22 @@ impl Supervisor {
                 .record_position_from(&print, job, self.clock().now())
                 .await;
         }
+        // A look's frame is one the plan's rise can later be measured from,
+        // when it was this print's file the job had reached a place in.
+        if let (Some(captured), Some(job)) = (
+            event
+                .payload_as::<CameraLookPayload>()
+                .and_then(Result::ok)
+                .and_then(|look| look.frame_captured_at),
+            &job,
+        ) && print.ended_at.is_none()
+            && job.file_name.is_some()
+            && job.file_name == print.file_name
+            && let Some(position) = job.file_position_bytes
+        {
+            self.gcode_indexes()
+                .note_look(print.id, captured, position, self.clock().now());
+        }
         let detector_paused = self.detector_paused(print.id)
             && printer
                 .as_ref()

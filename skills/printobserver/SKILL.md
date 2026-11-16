@@ -65,11 +65,10 @@ Reading frames:
 - **Strands.** Curved or tangled strands are a defect only inside the part's
   outline and growing, absent from an earlier frame included, or out of place;
   off the part, on a rail, screw or frame, not.
-- **Position.** Judge growth only against a frame half an hour old or more,
-  and only where the plan states the rise since it, which is what should show,
-  never proof it printed: the tallest part still printing then stood the
-  height now less that rise, so compare its height then and now; finished
-  parts do not grow. Short of the rise, unclear or unmeasurable is not printing: a
+- **Position.** Judge growth only against the frame the plan's rise names,
+  by the top's height it gives then and the rise since, which is what should
+  show, never proof it printed: compare the tallest part still printing then
+  and now; finished parts do not grow. Short of the rise, unclear or unmeasurable is not printing: a
   clear defect, never uncertain. Hidden parts: look again first. A shifting
   view carries sheet and part together, so at every look measure each
   footprint's distance to a sheet hole, edge or mark, now and earlier, giving

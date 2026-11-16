@@ -2757,6 +2757,12 @@ site = "marks: Vec<UnverifiedMark>,"
 reason = "Generated: the schema bounds these marks with `minItems: 1`, and core holds them as `UnverifiedMarks`, which cannot be built empty and refuses an empty list on read, so no supervisor answers an empty list here. The contract generator has no non-empty list type yet in any of the three clients; `tools/contract-codegen`'s Rust emitter writes this directive above every list the schema says is never empty, and teaching it `minItems` across the Rust, Python and TypeScript clients is the drafted follow-up 'Teach the contract generator minItems'."
 
 [[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-sdk/src/contract.rs"
+site = "pub mm: Vec<f64>,"
+reason = "Generated: the schema bounds a rise's two heights with `minItems: 2` and `maxItems: 2`, and core holds them as `[f64; 2]`, so no supervisor answers any other length here. The contract generator has no fixed-length list type in any of the three clients; `tools/contract-codegen`'s Rust emitter writes this directive above every list the schema says is never empty, as it does for the marks above."
+
+[[suppression]]
 rule = "clippy::trivially_copy_pass_by_ref"
 file = "crates/printobserver-core/src/records/policy.rs"
 site = "fn a_number<S"
