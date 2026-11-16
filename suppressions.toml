@@ -1900,12 +1900,6 @@ reason = "The same ground the entry for this rule at `def released` in this file
 
 [[suppression]]
 rule = "external_service_suite_stays_out_of_the_affected_tier"
-file = "tools/release-artifacts/tests/independent/project.json"
-site = "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier]"
-reason = "The rule is about wiring an external-service suite into the pull-request gate, and this target wires in none that was not there: `test_github_issues_contract.py`, whose one reach outside the host is GitHub's published REST description fetched through `repo_checks.verified_download.verified` against a pinned SHA-256 and cached by revision under `.just-tmp`, ran in `release-artifacts`'s `test` target in the same tier until this change moved it here, unchanged, because nothing it reads differs by platform. Its tag means it now runs once rather than on every platform, so the change reduces how often the gate makes that fetch. Moving the drift gate behind a target of its own is a change to where that contract's coverage lives, outside a change told to cut test time without removing coverage."
-
-[[suppression]]
-rule = "external_service_suite_stays_out_of_the_affected_tier"
 file = "tests/real-prints-lfs/project.json"
 site = "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier]"
 reason = "The one external reach in this target is `test_bootstrap_git_lfs.py` downloading the git-lfs release `repo-policy.toml` holds from github.com, which is the bootstrap step itself, and the task this project was built for requires that real step be the thing tested. It is the same download, from the same forge, that `just bootstrap` makes on every gate cell that has no git-lfs, and the gate's own bootstrap journey in `tests/repo-e2e` already makes all of bootstrap's downloads inside the affected tier. It is one fetch of about 5 MB, verified against the release's own checksums. It is not a service whose behaviour the suite depends on. A loopback stand-in could serve no real git-lfs binary to report the held release, which is the claim being proven. The fixture journeys beside it reach nothing outside the host: their LFS remote is a local directory at a file URL."
@@ -2516,7 +2510,7 @@ reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForg
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tools/release-artifacts/tests/independent/test_github_issues_contract.py"
+file = "tools/release-artifacts/tests/test_github_issues_contract.py"
 site = "payload = verified("
 reason = "The drift gate's one download: GitHub's published REST description, fetched through `repo_checks.verified_download.verified` — the one place this repository downloads a pinned artifact from the forge, refuses an address nothing vouches for and compares the bytes against the pinned SHA-256 before anything reads them. It is a single blocking fetch at the start of a test module, cached by revision afterwards, with nothing to overlap it with; the entry for this rule in `verified_download.py` states why that helper is synchronous, and a second, asynchronous client here would be a download path nothing verifies."
 

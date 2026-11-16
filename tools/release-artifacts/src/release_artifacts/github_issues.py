@@ -9,7 +9,7 @@ that slice of GitHub's API is, and both sides are built from it.
 It is held to GitHub's own published description of its REST API —
 `github/rest-api-description`, at `DESCRIPTION_COMMIT`, the file
 `DESCRIPTION_FILE`, verified against `DESCRIPTION_SHA256` before it is read —
-by `tools/release-artifacts/tests/independent/test_github_issues_contract.py`, which
+by `tools/release-artifacts/tests/test_github_issues_contract.py`, which
 fails naming any operation, query parameter, request field, response field,
 status or enumerated value declared here that the description does not carry
 with a compatible type. Moving the pin is how a change of GitHub's API reaches
