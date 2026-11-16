@@ -47,7 +47,7 @@ SCHEMAS = Closure(("schemas/",))
 
 #: The workflow file the breaking processes break, and the step each adds to.
 CI = ".github/workflows/ci.yml"
-GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+GATE_STEP = "      - run: just ci-test\n"
 
 
 @dataclass(frozen=True, slots=True)
