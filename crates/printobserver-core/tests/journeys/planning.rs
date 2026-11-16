@@ -174,6 +174,13 @@ fn a_failed_read_builds_nothing_and_the_next_read_builds_once() {
 
 /// A store refusing the record of a build leaves the index built: the plan is
 /// answered, and the next read uses it rather than reading the file again.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// `SQLite` store refuses one append only when its file is damaged or its disk
+/// full, and neither can be caused from outside the process without failing
+/// every read the same context answers too. The server journey
+/// `indexing::one_read_of_a_prints_gcode_plans_every_check_of_it` holds the
+/// path where the record is taken, end to end.
 #[test]
 fn the_plan_stands_when_the_store_refuses_the_record_of_its_build() {
     let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
@@ -311,6 +318,14 @@ fn a_bounded_change_stands_until_its_intervention_expires() {
 /// The core keeps the indexes of its sixteen most recent prints: building a
 /// seventeenth lets go of another, keeps the one it just built, and a print
 /// let go of is read and built again when it runs once more.
+///
+/// Over the port fakes rather than through the running server, by choice: the
+/// bound is a memory ceiling over prints long finished, and reaching it through
+/// the server takes seventeen whole print lifecycles, each a job adopted and
+/// ended over the scripted instance. What the bound decides, which index goes
+/// and that the newest stays, is the core's alone and is read off the port's
+/// own count of reads here; building and reusing an index through the server
+/// is proven end to end by the `indexing` server journeys.
 #[test]
 fn the_core_keeps_a_bounded_number_of_indexes() {
     let world = World::new();

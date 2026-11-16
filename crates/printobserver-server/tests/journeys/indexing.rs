@@ -51,6 +51,10 @@ const FIRST: &str = "bubbler-guard-and-pad.gcode";
 /// file on the instance.
 const SECOND: &str = "bubbler-guard-and-pad-again.gcode";
 
+/// The name of a file the instance does not hold when its print starts, and
+/// is given later.
+const LATE: &str = "bubbler-guard-and-pad-late.gcode";
+
 /// How long the scripted instance holds every download, so that a check and a
 /// context read can be made to arrive while one build is under way.
 const SLOW_LINK: Duration = Duration::from_secs(3);
@@ -821,5 +825,43 @@ async fn a_check_is_told_the_plans_rise_and_the_settings_at_odds_with_it() {
         restored["slicer"]["at_odds"],
         json!(["flow_low_over_walls"])
     );
+    world.server.stop().await;
+}
+
+/// A print whose file the instance cannot serve is planned by nothing and
+/// builds nothing: its checks go on with no plan, and the read made once the
+/// file can be served builds the plan, once, for every read after it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_the_instance_cannot_serve_yet_is_planned_once_it_can() {
+    let world = Indexing::open(&[(FIRST, BUBBLER)], IN_SUPPORT.position).await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    let first = world.active(None).await;
+    world
+        .octoprint
+        .reports("Printing", printing(LATE, BUBBLER, IN_SUPPORT.position));
+    let print_id = world.active(Some(&first)).await;
+
+    world.more_checks(&print_id, 2).await;
+    let (unplanned, _, _) = world.context(&print_id).await;
+    assert!(
+        unplanned.get("slicer").is_none_or(Value::is_null),
+        "a file nobody could read was planned: {unplanned}"
+    );
+    assert_eq!(world.builds(&print_id).await, 0);
+
+    world.octoprint.holds_file(LATE, BUBBLER.to_vec(), 1_000.0);
+    let (planned, _, _) = world.context(&print_id).await;
+    assert_eq!(planned["slicer"], plan_of(&IN_SUPPORT));
+    world.more_checks(&print_id, 2).await;
+    let turn = world
+        .turns()
+        .into_iter()
+        .rfind(|turn| turn["print"]["id"] == json!(print_id))
+        .expect("a check of the print ran its turn");
+    world.handed_no_gcode(&turn);
+    assert_eq!(turn["slicer"], plan_of(&IN_SUPPORT));
+    world.context(&print_id).await;
+    assert_eq!(world.octoprint.whole_downloads(LATE), 1);
+    assert_eq!(world.builds(&print_id).await, 1);
     world.server.stop().await;
 }

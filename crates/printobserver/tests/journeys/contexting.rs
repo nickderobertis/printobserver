@@ -145,6 +145,59 @@ fn states_the_print_once(context: &Value, print_id: &str) {
     }
 }
 
+/// Make enough later events that `newest` is no longer among the latest the
+/// context answers, and hold a read since it to every one of them, read from
+/// the store's own history rather than from the window.
+fn answers_past_the_window(world: &World, print_id: &str, newest: &str) {
+    let print_id = print_id.to_owned();
+    let newest = newest.to_owned();
+    let mut window = ids(&context(world, &print_id, None));
+    for percent in (40..=99).cycle().take(40) {
+        if !window.contains(&newest) {
+            break;
+        }
+        adjust(world, &print_id, &percent.to_string());
+        window = ids(&context(world, &print_id, None));
+    }
+    assert!(
+        !window.contains(&newest),
+        "{newest} never left the context's window of {} events",
+        window.len()
+    );
+    // Past the window's edge, so the later events outnumber what it holds.
+    adjust(world, &print_id, "60");
+    adjust(world, &print_id, "65");
+    let history: Vec<String> = running::read(
+        world,
+        &["history", "--print-id", &print_id, "--limit", "1000"],
+    )["events"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a history answers its events"))
+        .iter()
+        .map(|event| {
+            event["id"]
+                .as_str()
+                .expect("an event names itself")
+                .to_owned()
+        })
+        .collect();
+    let at = history
+        .iter()
+        .position(|event| *event == newest)
+        .unwrap_or_else(|| panic!("{newest} is not in the print's history: {history:?}"));
+    let wide = context(world, &print_id, Some(&newest));
+    states_the_print_once(&wide, &print_id);
+    assert_eq!(
+        ids(&wide),
+        history[..at].to_vec(),
+        "a read since an event older than the window did not answer exactly every later event"
+    );
+    assert!(
+        ids(&wide).len() > window.len(),
+        "the read since an event older than the window answered no more than the window"
+    );
+}
+
 /// The whole journey.
 ///
 /// # Panics
@@ -214,6 +267,8 @@ pub fn a_read_since_an_event_answers_only_what_came_after_it(world: &World) {
         json!(newest),
         "a read with nothing newer does not name the event it was asked since: {nothing_newer}"
     );
+
+    answers_past_the_window(world, &print_id, &newest);
 
     // A print's own identifier is well formed, and names none of its events.
     let unknown = running::command(
