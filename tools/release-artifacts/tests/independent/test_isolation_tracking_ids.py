@@ -15,10 +15,10 @@ from pathlib import Path
 from repo_checks.expect import equal, truth
 from repo_checks.shell import run
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 #: The module whose parameters were drawn afresh in each process.
-MODULE = "tools/release-artifacts/tests/test_tracking.py"
+MODULE = "tools/release-artifacts/tests/independent/test_tracking.py"
 
 #: A test pytest reports it ran, with the worker that ran it.
 RAN = re.compile(r"^\[gw\d+\] \[\s*\d+%\] (?:PASSED|SKIPPED|XFAIL) (.+?)\s*$", re.MULTILINE)

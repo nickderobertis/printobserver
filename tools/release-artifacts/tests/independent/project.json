@@ -1,0 +1,19 @@
+{
+  "name": "release-artifacts-independent",
+  "root": "tools/release-artifacts/tests/independent",
+  "projectType": "library",
+  "metadata": {
+    "description": "The release tooling's suites about the release itself rather than the host: arming the release pull request, moving a copy's version, dispatching a publish, publishing to stand-in registries, the tracking issue and its API contract, and the version the published clients state. They drive the tool's command line over stand-ins on loopback and real copies of the tree, and read nothing that differs by platform. Nested in release-artifacts, whose fixtures and helpers they import, so they run once while that project's artifact and route proofs run on every platform."
+  },
+  "tags": ["lang:python", "type:tooling", "platform:independent"],
+  "implicitDependencies": ["contract-codegen", "printobserver", "release-artifacts", "repo-checks"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/release-artifacts/tests/independent" },
+    "format-check": { "command": "uv run -q ruff format --check tools/release-artifacts/tests/independent" },
+    "lint": { "command": "uv run -q ruff check tools/release-artifacts/tests/independent" },
+    "typecheck": {
+      "command": "uv run -q ty check tools/release-artifacts/tests/independent && uv run -q ty check --python-platform win32 tools/release-artifacts/tests/independent"
+    },
+    "test": { "command": "uv run -q coverage run -m pytest tools/release-artifacts/tests/independent" }
+  }
+}
