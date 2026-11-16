@@ -274,8 +274,6 @@ const OVERRIDE_MATERIAL: &str = "--override-material-check true";
 /// The option a start goes ahead despite the sheet check with.
 const OVERRIDE_SHEET: &str = "--override-sheet-check true";
 
-/// What a refusal of the material or sheet check says to do next, naming
-/// what the check compared; nothing for any other refusal.
 /// A request the agent's minimum interval held back: how much of it is left,
 /// and that the same command goes again once a look has waited that long.
 fn interval_note(refusal: &Value) -> Option<String> {
@@ -297,6 +295,8 @@ fn interval_note(refusal: &Value) -> Option<String> {
     ))
 }
 
+/// What a refusal of the material or sheet check says to do next, naming
+/// what the check compared; nothing for any other refusal.
 fn pairing_note(refusal: &Value) -> Option<String> {
     if refusal.as_str() == Some("sheet_not_declared") {
         return Some(

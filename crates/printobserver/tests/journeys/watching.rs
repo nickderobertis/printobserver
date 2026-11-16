@@ -1024,6 +1024,23 @@ ask pause-moving "pause""#,
             printed(&watching, &format!("{name}-{print}"))
         );
     }
+    // More of the interval is left than one look waits, so the refusal names
+    // looks that wait it out together, each within the most one look takes.
+    let said = printed(&watching, &format!("pause-moving-{print}"));
+    let seconds_after = |words: &str| -> i64 {
+        said.split(words)
+            .nth(1)
+            .and_then(|rest| rest.split('s').next())
+            .and_then(|seconds| seconds.parse().ok())
+            .unwrap_or_else(|| panic!("the refusal does not say {words:?}: {said}"))
+    };
+    let since_last_s = seconds_after("The agent last acted ");
+    let left_s = seconds_after("looks that wait ");
+    assert_eq!(left_s, 300 - since_last_s, "{said}");
+    assert!(
+        left_s > 90 && said.contains("in all, at most `--wait-s 90` each"),
+        "{said}"
+    );
 }
 
 /// A pause the agent's minimum interval held back says how much of it is
