@@ -952,6 +952,12 @@ reason = "The operator's command is `gh skill install nickderobertis/printobserv
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/repo-checks/tests/host/project.json"
+site = "implicitDependencies"
+reason = "This project is the repository checks' host-dependent suites — installers that download for this host, the runner's temporary drive, the Windows-target lint's cross compiler, PATH resolution, the worker share, platform dispatch's per-family steps and the tree lock each platform takes through its own kernel interface — moved unchanged out of `repo-checks`, nested in it so that project runs once while these run on every platform. Its edges are the ones those files had there and draw now: `repo-checks`, whose sources and test helpers they import; `github-workflows`, whose workflows platform dispatch runs; and `contract-codegen`, whose sources `test_isolation_treecopy.py` imports in the interpreters it starts. The closure the rule names, reaching `release-artifacts` and the CLI crate, is `repo-checks`' own: `repo-checks` depends on `contract-codegen`, so dropping an edge here would leave the same closure through `repo-checks`, and every suite in this repository that imports `repo_checks` carries it. Nothing narrower is still correct."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e-independent/project.json"
 site = "implicitDependencies"
 reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `implicitDependencies`: this project is the end-to-end tier's other half, the journeys whose subject is the same on every platform, and each edge is a project they drive or import — the workflows they run under the forge's rules and hold `just check-repo` to, the release tooling and the checks they run in copies, the workspace's crates that `release-plz` drafts and publishes over (through `printobserver`, which is built from every one), and `repo-e2e`, whose `journey` helpers and session hooks they import. A change to any of them selects the suite and nothing narrower is still correct."
