@@ -337,7 +337,7 @@ def project_tags(repo: Repo) -> list[str]:
     spelled = JUSTFILE_TAG.search(repo.justfile)
     if spelled is None:
         findings.append(
-            "the justfile declares no `PLATFORM_INDEPENDENT := \"<tag>\"`, so the CI jobs' "
+            'the justfile declares no `PLATFORM_INDEPENDENT := "<tag>"`, so the CI jobs\' '
             f"recipes select by no spelling of `gate.{PLATFORM_INDEPENDENT_KEY}`"
         )
     elif spelled["tag"] != declared:
