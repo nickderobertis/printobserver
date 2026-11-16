@@ -2,7 +2,7 @@
   "name": "repo-checks",
   "root": "tools/repo-checks",
   "projectType": "library",
-  "tags": ["lang:python", "type:tooling"],
+  "tags": ["lang:python", "type:tooling", "platform:independent"],
   "implicitDependencies": ["contract-codegen", "github-workflows"],
   "targets": {
     "format": { "command": "uv run -q ruff format tools/repo-checks" },
@@ -11,6 +11,6 @@
     "typecheck": {
       "command": "uv run -q ty check tools/repo-checks && uv run -q ty check --python-platform win32 tools/repo-checks"
     },
-    "test": { "command": "uv run -q coverage run -m pytest tools/repo-checks/tests -n auto" }
+    "test": { "command": "uv run -q coverage run -m pytest tools/repo-checks/tests --ignore=tools/repo-checks/tests/host -n auto" }
   }
 }

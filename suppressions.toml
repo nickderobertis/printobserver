@@ -886,15 +886,15 @@ reason = "The same placement as the directive above it, and the same reason: thi
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
-file = "tools/release-artifacts/tests/test_registry_clients.py"
+file = "tools/release-artifacts/tests/independent/test_registry_clients.py"
 site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
-reason = "The same ground as the entry for `test_registries.py`: this suite is the client half of the same registry proof, stood up against the same stand-in, beside `test_clients.py`, which builds the same supervisor and starts it for real. What edges this project's `test` target is what it proves rather than what it costs, and moving it out would leave the client half of `registries.py` and `standin.py` measured by no tier that carries a coverage floor."
+reason = "The same ground as the entry for `test_registries.py`: this suite is the client half of the same registry proof, stood up against the same stand-in. It runs in `release-artifacts-independent`, the nested project of `release-artifacts`' host-independent suites, whose `test` target builds the same supervisor `test_clients.py` does and is measured for coverage; what edges that target is what it proves rather than what it costs, and moving it to another tier would leave the client half of `registries.py` and `standin.py` measured by no tier that carries a coverage floor."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tools/release-artifacts/tests/test_registry_clients.py"
+file = "tools/release-artifacts/tests/independent/test_registry_clients.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
-reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program this project does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program the project it runs in does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -949,6 +949,12 @@ rule = "tests_mirror_real_usage"
 file = "tests/skill-install/tests/test_skill_install_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"
 reason = "The operator's command is `gh skill install nickderobertis/printobserver printobserver`, and the install docs keep it as that. This journey installs `--from-local` from a copy of the tree because the task that added it requires exactly that: a remote install reads the repository's default branch, which carries the skill only once this change has landed, so it can prove nothing about the change under test. Everything else is the operator's path — the real `gh` at the held release, the same `skill install` command and skill name, and an environment holding no GitHub credential — and what arrives is held to the committed files."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/repo-checks/tests/host/project.json"
+site = "implicitDependencies"
+reason = "This project is the repository checks' host-dependent suites — installers that download for this host, the runner's temporary drive, the Windows-target lint's cross compiler, PATH resolution, the worker share, platform dispatch's per-family steps and the tree lock each platform takes through its own kernel interface — moved unchanged out of `repo-checks`, nested in it so that project runs once while these run on every platform. Its edges are the ones those files had there and draw now: `repo-checks`, whose sources and test helpers they import; `github-workflows`, whose workflows platform dispatch runs; and `contract-codegen`, whose sources `test_isolation_treecopy.py` imports in the interpreters it starts. The closure the rule names, reaching `release-artifacts` and the CLI crate, is `repo-checks`' own: `repo-checks` depends on `contract-codegen`, so dropping an edge here would leave the same closure through `repo-checks`, and every suite in this repository that imports `repo_checks` carries it. Nothing narrower is still correct."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -1012,7 +1018,7 @@ reason = "The same ground as the entry above it, for the other registry: the cli
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tools/release-artifacts/tests/test_publishing.py"
+file = "tools/release-artifacts/tests/independent/test_publishing.py"
 site = "socket.create_connection"
 reason = "What this one test puts on the wire is a request no HTTP client will send: a `Content-Length` that is not a number. Every client — typed, async, or neither — composes that header itself from the body it was handed, so reaching the stand-in through one would test the client's arithmetic rather than what this stand-in does with a length it cannot read, which is the behaviour under test. A raw socket is the only way to state the malformed request, and it is one connection, opened and closed inside a strictly sequential assertion with nothing to overlap it with. Every other exchange in this suite goes through `registries.exchange`, which is the narrowed reader the rule is about."
 
@@ -1956,7 +1962,7 @@ reason = "This is the producer's asset name, not a second local contract: each i
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/repo-checks/src/repo_checks/powershell_release.py"
 site = "FLAVOURS = {"
-reason = "These are the producer's platform names. An install reads the selected release's own hashes.sha256 and refuses a flavour whose archive name is absent; tests/test_powershell_release.py drives that refusal with a listing naming another flavour. A networked gate against the current mutable release would add availability and re-cut risk to every code change without making an unlisted build installable."
+reason = "These are the producer's platform names. An install reads the selected release's own hashes.sha256 and refuses a flavour whose archive name is absent; tests/host/test_powershell_release.py drives that refusal with a listing naming another flavour. A networked gate against the current mutable release would add availability and re-cut risk to every code change without making an unlisted build installable."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
@@ -1984,7 +1990,7 @@ reason = "GitHub's CLI, stood in because the real one arms auto-merge on a real 
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_arming.py"
+file = "tools/release-artifacts/tests/independent/test_arming.py"
 site = "GH = "
 reason = "The forge's CLI, stood in because the real `gh pr merge --auto` arms a real pull request on github.com, which no test may do. What is under test is this repository's own arming command, driven through its real command line over the drafting program's real answer shape; the stand-in is only the forge beyond it, recording each call so the tests can prove exactly the named pull request is armed and nothing else, and refusing one where told so the collected refusal is proven too. The end-to-end journey over the committed workflow's `release-pr` job is `tests/repo-e2e-independent/tests/test_release_workflow_journey.py`."
 
@@ -2206,7 +2212,7 @@ reason = "This node's acceptance criteria place this proof in `tools/contract-co
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
-file = "tools/release-artifacts/tests/test_contract_version.py"
+file = "tools/release-artifacts/tests/independent/test_contract_version.py"
 site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
 reason = "This node's acceptance criteria place this proof in `tools/release-artifacts/tests/`, and it is where its neighbours are, on the ground the entry for this rule at `tools/release-artifacts/tests/test_registries.py` states: `test_artifacts.py` in the same directory already builds every package this project ships, so what edges this project's `test` target is what it proves rather than what it costs. Moving it out would leave the stamp in `build.py` measured by no tier carrying a coverage floor, since the end-to-end tier is not measured."
 
@@ -2474,7 +2480,7 @@ reason = "The same ground as `driven`'s own entry: a journey cannot fire the for
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "with IssuesForge(REPOSITORY, CREDENTIAL) as standing:"
 reason = "GitHub's issues API, stood in because the real one would open a real issue on github.com, which no test may do. What is under test is this repository's own tracking command, driven through its real command line with the environment the forge hands a step, speaking real HTTP through `registries.exchange` — the one place this tool audits a URL and attaches a credential. The stand-in keeps what each call left, records the credential every request carried, and refuses where told, so the open-comment-close sequence and every refusal are proven over a real connection. The journey over the committed workflow's reporting job is `tests/repo-e2e-independent/tests/test_release_workflow_journey.py`."
 
@@ -2486,7 +2492,7 @@ reason = "The same ground as the entry for this rule at `urllib.request.Request(
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "exchange("
 reason = "These two tests prove the issues stand-in's own refusals over a real connection, and they do it through `registries.exchange` because that is the one client `tracking` speaks to the forge with: a second, asynchronous client here would prove the stand-in against a client nothing in this repository uses. The entry at `answered = exchange(` in `tracking.py` states why that client is synchronous."
 
@@ -2498,13 +2504,13 @@ reason = "The tracking journeys run with this repository's existing release jour
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "with RacedForge(REPOSITORY, CREDENTIAL) as raced:"
 reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForge(REPOSITORY, CREDENTIAL) as standing:` covers, made to answer as the forge does when a second run creates the label between this run's read and its creation. That interleaving cannot be caused on demand against the real forge, and the step's handling of it is what the test proves, through the real command line and real HTTP."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "with MislistingForge(REPOSITORY, CREDENTIAL) as mislisting:"
 reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForge(REPOSITORY, CREDENTIAL) as standing:` covers, made to list an issue by a number no issue carries. The real forge cannot be made to answer that, and what the test proves is the step's refusal of it, through the real command line and real HTTP, before it writes anything."
 
@@ -2740,7 +2746,7 @@ reason = "The request is made by number over a raw socket on purpose: the journe
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "standing = IssuesForge(REPOSITORY, CREDENTIAL)"
 reason = "The same stand-in forge as this file's other entry, for the same reason: the real issues API would open a real issue on github.com. What this journey adds is that the stand-in is ready to serve the real tracking command while every name lookup on the thread that started it is refused."
 

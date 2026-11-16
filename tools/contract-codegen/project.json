@@ -2,7 +2,7 @@
   "name": "contract-codegen",
   "root": "tools/contract-codegen",
   "projectType": "library",
-  "tags": ["lang:python", "type:tooling"],
+  "tags": ["lang:python", "type:tooling", "platform:independent"],
   "implicitDependencies": ["release-artifacts", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tools/contract-codegen" },

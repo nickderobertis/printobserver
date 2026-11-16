@@ -71,8 +71,11 @@ MOVED = {
 #: The work each macOS context runs that it did not at `BASELINE`, every
 #: project and target of it, so the exact comparison holds across every project:
 #: the clients' live suites' own checks, the scheduled-check delay budget's
-#: project, and `real-prints-lfs`, a Python tooling project the gate's tiers
-#: reach and no lane of the integration tier does.
+#: project, `real-prints-lfs`, a Python tooling project the gate's tiers
+#: reach and no lane of the integration tier does, and `repo-checks-host`, the
+#: repository checks' host-dependent suites split out of `repo-checks`, and
+#: `release-artifacts-independent`, the release tooling's host-independent
+#: suites split out of `release-artifacts`.
 ADDED = {
     "gate (macos-aarch64)": {
         ("skilltest", "budgets"),
@@ -93,6 +96,14 @@ ADDED = {
         ("repo-e2e-independent", "lint"),
         ("repo-e2e-independent", "test-e2e"),
         ("repo-e2e-independent", "typecheck"),
+        ("repo-checks-host", "format-check"),
+        ("repo-checks-host", "lint"),
+        ("repo-checks-host", "test"),
+        ("repo-checks-host", "typecheck"),
+        ("release-artifacts-independent", "format-check"),
+        ("release-artifacts-independent", "lint"),
+        ("release-artifacts-independent", "test"),
+        ("release-artifacts-independent", "typecheck"),
     },
     "integration (macos-aarch64)": set(),
 }

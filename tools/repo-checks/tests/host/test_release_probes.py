@@ -26,7 +26,7 @@ from repo_checks.release_probes import COMMITTED_PROBE, STANDING_IN, semver
 from repo_checks.shell import run
 
 #: This repository's root, which every case reads its committed files from.
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 
 #: The line naming the probe in the committed declaration.
 PROBE_LINE = 'probe = "tools/repo-checks/src/repo_checks/release-probe.sh"\n'
