@@ -214,6 +214,14 @@ fn sheet_detail(objection: &SheetObjection) -> String {
     }
 }
 
+/// The whole seconds of the agent's minimum interval still to wait, never
+/// fewer than one: `since_last_s` is rounded down, so waiting this long is
+/// always enough.
+const fn interval_left_s(interval_s: i64, since_last_s: i64) -> i64 {
+    let left = interval_s.saturating_sub(since_last_s);
+    if left < 1 { 1 } else { left }
+}
+
 /// Why policy refused a request, in words a reader of the record can act on.
 #[must_use]
 pub fn rejection_detail(reason: &RejectionReason) -> String {
@@ -237,9 +245,14 @@ pub fn rejection_detail(reason: &RejectionReason) -> String {
         RejectionReason::MinIntervalNotElapsed {
             interval_s,
             since_last_s,
-        } => format!(
-            "the agent last acted {since_last_s}s ago and its minimum interval is {interval_s}s"
-        ),
+        } => {
+            let left_s = interval_left_s(*interval_s, *since_last_s);
+            format!(
+                "the agent last acted {since_last_s}s ago and its minimum interval is \
+                 {interval_s}s, so {left_s}s of it are left: send the same request again after \
+                 a look that waits at least {left_s}s"
+            )
+        }
         RejectionReason::UnsupportedAdjustable { adjustable } => {
             format!("this printer has no {adjustable}")
         }

@@ -48,7 +48,7 @@ REQUIRES_PYTHON = ">=3.9"
 #: one the committed client actually imports on. That is the first to carry
 #: `tomllib`, which the client reads its version with from a checkout, and
 #: `typing.NotRequired`, which its generated types use; the generator writes no
-#: syntax newer than it. `tools/release-artifacts/tests/test_contract_version.py`
+#: syntax newer than it. `tools/release-artifacts/tests/independent/test_contract_version.py`
 #: imports the client from source and installs and imports the built wheel on
 #: this floor, and refuses both on the release before it, to hold the
 #: declaration to what is true.

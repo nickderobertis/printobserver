@@ -97,8 +97,10 @@ def value_of(shape: TypeExpr, contract: Contract, seen: frozenset[str] = frozens
         case Scalar(kind):
             msg = f"`{kind}` is not a scalar a canonical value can be built for"
             raise ExampleError(msg)
-        case ListOf(item):
-            return [value_of(item, contract, seen)]
+        case ListOf(item, _, length):
+            # A list fixed at one length is answered at that length, which a
+            # client holding it as an array refuses any other.
+            return [value_of(item, contract, seen) for _ in range(length or 1)]
         case MapOf(item):
             return {"feedrate": value_of(item, contract, seen)}
         case Nullable(inner):

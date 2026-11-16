@@ -327,6 +327,7 @@ LIVE_VALUES: dict[tuple[str, str], str] = {
     ("look", "wait_s"): "0",
     ("printer_look", "wait_s"): "0",
     ("events", "wait_s"): "0",
+    ("context", "since"): "world.event_id",
     ("events", "after"): ABSENT,
     ("events", "kinds"): ABSENT,
     ("events", "exclude_kinds"): ABSENT,

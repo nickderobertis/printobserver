@@ -26,3 +26,16 @@ ones only this suite carries.
   a file it does not name is the first part's, so a new journey is never left
   out. Keep the `repo-root-release-build` group's files in one part: they
   share a release build another runner would pay for again.
+- **A journey that behaves the same on every platform goes next door.**
+  `tests/repo-e2e-independent` is the tier's second project, tagged
+  `platform:independent`, for journeys that drive only this repository's own
+  tooling, workflows and records. A journey whose subject behaves differently
+  by platform — an installer, a service manager, a path, the shipped program,
+  the gate as a platform's own cell runs it — stays here. Both projects take
+  their hooks and fixtures from `tests/journey_session.py`, and Nx runs their
+  `test-e2e` targets one after the other (`nx.json`), so a group here still
+  holds against the other project's journeys. Name a new file in
+  `test_end_to_end_projects.py`'s `ASSIGNED`, which refuses one left out.
+- **Each session ends by naming where its time went:** the slowest test files,
+  each summed over its tests, under the `--durations` list. Choose a cut from
+  that, not from a single test's figure.

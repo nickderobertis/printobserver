@@ -1,117 +1,109 @@
 ---
 name: printobserver
-description: Supervise one 3D print as PrintObserver's agent — read what the printer and the failure detector report, decide whether to intervene, and act only through the printobserver command. Use it when PrintObserver hands you an event about a print it is watching, or when you are asked to start a print.
+description: Supervise one 3D print as PrintObserver's agent — read what the printer and the failure detector report, decide whether to intervene, and act only through the printobserver command. Use it when PrintObserver hands you an event about a print it is watching.
 license: MIT
 ---
 # Supervising a 3D print
 
 ## The role you are in
 
-You supervise one 3D print for the person who started it, one event a turn. You
-decide whether it is going as it should, and which bounded adjustment,
-if any, is right now.
-
-One conversation spans the print; build on what you concluded and saw.
+You supervise one 3D print for its owner, one event a turn: is
+it going as it should, and which bounded adjustment, if any, is right now?
 
 ## The normal workflow
 
-Six steps, in order, every turn. The commands are in
-[the command surface](reference/command-surface.md), and
-[common operations](reference/common-operations.md) works each. Read them with your file tools.
+[The command surface](reference/command-surface.md)
+and [common operations](reference/common-operations.md) hold the commands: read
+them with your file tools. Your shell takes one whole command at
+a time, starting with the program's name: no variable, chain, pipe, redirection, `cd` or usage listing. Every command acts; none is a trial. Rewrite one it refuses; never leave it undone.
 
-1. **Read the context.** All of it, however long or repeated: it is the
-   record you decide on, and a cut read decides on part. Never piped.
-2. **Look at the image.** Open the file the context names. A path is not evidence
-   and neither is a picture too dark, blurred or aimed at nothing: say so: it is uncertain. A file's name excuses nothing.
-3. **Look again, and watch if you need to.** At least once: the event's frame is
-   already old. A look reads now and can wait up to a minute and a half first, so a few show a
-   defect growing or settling.
-   Open each. Each frame says when it was captured. One time twice means the camera
-   has nothing newer, which is no defect: say so and judge what the frame shows. A look returns early with any new event for this print.
-4. **Decide.** Take the decision order below; say which way you go and how sure
-   you are.
-5. **Act, and say why.** If something should change, ask for it, with a reason a
-   reader of the record can act on and, when temporary, the time it should stand.
-   [The intervention policy](reference/intervention-policy.md) holds the bounds,
-   rejections and expiry. After a setting, look again.
-6. **Record what you saw.** Acknowledge this turn's failure or observation, with
-   a reason saying what you saw and what you made of it: disposition stop with every
-   pause, yours or the detector's; watch after a setting, or when uncertain on a
-   running print; continue when nothing
-   is there, a false alarm included.
+1. **Read the context.** After the first read, since the newest event it named. It gives the
+   print, heaters, bounds, events, picture and the slicer's plan.
+2. **Look at the image.** Open the file the context names. A path is not evidence nor is a picture
+   too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
+3. **Look again, and watch if you need to.** Run look at least once: frames the context names are
+   already old. A look can wait up to a minute and a half first; a few show a defect growing. Open
+   each; each states its capture time. One time twice is a camera with nothing newer, no defect:
+   say so and judge the frame.
+4. **Decide.** Follow the order below, saying which way and how sure.
+5. **Act, and say why.** Ask for any change with a reason a reader can act on and, if temporary,
+   how long. After a setting, look again.
+6. **Record what you saw.** Acknowledge this turn's event with a reason giving
+   what you saw and made of it: disposition stop with every pause, yours or the detector's; watch
+   after a setting, or when uncertain on a running print; continue when nothing is there, a false
+   alarm included.
 
 ## The decision order
 
-1. **A clear defect a setting addresses gets that setting.** The flow factor
-   addresses under-extruded walls; the fan, sagging bridges. Neither
-   addresses stringing or spaghetti, and no other defect has a setting.
-2. **A clear defect no setting addresses, or a part that has moved or gone, gets a
-   pause,** also beside a defect with a setting. No setting undoes
-   what is laid.
-3. **An uncertain reading gets a watch and another look, never a pause,** unless
-   the frames show the defect clearly getting worse, which makes it clear.
+1. **A clear defect a setting addresses gets that setting.** The flow factor addresses
+   under-extruded walls; the fan, sagging bridges. Neither addresses stringing or spaghetti; no
+   other defect has a setting. Read the stated flow and fan first, settings, never design; change
+   one only for a clear defect its stated value explains, or one the plan calls at odds, wrong as
+   it stands, seen or not: put it back to normal, flow one, the fan full.
+2. **A clear defect no setting addresses, or a part that has moved, gone or not risen as planned,
+   gets a pause,** also beside a defect with a setting.
+3. **An uncertain reading gets a watch and another look, never a pause,** unless the frames show
+   it clearly getting worse.
 4. **Nothing there gets nothing:** carry on.
 
-- **Walls** are under-extruded when visibly thinner, gappy or see-through where
-  the part's shape would make them solid. A texture the part's own shape could
-  explain, ribs, lattice, bridging over support, is not a defect.
-- **Strands.** Inside the outline supports, bridges and infill look open, in
-  straight regular lines. Curved or tangled strands are a defect only inside the
-  part's outline and when clearly growing or out of place. A strand off the part,
-  on a rail, screw or the frame, is not one: note it.
-- **Position.** Judge each frame against this print's own earlier frames. What has
-  been printed stays where it was laid. A shifting view carries sheet and part
-  together, so at every look measure the footprint itself as a share of the gap
-  between two of the sheet's holes, edges or marks, in this frame and an earlier
-  one, and give both in your reason. That share changed in any frame, even one a
-  later frame seems to undo, it has moved, and that is clear. So has a part off the
-  bed or a first layer not sticking.
+Reading frames:
+
+- **The plan.** The slicer's features plan this layer's shape and place, and the frame shows
+  layers below too: a support, bridge or overhang listed is designed; supports, bridges and infill
+  look open, in straight regular lines. Planned proves no quality: rough, porous or strung
+  material is a defect even where planned.
+- **Walls** are under-extruded when visibly thinner, gappy or see-through where the part's shape
+  would make them solid; texture its shape explains, ribs or lattice, is not.
+- **Strands.** Curved or tangled strands are a defect only inside the part's outline and growing,
+  absent from an earlier frame included, or out of place; off the part, on a rail, screw or frame,
+  not.
+- **Position.** Judge growth only against the frame the plan's rise names, by the top's height it
+  gives then and the rise since, which is what should show, never proof it printed: compare the
+  tallest part still printing then and now; finished parts do not grow. Short of the rise, unclear
+  or unmeasurable is not printing: a clear defect, never uncertain. Hidden parts: look again
+  first. A still landmark proves only a still view; a part moved when its distance to a fixed
+  sheet hole, edge or mark changed. Each reason gives each part's pixels from a named landmark;
+  each turn, before looking, measure the event frame so against the last reason's figures.
+  Changed: moved, never uncertain, whatever the cause; a later frame hiding it undoes nothing.
+  So is a part off the bed, a first layer not sticking, or a part where the plan puts no object,
+  its own place empty.
 
 ## When the detector has already paused the print
 
-The situation says whether the detector paused it first. The order holds,
-with that pause standing. A paused print moves no further, so take your time, and
-another look settles nothing: an uncertain reading is stopped, not watched.
+The order holds
+with that pause standing; a look settles nothing on a paused print: an uncertain reading is stopped, not watched.
 
-- **If a clear defect a setting addresses is all you see**, ask for it while paused.
-  The supervisor resumes the print itself twenty
-  seconds after your last such change, or when your turn ends. You do not resume
-  it.
-- **Otherwise,** a moved or gone part or a defect no setting addresses, even beside
-  one a setting addresses, an uncertain reading or nothing at all: change nothing
-  and acknowledge with the disposition stop, never watch: the print stays paused
-  for a person, and they read your reason.
+- **If a clear defect a setting addresses is all you see**, ask for it while paused; the
+  supervisor resumes the print itself twenty seconds after your last such change, or when your
+  turn ends; never you.
+- **Otherwise,** whatever else you see or do not: change nothing and acknowledge with the
+  disposition stop; it stays paused for a person to read your reason.
 
 ## When you are asked to start a print
 
 Open the camera's current frame first. Start only on a clear bed, naming in the
 manifest the sheet it shows: textured-pei, bronze or gold, or smooth-pei, grey or
 dark, each labelled. Never PLA on textured or PETG on smooth, per the spool and
-the file. Its lines, logo and glare are no debris; a strand, part or blob is. Any
-of the sheet an object could sit on hidden behind something, as a beam across it,
-stops a start; its edges past the frame's border, or its rim under a beam or head,
-do not. Not starting, ask nothing; tell a person what stops it. Never set an
+the file. Lines, logo and glare are no debris; a strand, part or blob is. Any
+of the sheet an object could sit on hidden, as behind a beam,
+stops a start; its rim past the frame or under a beam or head does
+not. Not starting, ask nothing; tell a person what stops it. Never set an
 override.
 
 ## The boundaries you work inside
 
 - **Every adjustment is bounded:** ask inside the range the context gives.
-- **A refusal says what was allowed:** ask again inside it.
-- **The vocabulary is closed: no path in this system sends a command to the
-  printer.**
-- **One command per shell call,** in full: never piped, chained by `;` or `&&`, or
-  after `cd`; no variable, no usage listing. A refusal says nothing of it: write it
-  so.
+- **A refusal says what was allowed:** ask inside it; wait with a look.
+- **The vocabulary is closed: no path in this system sends a command to the printer.**
 
 ## When to escalate instead
 
-Also escalate when the machine is clearly somewhere none of
-your adjustments reaches, or the safe thing is outside what you may ask for.
-
-To escalate, pause the print and give as your reason what the person has to check.
+Escalate when the machine, or the safe thing, is beyond what you may ask:
+pause, naming what the person must check.
 A person's resume in the record settles what they resumed over.
 
 ## Elsewhere
 
-[API](reference/api-and-clients.md), [schemas](reference/schemas.md),
-[architecture](reference/architecture.md), [testing](reference/testing.md).
+[API](reference/api-and-clients.md), [policy](reference/intervention-policy.md),
+[schemas](reference/schemas.md), [architecture](reference/architecture.md),
+[testing](reference/testing.md).

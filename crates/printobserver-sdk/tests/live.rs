@@ -103,14 +103,18 @@ fn step_context(client: &Client, world: &supervisor::Supervisor, proxy: &live::P
     ready(client, &world.print_id, "");
 
     let answered = client
-        .context(&world.print_id)
+        .context(&world.print_id, Some(world.event_id.clone()))
         .expect("`context` is answered by a real supervisor");
 
     let seen = proxy.last();
     assert_eq!(seen.method, "GET", "`context`");
     assert_eq!(
         seen.target,
-        format!("/v1/prints/{print_id}/context", print_id = world.print_id),
+        format!(
+            "/v1/prints/{print_id}/context?since={event_id}",
+            print_id = world.print_id,
+            event_id = world.event_id
+        ),
         "`context`"
     );
     assert_eq!(seen.status, 200, "`context`");

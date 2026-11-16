@@ -282,6 +282,7 @@ def test_the_release_time_trigger_cannot_fire_before_the_artifacts_are_published
 
 @ROUTE_JOURNEY
 @pytest.mark.parametrize("recipe", list(ROUTES))
+@pytest.mark.usefixtures("host_service_manager")
 def test_each_route_is_proven_against_what_its_registry_serves(
     recipe: str, standing_in: Callable[..., Standin]
 ) -> None:
@@ -402,6 +403,7 @@ def supervisor() -> Path:
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
 @ROUTE_JOURNEY
+@pytest.mark.usefixtures("host_service_manager")
 def test_the_tier_recipe_proves_every_route_and_every_client(
     standing_in: Callable[..., Standin], supervisor: Path
 ) -> None:

@@ -34,6 +34,10 @@ class ListOf:
     #: Whether the schema bounds it with `minItems: 1`: a list that is never
     #: empty, which no generated client yet has a type for.
     non_empty: bool = False
+    #: The one length the schema allows it, when `minItems` and `maxItems`
+    #: are equal: a fixed number of values that mean something only together,
+    #: such as a rectangle's four edges.
+    length: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

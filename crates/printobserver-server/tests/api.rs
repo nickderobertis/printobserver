@@ -50,6 +50,8 @@ mod finding;
 mod following;
 #[path = "journeys/images.rs"]
 mod images;
+#[path = "journeys/indexing.rs"]
+mod indexing;
 #[path = "journeys/ingress.rs"]
 mod ingress;
 #[path = "journeys/ledger_restarts.rs"]

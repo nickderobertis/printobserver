@@ -189,6 +189,15 @@ struct Script {
     /// How many bytes of a held file's download it has written, over every
     /// download.
     download_bytes: usize,
+    /// How many downloads of a held file it is still writing: a reader can
+    /// hold every byte before the thread writing them has counted the last.
+    downloads_writing: usize,
+    /// The name of every file whose download it answered from the first byte,
+    /// asked for with no `Range`, in the order it answered them.
+    whole_downloads: Vec<String>,
+    /// How long it holds every download before it answers, as a slow link or
+    /// a busy instance would.
+    download_delay: core::time::Duration,
     /// A change of state waiting for its request.
     pending: Option<Pending>,
 }
@@ -273,6 +282,9 @@ impl ScriptedOctoPrint {
             files: Vec::new(),
             selected: None,
             download_bytes: 0,
+            downloads_writing: 0,
+            whole_downloads: Vec::new(),
+            download_delay: core::time::Duration::ZERO,
             pending: None,
         }));
         let sockets = Arc::new(Mutex::new(Vec::new()));
@@ -386,10 +398,38 @@ impl ScriptedOctoPrint {
     }
 
     /// How many bytes of held files' downloads it has written, over every
-    /// download it served.
+    /// download it served — read once every download it is writing has
+    /// finished, because the reader can have taken a download's last byte
+    /// before the thread writing it counted it. A download still writing after
+    /// [`SETTLE`] is read as it stands.
     #[must_use]
     pub fn download_bytes(&self) -> usize {
-        self.held().download_bytes
+        let deadline = std::time::Instant::now() + SETTLE;
+        loop {
+            let held = self.held();
+            if held.downloads_writing == 0 || std::time::Instant::now() >= deadline {
+                return held.download_bytes;
+            }
+            drop(held);
+            thread::sleep(core::time::Duration::from_millis(2));
+        }
+    }
+
+    /// Hold every download this long before answering it.
+    pub fn delays_downloads(&self, delay: core::time::Duration) {
+        self.held().download_delay = delay;
+    }
+
+    /// How many downloads of one held file it answered from the file's first
+    /// byte, asked for with no `Range` — every read of a file's G-code from
+    /// its start, however far the reader went.
+    #[must_use]
+    pub fn whole_downloads(&self, file: &str) -> usize {
+        self.held()
+            .whole_downloads
+            .iter()
+            .filter(|name| name.as_str() == file)
+            .count()
     }
 
     /// How many times a file's history was read, at
@@ -995,6 +1035,7 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
             .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         return;
     };
+    let _writing = Writing::begun(script);
     let size = file.bytes.len();
     let suffix = request
         .header("range")
@@ -1004,6 +1045,13 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
         Some(count) if count < size => ("206 Partial Content", size - count),
         _ => ("200 OK", 0),
     };
+    if request.header("range").is_none() {
+        lock(script)
+            .whole_downloads
+            .push(file.name.as_str().to_owned());
+    }
+    let delay = lock(script).download_delay;
+    thread::sleep(delay);
     let body = &file.bytes[from..];
     let range = if from > 0 {
         format!("Content-Range: bytes {from}-{}/{size}\r\n", size - 1)
@@ -1027,6 +1075,28 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
         lock(script).download_bytes += piece.len();
     }
     let _ = connection.flush();
+}
+
+/// How long [`ScriptedOctoPrint::download_bytes`] waits for the downloads it
+/// is writing to finish.
+const SETTLE: core::time::Duration = core::time::Duration::from_secs(10);
+
+/// One download being written, counted in `downloads_writing` from when it
+/// begins until it is dropped, whichever way the writing ends.
+struct Writing<'script>(&'script Mutex<Script>);
+
+impl<'script> Writing<'script> {
+    /// Count a download as being written.
+    fn begun(script: &'script Mutex<Script>) -> Self {
+        lock(script).downloads_writing += 1;
+        Self(script)
+    }
+}
+
+impl Drop for Writing<'_> {
+    fn drop(&mut self) {
+        lock(self.0).downloads_writing -= 1;
+    }
 }
 
 /// Lines sent through the command endpoint, each recorded with whether a job

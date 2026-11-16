@@ -1,17 +1,30 @@
 //! Driving the built program, and reading back through it.
 //!
 //! Everything every journey here does goes through this: the compiled binary as
-//! a subprocess, under the tracer, with nothing of this program called in
-//! process. Reading an effect back goes through it too — a journey confirms
-//! what a command did by running another command, which is what "through this
-//! same surface" means.
+//! a subprocess, with nothing of this program called in process. Reading an
+//! effect back goes through it too — a journey confirms what a command did by
+//! running another command, which is what "through this same surface" means.
+//!
+//! # Which runs are traced
+//!
+//! An invocation of the walk ([`run`]) runs under the tracer, because every
+//! point of the cross-product is held to having connected to no endpoint but
+//! the configured one. Every other run here ([`with`] and everything built on
+//! it) runs the same binary untraced: no assertion reads what such a run
+//! connected to, so tracing it would be work whose answer nothing reads — and on
+//! Windows each trace leases the host's one kernel logger, so every journey
+//! running beside it would wait on that lease too. An untraced run answers no
+//! connections at all, so holding one to the endpoint rule fails rather than
+//! passes.
 
+use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use printobserver_types::serde_json::{self, Value};
 
-use crate::traced::{Ran, traced};
+use crate::traced::{Ran, traced, with_its_own_config_home};
 use crate::walk::Invocation;
 use crate::world::World;
 
@@ -37,9 +50,42 @@ pub fn run(world: &World, invocation: &Invocation) -> Ran {
     )
 }
 
-/// Run one command under the environment given.
+/// Run one command under the environment given, untraced.
 pub fn with(world: &World, arguments: &[String], environment: &[(String, String)]) -> Ran {
-    traced(&program(), arguments, environment, &traces(world))
+    untraced(&program(), arguments, environment, &traces(world))
+}
+
+/// One invocation exactly as [`traced`] makes it — the same binary, arguments
+/// and environment, with its configuration home a directory of its own unless
+/// the journey named one — with no tracer around it, answering no connections.
+///
+/// # Panics
+///
+/// Panics when the program cannot be started.
+fn untraced(
+    program: &Path,
+    arguments: &[String],
+    environment: &[(String, String)],
+    scratch: &Path,
+) -> Ran {
+    let mut process = Command::new(program);
+    process
+        .args(arguments)
+        .env_remove("PRINTOBSERVER_SERVER")
+        .env_remove("PRINTOBSERVER_CREDENTIAL");
+    for (name, value) in with_its_own_config_home(environment, scratch) {
+        process.env(name, value);
+    }
+    let output = process
+        .output()
+        .unwrap_or_else(|error| panic!("{} could not run: {error}", program.display()));
+    Ran {
+        code: output.status.code(),
+        out: String::from_utf8_lossy(&output.stdout).into_owned(),
+        err: String::from_utf8_lossy(&output.stderr).into_owned(),
+        connected: BTreeSet::new(),
+        arguments: arguments.to_vec(),
+    }
 }
 
 /// Run one command configured by the file this world wrote.

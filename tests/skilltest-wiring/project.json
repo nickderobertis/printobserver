@@ -2,7 +2,7 @@
   "name": "skilltest-wiring",
   "root": "tests/skilltest-wiring",
   "projectType": "library",
-  "tags": ["lang:python", "type:tooling"],
+  "tags": ["lang:python", "type:tooling", "platform:independent"],
   "implicitDependencies": ["printobserver", "printobserver-server", "repo-checks", "skilltest"],
   "targets": {
     "format": { "command": "uv run -q ruff format tests/skilltest-wiring" },

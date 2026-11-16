@@ -48,3 +48,5 @@ mod redaction;
 mod settings;
 #[path = "journeys/streaming.rs"]
 mod streaming;
+#[path = "journeys/whole.rs"]
+mod whole;

@@ -57,6 +57,16 @@ def tagged(tree: Tree, *tags: str, project: str = TAGGED) -> Tree:
     return tree
 
 
+def committed_carriers() -> list[str]:
+    """The committed projects that carry the declared tag, by their `project.json`'s path."""
+    return sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in REPO_ROOT.glob("**/project.json")
+        if "node_modules" not in path.parts
+        and "platform:independent" in json.loads(path.read_text(encoding="utf-8")).get("tags", [])
+    )
+
+
 def test_the_committed_tree_declares_the_tag_and_passes(check: Run) -> None:
     """The committed policy spells the tag, and no committed project misspells it."""
     contains((REPO_ROOT / POLICY).read_text(encoding="utf-8"), DECLARED)
@@ -96,6 +106,8 @@ def test_the_spelling_is_read_from_the_policy_alone(check: Run, tree: Callable[[
     """Respelt in `repo-policy.toml`, the new spelling passes and the old one is refused."""
     copy = tree()
     copy.edit(POLICY, DECLARED, 'platform_independent_tag = "platform:portable"\n')
+    for carrier in committed_carriers():
+        copy.edit(carrier, '"platform:independent"', '"platform:portable"')
     equal(check("project-tags", tagged(copy, "platform:portable")), (0, ""))
 
     code, err = check("project-tags", tagged(copy, "platform:independent", project=TAGGED))

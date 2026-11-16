@@ -1,4 +1,4 @@
-"""Run serially and under xdist, `test_tracking` collects one set of tests.
+"""Run serially and under xdist, `test_verified_download` collects one set of tests.
 
 Its parameters once carried what each process drew afresh, so two xdist workers
 collected two different sets and refused to run the session at all. This runs
@@ -15,10 +15,10 @@ from pathlib import Path
 from repo_checks.expect import equal, truth
 from repo_checks.shell import run
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 #: The module whose parameters were drawn afresh in each process.
-MODULE = "tools/release-artifacts/tests/test_tracking.py"
+MODULE = "tools/repo-checks/tests/host/test_verified_download.py"
 
 #: A test pytest reports it ran, with the worker that ran it.
 RAN = re.compile(r"^\[gw\d+\] \[\s*\d+%\] (?:PASSED|SKIPPED|XFAIL) (.+?)\s*$", re.MULTILINE)

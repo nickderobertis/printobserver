@@ -460,8 +460,9 @@ check-repo:
     uv run -q python -m repo_checks all
 
 # The end-to-end tier: journeys that drive the real gate, checks and bootstrap,
-# over the tier's projects — which is `repo-e2e`, the one project carrying the
-# target, wherever its edges or a file no project owns reach it.
+# over the tier's projects — `repo-e2e` and `repo-e2e-independent`, the two
+# projects carrying the target, which Nx runs one after the other — wherever
+# their edges or a file no project owns reach them.
 #
 # release-plz first, by name: `repo-policy.toml` declares it `bootstrap = false`
 # — only this tier, `release-dry-run` and the release workflow run it — and the

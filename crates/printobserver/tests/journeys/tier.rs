@@ -14,7 +14,10 @@
 //! about **this program** rather than about the machine — the renderings, the
 //! failure classes, the credential — because those are proven once against a
 //! world that can be driven deterministically rather than twice against one
-//! that takes its own time.
+//! that takes its own time. For the same reason it drives each command's
+//! covering invocations rather than its whole cross-product of spellings
+//! ([`crate::walk::covering`]): every spelling still reaches the real machine
+//! once, and every combination of them reaches the socket.
 
 use crate::machine::Reports;
 use crate::world::World;
@@ -39,7 +42,14 @@ pub fn run(world: &World, depth: &str) {
         depth == WHOLE || depth == AGAINST_A_REAL_MACHINE,
         "there is no `{depth}` depth to run this tier at"
     );
-    confirming::the_cross_product_walk(world);
+    confirming::the_cross_product_walk(
+        world,
+        if depth == WHOLE {
+            confirming::Reach::Every
+        } else {
+            confirming::Reach::Covering
+        },
+    );
     if depth == AGAINST_A_REAL_MACHINE {
         // The environment's own suite asserts a print is running, and this walk
         // took the machine through cancelling and starting to drive the

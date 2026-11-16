@@ -56,7 +56,7 @@ HASHES = "hashes.sha256"
 #: with the producer's own listing as the evidence, rather than downloading
 #: something else or silently installing an older build.
 #:
-#: `tests/test_powershell_release.py` drives that refusal against a stand-in
+#: `tests/host/test_powershell_release.py` drives that refusal against a stand-in
 #: release serving a hashes file that lists another name.
 # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 FLAVOURS = {
