@@ -1783,3 +1783,66 @@ impl crate::supervisor::Supervisor {
         Ok((flow.flatten(), fan.flatten()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{GcodeIndexes, HELD_INDEXES, RISE_WINDOW_S};
+    use printobserver_types::{PrintId, Timestamp};
+
+    /// An instant some seconds after another.
+    fn after(start: Timestamp, seconds: i64) -> Timestamp {
+        start.plus_seconds(seconds).expect("an instant")
+    }
+
+    /// What is remembered of one print's looks, oldest first.
+    fn held(indexes: &GcodeIndexes, print_id: PrintId) -> Vec<(Timestamp, i64)> {
+        indexes
+            .looked
+            .lock()
+            .expect("the looks are held")
+            .get(&print_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Of the looks already half an hour old, only the newest is kept: it is
+    /// the one a rise is measured from until a newer look ages.
+    #[test]
+    fn the_newest_aged_look_is_kept_and_every_older_one_let_go() {
+        let indexes = GcodeIndexes::default();
+        let print = PrintId::new();
+        let start = Timestamp::now();
+        indexes.note_look(print, start, 10, start);
+        indexes.note_look(print, after(start, 60), 20, after(start, 60));
+        let now = after(start, 60 + RISE_WINDOW_S + 30);
+        indexes.note_look(print, now, 30, now);
+
+        assert_eq!(
+            held(&indexes, print),
+            vec![(after(start, 60), 20), (now, 30)]
+        );
+        assert_eq!(
+            indexes.newest_look_until(print, after(now, -RISE_WINDOW_S)),
+            Some((after(start, 60), 20))
+        );
+        assert_eq!(indexes.newest_look_until(print, after(start, 30)), None);
+    }
+
+    /// Past as many prints as indexes are held, the looks of the oldest print
+    /// are let go first.
+    #[test]
+    fn the_looks_of_prints_beyond_the_held_count_are_let_go_oldest_first() {
+        let indexes = GcodeIndexes::default();
+        let now = Timestamp::now();
+        let mut prints: Vec<PrintId> = (0..=HELD_INDEXES).map(|_| PrintId::new()).collect();
+        prints.sort_unstable();
+        for print in &prints {
+            indexes.note_look(*print, now, 1, now);
+        }
+
+        assert!(held(&indexes, prints[0]).is_empty());
+        for print in &prints[1..] {
+            assert_eq!(held(&indexes, *print), vec![(now, 1)]);
+        }
+    }
+}
