@@ -886,15 +886,15 @@ reason = "The same placement as the directive above it, and the same reason: thi
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
-file = "tools/release-artifacts/tests/test_registry_clients.py"
+file = "tools/release-artifacts/tests/independent/test_registry_clients.py"
 site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
-reason = "The same ground as the entry for `test_registries.py`: this suite is the client half of the same registry proof, stood up against the same stand-in, beside `test_clients.py`, which builds the same supervisor and starts it for real. What edges this project's `test` target is what it proves rather than what it costs, and moving it out would leave the client half of `registries.py` and `standin.py` measured by no tier that carries a coverage floor."
+reason = "The same ground as the entry for `test_registries.py`: this suite is the client half of the same registry proof, stood up against the same stand-in. It runs in `release-artifacts-independent`, the nested project of `release-artifacts`' host-independent suites, whose `test` target builds the same supervisor `test_clients.py` does and is measured for coverage; what edges that target is what it proves rather than what it costs, and moving it to another tier would leave the client half of `registries.py` and `standin.py` measured by no tier that carries a coverage floor."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tools/release-artifacts/tests/test_registry_clients.py"
+file = "tools/release-artifacts/tests/independent/test_registry_clients.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
-reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program this project does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program the project it runs in does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
 rule = "e2e_not_mocked"

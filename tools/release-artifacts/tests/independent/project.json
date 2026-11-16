@@ -3,10 +3,10 @@
   "root": "tools/release-artifacts/tests/independent",
   "projectType": "library",
   "metadata": {
-    "description": "The release tooling's suites about the release itself rather than the host: arming the release pull request, moving a copy's version, dispatching a publish, publishing to stand-in registries, the tracking issue, and the version the published clients state. They drive the tool's command line over stand-ins on loopback and real copies of the tree, and read nothing that differs by platform. Nested in release-artifacts, whose fixtures and helpers they import, so they run once while that project's artifact and route proofs run on every platform."
+    "description": "The release tooling's suites about the release itself rather than the host: arming the release pull request, moving a copy's version, dispatching a publish, publishing to stand-in registries, the tracking issue, the version the published clients state, and the registry proof of the three clients against stand-in registries. They drive the tool's command line over stand-ins on loopback and real copies of the tree; the registry proof's protocol leg does not depend on the host, and every platform still builds, installs and proves the same three clients from the tree in release-artifacts' test_clients.py, while install-path.yml runs the real registry proofs per platform. Nested in release-artifacts, whose fixtures and helpers they import, so they run once while that project's artifact and route proofs run on every platform."
   },
   "tags": ["lang:python", "type:tooling", "platform:independent"],
-  "implicitDependencies": ["contract-codegen", "release-artifacts", "repo-checks"],
+  "implicitDependencies": ["contract-codegen", "printobserver", "release-artifacts", "repo-checks"],
   "targets": {
     "format": { "command": "uv run -q ruff format tools/release-artifacts/tests/independent" },
     "format-check": { "command": "uv run -q ruff format --check tools/release-artifacts/tests/independent" },

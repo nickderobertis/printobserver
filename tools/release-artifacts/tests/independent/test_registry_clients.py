@@ -62,7 +62,7 @@ from route_proof import ROUTE_PROOF, WITHOUT_ROUTE_PROOF
 #: The clients a dependent takes as a dependency, each from its registry: the
 #: ones the proof takes, which `clients` holds to what `release-targets.toml`
 #: declares, so a client declared and not proven fails there rather than here.
-CLIENTS = list(clients(Repo(Path(__file__).resolve().parents[3])))
+CLIENTS = list(clients(Repo(Path(__file__).resolve().parents[4])))
 
 #: How long the one program build these share is given.
 BUILD_TIMEOUT_SECONDS = 2400
@@ -82,7 +82,7 @@ def built() -> Path:
     the same program either way. Under the name the platform gives it, which
     carries `.exe` on Windows.
     """
-    repo = Repo(Path(__file__).resolve().parents[3])
+    repo = Repo(Path(__file__).resolve().parents[4])
     program = repo.root / "target" / "debug" / platforms.host(repo).program
     if not program.is_file():
         passing(
