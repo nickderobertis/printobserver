@@ -69,7 +69,7 @@ Reading frames:
   and only where the plan states the rise since it, which is what should show,
   never proof it printed: the tallest part still printing then stood the
   height now less that rise, so compare its height then and now; finished
-  parts do not grow. Unmeasurable, unclear or barely taller is not printing: a
+  parts do not grow. Short of the rise, unclear or unmeasurable is not printing: a
   clear defect, never uncertain. Hidden parts: look again first. A shifting
   view carries sheet and part together, so at every look measure each
   footprint's distance to a sheet hole, edge or mark, now and earlier, giving
