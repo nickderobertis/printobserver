@@ -14,6 +14,9 @@
     "typecheck": {
       "command": "uv run -q ty check tools/release-artifacts/tests/independent && uv run -q ty check --python-platform win32 tools/release-artifacts/tests/independent"
     },
-    "test": { "command": "uv run -q coverage run -m pytest tools/release-artifacts/tests/independent" }
+    "test": {
+      "metadata": { "description": "llmlint: ignore[external_service_suite_stays_out_of_the_affected_tier] suppressions.toml has the reason." },
+      "command": "uv run -q coverage run -m pytest tools/release-artifacts/tests/independent"
+    }
   }
 }
