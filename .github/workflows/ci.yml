@@ -133,6 +133,15 @@ jobs:
       - if: github.event.pull_request.head.repo.full_name == github.repository
         uses: nickderobertis/notignored@v0
       - run: just ci-lint
+      # This half's Python coverage data, which `budgets` combines with each
+      # platform's and rules on: a source and the tests measuring it can sit
+      # on the two sides of the `platform:independent` tag.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-lint
+          path: coverage-data/lint
+          if-no-files-found: error
+          retention-days: 1
       # The Rust supply-chain gate, at the releases `repo-policy.toml` holds the
       # two tools at, installed prebuilt so the recipe's own install compiles
       # nothing. The lockfile's graph is the same on every platform.
@@ -226,6 +235,13 @@ jobs:
       - run: just runner-temp
       - run: just bootstrap
       - run: just ci-test
+      # This platform's half of the Python coverage data, for `budgets`.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-${{ matrix.platform.id }}
+          path: coverage-data/${{ matrix.platform.id }}
+          if-no-files-found: error
+          retention-days: 1
       # Only the release pull request pays for the two-build maintenance
       # workload, and only on `linux-x86_64`: everywhere else it does nothing.
       - run: just budgets-release-pr
@@ -306,6 +322,12 @@ jobs:
       - run: just runner-temp
       - run: just bootstrap
       - run: just ci-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-macos-aarch64
+          path: coverage-data/macos-aarch64
+          if-no-files-found: error
+          retention-days: 1
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
@@ -412,7 +434,10 @@ jobs:
 
   # This run's own two lines, measured once every other job has ended however
   # it ended: the longest job of the run, and how many jobs took a runner. It
-  # builds and tests nothing, and on a push to `main` it is the one job.
+  # builds and tests nothing, and on a push to `main` it is the one job. On a
+  # pull request it also rules on the Python coverage floor per platform, over
+  # `lint`'s kept data combined with each platform's: the one place both halves
+  # of a source's tests meet.
   budgets:
     name: budgets
     needs: [lint, test, test-macos, skilltest]
@@ -434,3 +459,11 @@ jobs:
       - run: just ci-budgets
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-python-*
+          path: coverage-data
+          merge-multiple: true
+      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        run: just coverage-combine coverage-data

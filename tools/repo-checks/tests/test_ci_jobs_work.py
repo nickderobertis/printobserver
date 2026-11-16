@@ -599,8 +599,11 @@ def test_a_step_dropped_changed_or_doubled_is_found(
 
 
 #: The two halves' own lines of the committed justfile.
-LINT_HALF = "    just ci-measured {{quote(PLATFORM_INDEPENDENT)}} {{quote(tier)}}\n"
-TEST_HALF = "    just ci-measured {{quote(PLATFORM_DEPENDENT)}} {{quote(tier)}}\n"
+LINT_HALF = "    just ci-measured {{quote(PLATFORM_INDEPENDENT)}} lint {{quote(tier)}}\n"
+TEST_HALF = (
+    '    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" '
+    "{{quote(tier)}}\n"
+)
 
 
 @pytest.mark.parametrize(

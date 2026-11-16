@@ -7,6 +7,7 @@ check and what disagreed.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import NamedTuple, Protocol
@@ -65,6 +66,7 @@ COMMANDS = (
     "commit-msg",
     "pr-title",
     "coverage",
+    "coverage-combine",
     "lint-windows-target",
     "docs-schemas-write",
     "probe-registries",
@@ -190,7 +192,12 @@ def main(argv: list[str] | None = None) -> int:
             except gate_tier.TierError as error:
                 print(f"coverage: refused: {error}", file=sys.stderr)
                 return gate_tier.REFUSED
-            return commands.coverage(repo, measured)
+            kept = os.environ.get(commands.COVERAGE_KEEP, "").strip()
+            return commands.coverage(repo, measured, Path(kept) if kept else None)
+        case "coverage-combine":
+            if parsed.argument is None:
+                parser.error("coverage-combine needs the directory the CI jobs' data is in")
+            return commands.coverage_combine(repo, Path(parsed.argument))
         case "probe-registries":
             return release_probes.probe_registries(repo)
         case "ci_check_time_budget":

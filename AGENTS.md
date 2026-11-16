@@ -1278,6 +1278,16 @@ budgets and the printer integration tier. The two recipes together run every
 tier `just check` runs, each project's once, and a test drives both through the
 real recipes to hold that. Only `budgets` waits on another job.
 
+**The Python coverage floor is ruled on by the required `budgets` context.** A
+Python source and the tests measuring it can sit on the two sides of the
+`platform:independent` tag — `repo-checks`' sources are measured by
+`repo-checks-host` too, and `release-artifacts`' by `release-artifacts-independent`
+— so neither half's report is the code the whole gate measured. Each half keeps
+its Python data and uploads it, and `budgets` combines `lint`'s with each
+platform's and holds every platform to the 95% floor, leaving out that platform's
+own `pragma: unreached` lines (`just coverage-combine`). The Rust floor stays
+with each `test` job, whose half carries every crate's tests.
+
 The `test` matrix interpolates the cell's platform id into its own `name`, so
 GitHub takes that name verbatim and the contexts are `test (<platform>)`. A
 `name` interpolating nothing would have GitHub qualify it instead, appending the

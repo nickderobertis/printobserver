@@ -471,8 +471,12 @@ describe("a failed integration tier", () => {
     return ran;
   }
 
+  // The uploads of the retained logs; each job's coverage data is uploaded
+  // on every pass, for `budgets`, and is no failure's evidence.
   const uploads = (steps) =>
-    steps.filter((step) => /^actions\/upload-artifact@/.test(step.uses ?? ""));
+    steps.filter(
+      (step) => /^actions\/upload-artifact@/.test(step.uses ?? "") && step.with?.path === retained,
+    );
 
   for (const key of ["test", "test-macos"]) {
     test(`${key} uploads the retained logs after the bring-down, and only when the tier failed`, () => {
@@ -484,8 +488,7 @@ describe("a failed integration tier", () => {
       );
       const order = failed.map((step) => step.run ?? step.uses);
       assert.ok(
-        order.indexOf("just octoprint-down") <
-          order.findIndex((step) => /upload-artifact/.test(step)),
+        order.indexOf("just octoprint-down") < failed.indexOf(uploads(failed)[0]),
         `${key} uploads after the bring-down: ${order.join(", ")}`,
       );
       assert.deepEqual(uploads(walked(key, "success")), [], `${key} uploads nothing on a pass`);

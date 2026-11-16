@@ -62,6 +62,7 @@ const RUNS = {
 // llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
 const CACHELESS = new Set([
   "actions/checkout",
+  "actions/download-artifact",
   "actions/upload-artifact",
   "extractions/setup-just",
   "nickderobertis/notignored",

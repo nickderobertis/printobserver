@@ -13,17 +13,22 @@ under the floors `repo-policy.toml` records, which the reports enforce.
 
 from __future__ import annotations
 
+import os
+import shutil
+import sys
 import tomllib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from pathlib import Path
 
 import pytest
 from repo_checks.checks_graph import RUST, platform_independent_tag, projects
-from repo_checks.commands import Measured, measured_for
-from repo_checks.expect import equal, truth
+from repo_checks.commands import LINT_DATA, Measured, coverage_combine, measured_for
+from repo_checks.expect import contains, equal, truth
 from repo_checks.gate_tier import PROJECTS_VARIABLE
 from repo_checks.model import Repo
 from repo_checks.parsing import recipes
-from treecopy import REPO_ROOT
+from repo_checks.shell import run
+from treecopy import REPO_ROOT, Closure, copy_tree
 
 REPO = Repo(REPO_ROOT)
 TAG = platform_independent_tag(REPO)
@@ -158,3 +163,121 @@ def test_the_floors_are_the_repositorys_and_both_halves_run_the_coverage_recipe(
         any("python -m repo_checks coverage --tier" in line for line in declared["coverage"].body),
         describing="the coverage recipe reporting through `repo_checks coverage` at the tier",
     )
+
+
+#: What a copy carries for a combined report: the coverage configuration, the
+#: floors, and every source it reports over.
+REPORTED = Closure(
+    (
+        "pyproject.toml",
+        "repo-policy.toml",
+        "tools/repo-checks/src/",
+        "tools/contract-codegen/src/",
+        "tools/release-artifacts/src/",
+        "python/printobserver-sdk/src/",
+    )
+)
+
+
+def kept(tree: Path, name: str, module: str) -> Path:
+    """The data one CI half keeps, measured by really importing `module` under coverage.
+
+    The run is configured by the copy's own `pyproject.toml`, as a job's tests
+    are, and combined into the one file the job uploads.
+    """
+    scratch = tree.parent / f"half-{name}"
+    scratch.mkdir()
+    script = scratch / "half.py"
+    script.write_text(f"import {module}\n", encoding="utf-8")
+    environment = {**os.environ, "PYTHONPATH": str(tree / "tools/repo-checks/src")}
+    for argv in (
+        ["run", f"--data-file={scratch / 'data'}", str(script)],
+        ["combine", f"--data-file={scratch / 'data'}", str(scratch)],
+    ):
+        done = run([sys.executable, "-m", "coverage", *argv], cwd=tree, env=environment)
+        equal(done.returncode, 0, describing=f"coverage {argv[0]}: {done.stdout}{done.stderr}")
+    into = tree / "coverage-data" / name
+    into.parent.mkdir(exist_ok=True)
+    shutil.copyfile(scratch / "data", into)
+    return into
+
+
+def floor_at(tree: Path, floor: int) -> None:
+    """The copy's Python floor set to `floor`."""
+    policy = tree / "repo-policy.toml"
+    text = policy.read_text(encoding="utf-8")
+    truth("python = 95\n" in text, describing="the committed Python floor")
+    policy.write_text(text.replace("python = 95\n", f"python = {floor}\n"), encoding="utf-8")
+
+
+def percent(report: str, source: str) -> int:
+    """A file's figure in a printed report: its one column ending in `%`."""
+    line = next(line for line in report.splitlines() if line.startswith(source))
+    return int(next(word for word in line.split() if word.endswith("%")).rstrip("%"))
+
+
+@pytest.fixture
+def halves(tmp_path: Path) -> Path:
+    """A copy whose `lint` half imported one module and whose Linux half another."""
+    tree = copy_tree(tmp_path / "tree", closure=REPORTED)
+    kept(tree, LINT_DATA, "repo_checks.expect")
+    kept(tree, "linux-x86_64", "repo_checks.loopback")
+    return tree
+
+
+def test_each_platform_is_ruled_on_over_both_halves_combined(
+    halves: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The combined report carries what each half measured, and rules at the policy's floor."""
+    floor_at(halves, 0)
+
+    equal(coverage_combine(Repo(halves), halves / "coverage-data"), 0)
+
+    said = capsys.readouterr().out
+    contains(said, "coverage-combine: linux-x86_64 with lint")
+    truth(
+        percent(said, "tools/repo-checks/src/repo_checks/expect.py") > 0
+        and percent(said, "tools/repo-checks/src/repo_checks/loopback.py") > 0,
+        describing=f"both halves' modules measured in the one report:\n{said}",
+    )
+    contains(said, "coverage-combine: python lines linux-x86_64 ")
+
+
+def test_a_platform_below_the_floor_fails_naming_it(
+    halves: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """At the committed 95%, two imports cover far too little, and the platform is named."""
+    equal(coverage_combine(Repo(halves), halves / "coverage-data"), 1)
+
+    contains(capsys.readouterr().err, "Python line coverage on linux-x86_64 is below the 95% floor")
+
+
+@pytest.mark.parametrize(
+    ("arrange", "naming"),
+    [
+        pytest.param(
+            lambda data: (data / LINT_DATA).unlink(), "no `lint` data under", id="no-lint-half"
+        ),
+        pytest.param(
+            lambda data: (data / "linux-x86_64").unlink(), "no platform's data", id="no-platform"
+        ),
+        pytest.param(
+            lambda data: (data / "linux-x86_64").rename(data / "solaris-sparc"),
+            "`solaris-sparc` under",
+            id="no-such-platform",
+        ),
+    ],
+)
+def test_a_directory_missing_a_half_is_refused(
+    halves: Path,
+    capsys: pytest.CaptureFixture[str],
+    arrange: Callable[[Path], object],
+    naming: str,
+) -> None:
+    """A combined report missing either half, or naming no platform, rules on nothing."""
+    floor_at(halves, 0)
+    arrange(halves / "coverage-data")
+
+    equal(coverage_combine(Repo(halves), halves / "coverage-data"), 1)
+
+    contains(capsys.readouterr().err, naming)

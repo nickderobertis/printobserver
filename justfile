@@ -133,22 +133,26 @@ ci-lint tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
     just typecheck {{quote(tier)}}
-    just ci-measured {{quote(PLATFORM_INDEPENDENT)}} {{quote(tier)}}
+    just ci-measured {{quote(PLATFORM_INDEPENDENT)}} lint {{quote(tier)}}
     just lint-workflows
     just check-repo
 
 # One platform's `test` job's half of the gate: the measured tiers
 # (`ci-measured`) over the tier's projects not tagged `platform:independent`.
 ci-test tier="affected":
-    just ci-measured {{quote(PLATFORM_DEPENDENT)}} {{quote(tier)}}
+    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" {{quote(tier)}}
 
 # The `test` tier with its coverage, the `build` tier and the end-to-end tier
 # over one side of a project tag (`gate_tier`'s `PRINTOBSERVER_GATE_PROJECTS`):
 # SIDE is the tag, or the tag with `!` in front for the projects carrying none
 # of it. The end-to-end tier starts beside the test tier off Windows, as in
-# `just check`, and both are waited out whatever either answers.
-ci-measured side tier="affected":
+# `just check`, and both are waited out whatever either answers. The Rust floor
+# is ruled on here; the Python data is kept under `coverage-data/<KEEP>`, because
+# a source and the tests measuring it can sit on the two sides, and the `budgets`
+# job rules on the floor over each platform's combined halves (`coverage-combine`).
+ci-measured side keep tier="affected":
     status=0; export PRINTOBSERVER_GATE_PROJECTS={{quote(side)}}; \
+    export PRINTOBSERVER_COVERAGE_KEEP="coverage-data/"{{quote(keep)}}; \
     if {{E2E_BESIDE_TESTS}}; then \
     just test-e2e {{quote(tier)}} & e2e=$!; \
     fi; \
@@ -171,6 +175,14 @@ ci-warm:
     PRINTOBSERVER_GATE_PROJECTS={{quote(PLATFORM_DEPENDENT)}} just build all
     cargo build --release --locked -p printobserver
     if [ "${PRINTOBSERVER_PLATFORM:-}" = linux-x86_64 ]; then just lint all; fi
+
+# The Python floor over each platform's whole gate, from the halves the `lint`
+# and `test` jobs kept: under DIRECTORY, `lint`'s data and each platform's, which
+# the `budgets` job downloads. Each platform's data is combined with `lint`'s and
+# reported at `repo-policy.toml`'s floor, leaving out the lines its hosts never
+# reach, as that platform's own report of every project's tests would.
+coverage-combine directory:
+    uv run -q python -m repo_checks coverage-combine {{quote(directory)}}
 
 # The `budgets` job: the onebudgetspec check of this run's `ci-check-time` and
 # `ci-job-count`, the root `budgets.yaml`'s two lines over a pull-request run,
