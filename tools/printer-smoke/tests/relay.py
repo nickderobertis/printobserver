@@ -395,6 +395,10 @@ def _forward_input(
         refused.append(error)
         with contextlib.suppress(OSError):
             process.kill()
+        # Gone before its input is closed below: on Windows `kill` returns
+        # before the program has ended, and closing its input first hands it
+        # an end of input it would run on past the refused frame.
+        process.wait()
     except OSError:
         # The client went away: there is no more input for the program.
         pass
