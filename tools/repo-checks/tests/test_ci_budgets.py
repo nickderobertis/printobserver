@@ -33,6 +33,9 @@ from repo_checks.ci_budgets import (
     OVER,
     REFUSED,
     WITHIN,
+    Attempt,
+    CommitSha,
+    RunId,
     check_budgets,
     measure_check_time,
     measure_job_count,
@@ -133,7 +136,10 @@ def forge_of(*documents: tuple[int, str, dict[str, Any]]) -> Forge:
     """A stand-in serving each `(run, workflow, document)` as one pull-request run of `HEAD_SHA`."""
     return Forge(
         REPOSITORY,
-        [Run(run, 1, HEAD_SHA, "pull_request", workflow, doc) for run, workflow, doc in documents],
+        [
+            Run(RunId(run), Attempt(1), CommitSha(HEAD_SHA), "pull_request", workflow, doc)
+            for run, workflow, doc in documents
+        ],
     )
 
 
@@ -256,8 +262,22 @@ def test_a_run_of_another_commit_or_event_is_not_this_pushs(
     served: Callable[[Forge], str], result: Path
 ) -> None:
     """Only the runs of the current run's own commit and event are read."""
-    other = Run(SIBLING_RUN, 1, "0" * 40, "pull_request", "ci", document(RECORDED_RUN))
-    pushed = Run(SIBLING_RUN + 1, 1, HEAD_SHA, "push", "warm", document(RECORDED_RUN))
+    other = Run(
+        RunId(SIBLING_RUN),
+        Attempt(1),
+        CommitSha("0" * 40),
+        "pull_request",
+        "ci",
+        document(RECORDED_RUN),
+    )
+    pushed = Run(
+        RunId(SIBLING_RUN + 1),
+        Attempt(1),
+        CommitSha(HEAD_SHA),
+        "push",
+        "warm",
+        document(RECORDED_RUN),
+    )
     forge = forge_of((RECORDED_RUN, "ci", measuring(document(RECORDED_RUN))))
     forge.runs = [*forge.runs, other, pushed]
     address = served(forge)

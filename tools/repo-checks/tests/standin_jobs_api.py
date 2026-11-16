@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler
 from typing import Any
 
+from repo_checks.ci_budgets import Attempt, CommitSha, RunId
 from repo_checks.loopback import LoopbackServer
 
 
@@ -31,9 +32,9 @@ from repo_checks.loopback import LoopbackServer
 class Run:
     """One workflow run as the forge records it, and its attempt's jobs document."""
 
-    run_id: int
-    attempt: int
-    head_sha: str
+    run_id: RunId
+    attempt: Attempt
+    head_sha: CommitSha
     event: str
     workflow: str
     #: The jobs document as the forge answers it: `total_count` and `jobs`.

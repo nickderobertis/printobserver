@@ -399,6 +399,10 @@ COVERAGE_HOST = "PRINTOBSERVER_COVERAGE_HOST"
 COVERAGE_KEEP = "PRINTOBSERVER_COVERAGE_KEEP"
 #: The name a `lint` job keeps its data under, beside each platform's.
 LINT_DATA = "lint"
+#: The record beside a kept half naming the sources it reported over, and what
+#: that record holds for every source.
+INCLUDED_SUFFIX = ".include"
+ANY_SOURCE = "*\n"
 #: What `sys.platform` a report is made for, by a supported platform's family.
 HOSTS = (("linux-", "linux"), ("macos-", "darwin"), ("windows-", "win32"))
 
@@ -549,10 +553,17 @@ def coverage(repo: Repo, measured: Measured | None = None, keep: Path | None = N
                 failed = True
 
     python_total = "not measured: this run's tests reached no Python source"
+    if keep is not None:
+        # Which sources this half reported over, beside its data, so the
+        # combined report is over what the two halves' tests reached and no
+        # more: an affected run's report leaves out what it did not reach.
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        _included_path(keep).write_text(
+            ANY_SOURCE if scope.python is None else "".join(f"{one}\n" for one in scope.python),
+            encoding="utf-8",
+        )
     if scope.python != ():
-        # Coverage through this interpreter, the environment `uv run` gave the
-        # recipe, so the report reads what that environment's suites wrote.
-        python = run([sys.executable, "-m", "coverage", "combine"], cwd=repo.root)
+        python = run(["uv", "run", "-q", "coverage", "combine"], cwd=repo.root)
         if python.returncode not in (0, 1):
             print(python.stderr, file=sys.stderr)
             failed = True
@@ -562,7 +573,6 @@ def coverage(repo: Repo, measured: Measured | None = None, keep: Path | None = N
         # whose hosts reach it.
         included = scope.python_included()
         if keep is not None:
-            keep.parent.mkdir(parents=True, exist_ok=True)
             data = repo.root / ".coverage"
             if not data.is_file():
                 print(f"coverage: no Python data to keep at {data}", file=sys.stderr)
@@ -570,8 +580,9 @@ def coverage(repo: Repo, measured: Measured | None = None, keep: Path | None = N
             shutil.copyfile(data, keep)
         report = run(
             [
-                sys.executable,
-                "-m",
+                "uv",
+                "run",
+                "-q",
                 "coverage",
                 "report",
                 *([] if keep is not None else [f"--fail-under={floors['python']}"]),
@@ -600,6 +611,27 @@ def coverage(repo: Repo, measured: Measured | None = None, keep: Path | None = N
         f"python lines {python_total} (floor {floors['python']}%)"
     )
     return 1 if failed else 0
+
+
+def _included_path(data: Path) -> Path:
+    """Where the sources a kept half reported over are written, beside its data."""
+    return data.with_name(f"{data.name}{INCLUDED_SUFFIX}")
+
+
+def _included(data: Path) -> tuple[str, ...] | None:
+    """The sources a kept half reported over, none for every source.
+
+    Raises:
+        ValueError: If the half kept no such record, so what it reached is unknown.
+    """
+    record = _included_path(data)
+    if not record.is_file():
+        msg = f"{record} is absent, so which sources that half reached is unknown"
+        raise ValueError(msg)
+    text = record.read_text(encoding="utf-8")
+    if text == ANY_SOURCE:
+        return None
+    return tuple(line for line in text.splitlines() if line)
 
 
 def _host_of(repo: Repo, platform: str) -> str | None:
@@ -633,12 +665,17 @@ def coverage_combine(repo: Repo, directory: Path) -> int:
     lint = directory / LINT_DATA
     platforms = (
         sorted(
-            path.name for path in directory.iterdir() if path.is_file() and path.name != LINT_DATA
+            path.name
+            for path in directory.iterdir()
+            if path.is_file()
+            and path.name != LINT_DATA
+            and not path.name.endswith(INCLUDED_SUFFIX)
+            and not path.name.startswith(".")
         )
         if directory.is_dir()
         else []
     )
-    if not lint.is_file():
+    if not _included_path(lint).is_file():
         print(
             f"coverage-combine: refused: no `{LINT_DATA}` data under {directory}", file=sys.stderr
         )
@@ -658,18 +695,42 @@ def coverage_combine(repo: Repo, directory: Path) -> int:
             )
             failed = True
             continue
+        halves = (lint, directory / platform)
+        try:
+            reached = [_included(half) for half in halves]
+        except ValueError as error:
+            print(f"coverage-combine: refused: {error}", file=sys.stderr)
+            failed = True
+            continue
+        sources = (
+            None
+            if any(one is None for one in reached)
+            else sorted({source for one in reached for source in one or ()})
+        )
+        if sources == []:
+            totals.append(f"{platform} not measured: neither half's tests reached a source")
+            continue
+        present = [half for half in halves if half.is_file()]
+        if not present:
+            print(
+                f"coverage-combine: refused: {platform} and lint reached Python sources and "
+                f"kept no data for them",
+                file=sys.stderr,
+            )
+            failed = True
+            continue
         combined = directory / f".combined-{platform}"
         combined.unlink(missing_ok=True)
         merged = run(
             [
-                sys.executable,
-                "-m",
+                "uv",
+                "run",
+                "-q",
                 "coverage",
                 "combine",
                 "--keep",
                 f"--data-file={combined}",
-                str(lint),
-                str(directory / platform),
+                *(str(half) for half in present),
             ],
             cwd=repo.root,
         )
@@ -679,12 +740,14 @@ def coverage_combine(repo: Repo, directory: Path) -> int:
             continue
         report = run(
             [
-                sys.executable,
-                "-m",
+                "uv",
+                "run",
+                "-q",
                 "coverage",
                 "report",
                 f"--data-file={combined}",
                 f"--fail-under={floor}",
+                *([] if sources is None else [f"--include={','.join(f'{s}/*' for s in sources)}"]),
             ],
             cwd=repo.root,
             env={**os.environ, COVERAGE_HOST: host},

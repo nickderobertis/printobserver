@@ -39,7 +39,7 @@ import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import cast
+from typing import NewType, cast
 
 from onebudgetspec_sdk import OnebudgetspecError, check, report
 
@@ -78,6 +78,15 @@ FAMILIES = (("Linux", "ubuntu"), ("Windows", "windows"), ("macOS", "macos"))
 WITHIN, OVER, REFUSED = 0, 1, 2
 
 
+#: A run's id, the attempt of it read, the commit it ran on, and the token a
+#: read of the forge's own API is authorized by: each its own kind, so no one of
+#: them is handed where another is meant.
+RunId = NewType("RunId", int)
+Attempt = NewType("Attempt", int)
+CommitSha = NewType("CommitSha", str)
+Token = NewType("Token", str)
+
+
 class BudgetError(ValueError):
     """Why a figure cannot be read, in words naming what is missing."""
 
@@ -88,7 +97,7 @@ class Forge:
 
     address: str
     repository: str
-    token: str | None
+    token: Token | None
 
     def url(self, path: str, **query: str | int) -> str:
         """The address of one read of this repository's Actions API."""
@@ -102,9 +111,9 @@ class Forge:
 class Run:
     """One workflow run: its id, the attempt read, its commit and its event."""
 
-    run_id: int
-    attempt: int
-    head_sha: str
+    run_id: RunId
+    attempt: Attempt
+    head_sha: CommitSha
     event: str
     workflow: str
 
@@ -174,8 +183,8 @@ class JobTime:
 class CheckTime:
     """The `ci-check-time` figure, and the breakdown reported beside it."""
 
-    run_id: int
-    run_attempt: int
+    run_id: RunId
+    run_attempt: Attempt
     event: str
     #: The longest job's own running time: the figure.
     seconds: float
@@ -204,9 +213,9 @@ class CountedJob:
 class JobCount:
     """The `ci-job-count` figure, and the breakdown reported beside it."""
 
-    head_sha: str
+    head_sha: CommitSha
     event: str
-    runs: tuple[int, ...]
+    runs: tuple[RunId, ...]
     count: int
     per_family: Mapping[str, int]
     jobs: tuple[CountedJob, ...]
@@ -266,7 +275,8 @@ def forge(environ: Mapping[str, str]) -> Forge:
         msg = f"GITHUB_REPOSITORY={repository!r} is not `owner/name`"
         raise BudgetError(msg)
     address = api_address(environ)
-    token = (environ.get("GITHUB_TOKEN", "").strip() or None) if address == FORGE_API else None
+    given = environ.get("GITHUB_TOKEN", "").strip()
+    token = Token(given) if given and address == FORGE_API else None
     return Forge(address, repository, token)
 
 
@@ -347,7 +357,7 @@ def _number(environ: Mapping[str, str], name: str, default: str | None = None) -
     if value is None:
         msg = f"{name} is not set, so there is no run to read"
         raise BudgetError(msg)
-    if not value.isdigit():
+    if not (value.isascii() and value.isdigit()):
         msg = f"{name}={value!r} is not a number, so it names no run to read"
         raise BudgetError(msg)
     return int(value)
@@ -372,14 +382,14 @@ def current_run(found: Forge, environ: Mapping[str, str]) -> Run:
     Raises:
         BudgetError: If either is not a number, or the run cannot be read.
     """
-    run_id = _number(environ, "GITHUB_RUN_ID")
-    attempt = _number(environ, "GITHUB_RUN_ATTEMPT", "1")
+    run_id = RunId(_number(environ, "GITHUB_RUN_ID"))
+    attempt = Attempt(_number(environ, "GITHUB_RUN_ATTEMPT", "1"))
     url = found.url(f"runs/{run_id}")
     answered = _page(url, found.token)
     return Run(
         run_id,
         attempt,
-        _text(answered, "head_sha", url),
+        CommitSha(_text(answered, "head_sha", url)),
         _text(answered, "event", url),
         _text(answered, "name", url),
     )
@@ -426,6 +436,9 @@ def _steps(entry: Mapping[str, object], where: str) -> tuple[StepTime, ...]:
         recorded = cast("Mapping[str, object]", step)
         began = _instant(recorded.get("started_at"), where, "a step's started_at")
         ended = _instant(recorded.get("completed_at"), where, "a step's completed_at")
+        if began and ended and ended < began:
+            msg = f"{where} answered a step {recorded['name']!r} ending before it began"
+            raise BudgetError(msg)
         seconds = (ended - began).total_seconds() if began and ended else None
         read.append(StepTime(cast("str", recorded["name"]), seconds))
     return tuple(read)
@@ -481,6 +494,14 @@ def job_of(entry: Mapping[str, object], workflow: str) -> Job:
         msg = (
             f"{where} is {status} with started_at={entry.get('started_at')!r} and "
             f"completed_at={entry.get('completed_at')!r}, which time no run"
+        )
+        raise BudgetError(msg)
+    ordered = [instant for instant in (created, started, completed) if instant is not None]
+    if ordered != sorted(ordered):
+        msg = (
+            f"{where} records created_at={entry.get('created_at')!r}, started_at="
+            f"{entry.get('started_at')!r} and completed_at={entry.get('completed_at')!r} out "
+            f"of order, which time no run"
         )
         raise BudgetError(msg)
     return Job(
@@ -568,8 +589,8 @@ def sibling_runs(found: Forge, run: Run) -> list[Run]:
         where = f"run {identifier}"
         runs.append(
             Run(
-                identifier,
-                attempt,
+                RunId(identifier),
+                Attempt(attempt),
                 run.head_sha,
                 _text(entry, "event", where),
                 _text(entry, "name", where),

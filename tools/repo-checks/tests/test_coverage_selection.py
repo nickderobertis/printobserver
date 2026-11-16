@@ -14,6 +14,7 @@ under the floors `repo-policy.toml` records, which the reports enforce.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tomllib
 from collections.abc import Callable, Iterator
@@ -180,6 +181,29 @@ REPORTED = Closure(
 )
 
 
+#: The launcher a copy's `uv run -q coverage` reaches: this suite's own
+#: environment's real `coverage`, so a copy needs no environment of its own. It
+#: runs nothing else.
+UV_RUNS_COVERAGE = f"""
+import os, sys
+argv = sys.argv[1:]
+if argv[:3] != ["run", "-q", "coverage"]:
+    sys.exit(f"uv: this launcher runs `uv run -q coverage` alone, not {{argv!r}}")
+os.execv({sys.executable!r}, [{sys.executable!r}, "-m", "coverage", *argv[3:]])
+"""
+
+
+@pytest.fixture(autouse=True)
+def uv_runs_coverage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Put the launcher first on PATH, as `uv` is for every recipe."""
+    programs = tmp_path / "programs"
+    programs.mkdir()
+    launcher = programs / "uv"
+    launcher.write_text(f"#!{sys.executable}\n{UV_RUNS_COVERAGE}", encoding="utf-8")
+    launcher.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{programs}{os.pathsep}{os.environ['PATH']}")
+
+
 def measured_by(tree: Path, module: str) -> None:
     """Leave the parallel data a job's suite would, by really importing `module` under coverage.
 
@@ -193,17 +217,23 @@ def measured_by(tree: Path, module: str) -> None:
     equal(done.returncode, 0, describing=f"coverage run: {done.stdout}{done.stderr}")
 
 
-def kept(tree: Path, name: str, module: str) -> Path:
+def kept(tree: Path, name: str, module: str | None, python: tuple[str, ...] | None = None) -> Path:
     """The data one CI half keeps: `coverage` in keep mode over what `module`'s import measured.
 
     That is `just coverage` as `just ci-measured` runs it, with the Rust half
     out of this copy's reach, so it is the real command that writes the file
-    the job uploads.
+    the job uploads. `python` is the sources the half's affected projects reach,
+    every one where it is none; a half reaching none measures nothing.
     """
-    measured_by(tree, module)
+    if module is not None:
+        measured_by(tree, module)
     into = tree / "coverage-data" / name
-    equal(coverage(Repo(tree), Measured(rust=()), keep=into), 0, describing=f"keeping {name}")
-    truth(into.is_file(), describing=f"the {name} half's data kept at {into}")
+    scope = Measured(rust=(), python=python)
+    equal(coverage(Repo(tree), scope, keep=into), 0, describing=f"keeping {name}")
+    truth(
+        into.is_file() == (python != ()),
+        describing=f"the {name} half's data kept at {into} exactly where it measured a source",
+    )
     return into
 
 
@@ -261,7 +291,9 @@ def test_a_platform_below_the_floor_fails_naming_it(
     ("arrange", "naming"),
     [
         pytest.param(
-            lambda data: (data / LINT_DATA).unlink(), "no `lint` data under", id="no-lint-half"
+            lambda data: [(data / name).unlink() for name in (LINT_DATA, f"{LINT_DATA}.include")],
+            "no `lint` data under",
+            id="no-lint-half",
         ),
         pytest.param(
             lambda data: (data / "linux-x86_64").unlink(), "no platform's data", id="no-platform"
@@ -309,3 +341,59 @@ def test_a_kept_half_is_kept_below_the_floor_and_ruled_on_without_keep(
     said = capsys.readouterr().out
     contains(said, f"kept at {kept_at} for the `budgets` job's combined report")
     truth(kept_at.is_file(), describing="the kept data")
+
+
+def stmts(report: str, source: str) -> int:
+    """A file's statement count in a printed report: its first figure."""
+    line = next(line for line in report.splitlines() if line.startswith(source))
+    return int(line.split()[1])
+
+
+def test_an_affected_report_is_over_the_sources_the_halves_reached(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A half reaching no source, and one reaching one, report that one source and no other."""
+    tree = copy_tree(tmp_path / "tree", closure=REPORTED)
+    floor_at(tree, 0)
+    kept(tree, LINT_DATA, None, python=())
+    kept(tree, "linux-x86_64", "repo_checks.expect", python=("tools/repo-checks/src",))
+
+    equal(coverage_combine(Repo(tree), tree / "coverage-data"), 0)
+
+    said = capsys.readouterr().out
+    contains(said, "tools/repo-checks/src/repo_checks/expect.py")
+    truth(
+        "contract_codegen" not in said and "printobserver_sdk" not in said,
+        describing=f"no source the halves did not reach in the report:\n{said}",
+    )
+
+
+def test_each_platform_leaves_out_only_its_own_unreached_lines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A line marked unreached on Windows is left out of a Windows report and counted on Linux."""
+    tree = copy_tree(tmp_path / "tree", closure=REPORTED)
+    floor_at(tree, 0)
+    probe = "tools/repo-checks/src/repo_checks/unreached_probe.py"
+    (tree / probe).write_text(
+        "def reached() -> int:\n"
+        "    return 1\n\n\n"
+        "def windows_only() -> int:  # pragma: unreached on win32 - a probe no test calls\n"
+        "    return 2\n",
+        encoding="utf-8",
+    )
+    sources = ("tools/repo-checks/src",)
+    kept(tree, LINT_DATA, None, python=())
+    linux = kept(tree, "linux-x86_64", "repo_checks.unreached_probe", python=sources)
+    windows = tree / "coverage-data" / "windows-x86_64"
+    shutil.copyfile(linux, windows)
+    shutil.copyfile(f"{linux}.include", f"{windows}.include")
+
+    equal(coverage_combine(Repo(tree), tree / "coverage-data"), 0)
+
+    said = capsys.readouterr().out
+    on_linux, on_windows = said.split("coverage-combine: windows-x86_64 with lint")
+    truth(
+        stmts(on_windows, probe) < stmts(on_linux, probe),
+        describing=f"Windows' report leaving out the line Linux counts:\n{said}",
+    )

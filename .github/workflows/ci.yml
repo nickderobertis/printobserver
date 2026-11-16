@@ -139,7 +139,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-python-lint
-          path: coverage-data/lint
+          path: coverage-data/lint*
           if-no-files-found: error
           retention-days: 1
       # A real `gh skill install` of the Agent Skill from a copy of the tree,
@@ -245,7 +245,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-python-${{ matrix.platform.id }}
-          path: coverage-data/${{ matrix.platform.id }}
+          path: coverage-data/${{ matrix.platform.id }}*
           if-no-files-found: error
           retention-days: 1
       # Only the release pull request pays for the two-build maintenance
@@ -331,7 +331,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-python-macos-aarch64
-          path: coverage-data/macos-aarch64
+          path: coverage-data/macos-aarch64*
           if-no-files-found: error
           retention-days: 1
       - id: release-program

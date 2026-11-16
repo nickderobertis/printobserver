@@ -117,6 +117,12 @@ check tier="affected":
 # everywhere but Windows, for the reason the recipe above gives.
 E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
 
+# Whether `just ci-measured` starts the end-to-end tier beside the test tier: as
+# `E2E_BESIDE_TESTS`, and only on a host of four processors or more. On the
+# 3-processor macOS runner the two tiers beside each other load it past what the
+# per-project timing budgets the test tier checks can be measured under.
+CI_E2E_BESIDE_TESTS := if num_cpus() =~ '^[0-3]$' { "false" } else { E2E_BESIDE_TESTS }
+
 # The project tag `repo-policy.toml`'s `[gate] platform_independent_tag`
 # declares, spelled as `just check-repo`'s `project-tags` holds it.
 PLATFORM_INDEPENDENT := "platform:independent"
@@ -145,21 +151,22 @@ ci-test tier="affected":
 # The `test` tier with its coverage, the `build` tier and the end-to-end tier
 # over one side of a project tag (`gate_tier`'s `PRINTOBSERVER_GATE_PROJECTS`):
 # SIDE is the tag, or the tag with `!` in front for the projects carrying none
-# of it. The end-to-end tier starts beside the test tier off Windows, as in
-# `just check`, and both are waited out whatever either answers. The Rust floor
-# is ruled on here; the Python data is kept under `coverage-data/<KEEP>`, because
-# a source and the tests measuring it can sit on the two sides, and the `budgets`
-# job rules on the floor over each platform's combined halves (`coverage-combine`).
+# of it. The end-to-end tier starts beside the test tier where
+# `CI_E2E_BESIDE_TESTS` says so, and both are waited out whatever either
+# answers. The Rust floor is ruled on here; the Python data is kept under
+# `coverage-data/<KEEP>`, because a source and the tests measuring it can sit
+# on the two sides, and the `budgets` job rules on the floor over each
+# platform's combined halves (`coverage-combine`).
 ci-measured side keep tier="affected":
     status=0; export PRINTOBSERVER_GATE_PROJECTS={{quote(side)}}; \
     export PRINTOBSERVER_COVERAGE_KEEP="coverage-data/"{{quote(keep)}}; \
-    if {{E2E_BESIDE_TESTS}}; then \
+    if {{CI_E2E_BESIDE_TESTS}}; then \
     just test-e2e {{quote(tier)}} & e2e=$!; \
     fi; \
     just test {{quote(tier)}} && \
     just coverage {{quote(tier)}} && \
     just build {{quote(tier)}} || status=$?; \
-    if {{E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
+    if {{CI_E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
     elif [ "$status" = 0 ]; then \
     just test-e2e {{quote(tier)}} || status=$?; \
     fi; \

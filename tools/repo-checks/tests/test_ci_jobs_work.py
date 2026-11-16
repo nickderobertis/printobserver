@@ -39,7 +39,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
 from repo_checks.checks_graph import platform_independent_tag, projects
@@ -205,15 +205,16 @@ def runs(step: dict[str, Any], failed: bool) -> bool:
     Raises:
         AssertionError: On a condition a run step of these jobs does not carry.
     """
-    condition = str(step.get("if", "")).strip()
-    if not condition:
-        return not failed
-    if condition == "always()":
-        return True
-    if condition == "failure()":
-        return failed
-    msg = f"`if: {condition}` is no condition a run step of these jobs carries"
-    raise AssertionError(msg)
+    match str(step.get("if", "")).strip():
+        case "":
+            return not failed
+        case "always()":
+            return True
+        case "failure()":
+            return failed
+        case condition:
+            msg = f"`if: {condition}` is no condition a run step of these jobs carries"
+            raise AssertionError(msg)
 
 
 @dataclass(frozen=True)
@@ -357,11 +358,18 @@ def _tier_free(argv: list[str]) -> str:
     return " ".join("<tier>" if word in {"affected", "all"} else word for word in argv)
 
 
+class Unit(NamedTuple):
+    """One unit of work a job did: an Nx task or another leaf run, and the side it ran on."""
+
+    name: str
+    side: str
+
+
 @dataclass(frozen=True)
 class Work:
     """The units one job did: Nx tasks and other leaf runs, each with the side it ran on."""
 
-    units: tuple[tuple[str, str], ...]
+    units: tuple[Unit, ...]
     own: tuple[str, ...]
     integration: tuple[str, ...]
 
@@ -373,7 +381,7 @@ class Work:
 
 def work(record: Path, graph: Mapping[str, set[str]]) -> Work:
     """What the leaves recorded in `record` stand for, preparation left out."""
-    units: list[tuple[str, str]] = []
+    units: list[Unit] = []
     own: list[str] = []
     integration: list[str] = []
     lines = record.read_text(encoding="utf-8").splitlines() if record.exists() else []
@@ -389,7 +397,7 @@ def work(record: Path, graph: Mapping[str, set[str]]) -> Work:
                 continue
             if any(task.startswith("test-integration:") for task in tasks):
                 integration.extend(tasks)
-            units.extend((task, entry["side"]) for task in tasks)
+            units.extend(Unit(task, entry["side"]) for task in tasks)
             continue
         named = next((" ".join(one) for one in LINT_OWN if tuple(argv[: len(one)]) == one), None)
         if named is not None:
@@ -397,7 +405,7 @@ def work(record: Path, graph: Mapping[str, set[str]]) -> Work:
             continue
         if "octoprint_env.py" in " ".join(argv):
             integration.append(_tier_free(argv))
-        units.append((_tier_free(argv), entry["side"]))
+        units.append(Unit(_tier_free(argv), entry["side"]))
     return Work(tuple(units), tuple(own), tuple(integration))
 
 
