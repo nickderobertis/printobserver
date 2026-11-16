@@ -68,6 +68,8 @@ pub use operations::{
 /// The harness identities this program can sign in, as the adapter declares
 /// them: the command-line program reads the table through this crate, which is
 /// the one edge it has to the adapter.
+/// The longest wait one look takes, which a refusal's advice is held to.
+pub use printobserver_core::MAX_LOOK_WAIT_S;
 pub use printobserver_oneharness::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use reconcile::{
     ReconcileStores, Reconciliation, StartupOutcome, StartupReconciliationPayload,

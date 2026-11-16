@@ -1026,6 +1026,74 @@ ask pause-moving "pause""#,
     }
 }
 
+/// A pause the agent's minimum interval held back says how much of it is
+/// left and to send the same command again after a look waiting that long —
+/// and the turn that does exactly what it says has its pause taken.
+#[test]
+fn a_pause_held_back_by_the_interval_is_taken_when_sent_again_after_the_look_it_names() {
+    const INTERVAL_S: i64 = 3;
+    let watching = Watching::start(
+        r#"ask() { eval "printobserver $2 --reason 'a journey about the interval' $actor $about" > "$dir/$1-$print" 2>&1; echo $? > "$dir/$1-$print.code"; }
+ask fan "set-fan-percent --percent 60"
+ask pause-early "pause"
+left=$(sed -n 's/.*--wait-s \([0-9]*\).*/\1/p' "$dir/pause-early-$print" | head -n 1)
+eval "printobserver look --json --wait-s ${left:-0} $about" > "$dir/look-$print" 2>&1
+ask pause-again "pause""#,
+        |document| {
+            document["safety"]["agent_min_interval_s"] = json!(INTERVAL_S);
+            document["safety"]["actions"]["agent"] = json!(["set_fan_percent", "pause"]);
+        },
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Printing);
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+
+    assert_eq!(
+        exited(&watching, &format!("fan-{print}")),
+        0,
+        "{}",
+        printed(&watching, &format!("fan-{print}"))
+    );
+    let early = format!("pause-early-{print}");
+    assert_eq!(
+        exited(&watching, &early),
+        i32::from(Exit::Rejected.status()),
+        "{}",
+        printed(&watching, &early)
+    );
+    let said = printed(&watching, &early);
+    let left: i64 = said
+        .split("--wait-s ")
+        .nth(1)
+        .and_then(|rest| rest.split('`').next())
+        .and_then(|seconds| seconds.parse().ok())
+        .unwrap_or_else(|| panic!("the refusal names no look to wait with: {said}"));
+    assert!((1..=INTERVAL_S).contains(&left), "{said}");
+    for words in [
+        "min_interval_not_elapsed",
+        &format!("its minimum interval is {INTERVAL_S}s"),
+        &format!("so {left}s of it are left"),
+        "then send this same command again",
+    ] {
+        assert!(
+            said.contains(words),
+            "the refusal does not say {words:?}: {said}"
+        );
+    }
+
+    let again = format!("pause-again-{print}");
+    assert_eq!(
+        exited(&watching, &again),
+        0,
+        "the pause sent again after the look the refusal named was not taken: {}",
+        printed(&watching, &again)
+    );
+    let asked = actions_asked(world, &print);
+    let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
+    assert_eq!(kinds, ["set_fan_percent", "pause", "pause"], "{asked:?}");
+}
+
 /// A detector that reports the pause again while the turn that adjusted the
 /// print is still running does not undo the adjustment: the resume it earned
 /// still comes when the turn ends, and the newer detection is the one

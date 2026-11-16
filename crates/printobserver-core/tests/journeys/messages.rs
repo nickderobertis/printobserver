@@ -69,6 +69,13 @@ fn every_core_error_says_what_failed_and_says_it_distinctly() {
         },
     ];
     let mut said: Vec<String> = errors.iter().map(ToString::to_string).collect();
+    assert!(
+        said[4].contains("296s of it are left")
+            && said[4]
+                .contains("send the same request again after a look that waits at least 296s"),
+        "{}",
+        said[4]
+    );
     for message in &said {
         assert!(!message.is_empty());
     }
