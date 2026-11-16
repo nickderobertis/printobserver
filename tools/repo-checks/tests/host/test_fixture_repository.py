@@ -23,7 +23,7 @@ from repo_checks.expect import equal, truth
 from repo_checks.fixture_repository import QUIESCENT, init_repository
 from repo_checks.shell import run
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 #: The suites whose fixture repositories are made by the helper, and nothing else.
 SUITES = (

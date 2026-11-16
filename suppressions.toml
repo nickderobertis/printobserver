@@ -1956,7 +1956,7 @@ reason = "This is the producer's asset name, not a second local contract: each i
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/repo-checks/src/repo_checks/powershell_release.py"
 site = "FLAVOURS = {"
-reason = "These are the producer's platform names. An install reads the selected release's own hashes.sha256 and refuses a flavour whose archive name is absent; tests/test_powershell_release.py drives that refusal with a listing naming another flavour. A networked gate against the current mutable release would add availability and re-cut risk to every code change without making an unlisted build installable."
+reason = "These are the producer's platform names. An install reads the selected release's own hashes.sha256 and refuses a flavour whose archive name is absent; tests/host/test_powershell_release.py drives that refusal with a listing naming another flavour. A networked gate against the current mutable release would add availability and re-cut risk to every code change without making an unlisted build installable."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"

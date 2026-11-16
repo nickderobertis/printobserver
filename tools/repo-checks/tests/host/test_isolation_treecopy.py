@@ -27,7 +27,7 @@ TOOLS = ("repo-checks", "contract-codegen", "release-artifacts")
 #: from — the command line `test_cli` drives imports the other two tools too.
 IMPORTS = os.pathsep.join(
     [
-        str(Path(__file__).parent),
+        str(Path(__file__).resolve().parents[1]),
         *(str(REPO_ROOT / "tools" / tool / "src") for tool in TOOLS),
     ]
 )

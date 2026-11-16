@@ -1,0 +1,19 @@
+{
+  "name": "repo-checks-host",
+  "root": "tools/repo-checks/tests/host",
+  "projectType": "library",
+  "metadata": {
+    "description": "The repository checks' suites whose behaviour is the host's own: the installers that download a tool for this platform, the runner's temporary drive, the Windows-target lint's cross compiler, the subprocess runner's PATH resolution, the worker share read off this host's processors and memory, the platform dispatch's per-family steps, and the tree lock each platform takes through its own kernel interface. Nested in repo-checks, whose helpers and fixtures it imports, so that project runs once while this one runs on every platform."
+  },
+  "tags": ["lang:python", "type:tooling"],
+  "implicitDependencies": ["contract-codegen", "github-workflows", "repo-checks"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/repo-checks/tests/host" },
+    "format-check": { "command": "uv run -q ruff format --check tools/repo-checks/tests/host" },
+    "lint": { "command": "uv run -q ruff check tools/repo-checks/tests/host" },
+    "typecheck": {
+      "command": "uv run -q ty check tools/repo-checks/tests/host && uv run -q ty check --python-platform win32 tools/repo-checks/tests/host"
+    },
+    "test": { "command": "uv run -q coverage run -m pytest tools/repo-checks/tests/host" }
+  }
+}
