@@ -177,6 +177,15 @@ class CameraFrame(NamedTuple):
     captured: datetime
 
 
+class ClockReading(NamedTuple):
+    """One reading of the replay's clock, and the offset from real time it was read by."""
+
+    #: The replay's time.
+    at: datetime
+    #: How far the replay's clock stood from real time.
+    offset: timedelta
+
+
 @dataclass(frozen=True)
 class JobRead:
     """One read of the job: how far the replay's clock stood from real time, and where."""
@@ -246,13 +255,13 @@ class Timeline:
         on the server passes its wait by moving that file on, and the time every
         double reads has to move with it.
         """
-        return self._clock()[0]
+        return self._clock().at
 
-    def _clock(self) -> tuple[datetime, timedelta]:
+    def _clock(self) -> ClockReading:
         """The replay's current time, and the offset from real time it was read by."""
         offset = self._offset()
         moved = datetime.now(UTC) + offset
-        return (min(moved, self.ceiling) if self.ceiling else moved), offset
+        return ClockReading(min(moved, self.ceiling) if self.ceiling else moved, offset)
 
     def _offset(self) -> timedelta:
         """The offset the clock file holds now, or the one last written here."""
@@ -391,9 +400,9 @@ class Timeline:
             # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
             if not self.moment.printer_state.answers:
                 return JsonAnswer(503, {"error": "the printer's serial port is gone"})
-            at, offset = self._clock()
-            position = self.position(at)
-            self.job_reads.append(JobRead(offset, position))
+            reading = self._clock()
+            position = self.position(reading.at)
+            self.job_reads.append(JobRead(reading.offset, position))
             size = self.case.gcode_size
             job: JobDocument = {
                 "job": {
