@@ -63,6 +63,8 @@ mod carrying;
 mod closing;
 #[path = "journeys/confirming.rs"]
 mod confirming;
+#[path = "journeys/contexting.rs"]
+mod contexting;
 #[path = "journeys/documented.rs"]
 mod documented;
 #[path = "journeys/documenting.rs"]
@@ -124,6 +126,18 @@ fn a_print_started_at_the_printer_is_found_and_joined_by_its_alert() {
     let world = World::open(world::STOOD_IN);
 
     finding::a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(&world);
+}
+
+/// A turn reads a print's context, then only what came after the newest
+/// event it read, through this program.
+///
+/// A world of its own, because the journey's adjustments are the only events
+/// its reads are held to.
+#[test]
+fn a_context_read_since_an_event_answers_only_what_came_after_it() {
+    let world = World::open(world::STOOD_IN);
+
+    contexting::a_read_since_an_event_answers_only_what_came_after_it(&world);
 }
 
 /// An operator keeps the spool ledger through this program, and reads all of

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A setting in force that the plan at this height says is wrong for what is\nbeing laid.",
+  "oneOf": [
+    {
+      "const": "fan_off_over_bridges",
+      "description": "The part-cooling fan is off while the current layer or the few below\nit, which a frame shows, bridge or overhang.",
+      "type": "string"
+    },
+    {
+      "const": "flow_low_over_walls",
+      "description": "The flow factor is well under one while the current layer lays walls.",
+      "type": "string"
+    }
+  ],
+  "title": "PlanMismatch"
+}

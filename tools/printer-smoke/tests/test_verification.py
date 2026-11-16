@@ -74,6 +74,11 @@ WRONG: tuple[WrongAnswer, ...] = (
         step=STEP_CONTEXT,
         what="the context reports bounds wider than the configuration allows",
     ),
+    WrongAnswer(
+        fault="context-states-no-print-state",
+        step=STEP_CONTEXT,
+        what="the context names the print and states nothing of its state",
+    ),
 )
 
 
@@ -88,6 +93,17 @@ def test_a_wrong_answer_fails_the_smoke_naming_where(
 
     equal(run.returncode, 1, describing=f"the exit of a run where {what}")
     contains(run.stdout, f"FAILED at `{step}`", describing="what the run said")
+
+
+def test_a_context_stating_no_print_state_fails_the_smoke_saying_so(world: World) -> None:
+    """A context with no print state stops the run at the context read, naming what it lacked."""
+    world.substitute.fail("context-states-no-print-state")
+
+    run = world.smoke("--run")
+
+    equal(run.returncode, 1, describing="the exit of a run whose context has no print state")
+    contains(run.stdout, f"FAILED at `{STEP_CONTEXT}`", describing="what the run said")
+    contains(run.stdout, "the context reports no print's state", describing="what the run said")
 
 
 def test_a_machine_that_answers_everything_correctly_passes(world: World) -> None:

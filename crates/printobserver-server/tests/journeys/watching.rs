@@ -1076,10 +1076,7 @@ async fn what_the_watch_records_during_a_print_is_in_its_next_turns_context() {
             "{kind} is not among {kinds:?}"
         );
     }
-    assert_eq!(
-        context["context"]["detector"],
-        json!({ "status": "unchecked", "since": null })
-    );
+    assert_eq!(context["context"].get("detector"), None, "{context}");
 }
 
 /// An `M114` nothing answers, or answers with a line naming no position, reads

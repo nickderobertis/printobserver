@@ -131,7 +131,7 @@ fn reads_status(client: &Client, world: &supervisor::Supervisor) {
 /// Step two: read context, and materialize its latest image.
 fn reads_context_and_image(client: &Client, world: &supervisor::Supervisor) {
     let context = client
-        .context(&world.print_id)
+        .context(&world.print_id, None)
         .expect("a context read is answered");
     assert_eq!(context.context.print.id, world.print_id);
 

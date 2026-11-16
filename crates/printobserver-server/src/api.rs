@@ -261,6 +261,16 @@ pub struct HistoryParams {
     pub limit: Option<u32>,
 }
 
+/// The event a context read is asked `since`: only the events newer than it
+/// are answered, because the caller has read the rest.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+pub struct ContextParams {
+    /// The newest event the caller has read; absent answers the recent window.
+    #[serde(default)]
+    pub since: Option<printobserver_types::EventId>,
+}
+
 /// How long a look asks to wait for something to arrive, in whole seconds.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(crate = "printobserver_types::serde")]
@@ -925,9 +935,9 @@ async fn status(
         }
         Err(error) => return refusal(store_status(&error), error),
     }
-    let context = match state.supervisor.context(print_id).await {
+    let context = match context_of(&state, print_id).await {
         Ok(context) => context,
-        Err(error) => return refusal(core_status(&error), error),
+        Err(refused) => return refused,
     };
     let session = match state.sessions.session(print_id).await {
         Ok(session) => session,
@@ -946,6 +956,29 @@ async fn status(
     )
 }
 
+/// One print's context, read off the request's own thread.
+///
+/// The first read of a print's context after it starts reads the print's
+/// whole G-code to index it, through a printer port that blocks while it
+/// reads, so it is taken on a blocking thread, as a look is: a request that
+/// held an asynchronous worker for the length of a download would hold every
+/// task queued behind it there too.
+async fn context_of(
+    state: &ApiState,
+    print_id: PrintId,
+) -> Result<printobserver_core::PrintContext, Response> {
+    let supervisor = Arc::clone(&state.supervisor);
+    let read = tokio::task::spawn_blocking(move || {
+        printobserver_core::block_on(supervisor.context(print_id))
+    })
+    .await;
+    match read {
+        Ok(Ok(context)) => Ok(context),
+        Ok(Err(error)) => Err(refusal(core_status(&error), error)),
+        Err(error) => Err(refusal(StatusCode::INTERNAL_SERVER_ERROR, error)),
+    }
+}
+
 /// Read everything a supervision turn is given about one print, with the
 /// latest image materialized.
 ///
@@ -957,13 +990,22 @@ async fn context(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
     Path(print_id): Path<PrintId>,
+    Query(params): Query<ContextParams>,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
-    let context = match state.supervisor.context(print_id).await {
-        Ok(context) => context,
-        Err(error) => return refusal(core_status(&error), error),
+    // Off the request's own thread, for the reason `context_of` gives.
+    let supervisor = Arc::clone(&state.supervisor);
+    let since = params.since;
+    let read = tokio::task::spawn_blocking(move || {
+        printobserver_core::block_on(supervisor.agent_context(print_id, since))
+    })
+    .await;
+    let context = match read {
+        Ok(Ok(read)) => read,
+        Ok(Err(error)) => return refusal(core_status(&error), error),
+        Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
     };
     let mut image_path = None;
     if let Some(latest) = context.latest_image.as_ref() {
@@ -1013,9 +1055,9 @@ async fn look(
     }
     let supervisor = Arc::clone(&state.supervisor);
     let taken = tokio::task::spawn_blocking(move || {
-        let started = std::time::Instant::now();
-        let arrived = supervisor.await_arrivals(print_id, Duration::from_secs(u64::from(wait_s)));
-        printobserver_core::block_on(supervisor.take_look(print_id, started.elapsed(), arrived))
+        let (arrived, waited) =
+            supervisor.await_look_arrivals(print_id, Duration::from_secs(u64::from(wait_s)));
+        printobserver_core::block_on(supervisor.take_look(print_id, waited, arrived))
     })
     .await;
     match taken {

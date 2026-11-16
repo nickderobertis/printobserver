@@ -25,3 +25,6 @@ The rules the real-print suite is held to, and why.
 - **A case's position and time are data,** in `case.json`; `checks_real_prints` and
   `tests/skilltest-wiring` hold them. `just skilltest-record` folds a run into
   `results/latest.json`.
+- **Every conversation's compound `printobserver` commands are in the record**,
+  under `compound_commands`, and a live test fails on any: production permissions
+  refuse one, which costs the action it carried.

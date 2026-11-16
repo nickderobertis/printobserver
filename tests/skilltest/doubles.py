@@ -30,7 +30,7 @@ from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from cases import Case, MachineState, Moment, instant
 from repo_checks.loopback import LoopbackServer
@@ -177,6 +177,25 @@ class CameraFrame(NamedTuple):
     captured: datetime
 
 
+class ClockReading(NamedTuple):
+    """One reading of the replay's clock, and the offset from real time it was read by."""
+
+    #: The replay's time.
+    at: datetime
+    #: How far the replay's clock stood from real time.
+    offset: timedelta
+
+
+@dataclass(frozen=True)
+class JobRead:
+    """One read of the job: how far the replay's clock stood from real time, and where."""
+
+    #: The offset the clock answered this read by.
+    offset: timedelta
+    #: The file position it answered.
+    position: int
+
+
 @dataclass
 class Timeline:
     """The replay's current time: which event it stands at, and which frame was last answered.
@@ -215,6 +234,8 @@ class Timeline:
     stopped: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     heaters: Heaters = field(default_factory=Heaters)
+    #: Every read of the job, in order.
+    job_reads: list[JobRead] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -228,9 +249,27 @@ class Timeline:
         return self.case.moments[self.index]
 
     def now(self) -> datetime:
-        """The replay's current time, which is what the server's clock answers."""
-        moved = datetime.now(UTC) + self.offset
-        return min(moved, self.ceiling) if self.ceiling else moved
+        """The replay's current time, which is what the server's clock answers.
+
+        The offset is read back from the clock file rather than held here: a look
+        on the server passes its wait by moving that file on, and the time every
+        double reads has to move with it.
+        """
+        return self._clock().at
+
+    def _clock(self) -> ClockReading:
+        """The replay's current time, and the offset from real time it was read by."""
+        offset = self._offset()
+        moved = datetime.now(UTC) + offset
+        return ClockReading(min(moved, self.ceiling) if self.ceiling else moved, offset)
+
+    def _offset(self) -> timedelta:
+        """The offset the clock file holds now, or the one last written here."""
+        try:
+            words = self.clock.read_text("ascii").split()
+            return timedelta(milliseconds=int(words[0]))
+        except OSError, ValueError, IndexError:
+            return self.offset
 
     def _set_clock(self, when: datetime) -> None:
         """Move the clock to an instant, and tell the server, which reads the file each time."""
@@ -333,8 +372,8 @@ class Timeline:
             numbered(self.picture(answered.name), len(self.fetches)), answered.captured
         )
 
-    def position(self) -> int:
-        """The job's file position at the replay's current time, as the recording has it.
+    def position(self, at: datetime | None = None) -> int:
+        """The job's file position at an instant, by default the replay's current time.
 
         The event's own until a look has been taken, and short of the next event's.
         """
@@ -347,7 +386,7 @@ class Timeline:
             high = following[0].file_position_bytes - 1
         else:
             high = later.position - 1 if later else self.case.gcode_size - 1
-        return max(low, min(self.case.position_at(self.now()), high))
+        return max(low, min(self.case.position_at(at or self.now()), high))
 
     def _print_time(self) -> int:
         """How long the job has been running: now, less when the recording says it started."""
@@ -361,7 +400,9 @@ class Timeline:
             # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
             if not self.moment.printer_state.answers:
                 return JsonAnswer(503, {"error": "the printer's serial port is gone"})
-            position = self.position()
+            reading = self._clock()
+            position = self.position(reading.at)
+            self.job_reads.append(JobRead(reading.offset, position))
             size = self.case.gcode_size
             job: JobDocument = {
                 "job": {
@@ -528,7 +569,8 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
                     "origin": "local",
                     "type": "machinecode",
                     "size": timeline.case.gcode_size,
-                    "refs": {"download": f"http://{host}/downloads/files/local/{name}"},
+                    # Percent-encoded, as OctoPrint writes the link.
+                    "refs": {"download": f"http://{host}/downloads/files/local/{quote(name)}"},
                 },
             )
 

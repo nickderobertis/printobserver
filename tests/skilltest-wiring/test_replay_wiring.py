@@ -10,12 +10,14 @@ stamped with the name of the frame it stands for.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
 import sys
+import time
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from http.client import HTTPConnection
 from pathlib import Path
@@ -86,7 +88,7 @@ REPLAYS = {
         "first-layer-before-the-failure",
         "ring-dragged-off-its-place",
     ],
-    "petg-spool-jam-air-print": ["first-layers-healthy"],
+    "petg-spool-jam-air-print": ["first-layers-healthy", "air-print-parts-stopped-growing"],
     "petg-clip-detach-and-stringing-web": [
         "clip-came-loose",
         "stringing-web-warning",
@@ -98,8 +100,8 @@ REPLAYS = {
         "nozzle-left-on-part-after-reset",
         "gantry-low-over-remaining-bin",
     ],
-    "under-extrusion-lace": ["carry-on-healthy-before-fault"],
-    "fan-cut-bridge": ["carry-on-healthy-before-fault"],
+    "under-extrusion-lace": ["carry-on-healthy-before-fault", "porous-walls"],
+    "fan-cut-bridge": ["carry-on-healthy-before-fault", "bridge-sagging-uncooled"],
     "jar-top-petg-healthy": [
         "carry-on-004-other",
         "carry-on-013-other",
@@ -112,7 +114,20 @@ REPLAYS = {
     ],
 }
 CONTEXT = ["printobserver", "context", "--print-id", "{print}", "--json"]
+#: The status read, which states the job whole where the agent's context does not.
+STATUS = ["printobserver", "status", "--print-id", "{print}", "--json"]
 LOOK = ["printobserver", "look", "--print-id", "{print}", "--json"]
+#: How long a waiting look waits: long enough to see, short enough to wait out.
+LOOK_WAIT_S = 5
+LOOK_WAITING = [
+    "printobserver",
+    "look",
+    "--print-id",
+    "{print}",
+    "--wait-s",
+    str(LOOK_WAIT_S),
+    "--json",
+]
 PAUSE = [
     "printobserver",
     "pause",
@@ -153,6 +168,8 @@ class Scripted:
     replayed: Replayed
     turns: list[Seen]
     images: dict[str, str]
+    #: Every read of the job the stood-in instance answered, in order.
+    job_reads: list[doubles.JobRead] = dataclasses.field(default_factory=list)
 
     def seen_frame(self, turn: int, look: int) -> str:
         """The frame the `look`th scripted look of one turn answered."""
@@ -161,7 +178,12 @@ class Scripted:
 
 
 def mock_replay(
-    case: Case, turns: list[ScriptedRun], scratch: Path, gcode: bytes | None = None
+    case: Case,
+    turns: list[ScriptedRun],
+    scratch: Path,
+    gcode: bytes | None = None,
+    *,
+    real_waits: bool = False,
 ) -> Scripted:
     """Run one case's whole replay, its turns scripted, and read back what happened."""
     script = scratch / "script.json"
@@ -176,7 +198,11 @@ def mock_replay(
         encoding="utf-8",
     )
     replay = Replay(
-        case, [sys.executable, str(MOCK_TURN), str(script)], picture=stamped, gcode=gcode
+        case,
+        [sys.executable, str(MOCK_TURN), str(script)],
+        picture=stamped,
+        gcode=gcode,
+        real_waits=real_waits,
     )
     try:
         replayed = replay.run()
@@ -186,10 +212,11 @@ def mock_replay(
             for path in replay.state.glob("images/*/*")
             if path.is_file()
         }
+        job_reads = list(replay.timeline.job_reads)
     finally:
         replay.clean_up()
     seen = (scratch / "seen.jsonl").read_text(encoding="utf-8").splitlines()
-    return Scripted(replayed, [json.loads(line) for line in seen], images)
+    return Scripted(replayed, [json.loads(line) for line in seen], images, job_reads)
 
 
 @pytest.fixture
@@ -444,7 +471,7 @@ def test_the_configuration_is_the_installers_with_only_the_blanks_filled(tmp_pat
 def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch: Path) -> None:
     """The port opens one conversation, and each turn is handed its frame and its position."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
-    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    done = mock_replay(case, [{"commands": [CONTEXT, STATUS]}], scratch)
     ledger = done.replayed.ledger
     equal(len(ledger["sessions"]), 1)
     equal(len(ledger["turns"]), len(case.moments))
@@ -454,7 +481,8 @@ def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch
     truth("--resume" in arguments[1], describing="the later event to continue it")
     for turn, moment in zip(done.turns, case.moments, strict=True):
         answered = json.loads(turn["ran"][0]["out"])
-        equal(answered["context"]["job"]["file_position_bytes"], moment.file_position_bytes)
+        status = json.loads(turn["ran"][1]["out"])
+        equal(status["job"]["file_position_bytes"], moment.file_position_bytes)
         equal(done.images[Path(answered["image_path"]).name], moment.event_image)
 
 
@@ -524,10 +552,9 @@ def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
 def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
     """What the server records of the job's start stays put across a whole print."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
-    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    done = mock_replay(case, [{"commands": [STATUS]}], scratch)
     started = {
-        json.loads(turn["ran"][0]["out"])["context"]["print"]["job_started_at"][:16]
-        for turn in done.turns
+        json.loads(turn["ran"][0]["out"])["print"]["job_started_at"][:16] for turn in done.turns
     }
     equal(len(started), 1, describing=f"one job start among {started}")
 
@@ -553,8 +580,8 @@ def test_the_job_keeps_moving_between_checks_while_frames_repeat_a_reading() -> 
         truth(off < moved / 20, describing=f"{steady} at {seconds} s, off by {off}")
 
 
-def test_a_single_event_replay_moves_the_job_at_the_recordings_rate() -> None:
-    """A case replaying one event still has its other scenarios to read the rate from."""
+def test_a_replay_moves_the_job_at_the_recordings_rate_after_its_first_event() -> None:
+    """A look after a case's first event finds the job a little further on, not at its end."""
     for name in ("under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"):
         case = read_case(name)
         event = case.moments[0]
@@ -566,9 +593,7 @@ def test_a_single_event_replay_moves_the_job_at_the_recordings_rate() -> None:
         )
 
 
-@pytest.mark.parametrize(
-    "name", ["under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"]
-)
+@pytest.mark.parametrize("name", ["jar-top-petg-healthy"])
 def test_a_look_after_the_last_replayed_event_stops_short_of_the_recordings_next_moment(
     name: str, scratch: Path
 ) -> None:
@@ -590,9 +615,7 @@ def test_a_look_after_the_last_replayed_event_stops_short_of_the_recordings_next
     truth(received[-1] < later.at, describing=f"{received[-1]} before {later.at}")
 
 
-@pytest.mark.parametrize(
-    "name", ["under-extrusion-lace", "fan-cut-bridge", "petg-spool-jam-air-print"]
-)
+@pytest.mark.parametrize("name", ["jar-top-petg-healthy"])
 def test_however_long_a_last_turn_runs_nothing_passes_the_next_recorded_moment(
     name: str, scratch: Path
 ) -> None:
@@ -660,6 +683,28 @@ def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
     case = read_case("jar-top-wrong-material-first-layer-detach")
     done = mock_replay(case, [{"commands": [CONTEXT]}, {"commands": [PAUSE]}], scratch)
     truth(done.replayed.passed, describing=f"every decision point: {done.replayed.failures()}")
+
+
+def test_a_supervision_turns_compound_command_is_reported_under_its_conversation(
+    scratch: Path,
+) -> None:
+    """A piped read is written down under the session it ran in, and the record carries it.
+
+    With no ledger turn to read a decision point's session from, it is the print's last.
+    """
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    # This mock writes a turn's words into the transcript as one line, as a pipe reads.
+    piped = [*CONTEXT, "|", "head", "-5"]
+    done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
+    replayed = done.replayed
+    sessions = [session["session_name"] for session in replayed.ledger["sessions"]]
+    equal(len(sessions), 1)
+    ran = [line for line in replayed.points[0].commands if "| head" in line]
+    equal(len(ran), 1)
+    equal(replayed.compound_commands(), {sessions[0]: ran})
+    equal(replayed.as_record()["compound_commands"], {sessions[0]: ran})
+    unattributed = dataclasses.replace(replayed, ledger={**replayed.ledger, "turns": []})
+    equal(unattributed.compound_commands(), {sessions[0]: ran})
 
 
 def test_a_printer_that_cannot_be_read_still_gets_its_scheduled_check(scratch: Path) -> None:
@@ -780,8 +825,128 @@ def test_the_printer_reports_the_temperatures_the_gcode_asks_for_at_its_position
     gcode = b"M140 S60\nM104 S220\n" + b";\n" * (before // 2) + b"M104 S240\n"
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
     tools = [json.loads(turn["ran"][0]["out"])["context"]["printer"] for turn in done.turns]
-    equal([printer["tools"][0]["target_c"]["value"] for printer in tools], [220.0, 240.0])
-    equal(tools[0]["bed"]["target_c"]["value"], 60.0)
+    equal([printer["tools"][0]["target_c"] for printer in tools], [220.0, 240.0])
+    equal(tools[0]["bed"]["target_c"], 60.0)
+
+
+def test_a_gcode_named_with_spaces_is_planned_through_the_real_adapter(scratch: Path) -> None:
+    """The stand-in's download link reaches the file whatever its name holds.
+
+    The case's G-code is named with spaces, so a link written with its name raw
+    is one the adapter cannot follow, and every turn would be handed no plan.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    truth(" " in case.gcode.name, describing="the case's G-code to be named with spaces")
+    last = max(moment.file_position_bytes for moment in case.moments)
+    gcode = b";LAYER_CHANGE\n;Z:0.2\n" + b";\n" * (last // 2 + 1)
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
+    plans = [json.loads(turn["ran"][0]["out"])["context"].get("slicer") for turn in done.turns]
+    equal([plan and plan.get("layer") for plan in plans], [1] * len(case.moments))
+
+
+@dataclass(frozen=True)
+class Looked:
+    """What one look handed the agent."""
+
+    #: The frame it answered.
+    frame: str
+    #: When that frame was captured.
+    frame_captured_at: str
+    #: How long the look waited, in whole seconds.
+    waited_s: int
+    #: When the look's event was received, to the second.
+    received_at: str
+    #: Where the job stood.
+    file_position_bytes: int
+
+
+def _looked(done: Scripted) -> list[Looked]:
+    """What each look of the first turn handed the agent."""
+    seen = []
+    for at, entry in enumerate(e for e in done.turns[0]["ran"] if e["words"][1] == "look"):
+        answered = json.loads(entry["out"])
+        payload = answered["event"]["payload"]
+        seen.append(
+            Looked(
+                frame=done.seen_frame(0, at),
+                frame_captured_at=str(payload["frame_captured_at"]),
+                waited_s=int(payload["waited_s"]),
+                received_at=str(answered["event"]["received_at"])[:19],
+                file_position_bytes=int(answered["job"]["file_position_bytes"]),
+            )
+        )
+    return seen
+
+
+def _offsets_at(done: Scripted, looked: list[Looked]) -> list[timedelta]:
+    """The clock's offset from real time at the job read each look answered.
+
+    Each look's read is the first after the previous look's to place the job
+    where that look said it stood.
+    """
+    offsets, at = [], 0
+    for look in looked:
+        at = next(
+            (
+                index
+                for index in range(at, len(done.job_reads))
+                if done.job_reads[index].position == look.file_position_bytes
+            ),
+            -1,
+        )
+        truth(at >= 0, describing=f"a read of the job that placed it at {look.file_position_bytes}")
+        offsets.append(done.job_reads[at].offset)
+    return offsets
+
+
+def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
+    tmp_path: Path,
+) -> None:
+    """A look's wait passes on the replay's clock and hands the agent the same.
+
+    It passes at once, and hands the agent exactly what waiting it out in real
+    time hands it.
+
+    The frame, its capture time and the wait are compared whole, and the look's
+    received time to the second. The job's position is read off the replay's
+    clock some milliseconds after the frame is fetched, and those milliseconds
+    are the host's, which no two runs share, so the two runs' positions are not
+    compared. What says the job stood where waiting it out puts it is the clock
+    each position was read by: between the two looks' reads of the job, the
+    jumped replay's clock moved on from real time by exactly the wait, and the
+    real-time replay's not at all.
+    """
+    # One frame lies between this case's two events: the first look moves the
+    # clock to it, and the second, with nothing newer, moves it by its wait alone.
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    turn: ScriptedRun = {"commands": [LOOK_WAITING, LOOK_WAITING]}
+    for each in ("real", "jumped"):
+        (tmp_path / each).mkdir()
+    real_at = time.monotonic()
+    real = mock_replay(case, [turn], tmp_path / "real", real_waits=True)
+    real_s = time.monotonic() - real_at
+    jumped_at = time.monotonic()
+    jumped = mock_replay(case, [turn], tmp_path / "jumped")
+    jumped_s = time.monotonic() - jumped_at
+    looked, expected = _looked(jumped), _looked(real)
+    equal(
+        [replace(look, file_position_bytes=0) for look in looked],
+        [replace(look, file_position_bytes=0) for look in expected],
+    )
+    equal(expected[0].frame, expected[1].frame)
+    for runs in (looked, expected):
+        truth(
+            runs[1].file_position_bytes > runs[0].file_position_bytes,
+            describing="the job to move on while the second look waits",
+        )
+    jumped_offsets, real_offsets = _offsets_at(jumped, looked), _offsets_at(real, expected)
+    equal(jumped_offsets[1] - jumped_offsets[0], timedelta(seconds=LOOK_WAIT_S))
+    equal(real_offsets[1] - real_offsets[0], timedelta())
+    equal([look.waited_s for look in looked], [LOOK_WAIT_S, LOOK_WAIT_S])
+    truth(
+        jumped_s < real_s - LOOK_WAIT_S,
+        describing=f"the jumped replay ({jumped_s:.1f} s) to skip the real waits ({real_s:.1f} s)",
+    )
 
 
 def test_an_unfetched_frame_is_refused_naming_the_recipe() -> None:
@@ -1302,6 +1467,7 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "passed": True,
         "turns": 2,
         "sessions": [],
+        "compound_commands": {},
         "decision_points": points,
     }
     return points, test_record
@@ -1366,6 +1532,9 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         ("repeated", {**test_record, "decision_points": [points[0], points[0]]}),
         ("reordered", {**test_record, "decision_points": points[::-1]}),
         ("sessions", {**test_record, "sessions": [3]}),
+        ("no compound report", {k: v for k, v in test_record.items() if k != "compound_commands"}),
+        ("a conversation unreported", {**test_record, "sessions": ["operator-2026-10-07"]}),
+        ("compound", {**test_record, "compound_commands": {"": [3]}}),
         (
             "why",
             {**test_record, "decision_points": [{**points[0], "why_not": 3}, points[1]]},

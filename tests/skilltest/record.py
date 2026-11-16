@@ -87,6 +87,18 @@ def _decision_point_is_readable(point: object) -> bool:
     )
 
 
+def _compound_commands_are_readable(found: object, sessions: list[str]) -> bool:
+    """Whether a test says, for each of its conversations, what it ran beside another command."""
+    return (
+        isinstance(found, dict)
+        and set(found) == set(sessions)
+        and all(
+            isinstance(commands, list) and all(isinstance(command, str) for command in commands)
+            for commands in found.values()
+        )
+    )
+
+
 def _test_record(path: Path) -> TestRecord:
     """One test's record, once it has the fields the record is folded from."""
     document = json.loads(path.read_text(encoding="utf-8"))
@@ -97,6 +109,9 @@ def _test_record(path: Path) -> TestRecord:
         or type(document.get("turns")) is not int
         or not isinstance(document.get("sessions"), list)
         or not all(isinstance(session, str) for session in document["sessions"])
+        or not _compound_commands_are_readable(
+            document.get("compound_commands"), document["sessions"]
+        )
         or not isinstance(document.get("decision_points"), list)
         or not all(_decision_point_is_readable(point) for point in document["decision_points"])
         or document["turns"] != len(document["decision_points"])

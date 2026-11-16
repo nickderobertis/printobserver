@@ -148,6 +148,10 @@ class ActionExecutedPayload(TypedDict):
 
     # The action's identifier.
     action_id: ActionId
+    # How far into its file the print had last been read to have got when
+    # the action was taken, in bytes, when that was known: what places a
+    # change against the commands the file sets the same thing with.
+    file_position_bytes: NotRequired[int | None]
     # The bounded intervention it opened, when it opened one.
     intervention_id: NotRequired[InterventionId | None]
 
@@ -311,6 +315,123 @@ class AgentAssessmentPayload(TypedDict):
     assessment: AgentAssessment
     # The session the turn ran in.
     session_name: str
+
+
+class AgentContext(TypedDict):
+    """`AgentContext`, as the contracts declare it.
+
+    What a supervision turn reads about one print: `PrintContext` with
+    each
+    fact stated once, as it is now, and nothing no supervision decision
+    reads.
+
+    Left out of it, each because no step of the skill, no check and no
+    recorded
+    case decides anything by it: the print's file, provider and times; the
+    printer's and the job's own states (the print states it once); every
+    heater's
+    offset, the chamber and the time they were read; the printer's
+    reported
+    feedrate, flowrate and fan (the slicer's plan states the flow and fan
+    in
+    force, and no step reads the feedrate); the job's file, size,
+    progress, time
+    and position (the plan states where the print is); the manifest (its
+    limits
+    are the bounds); and the detector's health.
+
+    The printer and the job are stated here and nowhere in the events;
+    each
+    event is what happened, when, and what it changed; and asked `since`
+    an
+    event, only the events newer than it are carried, so a turn that has
+    read
+    the rest is not handed them again. `newest_event` is what the next
+    read
+    asks `since`.
+    """
+
+    # The limits in force, so that the agent can see them before it asks.
+    bounds: EffectiveBounds
+    # The interventions still active.
+    interventions: list[Intervention]
+    # The error the job stopped on, when it stopped on one.
+    job_error: NotRequired[JobError | None]
+    # The most recent image, whose path is answered beside the context and
+    # whose record states its digest.
+    latest_image: NotRequired[ImageRef | None]
+    # The newest event of this print's, which a later read asks `since`:
+    # absent only when the print has none.
+    newest_event: NotRequired[EventId | None]
+    # The print.
+    print: AgentPrint
+    # The printer's heaters now, when they could be read.
+    printer: NotRequired[AgentPrinter | None]
+    # This print's events newer than the one asked `since`, or its recent
+    # ones when none was named, newest first.
+    recent_events: list[AgentEvent]
+    # What the slicer planned at the job's current file position.
+    slicer: NotRequired[SlicerPlan | None]
+
+
+class AgentEvent(TypedDict):
+    """`AgentEvent`, as the contracts declare it.
+
+    One event of the print's, as a turn reads it: what happened, when, and
+    the
+    facts it changed.
+    """
+
+    # Its identifier, which a later read asks `since`.
+    id: EventId
+    # What kind of event it is.
+    kind: EventKind
+    # What it carried, less the snapshots the context states once, the
+    # agent's own assessment and the bookkeeping no decision reads.
+    payload: NotRequired[object]
+    # When it was received.
+    received_at: Timestamp
+
+
+class AgentHeater(TypedDict):
+    """`AgentHeater`, as the contracts declare it.
+
+    One heater, in degrees Celsius: each reading absent when the printer
+    did not
+    report it, or reported one outside what a heater can read.
+    """
+
+    # The temperature it is at.
+    actual_c: NotRequired[float | None]
+    # The temperature it is driving towards.
+    target_c: NotRequired[float | None]
+
+
+class AgentPrint(TypedDict):
+    """`AgentPrint`, as the contracts declare it.
+
+    The print a context is about.
+    """
+
+    # Why it ended, once it has.
+    end_reason: NotRequired[str | None]
+    # Its identifier.
+    id: PrintId
+    # What the printer was last found doing with it, or the state it ended
+    # in.
+    state: PrinterState
+
+
+class AgentPrinter(TypedDict):
+    """`AgentPrinter`, as the contracts declare it.
+
+    The printer's heaters as they are now.
+    """
+
+    # The bed's heater, when it has one.
+    bed: NotRequired[AgentHeater | None]
+    # Each tool's heater, in order.
+    tools: NotRequired[list[AgentHeater]]
 
 
 class BedTemperature(TypedDict):
@@ -518,9 +639,14 @@ class ContextAnswer(TypedDict):
 
     What a context read answers.
 
+    The context is the agent's view of it (`AgentContext`): each fact
+    once,
+    as it is now, and the events newer than the one asked `since`.
+
     The latest image is **materialized** here rather than left as the
     handle
-    `PrintContext` carries: the one thing a supervision turn does with an
+    `printobserver_core::PrintContext` carries: the one thing a
+    supervision turn does with an
     image is look at it, and a handle is not something anything can open.
     The
     path is absolute on this server's own filesystem, exactly as
@@ -529,7 +655,7 @@ class ContextAnswer(TypedDict):
     """
 
     # Everything a supervision turn is given about the print.
-    context: PrintContext
+    context: AgentContext
     # Where the latest image's bytes are, absolute on this host.
     image_path: NotRequired[str | None]
 
@@ -828,6 +954,25 @@ class Footprint(TypedDict):
 
 # Why a camera frame was not one to hand the agent.
 FrameCause: TypeAlias = Literal["blank", "undecodable"]
+
+
+class GcodeIndexedPayload(TypedDict):
+    """`GcodeIndexedPayload`, as the contracts declare it.
+
+    A print's G-code was read and indexed: what the slicer planned at each
+    file position is now known for it, without reading the file again.
+
+    Written once per index built, which is once per print for as long as
+    the
+    server runs.
+    """
+
+    # How many bytes of it were read.
+    bytes: int
+    # The file that was indexed.
+    file_name: FileName
+    # How many layers it plans.
+    layers: int
 
 
 class HeatedTool(TypedDict):
@@ -1526,6 +1671,17 @@ class PeriodicObservationPayload(TypedDict):
     printer: NotRequired[PrinterSnapshot | None]
 
 
+# A fact of the plan the print's file does not state.
+PlanFact: TypeAlias = Literal[
+    "layer", "final_z", "types", "minutes_left", "flow_factor", "fan_percent", "objects", "rise"
+]
+
+
+# A setting in force that the plan at this height says is wrong for what is
+# being laid.
+PlanMismatch: TypeAlias = Literal["fan_off_over_bridges", "flow_low_over_walls"]
+
+
 class PolicyDecisionRejected(TypedDict):
     """The `rejected` arm of `PolicyDecision`.
 
@@ -2043,32 +2199,6 @@ PrintAction: TypeAlias = (
     | PrintActionAcknowledgeFailure
     | PrintActionClosePrint
 )
-
-
-class PrintContext(TypedDict):
-    """`PrintContext`, as the contracts declare it.
-
-    Everything a supervision turn is given about one print.
-    """
-
-    # The limits in force, so that the agent can see them before it asks.
-    bounds: EffectiveBounds
-    # The failure detector's health, and since when it has been so.
-    detector: NotRequired[DetectorHealth]
-    # The interventions still active.
-    interventions: list[Intervention]
-    # The job, when a snapshot could be taken.
-    job: NotRequired[JobSnapshot | None]
-    # The most recent image, when there is one.
-    latest_image: NotRequired[ImageRef | None]
-    # The manifest, when the print has one.
-    manifest: NotRequired[JobManifest | None]
-    # The print itself.
-    print: PrintRecord
-    # The printer, when a snapshot could be taken.
-    printer: NotRequired[PrinterSnapshot | None]
-    # A bounded list of this print's events, newest first.
-    recent_events: list[EventRecord]
 
 
 class PrintEnded(TypedDict):
@@ -3080,6 +3210,42 @@ class Reported(TypedDict):
     value: float
 
 
+class Rise(TypedDict):
+    """`Rise`, as the contracts declare it.
+
+    How far the plan has risen since one earlier frame of this print that
+    was
+    seen: the height a camera should show the parts to have gained since
+    then.
+    """
+
+    # Two heights of the print's highest point, in millimetres: the first
+    # is where the plan had it when that frame was captured, the second how
+    # far it should have risen since — the rise of every layer since that
+    # lays anything but supports. They are the plate's, not every part's: a
+    # part the plan has finished does not grow with it.
+    mm: list[float]
+    # When that earlier frame was captured: the newest frame at least half
+    # an hour old that a periodic observation or a look at this print was
+    # given, as that observation or look states its capture time.
+    since: Timestamp
+
+
+class SetValue(TypedDict):
+    """`SetValue`, as the contracts declare it.
+
+    One adjustable as the print's file set it at the current position, and
+    as
+    a change made through this program since then left it.
+    """
+
+    # What the latest change made through this program set it to, when one
+    # was made after the file last set it.
+    changed: NotRequired[float | None]
+    # What the file's own commands set it to, by the current position.
+    file: NotRequired[float | None]
+
+
 # A build sheet's identifier as the sheet table names it, such as
 # `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
 SheetId: TypeAlias = str
@@ -3206,6 +3372,54 @@ class SignalPosition(TypedDict):
     freshness: PositionFreshness
     # The position.
     position: FilePosition
+
+
+class SlicerPlan(TypedDict):
+    """`SlicerPlan`, as the contracts declare it.
+
+    What the slicer planned at the print's current file position: the
+    shape
+    and place of what should be printing, read from the print's own
+    G-code.
+
+    These are the slicer's plan rather than an observation: a feature
+    named
+    here is part of the design at this height, and nothing here says how
+    well
+    it printed.
+    """
+
+    # Each setting in force the plan at this height says is wrong.
+    at_odds: NotRequired[list[PlanMismatch]]
+    # The part-cooling fan speed, in percent.
+    fan_percent: NotRequired[SetValue | None]
+    # The final layer's height, in millimetres.
+    final_z_mm: NotRequired[float | None]
+    # The flow factor, one meaning one hundred percent.
+    flow_factor: NotRequired[SetValue | None]
+    # The layer the print is in, counting the first as 1; absent before the
+    # first.
+    layer: NotRequired[int | None]
+    # The slicer's own estimate of the minutes left, at the current
+    # position.
+    minutes_left: NotRequired[int | None]
+    # How many objects the file lays down; absent when it labels none.
+    object_count: NotRequired[int | None]
+    # The bed area each object the file lays down covers, unnamed, as
+    # `[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of
+    # the file's object numbers.
+    objects: NotRequired[list[list[int]]]
+    # How far the plan has risen since an earlier frame; absent before any
+    # frame is half an hour old.
+    rise: NotRequired[Rise | None]
+    # What the current layer lays material as, in the order the file first
+    # names each: `Perimeter`, `Support material`, `Bridge infill`.
+    types: NotRequired[list[str]]
+    # The facts the file does not state, which are therefore unknown rather
+    # than absent.
+    unknown: NotRequired[list[PlanFact]]
+    # The current layer's height, in millimetres.
+    z_mm: NotRequired[float | None]
 
 
 class SpoolAdjustedPayload(TypedDict):
@@ -4108,6 +4322,7 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "filament_change_signalled": FilamentChangeSignalledPayload,
     "filament_consumed": FilamentConsumedPayload,
     "file_tally_rebaselined": FileTallyRebaselinedPayload,
+    "gcode_indexed": GcodeIndexedPayload,
     "intervention_expired": InterventionExpiredPayload,
     "malformed_external_event": MalformedExternalEventPayload,
     "obico_failure_alert": ObicoFailureAlertPayload,
@@ -4205,6 +4420,12 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["file_tally_rebaselined"]
 ) -> FileTallyRebaselinedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["gcode_indexed"]
+) -> GcodeIndexedPayload | None: ...
 
 
 @overload
@@ -4468,6 +4689,15 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "ref": "ActionId"
+     }
+    },
+    "file_position_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
      }
     },
     "intervention_id": {
@@ -4750,6 +4980,213 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentContext": {
+  "struct": {
+   "fields": {
+    "bounds": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EffectiveBounds"
+     }
+    },
+    "interventions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job_error": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobError"
+      }
+     }
+    },
+    "latest_image": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "newest_event": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
+    "print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AgentPrint"
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "AgentPrinter"
+      }
+     }
+    },
+    "recent_events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "AgentEvent"
+      },
+      "non_empty": false
+     }
+    },
+    "slicer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SlicerPlan"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentEvent": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "payload": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "any": true
+     }
+    },
+    "received_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentHeater": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentPrint": {
+  "struct": {
+   "fields": {
+    "end_reason": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentPrinter": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "AgentHeater"
+      }
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "AgentHeater"
+      },
+      "non_empty": false
      }
     }
    },
@@ -5073,7 +5510,7 @@ SHAPES: dict[str, object] = json.loads(
      "paired_with": "",
      "required": true,
      "shape": {
-      "ref": "PrintContext"
+      "ref": "AgentContext"
      }
     },
     "image_path": {
@@ -5610,6 +6047,35 @@ SHAPES: dict[str, object] = json.loads(
    "blank",
    "undecodable"
   ]
+ },
+ "GcodeIndexedPayload": {
+  "struct": {
+   "fields": {
+    "bytes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FileName"
+     }
+    },
+    "layers": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
  },
  "HeatedTool": {
   "struct": {
@@ -6855,6 +7321,24 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "PlanFact": {
+  "enum": [
+   "layer",
+   "final_z",
+   "types",
+   "minutes_left",
+   "flow_factor",
+   "fan_percent",
+   "objects",
+   "rise"
+  ]
+ },
+ "PlanMismatch": {
+  "enum": [
+   "fan_off_over_bridges",
+   "flow_low_over_walls"
+  ]
+ },
  "PolicyDecision": {
   "union": {
    "tag_field": "",
@@ -7724,91 +8208,6 @@ SHAPES: dict[str, object] = json.loads(
      "unit": false
     }
    }
-  }
- },
- "PrintContext": {
-  "struct": {
-   "fields": {
-    "bounds": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "EffectiveBounds"
-     }
-    },
-    "detector": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "ref": "DetectorHealth"
-     }
-    },
-    "interventions": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "list": {
-       "ref": "Intervention"
-      },
-      "non_empty": false
-     }
-    },
-    "job": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "JobSnapshot"
-      }
-     }
-    },
-    "latest_image": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "ImageRef"
-      }
-     }
-    },
-    "manifest": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "JobManifest"
-      }
-     }
-    },
-    "print": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "PrintRecord"
-     }
-    },
-    "printer": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "PrinterSnapshot"
-      }
-     }
-    },
-    "recent_events": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "list": {
-       "ref": "EventRecord"
-      },
-      "non_empty": false
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
   }
  },
  "PrintEnded": {
@@ -9192,6 +9591,57 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "Rise": {
+  "struct": {
+   "fields": {
+    "mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "number"
+      },
+      "non_empty": true
+     }
+    },
+    "since": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SetValue": {
+  "struct": {
+   "fields": {
+    "changed": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "file": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "SheetId": {
   "alias": {
    "scalar": "string"
@@ -9385,6 +9835,129 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "ref": "FilePosition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SlicerPlan": {
+  "struct": {
+   "fields": {
+    "at_odds": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlanMismatch"
+      },
+      "non_empty": false
+     }
+    },
+    "fan_percent": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SetValue"
+      }
+     }
+    },
+    "final_z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "flow_factor": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SetValue"
+      }
+     }
+    },
+    "layer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "minutes_left": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "object_count": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "objects": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "list": {
+        "scalar": "integer"
+       },
+       "non_empty": true
+      },
+      "non_empty": false
+     }
+    },
+    "rise": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Rise"
+      }
+     }
+    },
+    "types": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
+     }
+    },
+    "unknown": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlanFact"
+      },
+      "non_empty": false
+     }
+    },
+    "z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
      }
     }
    },
@@ -10977,7 +11550,7 @@ class GeneratedClient(GeneratedSurface):
         # for it, so this cast names that type.
         return cast(StatusAnswer, answered)
 
-    def context(self, print_id: PrintId) -> ContextAnswer:
+    def context(self, print_id: PrintId, since: EventId | None = None) -> ContextAnswer:
         """Call `context` on the configured supervisor.
 
         Raises:
@@ -10989,6 +11562,8 @@ class GeneratedClient(GeneratedSurface):
         """
         target = f"/v1/prints/{print_id}/context"
         asked: list[tuple[str, str]] = []
+        if since is not None:
+            asked.append(("since", str(since)))
         sending = None
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         answered = self.call("GET", target, asked, sending, "ContextAnswer")

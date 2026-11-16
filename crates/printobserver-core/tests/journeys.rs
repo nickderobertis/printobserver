@@ -35,6 +35,9 @@ pub mod declarations;
 #[path = "journeys/bounds.rs"]
 mod bounds;
 
+#[path = "journeys/since.rs"]
+mod since;
+
 #[path = "journeys/chokepoint.rs"]
 mod chokepoint;
 
@@ -106,6 +109,8 @@ mod filament_change;
 
 #[path = "journeys/pairing.rs"]
 mod pairing;
+#[path = "journeys/planning.rs"]
+mod planning;
 #[path = "journeys/preflight.rs"]
 mod preflight;
 

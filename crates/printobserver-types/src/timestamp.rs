@@ -51,6 +51,26 @@ impl Timestamp {
         Self(Utc::now())
     }
 
+    /// Let `wait` pass on the real-print replay's clock rather than in real
+    /// time, and answer whether it did.
+    ///
+    /// Only a build of the suite's own, under the `replay-clock` feature, with
+    /// its clock file beside the program, answers `true`: every other build
+    /// answers `false` and the caller waits as it always does. A caller asks
+    /// only when nothing could end its wait early, so passing the wait at once
+    /// moves every reading of the clock exactly as waiting it out would.
+    #[must_use]
+    // llmlint: ignore[code_lands_in_the_domain_that_owns_it] suppressions.toml has the reason.
+    pub fn pass_replay_time(wait: core::time::Duration) -> bool {
+        #[cfg(feature = "replay-clock")]
+        return replay_clock::advance(wait);
+        #[cfg(not(feature = "replay-clock"))]
+        {
+            let _ = wait;
+            false
+        }
+    }
+
     /// The instant this many seconds after the Unix epoch.
     ///
     /// # Errors
@@ -188,6 +208,10 @@ mod replay_clock {
     /// to answer in milliseconds since the epoch, or nothing past that for none.
     const CLOCK_FILE: &str = "clock";
 
+    /// Set in the environment to wait in real time all the same: what the suite
+    /// compares a jumped replay against.
+    const REAL_WAITS: &str = "PRINTOBSERVER_REPLAY_REAL_WAITS";
+
     fn path() -> Option<&'static PathBuf> {
         static PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
         PATH.get_or_init(|| {
@@ -196,6 +220,40 @@ mod replay_clock {
                 .map(|program| program.with_file_name(CLOCK_FILE))
         })
         .as_ref()
+    }
+
+    /// Move the clock on by `wait`: the file's offset grows by it and its
+    /// ceiling stands, written whole and then renamed into place so a reader
+    /// never sees half of it. Nothing is moved, and `false` answered, when
+    /// there is no file to move or real waits were asked for.
+    pub(super) fn advance(wait: core::time::Duration) -> bool {
+        if std::env::var_os(REAL_WAITS).is_some() {
+            return false;
+        }
+        let Some(file) = path() else {
+            return false;
+        };
+        let Ok(text) = std::fs::read_to_string(file) else {
+            return false;
+        };
+        let mut words = text.split_whitespace();
+        let Some(Ok(offset)) = words.next().map(str::parse::<i64>) else {
+            return false;
+        };
+        let Ok(by) = i64::try_from(wait.as_millis()) else {
+            return false;
+        };
+        let ceiling = words
+            .next()
+            .map(|ceiling| format!(" {ceiling}"))
+            .unwrap_or_default();
+        let written = file.with_extension(format!("advance-{}", std::process::id()));
+        std::fs::write(
+            &written,
+            format!("{}{ceiling}\n", offset.saturating_add(by)),
+        )
+        .is_ok()
+            && std::fs::rename(&written, file).is_ok()
     }
 
     pub(super) fn now(real: DateTime<Utc>) -> DateTime<Utc> {

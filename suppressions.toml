@@ -2768,6 +2768,7 @@ file = "crates/printobserver-sdk/src/contract.rs"
 site = "marks: Vec<UnverifiedMark>,"
 reason = "Generated: the schema bounds these marks with `minItems: 1`, and core holds them as `UnverifiedMarks`, which cannot be built empty and refuses an empty list on read, so no supervisor answers an empty list here. The contract generator has no non-empty list type yet in any of the three clients; `tools/contract-codegen`'s Rust emitter writes this directive above every list the schema says is never empty, and teaching it `minItems` across the Rust, Python and TypeScript clients is the drafted follow-up 'Teach the contract generator minItems'."
 
+
 [[suppression]]
 rule = "clippy::trivially_copy_pass_by_ref"
 file = "crates/printobserver-core/src/records/policy.rs"
@@ -4691,3 +4692,33 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/real-prints-lfs/test_lfs_fixture.py"
 site = "def restored_from(cache: Path, key: str, prefixes: list[str]) -> Path | None:"
 reason = "Which entry `actions/cache/restore` hands back is that action's own behaviour: the key's own entry, and otherwise the newest entry a restore key prefixes. It is documented in the action's own repository and enforced by the forge's cache service, and the journeys run offline, so no gate step can read either. This stand-in is how the fixture journeys run the committed `ci-steps.yml` at all. Without it the steps could not be driven over a real git-lfs and a counting remote. It models only the two outcomes those steps branch on, `cache-hit` and the restored directory. The forge reconciles it on every run: each real run's cache step logs the key it restored, and a fallback the stand-in got wrong would show there as a fetch that downloaded every object."
+
+[[suppression]]
+rule = "code_lands_in_the_domain_that_owns_it"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "pub fn pass_replay_time(wait: core::time::Duration) -> bool {"
+reason = "The real-print replay's clock already lives here, before this change: `Timestamp::now` reads it under the `replay-clock` feature, from the private `replay_clock` module's file and offset, because `now` is the one instant every crate of the server reads. Passing time on that clock writes the same file and offset, so it sits with the reader; put anywhere else, one clock has two owners, and the replay suite, which is Python driving the built programs, holds no Rust code the server could call. Every build but the suite's answers `false` and changes nothing, and no domain's entry is added to this crate."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
+reason = "`repo-policy.toml`'s `smoke.section` names \"The real-printer smoke test\" section of the root AGENTS.md as where the smoke test is described, and this paragraph is that section's statement of what a run does to the machine, which the person standing beside the printer reads before starting it; a nested file is not where that section points them. This change edits one phrase of it, because the context answer it described no longer carries the job."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
+reason = "The paragraph predates this change, which only replaced \"the job\" with \"the print's state\" so that it stays true of the trimmed context answer the smoke reads. It is the judgment `Smoke.step_context` cannot carry by itself: what a run will do to a real printer, in order, stated before anybody starts one, since this is the one test here whose defect damages hardware."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
