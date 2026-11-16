@@ -865,3 +865,92 @@ async fn a_file_the_instance_cannot_serve_yet_is_planned_once_it_can() {
     assert_eq!(world.builds(&print_id).await, 1);
     world.server.stop().await;
 }
+
+/// Every payload field a turn's context leaves out of an event: the snapshots
+/// it states once, the agent's own assessment, and the bookkeeping.
+const UNREAD_PAYLOAD_FIELDS: [&str; 8] = [
+    "printer",
+    "job",
+    "assessment",
+    "interval_s",
+    "session_name",
+    "harness_identity",
+    "delivered",
+    "waited_s",
+];
+
+/// A turn's context states each fact once and nothing no decision reads: a
+/// heater reading outside what a heater can read is left out rather than
+/// stated, every event says what happened without the snapshots, the
+/// assessment or the bookkeeping, an event left with nothing else to say
+/// carries no payload at all, and the error a job stopped on is stated.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turns_context_states_each_fact_once_and_nothing_no_decision_reads() {
+    let world = Indexing::open(&[(FIRST, BUBBLER)], IN_SUPPORT.position).await;
+    world.octoprint.delays_downloads(Duration::ZERO);
+    world.octoprint.targets(900.0, 60.0);
+    let print_id = world.active(None).await;
+    world.more_checks(&print_id, 2).await;
+
+    let turn = world
+        .turns()
+        .into_iter()
+        .rfind(|turn| turn["print"]["id"] == json!(print_id))
+        .expect("a check of the print ran its turn");
+    let tool = &turn["printer"]["tools"][0];
+    assert_eq!(tool["actual_c"], json!(25.0), "{tool}");
+    assert!(
+        tool.get("target_c").is_none(),
+        "a target no heater can be set to was stated: {tool}"
+    );
+    assert_eq!(turn["printer"]["bed"]["target_c"], json!(60.0), "{turn}");
+    let events = turn["recent_events"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a turn reads the print's events: {turn}"));
+    assert!(
+        events
+            .iter()
+            .any(|event| event["kind"] == json!("agent_assessment")),
+        "no earlier turn's assessment is among the events: {turn}"
+    );
+    for event in events {
+        for unread in UNREAD_PAYLOAD_FIELDS {
+            assert!(
+                event["payload"].get(unread).is_none(),
+                "an event carries {unread}, which no decision reads: {event}"
+            );
+        }
+        if event["kind"] == json!("agent_assessment") {
+            assert!(
+                event.get("payload").is_none(),
+                "an assessment, with nothing left to say, still carries a payload: {event}"
+            );
+        }
+    }
+
+    world.octoprint.reports(
+        "Offline after error",
+        JobScript {
+            state: "Offline after error".to_owned(),
+            error: Some("Printer halted. kill() called!".to_owned()),
+            ..JobScript::idle()
+        },
+    );
+    let deadline = std::time::Instant::now() + PATIENCE;
+    let stopped = loop {
+        let (context, _, _) = world.context(&print_id).await;
+        if context.get("job_error").is_some() {
+            break context;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the error the job stopped on was never stated: {context}"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    assert_eq!(
+        stopped["job_error"],
+        json!({ "text": "Printer halted. kill() called!", "source": "printer" })
+    );
+    world.server.stop().await;
+}
