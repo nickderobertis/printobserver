@@ -4689,23 +4689,23 @@ reason = "The real-print replay's clock already lives here, before this change: 
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
-site = "**What it verifies**, in this order: the context read reports the printer, the print's state and effective bounds"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "`repo-policy.toml`'s `smoke.section` names \"The real-printer smoke test\" section of the root AGENTS.md as where the smoke test is described, and this paragraph is that section's statement of what a run does to the machine, which the person standing beside the printer reads before starting it; a nested file is not where that section points them. This change edits one phrase of it, because the context answer it described no longer carries the job."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "AGENTS.md"
-site = "**What it verifies**, in this order: the context read reports the printer, the print's state and effective bounds"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "The paragraph predates this change, which only replaced \"the job\" with \"the print's state\" so that it stays true of the trimmed context answer the smoke reads. It is the judgment `Smoke.step_context` cannot carry by itself: what a run will do to a real printer, in order, stated before anybody starts one, since this is the one test here whose defect damages hardware."
 
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "CLAUDE.md"
-site = "**What it verifies**, in this order: the context read reports the printer, the print's state and effective bounds"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
 [[suppression]]
 rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
-site = "**What it verifies**, in this order: the context read reports the printer, the print's state and effective bounds"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
