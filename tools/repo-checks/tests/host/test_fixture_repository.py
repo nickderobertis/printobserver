@@ -50,10 +50,17 @@ MAINTAINING = frozenset({"maintenance", "gc", "repack"})
 FOREGROUND = ("-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false")
 
 
-def _loose_in_sampled(root: Path, scratch: Path) -> None:
-    """Write `LOOSE` loose blobs into `root`, every one under `objects/17`."""
+def _loose_in_sampled(root: Path, scratch: Path) -> list[Path]:
+    """Write `LOOSE` loose blobs into `root`, every one under `objects/17`, and answer their files.
+
+    Held by their own ids rather than by how many files `objects/17` holds: a
+    commit's id carries its timestamp, so about one commit in 256 — the
+    fixture's first, or the one a journey makes — lands in the sampled
+    directory too.
+    """
     scratch.mkdir()
     paths: list[str] = []
+    ids: list[str] = []
     number = 0
     while len(paths) < LOOSE:
         body = f"{number}\n".encode()
@@ -64,13 +71,16 @@ def _loose_in_sampled(root: Path, scratch: Path) -> None:
             path = scratch / f"{number}.txt"
             path.write_bytes(body)
             paths.append(str(path))
+            ids.append(object_id.hexdigest())
     run(
         ["git", "hash-object", "-w", "--stdin-paths"],
         cwd=root,
         stdin="\n".join(paths) + "\n",
         check=True,
     )
-    equal(len(list((root / ".git/objects" / SAMPLED).iterdir())), LOOSE, describing="loose")
+    loose = [root / ".git/objects" / SAMPLED / object_id[2:] for object_id in ids]
+    equal(sum(path.is_file() for path in loose), LOOSE, describing="loose")
+    return loose
 
 
 def _commit_traced(root: Path, trace: Path) -> list[list[str]]:
@@ -123,16 +133,16 @@ def test_loose_objects_above_the_threshold_start_no_maintenance_in_a_fixture(
 ) -> None:
     """The commit that would repack any other repository starts nothing in this one."""
     root = init_repository(tmp_path / "fixture")
-    _loose_in_sampled(root, tmp_path / "blobs")
+    loose = _loose_in_sampled(root, tmp_path / "blobs")
 
     children = _commit_traced(root, tmp_path / "trace.json")
 
     equal(_maintaining(children), [], describing="the maintenance the commit started")
     equal(_packs(root), [], describing="the packs written")
     equal(
-        len(list((root / ".git/objects" / SAMPLED).iterdir())),
+        sum(path.is_file() for path in loose),
         LOOSE,
-        describing="the loose objects after the commit",
+        describing="the loose objects written before the commit, still loose after it",
     )
 
 
