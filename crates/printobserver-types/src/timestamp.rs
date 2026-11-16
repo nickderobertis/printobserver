@@ -60,6 +60,7 @@ impl Timestamp {
     /// only when nothing could end its wait early, so passing the wait at once
     /// moves every reading of the clock exactly as waiting it out would.
     #[must_use]
+    // llmlint: ignore[code_lands_in_the_domain_that_owns_it] suppressions.toml has the reason.
     pub fn pass_replay_time(wait: core::time::Duration) -> bool {
         #[cfg(feature = "replay-clock")]
         return replay_clock::advance(wait);

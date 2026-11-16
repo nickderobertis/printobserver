@@ -4679,3 +4679,9 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/real-prints-lfs/test_lfs_fixture.py"
 site = "def restored_from(cache: Path, key: str, prefixes: list[str]) -> Path | None:"
 reason = "Which entry `actions/cache/restore` hands back is that action's own behaviour: the key's own entry, and otherwise the newest entry a restore key prefixes. It is documented in the action's own repository and enforced by the forge's cache service, and the journeys run offline, so no gate step can read either. This stand-in is how the fixture journeys run the committed `ci-steps.yml` at all. Without it the steps could not be driven over a real git-lfs and a counting remote. It models only the two outcomes those steps branch on, `cache-hit` and the restored directory. The forge reconciles it on every run: each real run's cache step logs the key it restored, and a fallback the stand-in got wrong would show there as a fetch that downloaded every object."
+
+[[suppression]]
+rule = "code_lands_in_the_domain_that_owns_it"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "pub fn pass_replay_time(wait: core::time::Duration) -> bool {"
+reason = "The real-print replay's clock already lives here, before this change: `Timestamp::now` reads it under the `replay-clock` feature, from the private `replay_clock` module's file and offset, because `now` is the one instant every crate of the server reads. Passing time on that clock writes the same file and offset, so it sits with the reader; put anywhere else, one clock has two owners, and the replay suite, which is Python driving the built programs, holds no Rust code the server could call. Every build but the suite's answers `false` and changes nothing, and no domain's entry is added to this crate."
