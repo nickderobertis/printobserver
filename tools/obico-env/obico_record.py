@@ -290,7 +290,11 @@ def record(
         message = f"a credential survived sanitizing the answer to {path}; nothing was written"
         raise RecordError(message)
     committed = REPOSITORY_ROOT / RECORDING
-    before = json.loads(committed.read_text(encoding="utf-8"))
+    try:
+        before = json.loads(committed.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        message = f"the committed recording {RECORDING} could not be read: {error}"
+        raise RecordError(message) from error
     provenance = Provenance(
         obico_revision=OBICO_REVISION,
         request=f"GET {path}",
@@ -300,10 +304,14 @@ def record(
         credentials_replaced=replaced,
         recorded_by="uv run python tools/obico-env/obico_record.py --state-dir <state-dir>",
     )
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(written, encoding="utf-8")
     provenance_path = out.with_suffix(".provenance.json")
-    provenance_path.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(written, encoding="utf-8")
+        provenance_path.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+    except OSError as error:
+        message = f"the recording could not be written to {out}: {error}"
+        raise RecordError(message) from error
     moved = differences(before, clean)
     note(f"recorded {path} ({answered.status}) to {out}, replacing {len(replaced)} credential(s)")
     return Recorded(

@@ -220,6 +220,18 @@ def test_a_body_that_is_no_answer_is_not_recorded(
     truth(not out.exists(), describing="no recording")
 
 
+def test_a_recording_that_cannot_be_written_is_an_error_rather_than_a_verdict(
+    obico: Obico, tmp_path: Path
+) -> None:
+    """An output path under a file exits 2 naming it, never 1, the moved-shape verdict."""
+    (tmp_path / "a-file").write_text("", encoding="utf-8")
+    out = tmp_path / "a-file" / "obico-printer.json"
+    run = record(obico, out)
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, "could not be written", describing="the refusal")
+    absent(run.stdout + run.stderr, BEARER, describing="what it said")
+
+
 def test_a_refused_bearer_records_nothing(obico: Obico, tmp_path: Path) -> None:
     """Obico's 403 is reported, and nothing is written."""
     out = tmp_path / "obico-printer.json"
