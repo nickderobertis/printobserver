@@ -113,7 +113,7 @@ def test_it_records_the_answer_read_with_the_bearer_and_no_credential(
     obico: Obico, tmp_path: Path
 ) -> None:
     """Every credential is the sentinel, every other field as served, with provenance beside."""
-    out = tmp_path / "obico-printer.json"
+    out = tmp_path / "not-yet-made" / "obico-printer.json"
     run = record(obico, out)
     passing(run, describing="recording the committed shape against the stand-in")
     equal(obico.authorizations, [f"Bearer {BEARER}"], describing="what the command sent")
@@ -156,8 +156,8 @@ def test_it_records_the_answer_read_with_the_bearer_and_no_credential(
 def test_credentials_are_found_inside_lists_and_under_every_credential_key(
     obico: Obico, tmp_path: Path
 ) -> None:
-    """A token in an array, or under another credential's key, is the sentinel too."""
-    obico.answer["settings"]["temp_profiles"] = [{"token": "list-held-secret"}]
+    """A token in an array, or under another credential's key, is the sentinel; a null stays."""
+    obico.answer["settings"]["temp_profiles"] = [{"token": "list-held-secret"}, {"token": None}]
     obico.answer["api_key"] = "an-api-key"
     out = tmp_path / "obico-printer.json"
     run = record(obico, out)
@@ -167,6 +167,11 @@ def test_credentials_are_found_inside_lists_and_under_every_credential_key(
     replaced = json.loads(run.stdout)["credentials_replaced"]
     contains(replaced, "settings.temp_profiles[0].token", describing="where credentials were")
     contains(replaced, "api_key", describing="where credentials were")
+    equal(
+        json.loads(written)["settings"]["temp_profiles"][1],
+        {"token": None},
+        describing="a credential Obico left empty",
+    )
 
 
 def test_a_shape_that_moved_is_recorded_and_named(obico: Obico, tmp_path: Path) -> None:
@@ -187,8 +192,11 @@ def test_a_shape_that_moved_is_recorded_and_named(obico: Obico, tmp_path: Path) 
     [
         ({"id": 2}, "no id 1"),
         ({"id": True}, "no id 1"),
-        ({"pic": None}, "no pic"),
-        ({"current_print": None}, "no current_print"),
+        ({"pic": None}, "no pic.img_url"),
+        ({"pic": {"img_url": ""}}, "no pic.img_url"),
+        ({"current_print": None}, "no running current_print"),
+        ({"current_print": {}}, "no running current_print"),
+        ({"current_print": {"id": 1, "cancelled_at": "2026-11-19T12:00:00Z"}}, "running"),
     ],
 )
 def test_an_answer_the_status_could_not_read_is_not_recorded(

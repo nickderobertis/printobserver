@@ -113,6 +113,9 @@ print('OBICO_RECORD_MINTED ' + token.token)
 
 MINTED = "OBICO_RECORD_MINTED "
 
+#: The instants Obico sets on a print once it is no longer running.
+ENDED = ("ended_at", "finished_at", "cancelled_at")
+
 
 class RecordError(Exception):
     """Nothing was recorded, with what stopped it."""
@@ -234,10 +237,16 @@ def not_a_running_print_with_a_snapshot(answer: dict[str, object], printer: Prin
     lacking: list[str] = []
     if positive_printer(answer.get("id")) != printer:
         lacking.append(f"id {printer}")
-    if not isinstance(answer.get("current_print"), dict):
-        lacking.append("current_print")
-    if not isinstance(answer.get("pic"), dict):
-        lacking.append("pic")
+    current = answer.get("current_print")
+    if (
+        not isinstance(current, dict)
+        or positive_printer(current.get("id")) is None
+        or any(current.get(end) is not None for end in ENDED)
+    ):
+        lacking.append("running current_print")
+    pic = answer.get("pic")
+    if not isinstance(pic, dict) or not isinstance(pic.get("img_url"), str) or not pic["img_url"]:
+        lacking.append("pic.img_url")
     return lacking
 
 
@@ -281,7 +290,7 @@ def record(
         message = f"a credential survived sanitizing the answer to {path}; nothing was written"
         raise RecordError(message)
     committed = REPOSITORY_ROOT / RECORDING
-    before = json.loads(committed.read_text(encoding="utf-8")) if committed.is_file() else {}
+    before = json.loads(committed.read_text(encoding="utf-8"))
     provenance = Provenance(
         obico_revision=OBICO_REVISION,
         request=f"GET {path}",
