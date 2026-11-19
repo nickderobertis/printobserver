@@ -32,9 +32,9 @@ use printobserver_core::{
     PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
     PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
     PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
-    RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
-    SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
-    SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    RecoveryRequestedPayload, ScoringVerdict, SignalPosition, SpoolAdjustedPayload,
+    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
+    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 use printobserver_core::{
@@ -547,7 +547,7 @@ fn the_detectors_health_round_trips_its_five_states_and_refuses_any_other() {
         (
             DetectorHealth::Scoring {
                 since,
-                flagged: false,
+                verdict: ScoringVerdict::NothingFlagged,
                 probe_failure: None,
             },
             json!({ "status": "scoring_nothing_flagged", "since": at }),
@@ -555,7 +555,7 @@ fn the_detectors_health_round_trips_its_five_states_and_refuses_any_other() {
         (
             DetectorHealth::Scoring {
                 since,
-                flagged: true,
+                verdict: ScoringVerdict::Flagged,
                 probe_failure: Some("answered 503".to_owned()),
             },
             json!({ "status": "scoring_flagged", "since": at, "probe_failure": "answered 503" }),

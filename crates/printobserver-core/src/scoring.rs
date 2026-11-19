@@ -62,6 +62,7 @@ use crate::listing::JOB_IDENTITY_TOLERANCE_S;
 use crate::records::PrintRecord;
 use crate::store::HistoryQuery;
 use crate::supervisor::Supervisor;
+use crate::watch::ScoringVerdict;
 
 /// How many observation intervals scoring evidence stands for.
 pub const EVIDENCE_INTERVALS: u32 = 2;
@@ -106,7 +107,7 @@ pub(crate) struct Scoring {
     /// When the evidence began.
     pub since: Timestamp,
     /// Whether a failure alert of the detector's own has arrived for it.
-    pub flagged: bool,
+    pub verdict: ScoringVerdict,
 }
 
 /// What the reads of the detector's record have found, held between them.
@@ -141,7 +142,11 @@ impl ScoringState {
         }
         Some(Scoring {
             since,
-            flagged: self.flagged.contains(&of),
+            verdict: if self.flagged.contains(&of) {
+                ScoringVerdict::Flagged
+            } else {
+                ScoringVerdict::NothingFlagged
+            },
         })
     }
 

@@ -191,11 +191,20 @@ pub enum DetectorHealth {
         /// When it was first found scoring it.
         since: Timestamp,
         /// Whether a failure alert of its own has arrived for the print.
-        flagged: bool,
+        verdict: ScoringVerdict,
         /// What the detector's health check answered, when it is failing
         /// while the detector scores.
         probe_failure: Option<String>,
     },
+}
+
+/// What a detector scoring a print has said of it so far.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScoringVerdict {
+    /// No failure alert of its own has arrived for the print.
+    NothingFlagged,
+    /// A failure alert of its own has arrived for the print.
+    Flagged,
 }
 
 impl Default for DetectorHealth {
@@ -214,8 +223,14 @@ impl DetectorHealth {
             Self::Unchecked { .. } => DetectorHealthStatus::Unchecked,
             Self::Available { .. } => DetectorHealthStatus::Available,
             Self::Unavailable { .. } => DetectorHealthStatus::Unavailable,
-            Self::Scoring { flagged: false, .. } => DetectorHealthStatus::ScoringNothingFlagged,
-            Self::Scoring { flagged: true, .. } => DetectorHealthStatus::ScoringFlagged,
+            Self::Scoring {
+                verdict: ScoringVerdict::NothingFlagged,
+                ..
+            } => DetectorHealthStatus::ScoringNothingFlagged,
+            Self::Scoring {
+                verdict: ScoringVerdict::Flagged,
+                ..
+            } => DetectorHealthStatus::ScoringFlagged,
         }
     }
 }
@@ -306,12 +321,12 @@ impl TryFrom<DetectorHealthWire> for DetectorHealth {
             }),
             (DetectorHealthStatus::ScoringNothingFlagged, Some(since)) => Ok(Self::Scoring {
                 since,
-                flagged: false,
+                verdict: ScoringVerdict::NothingFlagged,
                 probe_failure,
             }),
             (DetectorHealthStatus::ScoringFlagged, Some(since)) => Ok(Self::Scoring {
                 since,
-                flagged: true,
+                verdict: ScoringVerdict::Flagged,
                 probe_failure,
             }),
             (DetectorHealthStatus::Unchecked, Some(_)) => {
@@ -446,7 +461,7 @@ impl Sample for DetectorHealth {
     fn sample_full() -> Self {
         Self::Scoring {
             since: Timestamp::sample_full(),
-            flagged: false,
+            verdict: ScoringVerdict::NothingFlagged,
             probe_failure: Some("the detector's health check answered 503".to_owned()),
         }
     }
@@ -461,7 +476,7 @@ impl Sample for DetectorHealth {
         vec![
             Self::Scoring {
                 since: Timestamp::sample_full(),
-                flagged: true,
+                verdict: ScoringVerdict::Flagged,
                 probe_failure: None,
             },
             Self::Available {
@@ -760,7 +775,7 @@ impl Supervisor {
         if let Some(scoring) = held.scoring.scoring(print_id, now, window) {
             return DetectorHealth::Scoring {
                 since: scoring.since,
-                flagged: scoring.flagged,
+                verdict: scoring.verdict,
                 probe_failure: match &held.probe {
                     ProbeHealth::Unavailable { detail, .. } => Some(detail.clone()),
                     ProbeHealth::Unchecked | ProbeHealth::Available { .. } => None,
