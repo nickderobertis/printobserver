@@ -307,7 +307,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"camera_calibration: {error}", file=sys.stderr)
         return 2
     except OSError as error:
-        print(f"camera_calibration: {error}", file=sys.stderr)
+        # `str(error)` quotes the path as a Python literal, doubling every
+        # Windows separator; name it as the operator wrote it instead.
+        where = f"{error.filename}: " if error.filename is not None else ""
+        print(f"camera_calibration: {where}{error.strerror or error}", file=sys.stderr)
         return 2
     print(
         f"fitted {len(fitted.residuals_px)} marks on {len(set(fitted.frames))} frames: "

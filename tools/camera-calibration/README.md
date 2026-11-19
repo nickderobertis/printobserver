@@ -85,9 +85,21 @@ frames of four prints, at heights from 0.2 to 141.6 mm. Its tests refit those
 marks from plain copies of the frames and slices and hold the result to:
 
 - an RMS reprojection error of at most **4.0 px** (the committed fit: 3.41 px);
-- the committed file, number by number, within **2 px** for `fx`, `fy`, `cx`
-  and `cy`, **0.01** for `k1`, **0.002 rad** for each rotation component and
-  **0.5 mm** for each translation component, with `k2`–`k4` written as 0.
+- every point of every marked outline projected within **5 px** of where the
+  committed file projects it;
+- the committed file, number by number, within **80 px** for `fx` and `fy`,
+  **50 px** for `cx` and `cy`, **0.02** for `k1`, **0.03 rad** for each
+  rotation component and **10 mm** for each translation component, with
+  `k2`–`k4` written as 0.
+
+The marks fix where the marked parts project far more tightly than they fix
+any one number. Refits whose inputs differ only in floating-point rounding, as
+one platform's arithmetic differs from another's, settle in minima at most
+0.013 px RMS apart. Those minima differ by up to 62 px in a focal length,
+40 px in the principal point, 0.009 in `k1`, 0.020 rad and 7.2 mm, and they
+project every marked outline within 3.7 px of each other. The per-number bounds
+admit that spread, and the projection bound is what holds a refit to the
+committed file. Marks spread towards the bed's edges, as step 3 asks, narrow it.
 
 `alignment_max_offset_px` is written as **30**: on the four verified cases a
 healthy first layer scored at most 23 px and every empty bed or a projection

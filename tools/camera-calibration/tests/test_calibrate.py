@@ -87,10 +87,22 @@ class expect:  # noqa: N801 - read as `expect.equal(...)`, the vocabulary of thi
 # under test.
 Marks = dict[str, Any]
 
-# What the README states: the RMS bound a fit of these marks meets, and how far
-# a refit may land from the committed file, per number.
+# What the README states: the RMS bound a fit of these marks meets, how far a
+# refit may land from the committed file per number, and how far it may put any
+# point of a marked outline from where the committed file puts it. The marks
+# fix the projection of the marked parts far more tightly than they fix any one
+# number: refits differing only in floating-point rounding settle in minima
+# 0.01 px RMS apart whose focal lengths differ by up to 62 px, while projecting
+# every marked outline within 3.7 px of each other.
 RMS_BOUND_PX = 4.0
-TOLERANCE = {"focal_px": 2.0, "centre_px": 2.0, "k1": 0.01, "rotation": 2e-3, "translation_mm": 0.5}
+TOLERANCE = {
+    "focal_px": 80.0,
+    "centre_px": 50.0,
+    "k1": 0.02,
+    "rotation": 0.03,
+    "translation_mm": 10.0,
+}
+PROJECTION_PX = 5.0
 
 
 def _snapshot_url() -> str:
@@ -186,6 +198,17 @@ def test_the_fit_reproduces_the_committed_calibration(
     ):
         diff = np.abs(np.array(written["bed_pose"][key]) - np.array(committed["bed_pose"][key]))
         expect.truth(diff.max() <= TOLERANCE[tolerance], describing=f"{key} differs by {diff}")
+    outlines = np.vstack(
+        [one.segments[:, :3] for one in fitting.observations(load(_fixture_marks(directory)))]
+    )
+    moved = np.linalg.norm(
+        _camera_of(written).project(outlines) - _camera_of(committed).project(outlines), axis=1
+    )
+    worst = float(np.nanmax(moved))
+    expect.truth(
+        worst <= PROJECTION_PX,
+        describing=f"a marked outline lies {worst} px from the file's, over {PROJECTION_PX}",
+    )
     image = cv2.imread(str(directory / "verification.jpg"))
     if image is None:
         message = "the verification image does not decode"
@@ -203,11 +226,9 @@ def test_the_fit_reproduces_the_committed_calibration(
     expect.truth(outlines > 1000, describing=f"the outlines are drawn in green ({outlines} pixels)")
 
 
-def test_the_marks_reproject_within_the_rms_bound(tmp_path: Path) -> None:
-    """The committed calibration puts the marks within the RMS bound of their outlines."""
-    calibration = json.loads(COMMITTED.read_text(encoding="utf-8"))
+def _camera_of(calibration: dict[str, Any]) -> Camera:
     lens, pose = calibration["intrinsics"], calibration["bed_pose"]
-    camera = Camera(
+    return Camera(
         lens["fx"],
         lens["fy"],
         lens["cx"],
@@ -216,6 +237,11 @@ def test_the_marks_reproject_within_the_rms_bound(tmp_path: Path) -> None:
         np.array(pose["rotation_rodrigues"]),
         np.array(pose["translation_mm"]),
     )
+
+
+def test_the_marks_reproject_within_the_rms_bound(tmp_path: Path) -> None:
+    """The committed calibration puts the marks within the RMS bound of their outlines."""
+    camera = _camera_of(json.loads(COMMITTED.read_text(encoding="utf-8")))
     observed = fitting.observations(load(_fixture_marks(tmp_path)))
     near = [fitting.near_segments(camera, one) for one in observed]
     residuals = fitting.residuals_px(camera, observed, near)
@@ -435,8 +461,10 @@ def test_an_output_that_cannot_be_written_after_the_fit_is_refused(tmp_path: Pat
     (out_blocked / "calibration.json").mkdir(parents=True)
     out = _run(marks, out_blocked)
     expect.equal(out.returncode, 2, describing="the exit status for an unwritable calibration")
+    # The path as the operator wrote it, never quoted as a Python literal,
+    # which on Windows would double every separator.
     expect.contains(
-        out.stderr, str(out_blocked / "calibration.json"), describing="the calibration refusal"
+        out.stderr, f"{out_blocked / 'calibration.json'}: ", describing="the calibration refusal"
     )
 
 
