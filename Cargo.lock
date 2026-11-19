@@ -1533,6 +1533,7 @@ version = "0.13.1"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "clap",
  "getrandom 0.3.4",
  "oneharness",
  "printobserver-core",

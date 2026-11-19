@@ -24,6 +24,8 @@ import shlex
 import shutil
 import sys
 import tarfile
+import tempfile
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 
@@ -96,6 +98,11 @@ def executable(name: str, host: str | None = None) -> str:
             own when not given.
     """
     return f"{name}.exe" if (host or sys.platform) == "win32" else name
+
+
+#: The variable naming where `cargo` keeps a build's intermediate artifacts,
+#: apart from the target directory its finished programs are put in.
+BUILD_DIR = "CARGO_BUILD_BUILD_DIR"
 
 
 def release_program(target_directory: Path, name: str) -> Path:
@@ -711,17 +718,25 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
     (consumer / "src").mkdir(parents=True, exist_ok=True)
     shutil.copy2(repo.path("crates/printobserver-sdk/smoke/main.rs"), consumer / "src/main.rs")
     (consumer / "Cargo.toml").write_text(consumer_manifest(inside), encoding="utf-8")
-    ran(
-        ["cargo", "build", "--release", "--manifest-path", str(consumer / "Cargo.toml")],
-        cwd=consumer,
-        describing="building a consumer of the packaged crate",
-    )
-    return Installed(
-        built.target,
-        environment,
-        None,
-        str(consumer_program(consumer, "printobserver-sdk-smoke")),
-    )
+    program = consumer_program(consumer, "printobserver-sdk-smoke")
+    # A consumer building beside its own manifest, outside this clone, keeps
+    # its intermediate artifacts under a short temporary root: nested in a
+    # caller's directory, the deepest of them passes the 260 characters the
+    # Windows linker opens, and that build stops with LNK1104. One inside the
+    # clone keeps sharing the clone's `target`, which an earlier build warmed.
+    beside_itself = not program.resolve().is_relative_to(repo.root.resolve())
+    with (
+        tempfile.TemporaryDirectory(prefix="cb", ignore_cleanup_errors=True)
+        if beside_itself
+        else nullcontext()
+    ) as intermediates:
+        ran(
+            ["cargo", "build", "--release", "--manifest-path", str(consumer / "Cargo.toml")],
+            cwd=consumer,
+            env={**os.environ, BUILD_DIR: intermediates} if intermediates else None,
+            describing="building a consumer of the packaged crate",
+        )
+    return Installed(built.target, environment, None, str(program))
 
 
 def python_route(repo: Repo, built: Built, into: Path) -> Installed:

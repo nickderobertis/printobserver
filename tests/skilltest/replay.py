@@ -123,14 +123,21 @@ class Secrets:
 
 
 def service_config(
-    state: Path, listen: str, octoprint: str, camera: str, obico: str, minted: Secrets
+    state: Path,
+    listen: str,
+    octoprint: str,
+    camera: str,
+    obico: str,
+    minted: Secrets,
+    *,
+    interval_s: int = OBSERVATION_INTERVAL_S,
 ) -> str:
     """The installer's configuration, with what an operator fills in filled in."""
     verifier = hashlib.sha256(minted.operator.encode()).hexdigest()
     text = (
         _installer_template()
         .replace("$RUNTIME_STATE", state.as_posix())
-        .replace("$INTERVAL_LINE", f"observation_interval_s = {OBSERVATION_INTERVAL_S}")
+        .replace("$INTERVAL_LINE", f"observation_interval_s = {interval_s}")
         .replace('listen = "127.0.0.1:8420"', f'listen = "{listen}"')
         .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
         .replace('api_key = ""', f'api_key = "{minted.octoprint_key}"')
@@ -208,6 +215,19 @@ def refuse_a_pointer(data: bytes, case: str, name: str) -> bytes:
         msg = f"{case}/{name} is an LFS pointer: run `just real-prints-fetch`"
         raise ReplayError(msg)
     return data
+
+
+def keep_the_log(server: subprocess.Popen[str], log: Path) -> None:
+    """Keep what the server prints, so neither pipe fills and it is there to read."""
+
+    def kept(stream: TextIO | None) -> None:
+        with log.open("a", encoding="utf-8") as written:
+            for line in stream or ():
+                written.write(line)
+                written.flush()
+
+    for stream in (server.stdout, server.stderr):
+        threading.Thread(target=kept, args=(stream,), daemon=True).start()
 
 
 def _utc_instant(held: str) -> datetime:
@@ -557,6 +577,28 @@ def _json_lines(text: str) -> list[dict[str, Any]]:
     return lines
 
 
+#: How much of what a failed turn's harness runs printed its record keeps.
+HARNESS_SAID_CHARS = 1500
+
+#: How much of a prints answer the replay could not read its refusal quotes.
+PRINTS_SAID_CHARS = 2000
+
+
+def _harness_said(runs: list[Run]) -> str:
+    """The end of what a turn's harness runs printed, which is where a run says why it failed.
+
+    The engine's own refusal of an answer names no cause when the harness printed
+    no answer at all, so a failed turn's record carries the harness's own words.
+    """
+    said = " | ".join(
+        harness_run.record.read_text("utf-8", "replace").strip() or "(nothing)"
+        if harness_run.record.is_file()
+        else "(no output kept)"
+        for harness_run in runs
+    )
+    return said[-HARNESS_SAID_CHARS:]
+
+
 def _lines_of(harness_run: Run) -> list[dict[str, Any]]:
     """Everything one harness run wrote: its transcript, then its result document."""
     record = harness_run.record
@@ -618,6 +660,9 @@ class RunReport:
                         self.commands.append(command)
                     case "Read", {"file_path": str(path)}:
                         self.opened.append(Path(path).name)
+                    # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
+                    case "Skill", {"skill": str(skill)}:
+                        self.opened.append(f"skill:{skill}")
                     case _:
                         pass
             case _:
@@ -851,10 +896,11 @@ class Replay:
 
     def _prints(self) -> list[HeldPrint]:
         """The prints the server holds, once they have what is read from them."""
-        answered = json.loads(self._client("prints"))
+        said = self._client("prints")
+        answered = json.loads(said)
         prints = answered.get("prints") if isinstance(answered, dict) else None
         if not isinstance(prints, list) or not all(map(is_held_print, prints)):
-            msg = "the server's prints answered no list of prints"
+            msg = f"the server's prints answered no list of prints: {said[:PRINTS_SAID_CHARS]}"
             raise ReplayError(msg)
         return cast("list[HeldPrint]", prints)
 
@@ -892,16 +938,7 @@ class Replay:
         return ended
 
     def _keep_the_log(self, server: subprocess.Popen[str]) -> None:
-        """Keep what the server prints, so neither pipe fills and it is there to read."""
-
-        def kept(stream: TextIO | None) -> None:
-            with (self.root / "server.log").open("a", encoding="utf-8") as log:
-                for line in stream or ():
-                    log.write(line)
-                    log.flush()
-
-        for stream in (server.stdout, server.stderr):
-            threading.Thread(target=kept, args=(stream,), daemon=True).start()
+        keep_the_log(server, self.root / "server.log")
 
     def _log_tail(self) -> str:
         """What the server recorded of the failed turn."""
@@ -1072,7 +1109,9 @@ class Replay:
             usage=report.usage,
             models=report.models,
             compacted=report.compacted,
-            failure=failures[0] if failures else None,
+            failure=f"{failures[0]}; the harness answered: {_harness_said(runs)}"
+            if failures
+            else None,
             event_kind=trigger["kind"],
             image_sha256=image.get("sha256"),
             looks=sum(1 for event in during if event["kind"] == CAMERA_LOOK),
