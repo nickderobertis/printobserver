@@ -327,6 +327,9 @@ def test_no_bearer_reads_nothing(obico: Obico, tmp_path: Path) -> None:
         (("--url", "ftp://127.0.0.1:1", "--printer-id", "1"), "no http(s) address"),
         (("--url", "http://127.0.0.1:1", "--printer-id", "-3"), "not a positive integer"),
         (("--url", f"http://{UNREACHABLE[0]}:{UNREACHABLE[1]}", "--printer-id", "1"), "could not"),
+        (("--state-dir", "x", "--mint-timeout", "-1"), "above zero"),
+        (("--state-dir", "x", "--mint-timeout", "nan"), "above zero"),
+        (("--state-dir", "x", "--mint-timeout", "soon"), "not a number"),
     ],
 )
 def test_an_obico_it_cannot_read_is_refused_naming_why(

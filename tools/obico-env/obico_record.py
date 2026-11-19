@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -412,6 +413,23 @@ def from_address(url: str, printer: int, out: Path, baseline: Path) -> Recorded:
     return record(url, identified, AccessToken(bearer), out, baseline=baseline)
 
 
+def positive_seconds(text: str) -> float:
+    """A wait in seconds: a finite number above zero.
+
+    Raises:
+        argparse.ArgumentTypeError: If `text` is not one, which argparse reports with exit 2.
+    """
+    try:
+        seconds = float(text)
+    except ValueError as error:
+        message = f"{text!r} is not a number of seconds"
+        raise argparse.ArgumentTypeError(message) from error
+    if not math.isfinite(seconds) or seconds <= 0:
+        message = f"{text!r} is not a finite number of seconds above zero"
+        raise argparse.ArgumentTypeError(message)
+    return seconds
+
+
 def argument_parser() -> argparse.ArgumentParser:
     """Two ways to name the Obico to read, and where the recording goes."""
     parser = argparse.ArgumentParser(prog="obico-record", description=__doc__)
@@ -425,7 +443,7 @@ def argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mint-timeout",
-        type=float,
+        type=positive_seconds,
         default=600.0,
         help="seconds to wait for Obico to mint the bearer (default: %(default)s)",
     )
