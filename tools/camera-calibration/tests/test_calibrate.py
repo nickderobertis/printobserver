@@ -20,6 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import cv2
 import jsonschema
 import numpy as np
 import pytest
@@ -179,10 +180,21 @@ def test_the_fit_reproduces_the_committed_calibration(
     ):
         diff = np.abs(np.array(written["bed_pose"][key]) - np.array(committed["bed_pose"][key]))
         expect.truth(diff.max() <= TOLERANCE[tolerance], describing=f"{key} differs by {diff}")
-    expect.truth(
-        (directory / "verification.jpg").stat().st_size > 0,
-        describing="the verification image is written",
+    image = cv2.imread(str(directory / "verification.jpg"))
+    if image is None:
+        message = "the verification image does not decode"
+        raise AssertionError(message)
+    frames = written["fit"]["frames"]
+    expect.equal(
+        image.shape[:2],
+        (540 * ((frames + 1) // 2), 1920),
+        describing="every marked frame tiled two to a row at half size",
     )
+    blue, green, red = (image[..., channel].astype(int) for channel in range(3))
+    marks = int(((red > 180) & (green < 90) & (blue < 90)).sum())
+    outlines = int(((green > 150) & (red < 100) & (blue < 100)).sum())
+    expect.truth(marks > 50, describing=f"the marks are drawn in red ({marks} pixels)")
+    expect.truth(outlines > 1000, describing=f"the outlines are drawn in green ({outlines} pixels)")
 
 
 def test_the_marks_reproject_within_the_rms_bound(tmp_path: Path) -> None:
@@ -393,6 +405,14 @@ def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
     )
     expect.equal(image.returncode, 2, describing="the exit status for a .bmp image")
     expect.contains(image.stderr, "not a .jpg path", describing="the refusal")
+    same = _run(
+        _fixture_marks(tmp_path),
+        tmp_path,
+        "--verification-image",
+        str(tmp_path / "calibration.json"),
+    )
+    expect.equal(same.returncode, 2, describing="the exit status for one file named twice")
+    expect.contains(same.stderr, "name one file", describing="the refusal")
 
 
 def test_a_slice_is_read_in_every_positioning_mode_and_past_any_machine_is_refused(
@@ -417,10 +437,19 @@ def test_a_slice_is_read_in_every_positioning_mode_and_past_any_machine_is_refus
     )
     huge = tmp_path / "huge.gcode"
     huge.write_text(";LAYER_CHANGE\n;Z:0.2\nG1 X" + "9" * 400 + " Y1 E1\n", encoding="utf-8")
+    garbled = tmp_path / "garbled.gcode"
+    garbled.write_text(";LAYER_CHANGE\n;Z:0.2\nG1 Xnan Y1 E1\n", encoding="utf-8")
+    try:
+        gcode.parse(garbled)
+    except gcode.GcodeError as error:
+        expect.contains(str(error), "no finite number", describing="the refusal of X nan")
+    else:
+        message = "a slice with a word that is no number was read"
+        raise AssertionError(message)
     try:
         gcode.parse(huge)
     except gcode.GcodeError as error:
-        expect.contains(str(error), "past any machine", describing="the refusal")
+        expect.contains(str(error), "no finite number", describing="the refusal")
     else:
         message = "a slice with an infinite coordinate was read"
         raise AssertionError(message)

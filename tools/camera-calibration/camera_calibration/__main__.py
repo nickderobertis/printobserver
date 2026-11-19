@@ -268,6 +268,9 @@ def main(argv: list[str] | None = None) -> int:
         if not output.parent.is_dir():
             print(f"camera_calibration: {output.parent} is not a directory", file=sys.stderr)
             return 2
+    if args.out.resolve() == args.verification_image.resolve():
+        print("camera_calibration: --out and --verification-image name one file", file=sys.stderr)
+        return 2
     if args.verification_image.suffix.lower() not in (".jpg", ".jpeg"):
         print(f"camera_calibration: {args.verification_image} is not a .jpg path", file=sys.stderr)
         return 2

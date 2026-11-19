@@ -547,10 +547,25 @@ fn the_spool_goes_when_the_print_closes_and_strays_are_swept() {
     std::fs::write(&stray, b"G1 X0").expect("a stray is written");
     let unrelated = dir.join("notes.txt");
     std::fs::write(&unrelated, b"kept").expect("an unrelated file is written");
+    let not_a_print = dir.join("benchy.gcode");
+    std::fs::write(&not_a_print, b"G1 X0").expect("a G-code no print names is written");
     block_on(world.core.sweep_gcode_spools()).expect("the sweep runs");
     assert!(!stray.exists(), "a spool of no open print is swept");
     assert!(spool.exists(), "the open print's spool stays");
     assert!(unrelated.exists(), "a file that is no spool is left alone");
+    assert!(
+        not_a_print.exists(),
+        "a G-code file named for no print is no spool"
+    );
+    assert!(
+        block_on(
+            world
+                .core
+                .print_gcode_index(printobserver_types::PrintId::new())
+        )
+        .is_none(),
+        "a print the store does not hold has no index"
+    );
     let (unspooled, _) = printing(SEVEN_OBJECTS, None);
     block_on(unspooled.core.sweep_gcode_spools())
         .expect("with no spool directory, nothing to sweep");
@@ -569,6 +584,10 @@ fn the_spool_goes_when_the_print_closes_and_strays_are_swept() {
         "the print closed"
     );
     assert!(!spool.exists(), "the spool went with the print");
+    assert!(
+        block_on(world.core.print_gcode_index(print.id)).is_none(),
+        "a print that has ended has no index"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

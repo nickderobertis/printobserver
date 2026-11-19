@@ -4,8 +4,7 @@
 use image::{Rgb, RgbImage, imageops::FilterType};
 use printobserver_core::{ExtrusionKind, LayerRef, LayerToolpath, ObjectOutline};
 use printobserver_panels::compose::{
-    BAND_HEIGHT, BELOW_GREY, IMAGE_HEIGHT, MARGIN_PX, MIN_CROP_WIDTH_PX, PANEL_HEIGHT, PANEL_WIDTH,
-    colour_of,
+    BAND_HEIGHT, IMAGE_HEIGHT, MARGIN_PX, MIN_CROP_WIDTH_PX, PANEL_HEIGHT, PANEL_WIDTH,
 };
 use printobserver_panels::{CameraCalibration, CheckImage, CheckImageInputs, compose_check_image};
 use printobserver_types::Timestamp;
@@ -16,6 +15,22 @@ use crate::support::{
 
 /// The PETG jar top.
 const PETG: &str = "jar-top-petg-healthy";
+
+/// The colour each kind is drawn in, written out here rather than read from
+/// the crate so that the mapping itself is under test.
+fn colour_of(kind: ExtrusionKind) -> Rgb<u8> {
+    match kind {
+        ExtrusionKind::Wall => Rgb([255, 40, 40]),
+        ExtrusionKind::Infill => Rgb([255, 220, 0]),
+        ExtrusionKind::Support => Rgb([0, 200, 255]),
+        ExtrusionKind::Bridge => Rgb([255, 0, 255]),
+        ExtrusionKind::Overhang => Rgb([0, 230, 0]),
+        ExtrusionKind::Other => Rgb([255, 255, 255]),
+    }
+}
+
+/// The grey the object layer below a support-only layer is drawn in.
+const BELOW_GREY: Rgb<u8> = Rgb([150, 150, 150]);
 
 /// A frame of it with an object layer under way.
 const PETG_WALLS: &str = "agent-031-obs-125703-p43.2.jpg";
@@ -30,19 +45,34 @@ fn compose(
     previous: Option<&str>,
     outlines: Option<&[ObjectOutline]>,
 ) -> (CheckImage, LayerToolpath) {
+    compose_at(
+        case,
+        file,
+        previous.map(|file| (file, Timestamp::now())),
+        outlines,
+    )
+}
+
+/// The same, the previous frame captured at a time of the test's own.
+fn compose_at(
+    case: &str,
+    file: &str,
+    previous: Option<(&str, Timestamp)>,
+    outlines: Option<&[ObjectOutline]>,
+) -> (CheckImage, LayerToolpath) {
     let calibration = calibration();
     let index = index(case);
     let print_z = recorded_z(case, file);
     let layer = layer_at_z(&index, print_z);
     let path = toolpath(case, layer);
     let current = frame(case, file);
-    let earlier = previous.map(|file| frame(case, file));
+    let earlier = previous.map(|(file, at)| (frame(case, file), at));
     let url = snapshot_url();
     let image = compose_check_image(&CheckImageInputs {
         current_jpeg: &current,
         current_at: Timestamp::now(),
         camera_snapshot_url: &url,
-        previous: earlier.as_deref().map(|jpeg| (jpeg, Timestamp::now())),
+        previous: earlier.as_ref().map(|(jpeg, at)| (jpeg.as_slice(), *at)),
         outlines: outlines.unwrap_or_else(|| index.object_outlines()),
         active_object: 0,
         toolpath: &path,
@@ -542,5 +572,53 @@ fn the_close_up_is_the_active_objects_not_every_objects() {
             .iter()
             .any(|point| !holds(rect, *point, calibration.image_size_px)),
         "{rect:?} is not the box holding every outline"
+    );
+}
+
+/// Panel 1's band carries the colour key, a square of each kind's colour;
+/// and panel 3's label carries the previous frame's capture time, so frames
+/// captured at different times are labelled apart and one time alike.
+#[test]
+fn the_bands_carry_the_colour_key_and_the_previous_checks_time() {
+    let (image, _) = compose(PETG, PETG_WALLS, None, None);
+    let composite = decode(&image);
+    for kind in [
+        ExtrusionKind::Wall,
+        ExtrusionKind::Infill,
+        ExtrusionKind::Support,
+        ExtrusionKind::Bridge,
+        ExtrusionKind::Overhang,
+    ] {
+        let colour = colour_of(kind);
+        let square = (0..BAND_HEIGHT)
+            .flat_map(|y| (0..PANEL_WIDTH).map(move |x| (x, y)))
+            .filter(|(x, y)| colour_distance(*composite.get_pixel(*x, *y), colour) <= 40)
+            .count();
+        assert!(
+            square >= 60,
+            "band 1 keys {kind:?} ({square} pixels of its colour)"
+        );
+    }
+    let band = |image: &CheckImage| {
+        let composite = decode(image);
+        let top = 2 * (BAND_HEIGHT + PANEL_HEIGHT);
+        image::imageops::crop_imm(&composite, 0, top, PANEL_WIDTH, BAND_HEIGHT).to_image()
+    };
+    let at = |hours: i64| {
+        Timestamp::now()
+            .plus_seconds(-hours * 3600)
+            .expect("an instant")
+    };
+    let morning = at(5);
+    let (first, _) = compose_at(PETG, PETG_WALLS, Some((PETG_BEFORE, morning)), None);
+    let (again, _) = compose_at(PETG, PETG_WALLS, Some((PETG_BEFORE, morning)), None);
+    let (later, _) = compose_at(PETG, PETG_WALLS, Some((PETG_BEFORE, at(1))), None);
+    assert!(
+        mean_difference(&band(&first), &band(&again)) < 0.5,
+        "one time, one label"
+    );
+    assert!(
+        mean_difference(&band(&first), &band(&later)) > 0.5,
+        "a frame captured four hours later is labelled with its own time"
     );
 }

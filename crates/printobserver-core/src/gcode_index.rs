@@ -2080,6 +2080,8 @@ impl crate::supervisor::Supervisor {
     /// store does not hold or could not read, that has ended, names no file,
     /// or whose file could not be read.
     pub async fn print_gcode_index(&self, print_id: PrintId) -> Option<Arc<GcodeIndex>> {
+        // A store that cannot be read answers nothing, as a print it does not
+        // hold does; the alignment check asks again at the next read.
         let print = self.stores().prints.print(print_id).await.ok()??;
         if print.ended_at.is_some() {
             return None;
@@ -2112,14 +2114,20 @@ impl crate::supervisor::Supervisor {
             .iter()
             .map(|print| print.id.to_string())
             .collect();
+        // A directory that cannot be listed, an entry that cannot be read and
+        // a spool that cannot be removed each leave a file behind, which the
+        // next start's sweep tries again; no test makes the filesystem refuse
+        // them, since that needs one made to fail beneath a running server.
         let Ok(entries) = std::fs::read_dir(&directory) else {
             return Ok(());
         };
         for entry in entries.flatten() {
             let name = entry.file_name();
+            // Only a file named for a print is a spool; anything else is left.
             let Some(print) = name
                 .to_str()
                 .and_then(|name| name.strip_suffix(crate::toolpath::SPOOL_SUFFIX))
+                .filter(|print| print.parse::<PrintId>().is_ok())
             else {
                 continue;
             };
@@ -2240,7 +2248,34 @@ impl crate::supervisor::Supervisor {
 
 #[cfg(test)]
 mod tests {
-    use super::{GcodeIndexes, HELD_INDEXES, RISE_WINDOW_S};
+    use super::{GcodeIndexes, HELD_INDEXES, OVER_AIR, RISE_WINDOW_S, SUPPORTS, WALLS};
+    use crate::toolpath::ExtrusionKind;
+
+    /// The type names the plan's facts single out are the ones the toolpath
+    /// draws in the same kinds: a wall is drawn as a wall, a support as a
+    /// support, and what is laid over air as a bridge or an overhang.
+    #[test]
+    fn the_plans_type_names_map_to_the_kinds_the_toolpath_draws() {
+        for name in WALLS {
+            assert_eq!(ExtrusionKind::of_type(name), ExtrusionKind::Wall, "{name}");
+        }
+        for name in SUPPORTS {
+            assert_eq!(
+                ExtrusionKind::of_type(name),
+                ExtrusionKind::Support,
+                "{name}"
+            );
+        }
+        for name in OVER_AIR {
+            assert!(
+                matches!(
+                    ExtrusionKind::of_type(name),
+                    ExtrusionKind::Bridge | ExtrusionKind::Overhang
+                ),
+                "{name}"
+            );
+        }
+    }
     use printobserver_types::{PrintId, Timestamp};
 
     /// An instant some seconds after another.

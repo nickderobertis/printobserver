@@ -11,7 +11,6 @@ offline tool reads it only to fit a camera.
 from __future__ import annotations
 
 import math
-import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -24,7 +23,8 @@ OUTER_WALLS = frozenset({"External perimeter", "Overhang perimeter"})
 CHORD_MM = 0.5
 """The longest chord an arc is cut into."""
 
-_WORD = re.compile(r"([XYZEIJ])(-?\d*\.?\d+)")
+_LETTERS = frozenset("XYZEIJ")
+"""The words a move is read by."""
 
 
 class Outline(StrEnum):
@@ -74,11 +74,20 @@ def _arc(
 
 
 def _words(code: str, path: Path) -> dict[str, float]:
-    """A command's axis and extrusion words, refused unless each is finite."""
-    words = {letter: float(value) for letter, value in _WORD.findall(code)}
-    if not all(math.isfinite(value) for value in words.values()):
-        msg = f"{path} carries a command with a number past any machine: {code!r}"
-        raise GcodeError(msg)
+    """A command's axis and extrusion words, each read whole and refused unless finite."""
+    words: dict[str, float] = {}
+    for token in code.split():
+        letter = token[:1].upper()
+        if letter not in _LETTERS or letter in words:
+            continue
+        try:
+            value = float(token[1:])
+        except ValueError:
+            value = math.nan
+        if not math.isfinite(value):
+            msg = f"{path} carries a command with a word that is no finite number: {code!r}"
+            raise GcodeError(msg)
+        words[letter] = value
     return words
 
 
