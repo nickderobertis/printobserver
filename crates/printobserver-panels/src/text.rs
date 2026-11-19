@@ -189,3 +189,52 @@ fn blend(image: &mut RgbImage, colour: Rgb<u8>, path: &Path, x: i32, y: i32, pen
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{OutlinePen as _, Path, blend, draw_text};
+    use image::{Rgb, RgbImage};
+
+    /// The pixels a drawing changed from black.
+    fn lit(image: &RgbImage) -> usize {
+        image.pixels().filter(|pixel| pixel.0 != [0, 0, 0]).count()
+    }
+
+    #[test]
+    fn a_cubic_outline_is_filled_and_an_empty_one_draws_nothing() {
+        let mut path = Path {
+            ascent: 20.0,
+            ..Path::default()
+        };
+        path.move_to(0.0, 0.0);
+        path.curve_to(0.0, 20.0, 20.0, 20.0, 20.0, 0.0);
+        path.line_to(10.0, -2.0);
+        path.close();
+        let mut image = RgbImage::new(40, 40);
+        blend(&mut image, Rgb([255, 255, 255]), &path, 5, 5, 0.0);
+        assert!(lit(&image) > 50, "the cubic's area is filled");
+
+        let mut untouched = RgbImage::new(40, 40);
+        blend(
+            &mut untouched,
+            Rgb([255, 255, 255]),
+            &Path::default(),
+            5,
+            5,
+            0.0,
+        );
+        assert_eq!(lit(&untouched), 0);
+    }
+
+    #[test]
+    fn text_off_the_image_and_characters_the_font_lacks_are_skipped() {
+        let mut image = RgbImage::new(30, 30);
+        draw_text(&mut image, Rgb([255, 255, 255]), 20, 20, 24.0, "\u{e000}WW");
+        draw_text(&mut image, Rgb([255, 255, 255]), -100, -100, 24.0, "W");
+        assert!(lit(&image) > 0, "what lands in the image is drawn");
+        assert!(
+            lit(&image) < 30 * 30,
+            "and nothing past its edge wraps back in"
+        );
+    }
+}
