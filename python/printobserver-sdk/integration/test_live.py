@@ -111,11 +111,15 @@ def step_context(client: Client, world: Supervisor, proxy: Proxy) -> None:
     ready(client, world.print_id, "")
 
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    answered = client.context(world.print_id)
+    answered = client.context(world.print_id, world.event_id)
 
     seen = proxy.last()
     equal(seen.method, "GET", describing="`context`")
-    equal(seen.target, f"/v1/prints/{world.print_id}/context", describing="`context`")
+    equal(
+        seen.target,
+        f"/v1/prints/{world.print_id}/context?since={world.event_id}",
+        describing="`context`",
+    )
     equal(seen.status, 200, describing="`context`")
     equal(seen.body, "", describing="what `context` sent")
     same("context", answered, seen.answer)

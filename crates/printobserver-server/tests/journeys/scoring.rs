@@ -96,7 +96,8 @@ async fn status_detector(world: &World, print_id: PrintId) -> Value {
     status["detector"].clone()
 }
 
-/// The detector, as the print's context read answers it.
+/// The detector's status, as the print's context read answers it: the status
+/// alone, which is all a supervision turn is handed of it.
 async fn context_detector(world: &World, print_id: PrintId) -> Value {
     let (_, context) = world
         .get(&world.operation_url("/v1/prints/{print_id}/context", print_id))
@@ -216,9 +217,10 @@ async fn a_moving_snapshot_reads_scoring_with_no_ml_api_until_it_stops() {
             .map(|request| request.line.starts_with("GET ")),
         Some(true)
     );
-    let context = context_detector(&world, print_id).await;
-    assert_eq!(context["status"], "scoring_nothing_flagged", "{context}");
-    assert_eq!(context["since"], detector["since"], "{context}");
+    assert_eq!(
+        context_detector(&world, print_id).await,
+        "scoring_nothing_flagged"
+    );
 
     let image = crate::http_host::image_host(
         std::fs::read(
@@ -231,10 +233,7 @@ async fn a_moving_snapshot_reads_scoring_with_no_ml_api_until_it_stops() {
     post(&world, &failure_alert(4211, &image.url())).await;
     let flagged = until_status(&world, print_id, "scoring_flagged").await;
     assert_eq!(flagged["since"], detector["since"], "{flagged}");
-    assert_eq!(
-        context_detector(&world, print_id).await["status"],
-        "scoring_flagged"
-    );
+    assert_eq!(context_detector(&world, print_id).await, "scoring_flagged");
 
     scoring.store(false, Ordering::SeqCst);
     let after = until_status(&world, print_id, "unchecked").await;
@@ -769,10 +768,10 @@ async fn one_prints_evidence_is_no_other_prints() {
     let scoring = keep_scoring(&rest);
     until_status(&world, scored, "scoring_nothing_flagged").await;
     for read in [
-        status_detector(&world, other).await,
+        status_detector(&world, other).await["status"].clone(),
         context_detector(&world, other).await,
     ] {
-        assert_eq!(read["status"], "unchecked", "{read}");
+        assert_eq!(read, "unchecked", "{read}");
     }
     scoring.store(false, Ordering::SeqCst);
 }
@@ -901,11 +900,14 @@ async fn a_read_after_an_outage_is_not_compared_with_one_from_before_it() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     for _ in 0..2 {
         for (read, detector) in [
-            ("status", status_detector(&world, print_id).await),
+            (
+                "status",
+                status_detector(&world, print_id).await["status"].clone(),
+            ),
             ("context", context_detector(&world, print_id).await),
         ] {
             assert!(
-                !detector["status"]
+                !detector
                     .as_str()
                     .is_some_and(|status| status.starts_with("scoring")),
                 "the {read} read took one read after an outage as evidence: {detector}"
@@ -987,7 +989,7 @@ async fn a_failing_health_check_while_scoring_is_named_beside_it_and_recorded() 
     let detector = until_status(&world, print_id, "scoring_nothing_flagged").await;
     let named = detector["probe_failure"].as_str().unwrap_or_default();
     assert!(named.contains("503"), "{detector}");
-    assert_eq!(context_detector(&world, print_id).await, detector);
+    assert_eq!(context_detector(&world, print_id).await, detector["status"]);
     // Still failing, but answered otherwise: the failure named is the latest.
     ml_api.health("500 Internal Server Error");
     let deadline = tokio::time::Instant::now() + PATIENCE;
@@ -1050,7 +1052,7 @@ async fn without_evidence_the_health_check_decides_and_no_evidence_is_unchecked(
     ml_api.health("503 Service Unavailable");
     let detector = until_status(&world, print_id, "unavailable").await;
     assert!(detector["since"].is_string(), "{detector}");
-    assert_eq!(context_detector(&world, print_id).await, detector);
+    assert_eq!(context_detector(&world, print_id).await, detector["status"]);
 
     let quiet = Host::rest(&token).await;
     let (unchecked, unchecked_print) = watching(&quiet, None, Some(PRINTER_ID), &token).await;

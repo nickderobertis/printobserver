@@ -40,7 +40,7 @@ use printobserver_supervisor_api::{SupervisionSessionOpenedPayload, TurnRequest,
 use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, Timestamp};
 use printobserver_vision_api::NormalizedAlert;
 
-use crate::context::PrintContext;
+use crate::context::{AgentContext, PrintContext, Since, newer_than};
 use crate::error::CoreError;
 use crate::inbox::Arrival;
 use crate::kinds::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite, system_source};
@@ -506,6 +506,50 @@ impl Supervisor {
         self.gather_context(&print, None).await
     }
 
+    /// What a supervision turn reads of one print's context, carrying only the
+    /// events newer than `since` when it names one.
+    ///
+    /// Every event newer than the one named is carried, however many the
+    /// recent window would hold: the window is widened to the history's
+    /// largest page when the event is older than it.
+    ///
+    /// # Errors
+    ///
+    /// Answers [`CoreError::NoSuchPrint`] and the store's own error as
+    /// [`Self::context`] does, and [`StoreError::NotFound`] when `since` names
+    /// none of the print's latest [`MAX_HISTORY_LIMIT`] events.
+    ///
+    /// [`StoreError::NotFound`]: crate::store::StoreError::NotFound
+    /// [`MAX_HISTORY_LIMIT`]: crate::store::MAX_HISTORY_LIMIT
+    pub async fn agent_context(
+        &self,
+        print_id: PrintId,
+        since: Option<printobserver_types::EventId>,
+    ) -> Result<AgentContext, CoreError> {
+        let context = self.context(print_id).await?;
+        let Some(event) = since else {
+            return Ok(context.for_agent(None));
+        };
+        let wider;
+        let newer = if let Some(newer) = newer_than(&context.recent_events, event) {
+            newer
+        } else {
+            wider = self
+                .recent_events_of(&context.print, crate::store::MAX_HISTORY_LIMIT)
+                .await?;
+            newer_than(&wider, event).ok_or_else(|| {
+                CoreError::Store(crate::store::StoreError::NotFound {
+                    what: format!(
+                        "event {event} among print {print_id}'s latest {} events",
+                        crate::store::MAX_HISTORY_LIMIT
+                    ),
+                })
+            })?
+        };
+        let agent = context.for_agent(Some(Since { event, newer }));
+        Ok(agent)
+    }
+
     /// Read one print's whole context, recording a printer read that fails.
     ///
     /// A read failure is recorded against the event being handled when there is
@@ -565,8 +609,13 @@ impl Supervisor {
         let manifest = self.stores().prints.manifest(print.id).await?;
         let bounds = self.bounds_for(Some(print), print.id).await?;
         let interventions = self.stores().actions.active_interventions(print.id).await?;
-        let recent_events = self.recent_events_of(print).await?;
+        let recent_events = self
+            .recent_events_of(print, self.config().recent_events)
+            .await?;
         let latest_image = recent_events.iter().find_map(|record| record.image.clone());
+        let slicer = self
+            .slicer_plan(print, job.as_ref(), &interventions)
+            .await?;
         Ok(PrintContext {
             print: print.clone(),
             printer,
@@ -577,14 +626,18 @@ impl Supervisor {
             recent_events,
             latest_image,
             detector: self.detector_health_for(print.id),
+            slicer,
         })
     }
 
     /// One print's most recent events, newest first: its own, and what the
     /// printer watch recorded of the machine since it opened, which is the
     /// printer's and carries no print.
-    async fn recent_events_of(&self, print: &PrintRecord) -> Result<Vec<EventRecord>, CoreError> {
-        let limit = self.config().recent_events;
+    async fn recent_events_of(
+        &self,
+        print: &PrintRecord,
+        limit: u32,
+    ) -> Result<Vec<EventRecord>, CoreError> {
         let mut events = self
             .stores()
             .events

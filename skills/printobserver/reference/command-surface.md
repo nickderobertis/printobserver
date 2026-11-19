@@ -153,10 +153,11 @@ Reached at `GET /v1/prints/{print_id}/context`.
 **Arguments.**
 
 - `--print-id` — the print this command is about (required).
+- `--since` — the newest event already read, which the last answer named as `newest_event`: only the events after it are answered (optional).
 
-**Output.** The print's context — the printer, the job, the effective bounds, the active interventions, the recent events and the failure detector's status, as `status` answers it — and the absolute path on the server's own host where the latest image was materialized.
+**Output.** The print's context, each fact once and as it is now — the print's state, the heaters, the effective bounds, the active interventions, the failure detector's status, the recent events (each what happened and what it changed), the newest event's identifier and the slicer's plan — and the absolute path on the server's own host where the latest image was materialized.
 
-**Failures.** `image-elsewhere` when that path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `unreachable` and `refused` as for every command.
+**Failures.** `image-elsewhere` when that path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `refused` when `--since` names none of the print's events. `unreachable` and `refused` as for every command.
 
 ### image
 

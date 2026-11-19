@@ -666,7 +666,9 @@ async fn a_status_or_context_read_first_to_find_a_later_job_closes_the_print_as_
             json!(printobserver_core::listing::REPLACED_REASON),
             "{operation} answered the print as it was before the read: {read}"
         );
-        assert!(answered.get("ended_at").is_some(), "{read}");
+        if print_at == "/print" {
+            assert!(answered.get("ended_at").is_some(), "{read}");
+        }
         assert!(
             world
                 .stores

@@ -41,49 +41,7 @@ impl Rendering {
     }
 }
 
-/// How one leaf's path is spelled.
-pub const PATH_SEPARATOR: char = '.';
-
-/// What separates a leaf's path from its value in a labelled line.
-pub const LABEL_SEPARATOR: &str = ": ";
-
-/// Every leaf of one document, by the path it sits at, in path order.
-///
-/// A branch with nothing under it is a leaf of its own, so an answer carrying
-/// an empty list of events says so rather than saying nothing.
-#[must_use]
-pub fn fields(document: &Value) -> Vec<(String, String)> {
-    let mut found = Vec::new();
-    walk(String::new(), document, &mut found);
-    found
-}
-
-/// Enumerate one value's leaves beneath one path.
-fn walk(at: String, value: &Value, found: &mut Vec<(String, String)>) {
-    let under = |name: &str| {
-        if at.is_empty() {
-            name.to_owned()
-        } else {
-            format!("{at}{PATH_SEPARATOR}{name}")
-        }
-    };
-    match value {
-        Value::Object(entries) if !entries.is_empty() => {
-            for (name, held) in entries {
-                walk(under(name), held, found);
-            }
-        }
-        Value::Array(entries) if !entries.is_empty() => {
-            for (index, held) in entries.iter().enumerate() {
-                walk(under(&index.to_string()), held, found);
-            }
-        }
-        Value::Object(_) => found.push((at, "{}".to_owned())),
-        Value::Array(_) => found.push((at, "[]".to_owned())),
-        Value::String(text) => found.push((at, text.clone())),
-        other => found.push((at, other.to_string())),
-    }
-}
+pub use printobserver_types::labelled::{LABEL_SEPARATOR, PATH_SEPARATOR, fields};
 
 /// One answer, in the rendering a caller asked for.
 ///
@@ -100,15 +58,9 @@ pub fn render(document: &Value, rendering: Rendering) -> String {
             rendered.push('\n');
             rendered
         }
-        Rendering::Labelled => {
-            let mut written = String::new();
-            for (at, value) in fields(document) {
-                written.push_str(&at);
-                written.push_str(LABEL_SEPARATOR);
-                written.push_str(&value);
-                written.push('\n');
-            }
-            written
-        }
+        Rendering::Labelled => fields(document)
+            .iter()
+            .map(printobserver_types::labelled::line)
+            .collect(),
     }
 }

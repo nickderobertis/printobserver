@@ -28,6 +28,16 @@ use printobserver_printer_api::{
 use printobserver_types::FileName;
 use printobserver_types::contract::Sample;
 
+/// A sink counting the bytes it was handed.
+struct Taken(usize);
+
+impl printobserver_printer_api::GcodeSink for Taken {
+    fn take(&mut self, piece: &[u8]) -> core::ops::ControlFlow<()> {
+        self.0 += piece.len();
+        core::ops::ControlFlow::Continue(())
+    }
+}
+
 /// A printer that answers every method with the success type it declares.
 struct TrivialPrinter;
 
@@ -137,6 +147,12 @@ fn the_file_reads_a_printer_does_not_implement_are_refused_with_501() {
         block_on(port.printed_extent(FileName::sample_full(), 4_096)),
         Err(refused("printed_extent"))
     );
+    let mut sink = Taken(0);
+    assert_eq!(
+        block_on(port.read_gcode(FileName::sample_full(), &mut sink)),
+        Err(refused("read_gcode"))
+    );
+    assert_eq!(sink.0, 0, "a refused read handed the sink something");
     assert_eq!(
         block_on(port.read_position()),
         Err(refused("read_position"))

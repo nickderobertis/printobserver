@@ -11,12 +11,14 @@ was read.
 
 from __future__ import annotations
 
+import copy
 import json
 import threading
 import urllib.parse
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler
 from typing import Any
 
@@ -39,6 +41,38 @@ class Jobs:
     asked: list[str] = field(default_factory=list)
     #: The `Authorization` header of each request, or none where it carried none.
     authorized: list[str | None] = field(default_factory=list)
+
+
+#: The fields of a job or a step that carry a time the forge recorded.
+TIMES = ("created_at", "started_at", "completed_at")
+#: How the forge spells those times.
+SPELLING = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def slowed(document: Mapping[str, Any], job: str, seconds: int) -> dict[str, Any]:
+    """`document` as the forge would answer it had job `job` run `seconds` longer.
+
+    Every time that job recorded after it started, and every time any other
+    job recorded from that job's end on, moves `seconds` later: the job's own
+    span and every job waiting on it grow by exactly that much, a job that had
+    ended before it does not move, and the order of what the run recorded is
+    kept.
+    """
+    derived = copy.deepcopy(dict(document))
+    (slow,) = (entry for entry in derived["jobs"] if entry["name"] == job)
+    started = datetime.strptime(slow["started_at"], SPELLING)
+    ended = datetime.strptime(slow["completed_at"], SPELLING)
+    for entry in derived["jobs"]:
+        after = (lambda at: at > started) if entry is slow else (lambda at: at >= ended)
+        for record in (entry, *entry.get("steps", [])):
+            for name in TIMES:
+                value = record.get(name)
+                if value is None:
+                    continue
+                at = datetime.strptime(value, SPELLING)
+                if after(at):
+                    record[name] = (at + timedelta(seconds=seconds)).strftime(SPELLING)
+    return derived
 
 
 @contextmanager

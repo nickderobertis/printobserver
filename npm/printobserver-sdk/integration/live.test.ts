@@ -80,11 +80,11 @@ async function stepStatus(client: Client, proxy: Recording) {
 async function stepContext(client: Client, proxy: Recording) {
   await ready(client, world.print_id, "");
 
-  const answered = await client.context(world.print_id);
+  const answered = await client.context(world.print_id, world.event_id);
 
   const seen = proxy.last();
   expect(seen.method).toBe("GET");
-  expect(seen.target).toBe(`/v1/prints/${world.print_id}/context`);
+  expect(seen.target).toBe(`/v1/prints/${world.print_id}/context?since=${world.event_id}`);
   expect(seen.status).toBe(200);
   expect(seen.body).toBe("");
   same("context", answered, seen.answer);

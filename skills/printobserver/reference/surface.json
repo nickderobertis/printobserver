@@ -76,6 +76,13 @@
           "option": "--print-id",
           "required": true,
           "supply": "value"
+        },
+        {
+          "field": "since",
+          "located": "query",
+          "option": "--since",
+          "required": false,
+          "supply": "value"
         }
       ],
       "path": "/v1/prints/{print_id}/context"

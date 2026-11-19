@@ -914,7 +914,16 @@ pub const OPERATIONS: [Operation; 39] = [
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
     read("prints", "/prints"),
     read("status", "/prints/{print_id}/status"),
+    // The print's context; asked `since` an event, its recent events are
+    // only those newer than that one.
     Operation {
+        query: &[
+            // Read into an `EventId`, and refused when it names none.
+            Declared {
+                shape: Some("EventId"),
+                ..Declared::once("since", false, ValueKind::Text)
+            },
+        ],
         image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
         ..read("context", "/prints/{print_id}/context")
     },

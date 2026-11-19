@@ -106,6 +106,34 @@ enum Upgrade {
     Endless,
 }
 
+/// On which side of a request a [`ScriptedOctoPrint::reports_at_next_command`]
+/// change lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Landing {
+    /// Before the request is answered, so the request itself meets it.
+    Before,
+    /// Once the request is answered and before its reply is written, so the
+    /// request does not meet it and its client's next request does.
+    After,
+}
+
+/// The command endpoint's request, as its method and its path.
+const COMMAND_REQUEST: &str = "POST /api/printer/command";
+
+/// What [`ScriptedOctoPrint::reports`] would report, held until the next
+/// request to the command endpoint.
+#[derive(Debug)]
+struct Pending {
+    /// Which side of that request it lands on.
+    landing: Landing,
+    /// Free text rather than a closed set, as [`Script`]'s own: a journey
+    /// scripts `OctoPrint`'s own words, "Offline after error" among them,
+    /// which this stand-in reads by prefix.
+    connection: String,
+    /// Replaces [`Script`]'s whole job, file and progress included.
+    job: JobScript,
+}
+
 /// What the stand-in holds.
 #[derive(Debug)]
 struct Script {
@@ -161,6 +189,17 @@ struct Script {
     /// How many bytes of a held file's download it has written, over every
     /// download.
     download_bytes: usize,
+    /// How many downloads of a held file it is still writing: a reader can
+    /// hold every byte before the thread writing them has counted the last.
+    downloads_writing: usize,
+    /// The name of every file whose download it answered from the first byte,
+    /// asked for with no `Range`, in the order it answered them.
+    whole_downloads: Vec<String>,
+    /// How long it holds every download before it answers, as a slow link or
+    /// a busy instance would.
+    download_delay: core::time::Duration,
+    /// A change of state waiting for its request.
+    pending: Option<Pending>,
 }
 
 /// One file the stand-in holds.
@@ -243,6 +282,10 @@ impl ScriptedOctoPrint {
             files: Vec::new(),
             selected: None,
             download_bytes: 0,
+            downloads_writing: 0,
+            whole_downloads: Vec::new(),
+            download_delay: core::time::Duration::ZERO,
+            pending: None,
         }));
         let sockets = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
@@ -297,6 +340,26 @@ impl ScriptedOctoPrint {
         held.job = job;
     }
 
+    /// Report this connection state and this job from the next line sent
+    /// through the command endpoint on, landing on `landing`'s side of it. A
+    /// journey uses it to start a job at a point in the watch's own sequence of
+    /// requests — as its probe is sent, or once that probe is answered — rather
+    /// than at a moment on the clock that probe may or may not have reached.
+    pub fn reports_at_next_command(&self, landing: Landing, connection: &str, job: JobScript) {
+        self.held().pending = Some(Pending {
+            landing,
+            connection: connection.to_owned(),
+            job,
+        });
+    }
+
+    /// Whether a change [`ScriptedOctoPrint::reports_at_next_command`] holds is still waiting
+    /// for its request.
+    #[must_use]
+    pub fn reporting_pending(&self) -> bool {
+        self.held().pending.is_some()
+    }
+
     /// Record a print of `file`, of `size` bytes, as having just succeeded:
     /// what `OctoPrint`'s file history says once it ran a print of it to the
     /// end, answered at `GET /api/files/local/<file>`.
@@ -335,10 +398,38 @@ impl ScriptedOctoPrint {
     }
 
     /// How many bytes of held files' downloads it has written, over every
-    /// download it served.
+    /// download it served — read once every download it is writing has
+    /// finished, because the reader can have taken a download's last byte
+    /// before the thread writing it counted it. A download still writing after
+    /// [`SETTLE`] is read as it stands.
     #[must_use]
     pub fn download_bytes(&self) -> usize {
-        self.held().download_bytes
+        let deadline = std::time::Instant::now() + SETTLE;
+        loop {
+            let held = self.held();
+            if held.downloads_writing == 0 || std::time::Instant::now() >= deadline {
+                return held.download_bytes;
+            }
+            drop(held);
+            thread::sleep(core::time::Duration::from_millis(2));
+        }
+    }
+
+    /// Hold every download this long before answering it.
+    pub fn delays_downloads(&self, delay: core::time::Duration) {
+        self.held().download_delay = delay;
+    }
+
+    /// How many downloads of one held file it answered from the file's first
+    /// byte, asked for with no `Range` — every read of a file's G-code from
+    /// its start, however far the reader went.
+    #[must_use]
+    pub fn whole_downloads(&self, file: &str) -> usize {
+        self.held()
+            .whole_downloads
+            .iter()
+            .filter(|name| name.as_str() == file)
+            .count()
     }
 
     /// How many times a file's history was read, at
@@ -709,7 +800,15 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
         return;
     }
     let (status, body) = if admitted {
-        answer(&request, script, sockets)
+        let commanded = format!("{} {}", request.method, request.path) == COMMAND_REQUEST;
+        if commanded {
+            land(script, Landing::Before);
+        }
+        let answered = answer(&request, script, sockets);
+        if commanded {
+            land(script, Landing::After);
+        }
+        answered
     } else {
         (403, r#"{"error":"Forbidden"}"#.to_owned())
     };
@@ -720,6 +819,20 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
     );
     let _ = connection.write_all(reply.as_bytes());
     let _ = connection.flush();
+}
+
+/// Report the change waiting for the command endpoint on `landing`'s side of
+/// the request it is answering, if one is.
+fn land(script: &Mutex<Script>, landing: Landing) {
+    let mut held = lock(script);
+    let due = held
+        .pending
+        .as_ref()
+        .is_some_and(|pending| pending.landing == landing);
+    if let Some(pending) = due.then(|| held.pending.take()).flatten() {
+        held.connection = pending.connection;
+        held.job = pending.job;
+    }
 }
 
 /// Whether a connection state is one `GET /api/printer` refuses.
@@ -922,6 +1035,7 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
             .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
         return;
     };
+    let _writing = Writing::begun(script);
     let size = file.bytes.len();
     let suffix = request
         .header("range")
@@ -931,6 +1045,13 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
         Some(count) if count < size => ("206 Partial Content", size - count),
         _ => ("200 OK", 0),
     };
+    if request.header("range").is_none() {
+        lock(script)
+            .whole_downloads
+            .push(file.name.as_str().to_owned());
+    }
+    let delay = lock(script).download_delay;
+    thread::sleep(delay);
     let body = &file.bytes[from..];
     let range = if from > 0 {
         format!("Content-Range: bytes {from}-{}/{size}\r\n", size - 1)
@@ -954,6 +1075,28 @@ fn download(mut connection: TcpStream, request: &Request, script: &Mutex<Script>
         lock(script).download_bytes += piece.len();
     }
     let _ = connection.flush();
+}
+
+/// How long [`ScriptedOctoPrint::download_bytes`] waits for the downloads it
+/// is writing to finish.
+const SETTLE: core::time::Duration = core::time::Duration::from_secs(10);
+
+/// One download being written, counted in `downloads_writing` from when it
+/// begins until it is dropped, whichever way the writing ends.
+struct Writing<'script>(&'script Mutex<Script>);
+
+impl<'script> Writing<'script> {
+    /// Count a download as being written.
+    fn begun(script: &'script Mutex<Script>) -> Self {
+        lock(script).downloads_writing += 1;
+        Self(script)
+    }
+}
+
+impl Drop for Writing<'_> {
+    fn drop(&mut self) {
+        lock(self.0).downloads_writing -= 1;
+    }
 }
 
 /// Lines sent through the command endpoint, each recorded with whether a job

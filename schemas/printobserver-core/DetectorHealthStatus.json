@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The failure detector's status, as the status and context reads answer it.",
+  "oneOf": [
+    {
+      "const": "scoring_nothing_flagged",
+      "description": "The detector is scoring the print, and no failure alert of its own has\narrived for it.",
+      "type": "string"
+    },
+    {
+      "const": "scoring_flagged",
+      "description": "The detector is scoring the print, and a failure alert of its own has\narrived for it.",
+      "type": "string"
+    },
+    {
+      "const": "available",
+      "description": "No evidence that it is scoring the print, and it answered its health\ncheck: available, with no scores yet.",
+      "type": "string"
+    },
+    {
+      "const": "unavailable",
+      "description": "No evidence that it is scoring the print, and it did not answer its\nhealth check.",
+      "type": "string"
+    },
+    {
+      "const": "unchecked",
+      "description": "No evidence of any kind: no detector health address is configured, or\nno check has been made yet, and nothing shows it scoring.",
+      "type": "string"
+    }
+  ],
+  "title": "DetectorHealthStatus"
+}

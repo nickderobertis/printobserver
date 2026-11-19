@@ -753,9 +753,13 @@ async fn every_read_answers_the_record_it_names() {
         .get(&world.operation_url(&path("context"), print_id))
         .await;
     assert_eq!(status, reqwest::StatusCode::OK);
+    // The context states the manifest's limits as the bounds in force, and
+    // the manifest itself nowhere.
+    assert_eq!(context["context"].get("manifest"), None, "{context}");
     assert_eq!(
-        context["context"]["manifest"], manifest,
-        "the context does not carry the manifest that was written"
+        context["context"]["bounds"]["allowed"]["tool_target:0"],
+        manifest["allowed"]["tool_target:0"],
+        "the context's bounds are not the manifest's that was written: {context}"
     );
 
     // One action, so the history has something of this print's own in it.

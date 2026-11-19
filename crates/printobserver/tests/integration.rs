@@ -57,6 +57,8 @@ mod filament;
 mod formats;
 #[path = "journeys/materializing.rs"]
 mod materializing;
+#[path = "journeys/planning.rs"]
+mod planning;
 #[path = "journeys/recovering.rs"]
 mod recovering;
 #[path = "journeys/redaction.rs"]
@@ -112,6 +114,16 @@ fn the_documented_operator_workflow_is_carried_out_from_the_documentation_alone(
     let world = World::open(world::SCRIPTED);
 
     documented::walk(&world);
+}
+
+/// A real slice started and paused through this program: the context states
+/// the plan the file holds at the position the machine reports, and the flow
+/// and fan `set-flowrate-factor` and `set-fan-percent` set beside the file's.
+#[test]
+fn the_context_states_the_slicers_plan_and_the_flow_and_fan_set_since_against_a_real_octoprint() {
+    let world = World::open(world::SCRIPTED);
+
+    planning::the_context_states_the_plan_and_the_flow_and_fan_set_since(&world);
 }
 
 /// After a print interrupted part-way, every recovery command against a real

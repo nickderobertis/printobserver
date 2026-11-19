@@ -41,6 +41,7 @@ from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
+from shell_lines import is_compound
 
 INSTALLER = REPO / "scripts" / "install.sh"
 SKILL = REPO / "skills" / "printobserver"
@@ -58,6 +59,10 @@ CLIENT_DEADLINE_S = 120
 #: this many harness runs per entry has gone wrong.
 RUN_ALLOWANCE_PER_ENTRY = 3
 POLL_S = 0.5
+
+#: Set in the server's environment, its looks wait in real time rather than
+#: passing their waits on the replay's clock.
+REAL_WAITS = "PRINTOBSERVER_REPLAY_REAL_WAITS"
 #: What may be asked for, as the server's own schema declares it.
 PRINT_ACTION = Draft202012Validator(
     json.loads((REPO / "schemas/printobserver-core/PrintAction.json").read_text(encoding="utf-8"))
@@ -377,6 +382,8 @@ class TestRecord(TypedDict):
     passed: bool
     turns: int
     sessions: list[str]
+    #: Each `printobserver` command a conversation ran beside another, by conversation.
+    compound_commands: dict[str, list[str]]
     decision_points: list[DecisionRecord]
 
 
@@ -484,6 +491,25 @@ class Replayed:
             if point.why_not
         )
 
+    def compound_commands(self) -> dict[str, list[str]]:
+        """Each `printobserver` command a conversation ran beside another, by conversation.
+
+        A turn is its ledger entry's session's; with no entry to read, the print's last.
+        """
+        sessions = [session["session_name"] for session in self.ledger["sessions"]]
+        found: dict[str, list[str]] = {session: [] for session in sessions}
+        turns = self.ledger["turns"]
+        for number, point in enumerate(self.points):
+            session = (
+                turns[number]["session_name"]
+                if len(turns) == len(self.points)
+                else (sessions[-1] if sessions else "")
+            )
+            found.setdefault(session, []).extend(
+                command for command in point.commands if is_compound(command)
+            )
+        return found
+
     def as_record(self) -> TestRecord:
         """The replay as `results/latest.json` carries it."""
         return {
@@ -491,6 +517,7 @@ class Replayed:
             "passed": self.passed,
             "turns": len(self.points),
             "sessions": [session["session_name"] for session in self.ledger["sessions"]],
+            "compound_commands": self.compound_commands(),
             "decision_points": [point.as_record() for point in self.points],
         }
 
@@ -623,9 +650,17 @@ class Replay:
         target: list[str],
         picture: Callable[[str], bytes] | None = None,
         gcode: bytes | None = None,
+        *,
+        real_waits: bool = False,
     ) -> None:
-        """Lay the install out and start the doubles; nothing runs until [`Replay.run`]."""
+        """Lay the install out and start the doubles; nothing runs until [`Replay.run`].
+
+        A look's wait passes on the replay's clock at once; `real_waits` has the
+        server wait it out in real time instead, which is what a jumped replay is
+        compared against.
+        """
         self.case = case
+        self.real_waits = real_waits
         self.target = target
         self.root = Path(tempfile.mkdtemp())
         self.state = self.root / "state"
@@ -934,7 +969,10 @@ class Replay:
         self.server = start(
             [str(self.bin / f"printobserver{suffix}"), "server", "--config", str(config)],
             cwd=self.state,
-            env=neutral_environment(self.bin, self.home),
+            env={
+                **neutral_environment(self.bin, self.home),
+                **({REAL_WAITS: "1"} if self.real_waits else {}),
+            },
         )
         self._keep_the_log(self.server)
         try:

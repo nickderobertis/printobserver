@@ -696,7 +696,7 @@ reason = "This is a repository-wide gate and merge-protection statement spanning
 rule = "agents_md_durable_and_terse"
 file = "AGENTS.md"
 site = "The rule above has one recorded exception, and it is closed"
-reason = "Required content rather than session history. The release-path repair that wrote this passage was required to record, where a reader meets the rule it departs from, three things: why the workspace version was moved by hand, that it is a single closed exception, and that control returns to release automation — and the passage is those three statements and the journey that holds the tree to them, nothing more. Each is confirmable from the tree: commit 3952add moved the workspace from 0.1.0 to 0.2.0 by hand on 2026-09-10, `manifests.automation_owned` in repo-policy.toml is the rule it departs from, and `tests/repo-e2e/tests/test_release_path_journey.py` refuses a tree at a tagged version. The durable instruction the rule would keep — do not repeat this, fix the state instead — is unreadable without the exception it refuses to repeat, so the date and the cause are what make the prohibition followable rather than narrative around it."
+reason = "Required content rather than session history. The release-path repair that wrote this passage was required to record, where a reader meets the rule it departs from, three things: why the workspace version was moved by hand, that it is a single closed exception, and that control returns to release automation — and the passage is those three statements and the journey that holds the tree to them, nothing more. Each is confirmable from the tree: commit 3952add moved the workspace from 0.1.0 to 0.2.0 by hand on 2026-09-10, `manifests.automation_owned` in repo-policy.toml is the rule it departs from, and `tests/repo-e2e-independent/tests/test_release_path_journey.py` refuses a tree at a tagged version. The durable instruction the rule would keep — do not repeat this, fix the state instead — is unreadable without the exception it refuses to repeat, so the date and the cause are what make the prohibition followable rather than narrative around it."
 
 [[suppression]]
 rule = "instruction_layer_localized"
@@ -730,13 +730,13 @@ reason = "The rule asks that project rules live in a nested `AGENTS.md` and that
 
 [[suppression]]
 rule = "S310"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "urllib.request.Request(url"
 reason = "S310 fires on building a request for a URL whose scheme it cannot audit statically, and no code change silences it. Every URL this journey opens goes through this one helper, so the rule has one reviewable pair of lines rather than one per caller: the stand-in registry forwarding an index read to `https://index.crates.io` — a literal this module owns — and the journey driving the stand-in forge on the loopback `http://127.0.0.1:<port>` it composed itself."
 
 [[suppression]]
 rule = "S310"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "urllib.request.urlopen(request"
 reason = "The second half of the same one URL-opening site: S310 flags both building the request and opening it, and this is the single `urlopen` every exchange in this journey goes through, immediately below the `Request` it was handed."
 
@@ -766,7 +766,7 @@ reason = "The judged tier read this suite as expensive work that belongs in a ti
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"
 reason = "The committed step is `release-plz release-pr`, and that command is `release-plz update` followed by opening a pull request on a forge: the computation this journey exists to prove — each package's next version, compared against what the registry serves — is the whole of `update`, and the pull request is the one part a journey cannot drive, because it needs a forge and a token and leaves a pull request on a real repository. So these journeys run the real program's real computation against a real (stand-in) registry over a real copy, and stop before the one step that is somebody else's server. The one journey whose subject is that step's answer — the drift gate for the drafting answer the arming step reads — does drive `release-pr`, against a loopback stand-in of GitHub's API; the computation journeys do not need a forge to answer what they ask."
 
@@ -774,7 +774,7 @@ reason = "The committed step is `release-plz release-pr`, and that command is `r
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/release-artifacts/src/release_artifacts/registries.py"
 site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
-reason = "The sample is the one source in this repository of what `release-plz release --output json` answers, and every fixture and the reader are built from it; what it cannot have is a drift gate against a live release-plz, because that program writes this answer only having released something — which needs a forge, a registry and a publish, none of which a tier here may do. The reconciliation is the real release path itself: a shape that moved fails `just release-answer` in the `release` job naming the field, rather than reading as `released nothing`, and the same journey (`tests/repo-e2e/tests/test_release_program.py`) proves the committed argument list, `--output json` included, is one the installed program accepts. Recorded with the release-plz revision the shape was read from, so the day it moves a reader knows what to re-read."
+reason = "The sample is the one source in this repository of what `release-plz release --output json` answers, and every fixture and the reader are built from it; what it cannot have is a drift gate against a live release-plz, because that program writes this answer only having released something — which needs a forge, a registry and a publish, none of which a tier here may do. The reconciliation is the real release path itself: a shape that moved fails `just release-answer` in the `release` job naming the field, rather than reading as `released nothing`, and the same journey (`tests/repo-e2e-independent/tests/test_release_program.py`) proves the committed argument list, `--output json` included, is one the installed program accepts. Recorded with the release-plz revision the shape was read from, so the day it moves a reader knows what to re-read."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -790,91 +790,91 @@ reason = "What stands in is a broken host `curl`, and not the layer under test: 
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "llmlint: ignore[e2e_not_mocked]"
 reason = "What stands in is crates.io, and for the one reason the install proof's `standin.py` stands the package registries in: nothing in this repository may publish to a registry to prove a point, and the state this journey proves — a registry carrying no entry for a crate this tree publishes — is one the real registry stops being in the moment the release goes out. Everything else is real: the real `release-plz` program, its real computation, the real copy of the tree, the real tag, and the sparse-index protocol cargo itself speaks to the stand-in over HTTP. The layer under test is the drafting tool over this tree's versions, and it is not what is substituted."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tools/release-artifacts/tests/test_registries.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists anywhere for a narrower edge to hang from. A project of its own would carry the same `test-e2e` target name and need the same edges — this journey drives the release tooling over the whole tree — so there is no placement that would spare an unrelated change it. A reader can confirm both from the tree: `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and its `implicitDependencies` name what the tier drives, which is what the affected tier selects it by."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "class StandInRegistry"
 reason = "What stands in is crates.io's WRITE path, for the one reason the release-path journey's `EmptyIndex` stands its read path in: nothing in this repository may publish to a registry to prove a point, and the state this journey proves — two of thirteen crates on the registry and no tag on the forge — is one the real registry leaves the moment the release completes. Everything the stand-in takes is real: the real `cargo publish` upload the real run performed, the sparse-index protocol and the download path cargo itself speaks to it over HTTP, and every third-party crate read forwarded to the real crates.io, because cargo resolves this workspace's siblings from crates.io whatever `--registry` names and a stand-in that owned only the siblings would resolve nothing. The layer under test is the release program's tagging over this configuration, and it is not what is substituted."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "class StandInForge"
 reason = "What stands in is GitHub, and for the same reason: a journey may not create a tag or a release on the real repository to prove that the second one is refused. The stand-in answers the four endpoints `release-plz release` touches with GitHub's own status codes, refuses a second `POST …/git/refs` for one ref with `422 Reference already exists` exactly as GitHub does — which is the answer the `0.2.0` release died on — and records every write in the same ordered record the registry writes to, so the ordering the change promises (the tag after the last upload) is read off one sequence rather than argued from timestamps. Its refusal is held by a journey of its own, driven over HTTP."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "REFERENCE_EXISTS = ("
-reason = "The constant IS the one source, and it is a recording rather than a restatement: the response body GitHub answered the real release of 0.2.0 with, read verbatim from the `release` job's log of workflow run 34578287017 on 2026-09-11 (`gh run view 34578287017 --log`, the `Response body:` line release-plz 0.3.164 — the release that run installed — printed when the forge refused it), with that provenance written beside it. What it reconciles is reconciled: the forge stand-in serves the recording, and the former-configuration journey holds the real release-plz, at the release `repo-policy.toml` holds, to reporting it as the module's `REPORTED_REFUSAL` records — read verbatim on 2026-09-14 from release-plz 0.3.167's own output when that journey drove it (`uv run -q pytest tests/repo-e2e/tests/test_release_tag_journey.py` with 0.3.167 first on PATH), because 0.3.165 stopped printing the one-line form that run's log carries — and holds the body that report carries equal to this one. What the rule still asks for — a drift gate against the live endpoint — has one possible implementation, creating one ref twice on github.com/nickderobertis/printobserver, and no tier here may write to the real forge; the day GitHub changes this body, the real release path is where it shows, exactly as `tools/release-artifacts/src/release_artifacts/registries.py`'s entry for this rule records for release-plz's answer shape. The directive sits on the constant itself so the site is named rather than covered by the stand-in's class-level entry."
+reason = "The constant IS the one source, and it is a recording rather than a restatement: the response body GitHub answered the real release of 0.2.0 with, read verbatim from the `release` job's log of workflow run 34578287017 on 2026-09-11 (`gh run view 34578287017 --log`, the `Response body:` line release-plz 0.3.164 — the release that run installed — printed when the forge refused it), with that provenance written beside it. What it reconciles is reconciled: the forge stand-in serves the recording, and the former-configuration journey holds the real release-plz, at the release `repo-policy.toml` holds, to reporting it as the module's `REPORTED_REFUSAL` records — read verbatim on 2026-09-14 from release-plz 0.3.167's own output when that journey drove it (`uv run -q pytest tests/repo-e2e-independent/tests/test_release_tag_journey.py` with 0.3.167 first on PATH), because 0.3.165 stopped printing the one-line form that run's log carries — and holds the body that report carries equal to this one. What the rule still asks for — a drift gate against the live endpoint — has one possible implementation, creating one ref twice on github.com/nickderobertis/printobserver, and no tier here may write to the real forge; the day GitHub changes this body, the real release path is where it shows, exactly as `tools/release-artifacts/src/release_artifacts/registries.py`'s entry for this rule records for release-plz's answer shape. The directive sits on the constant itself so the site is named rather than covered by the stand-in's class-level entry."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "class StandInRegistry"
 reason = "What this stand-in restates is cargo's registry web API and sparse-index format, and the drift gate is cargo itself: the real `cargo publish` uploads to it and the real `cargo info` reads its index and downloads from it on every run of this journey, so a frame, a route or an index field cargo stopped speaking fails the journey at the boundary rather than being approximated. There is no machine-readable source of that protocol to generate from — cargo documents it in prose — and the one consumer that matters is the one driven here."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "class StandInForge"
 reason = "What this stand-in restates is the four GitHub endpoints `release-plz release` touches and GitHub's answers to them, and the consumer under test is the real release-plz, so a route or a status it stopped accepting fails the journey naming it. What it cannot have is a drift gate against GitHub, for the same reason `tools/release-artifacts` cannot: the behaviour it models — a second ref refused with `422 Reference already exists` — can only be reconciled by creating a tag on the real repository twice, and no tier here may write to the real forge. The reconciliation is the real release path: the same program creates the same ref on GitHub on every push to `main` that cuts a release."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "urllib.request.Request(url"
 reason = "The one place this journey opens a URL, and neither half of the rule applies to it. It is called from inside a synchronous `http.server` handler — the stand-in registry forwarding an index read to crates.io while cargo waits on that very request — and from a journey whose assertions are strictly sequential over a loopback forge it stood up itself; an awaited client under either would need an event loop with nothing to overlap. The typed half is answered where the answer is consumed: the forwarded body is handed back to cargo byte for byte, which is the one consumer that validates a sparse-index entry, and the forge's answer is narrowed to a status and a body the journey asserts on."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "urllib.request.urlopen(request"
 reason = "The second half of the same one site as the entry above: the rule reads the request's construction and its opening as two, and this is the single `urlopen` every exchange in this journey goes through, immediately below the `Request` it was handed."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "def released"
 reason = "The argument list is the committed step's own, read through `release_step_arguments()` rather than restated, and what is added is routing and one verification skip: `--registry`, `--token`, `--repo-url` and `--git-token` point the program at the two stand-ins on loopback, and `--no-verify` skips the release build every `cargo publish` otherwise performs of the crate it just packaged — which is cargo's verification of the packaged source, proven elsewhere by the build tier, and not what this journey is about. Without it thirteen release-mode builds of the workspace would sit between the journey and the one thing it asks: which package creates the tag, and when."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "def released"
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs — eleven real `cargo publish` uploads to a loopback registry, about a minute — is already bounded by `--no-verify` and by seeding with a real publish rather than a build; the remaining cost is the release program doing the thing under test."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs — eleven real `cargo publish` uploads to a loopback registry, about a minute — is already bounded by `--no-verify` and by seeding with a real publish rather than a build; the remaining cost is the release program doing the thing under test."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "def driven("
 reason = "The layer under test is the committed workflow's own scheduling — needs, gates, outputs — and that is what runs unsubstituted, over the workflow's own text with the real `just release-answer` recipe over a real copy. What is stood in reaches outside this host: `release-plz` publishes to crates.io and a forge, `just publish-artifacts` publishes to PyPI and npm, and `just build-artifacts` and `just bootstrap` are a cold release build of the workspace per matrix cell and a toolchain install, which the question — are these two recipes REACHED — does not need run to be answered. The stand-in `release-plz` behaves as the real one does at the point that matters: it prints its answer only when asked with `--output json`, so the journey that drops that option fails the job the way the real program would."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "def driven("
 reason = "The interface that schedules a workflow is GitHub Actions, and it cannot be fired from a journey — the same reason the registry-proof and service-report journeys read the committed workflow. This one goes further than reading: it runs the committed workflow's own text under the forge's documented scheduling rules (`actions.py`), so what is asserted is what those jobs did — ran, were skipped, failed, and what each published — rather than what the YAML says. Nothing in the assertions names the runner's internals; the run object reports results by the workflow's own job keys."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_actions_runner.py"
+file = "tests/repo-e2e-independent/tests/test_actions_runner.py"
 site = "llmlint: ignore[tests_mirror_real_usage]"
 reason = "`actions.py` is a test helper whose whole interface is `Runner.run()` and `evaluate()`, and this module is where its claims about the forge are pinned over a workflow small enough to read. There is no other interface to reach it through: the forge itself is the thing it stands in for and cannot be fired from a test. The release-workflow journey is what uses it over the committed workflow."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/actions.py"
+file = "tests/repo-e2e-independent/tests/actions.py"
 site = "llmlint: ignore[contracts_have_one_source_or_a_drift_gate]"
 reason = "The forge's scheduling rules are documented prose with no machine-readable source to generate from, and the drift gate is the forge itself: the same workflow text runs on GitHub on every push to the base branch, which is where a rule modelled here wrongly shows. What keeps the model honest in the meantime is that it refuses by name every construct and expression outside the subset it models — a workflow that grows past the subset fails the journey rather than being approximated — and `test_actions_runner.py` pins each modelled rule over a workflow small enough to read against the forge's documentation."
 
@@ -930,7 +930,7 @@ reason = "The same tier and the same reason as the jobs above it: the JavaScript
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_release_probe_journey.py"
 site = "def test_a_registry_that_never_answers_is_given_up_on_within_the_bound"
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the probe's one request is bounded by curl's own `--max-time 25` with no retry, and the only way to prove a stalled registry is given up on inside that bound is to stall one for it. It holds one xdist worker for that time and nothing else."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the probe's one request is bounded by curl's own `--max-time 25` with no retry, and the only way to prove a stalled registry is given up on inside that bound is to stall one for it. It holds one xdist worker for that time and nothing else."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -940,15 +940,15 @@ reason = "The same placement as the directive above it, and the same reason: thi
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
-file = "tools/release-artifacts/tests/test_registry_clients.py"
+file = "tools/release-artifacts/tests/independent/test_registry_clients.py"
 site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
-reason = "The same ground as the entry for `test_registries.py`: this suite is the client half of the same registry proof, stood up against the same stand-in, beside `test_clients.py`, which builds the same supervisor and starts it for real. What edges this project's `test` target is what it proves rather than what it costs, and moving it out would leave the client half of `registries.py` and `standin.py` measured by no tier that carries a coverage floor."
+reason = "The same ground as the entry for `test_registries.py`: this suite is the client half of the same registry proof, stood up against the same stand-in. It runs in `release-artifacts-independent`, the nested project of `release-artifacts`' host-independent suites, whose `test` target builds the same supervisor `test_clients.py` does and is measured for coverage; what edges that target is what it proves rather than what it costs, and moving it to another tier would leave the client half of `registries.py` and `standin.py` measured by no tier that carries a coverage floor."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tools/release-artifacts/tests/test_registry_clients.py"
+file = "tools/release-artifacts/tests/independent/test_registry_clients.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
-reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program this project does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
+reason = "The same placement as the directive above it, and the same reason as `test_registries.py`'s: there is no narrower edge to put it behind — a project of its own would carry a `test` target and depend on the same release tooling and the same built program the project it runs in does, so the affected tier would select it over exactly the changes it selects this one by, and the one tier that is edged differently (`test-e2e`) is not measured for coverage."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -1006,6 +1006,30 @@ reason = "The operator's command is `gh skill install nickderobertis/printobserv
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tools/repo-checks/tests/host/project.json"
+site = "implicitDependencies"
+reason = "This project is the repository checks' host-dependent suites — installers that download for this host, the runner's temporary drive, the Windows-target lint's cross compiler, PATH resolution, the worker share, platform dispatch's per-family steps and the tree lock each platform takes through its own kernel interface — moved unchanged out of `repo-checks`, nested in it so that project runs once while these run on every platform. Its edges are the ones those files had there and draw now: `repo-checks`, whose sources and test helpers they import; `github-workflows`, whose workflows platform dispatch runs; and `contract-codegen`, whose sources `test_isolation_treecopy.py` imports in the interpreters it starts. The closure the rule names, reaching `release-artifacts` and the CLI crate, is `repo-checks`' own: `repo-checks` depends on `contract-codegen`, so dropping an edge here would leave the same closure through `repo-checks`, and every suite in this repository that imports `repo_checks` carries it. Nothing narrower is still correct."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e-independent/project.json"
+site = "implicitDependencies"
+reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `implicitDependencies`: this project is the end-to-end tier's other half, the journeys whose subject is the same on every platform, and each edge is a project they drive or import — the workflows they run under the forge's rules and hold `just check-repo` to, the release tooling and the checks they run in copies, the workspace's crates that `release-plz` drafts and publishes over (through `printobserver`, which is built from every one), and `repo-e2e`, whose `journey` helpers and session hooks they import. A change to any of them selects the suite and nothing narrower is still correct."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e-independent/project.json"
+site = "test-e2e"
+reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `test-e2e`: the rule is about the edge this project's end-to-end target hangs from, decided here once rather than per journey. It is the tier's own target name, so the shard planner's part selection and Nx's one-at-a-time `test-e2e` run (`nx.json`) hold it as they hold `repo-e2e`'s, and its journeys drive exactly the projects its `implicitDependencies` name. It depends on no build: none of its journeys runs the debug program."
+
+[[suppression]]
+rule = "external_service_suite_stays_out_of_the_affected_tier"
+file = "tests/repo-e2e-independent/project.json"
+site = "test-e2e"
+reason = "The rule is about wiring an external-service suite into the pull-request gate, and this target wires in none that was not there: `test_release_tag_journey.py`, whose stand-in registry forwards reads of crates that are not this workspace's to crates.io, ran in `tests/repo-e2e`'s `test-e2e` target in the same tier until this change moved it here, unchanged, because nothing it drives behaves differently by platform. The entry for `justfile` at the `install-tools release-plz` line records why the release journeys are in the end-to-end tier at all. Moving them behind a workflow of their own is a change to the workflows, which the change that moved them was told to leave alone, and would take the release-tag proof off every pull request."
+
+[[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/project.json"
 site = "implicitDependencies"
 reason = "The same finding as the `test-e2e` entry below, read at the edge rather than the target. The project has two kinds of edge, and each is exactly what its journeys use. Its `implicitDependencies` are project-graph edges, which is all the affected tier selects by: each is a project those journeys drive or import — the built program (and through it every crate it is built from), both clients, the release tooling, the checks, the OctoPrint environment and the smoke — so a change to any of them selects the suite, and `test_gate_tier_journey.py` drives `just test-e2e` over a change to each and over one to the Obico environment, which selects nothing. Its `test-e2e` target's one `dependsOn`, `printobserver:build`, is a task-graph edge and selects nothing: it is the debug program the journeys run, built before they start, and nothing else, so the target starts beside the gate's test tier instead of waiting on every other one. Nx's `dependsOn` adds no project-graph edge, so the selection edges cannot be folded into it without the affected tier skipping journeys a change can break. Splitting the suite into per-component projects with narrower edges is the optional split this change was told is out of its scope; until that split happens, this edge set is the narrowest that is still correct."
@@ -1014,7 +1038,7 @@ reason = "The same finding as the `test-e2e` entry below, read at the edge rathe
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/project.json"
 site = "test-e2e"
-reason = "On the target rather than in a journey, as `crates/printobserver/project.json` carries the same rule for its integration tier: what the rule is about is the edge this project's `test-e2e` target hangs from, which is decided here once and not per test — a directive over one of the registry journey's fourteen tests was read (run `20260911T000559Z-ee38c`) as leaving thirteen unanswered, and one at that module's head (run `20260911T002015Z-5c3c6`) as covering its docstring. The rule's premise does not hold in this repository: its end-to-end tier is one project by design, `AGENTS.md` places this coverage there, every journey in it is expensive by construction — bootstrapping a fresh clone, running gates, bringing OctoPrint up and waiting a print out — and there are sixteen journey modules behind one `test-e2e` target with no per-project end-to-end target anywhere for such an edge to hang from. Its edges are what it drives — the release tooling, the checks, the built program, both clients, the OctoPrint environment and the smoke — and the affected tier selects it by exactly those, plus every change to a file no project owns, which runs the whole graph. A journey split into a project of its own would drive the same things and need the same edges, so no placement spares an unrelated change anything. If this repository grows per-project end-to-end targets with narrower edges, this suppression stops being right, and a reader can see that from this sentence."
+reason = "On the target rather than in a journey, as `crates/printobserver/project.json` carries the same rule for its integration tier: what the rule is about is the edge this project's `test-e2e` target hangs from, which is decided here once and not per test — a directive over one of the registry journey's fourteen tests was read (run `20260911T000559Z-ee38c`) as leaving thirteen unanswered, and one at that module's head (run `20260911T002015Z-5c3c6`) as covering its docstring. The rule's premise does not hold in this repository: its end-to-end tier is two projects by design — this one, whose journeys behave differently by platform, and `tests/repo-e2e-independent`, whose journeys do not and which CI may run once — `AGENTS.md` places this coverage there, every journey in it is expensive by construction — bootstrapping a fresh clone, running gates, bringing OctoPrint up and waiting a print out — and there are sixteen journey modules behind one `test-e2e` target with no per-project end-to-end target anywhere for such an edge to hang from. Its edges are what it drives — the release tooling, the checks, the built program, both clients, the OctoPrint environment and the smoke — and the affected tier selects it by exactly those, plus every change to a file no project owns, which runs the whole graph. A journey split into a project of its own would drive the same things and need the same edges, so no placement spares an unrelated change anything. If this repository grows per-project end-to-end targets with narrower edges, this suppression stops being right, and a reader can see that from this sentence."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
@@ -1048,7 +1072,7 @@ reason = "The same ground as the entry above it, for the other registry: the cli
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tools/release-artifacts/tests/test_publishing.py"
+file = "tools/release-artifacts/tests/independent/test_publishing.py"
 site = "socket.create_connection"
 reason = "What this one test puts on the wire is a request no HTTP client will send: a `Content-Length` that is not a number. Every client — typed, async, or neither — composes that header itself from the body it was handed, so reaching the stand-in through one would test the client's arithmetic rather than what this stand-in does with a length it cannot read, which is the behaviour under test. A raw socket is the only way to state the malformed request, and it is one connection, opened and closed inside a strictly sequential assertion with nothing to overlap it with. Every other exchange in this suite goes through `registries.exchange`, which is the narrowed reader the rule is about."
 
@@ -1060,43 +1084,43 @@ reason = "The same ground as the entry for `StandInForge` in `tests/repo-e2e`: w
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/actions.py"
+file = "tests/repo-e2e-independent/tests/actions.py"
 site = "class ArtifactStore:"
 reason = "The same ground as the entry for `Runner` above: what is restated is how `actions/upload-artifact` and `actions/download-artifact` keep and hand back files — a directory's contents at the artifact's root, a name the run already holds refused, a name nothing uploaded failing the download, a pattern matching nothing passing — and those two actions publish no machine-readable statement of that to generate from or reconcile against. The drift gate is the forge itself, and for this store it is a specific run: the dispatched release workflow uploads the record and the install-path workflow it triggers downloads it, so a semantic modelled here wrongly shows on the first dispatch as a `resolve` job that fails naming the artifact, beside the runner's own tests pinning each modelled rule over a workflow small enough to read against the actions' documentation."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/actions.py"
+file = "tests/repo-e2e-independent/tests/actions.py"
 site = "class Event:"
 reason = "The same ground as the two entries above it: the `github` and `inputs` contexts are documented prose with no machine-readable source, and the three shapes modelled here — `github.event_name`, `github.event.workflow_run.<field>` and `inputs.<name>` — are the ones the two committed workflows read and `actionlint` validates every `${{ }}` in them against the forge's own payload schema in `just lint-workflows`, so a field named wrongly in a workflow is refused there, and a field modelled wrongly here shows on the forge the first time the workflow runs under that event, which is every push and every dispatch."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "RELEASE_PLZ_STANDIN = "
 reason = "The stand-in itself, beside the entry for the function that installs it: what the real `release-plz` does at this step is publish thirteen crates to crates.io and cut a tag and a release on github.com, which no journey may do. The layer under test is the committed workflow's own scheduling over the program's ANSWER, and the stand-in behaves as the real one does at the point that matters — its `release` prints the answer only when asked with `--output json`, its `release-pr` either fails the way the wedged one did or, where a journey hands it a drafted pull request, prints that answer only when asked with `--output json` as the real one does, and every invocation is recorded so that the dispatched shape can prove the program was never reached."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "RECORDED = "
 reason = "The two macOS-cell proofs are recorded rather than run here for the reason `build-artifacts` is beside them: `prove-built-artifacts` installs and runs what a release build left in `dist/`, which this journey records rather than makes, and `prove-built-service` loads a launchd daemon. Each is run for real elsewhere, across its own boundary: `tools/release-artifacts/tests/test_built.py` builds every artifact around the real program and runs `prove-built` over it, and `test_prove_service_journey.py` runs `prove-service` against the launchd stand-in with the committed installer. What this journey asks is the workflow's scheduling — that the macOS cell alone reaches the two, and before the publish."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "RECORDED = "
 reason = "The interface that schedules the macOS cell's two proofs is GitHub Actions, run here under its documented rules over the committed workflow (`actions.py`); the recipes' own command lines are driven as a consumer drives them by `tools/release-artifacts/tests/test_built.py` and `test_prove_service_journey.py`. What this journey asserts of them is only what the forge decides — which cell reaches them, and that they come before the publish."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "JUST_STANDIN = "
 reason = "The other stand-in, and it is the real `just` for every recipe but the ones that reach outside this host or cost a release build: `publish-artifacts` publishes to PyPI, npm and the forge, the three `prove-registry-*` recipes read the real registries, and `build-artifacts` and `bootstrap` are a cold release build of the workspace per matrix cell. Each is recorded with the version it was handed rather than run, because what the journey asks is whether the workflow REACHED it and with which version — and `release-answer`, `release-dispatched`, `release-version` and `release-version-dispatched`, which are what the wiring under test turns on, are the real recipes over the real copy."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/actions.py"
+file = "tests/repo-e2e-independent/tests/actions.py"
 site = "class ArtifactStore:"
 reason = "What this stands in for is GitHub's own artifact service, which no journey can reach: an upload lands on the forge's storage and a download reads it back with the forge's token, and neither exists off github.com. The layer under test is the seam between two committed workflows — the record one run uploads and a run of the other downloads by the triggering run's id — and that seam cannot be driven at all without a store; a boundary that ran nothing would leave the resolving job's download, and every journey through it, proving nothing. The store keeps the actions' own semantics where they decide a job's outcome — a name the run already holds refused, a name nothing uploaded failing the step in the action's own words, an empty path uploading nothing — and the first dispatched run on the forge is where a semantic modelled wrongly shows."
 
@@ -1419,13 +1443,13 @@ reason = "The task explicitly requires this real committed-script journey to rea
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_platform_dispatch_journey.py"
+file = "tests/repo-e2e-independent/tests/test_platform_dispatch_journey.py"
 site = "JUST_STANDIN = "
 reason = "The layer under test is the committed platform-dispatch workflow and the script it hands its two inputs to, and both run unsubstituted: the workflow's own text under the forge's rules, and the real `just dispatch-resolve` and `just dispatch-run` over a real copy of the tree. What the stand-in records instead of running is every OTHER recipe the dispatched source job's steps reach — `just bootstrap`, the OctoPrint bring-up, the printer tier, the bring-down and the whole gate — because the question is which commands a dispatch runs and on which runner, and running a toolchain install, a real OctoPrint and the gate to answer it would prove nothing more about the dispatch."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_platform_dispatch_journey.py"
+file = "tests/repo-e2e-independent/tests/test_platform_dispatch_journey.py"
 site = "run = Runner("
 reason = "The interface that fires this workflow is GitHub's `workflow_dispatch`, and it cannot be fired from a journey for a reason stronger than the release-workflow journey's: the forge dispatches a workflow only from the default branch, so the committed workflow has no hosted run at all until the change adding it merges (`gh workflow run platform-dispatch.yml --ref <branch>` answers `workflow platform-dispatch.yml not found on the default branch`). So the journey runs the committed workflow's own text under the forge's documented rules (`actions.py`) as a `workflow_dispatch` carrying the two inputs a person would type, and everything the workflow then does is real: `select` runs the real `just dispatch-resolve` over a real copy and `run` lands on the runner it answered and runs the real `just dispatch-run`, which runs the source job's own commands. What is asserted is what the two jobs did and where — by the workflow's own job keys and the source job's own commands — not anything of the runner's internals."
 
@@ -1494,7 +1518,7 @@ reason = "With no `-Root` the installer writes into the host's own `C:\\Program 
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_windows_service_installer_journey.py"
 site = "def program() -> Path:"
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_tag_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The build is `cargo build` of a program every other journey in the tier has already built, so on any run but the first it costs nothing."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_tag_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The build is `cargo build` of a program every other journey in the tier has already built, so on any run but the first it costs nothing."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -1710,7 +1734,7 @@ reason = "The one question this journey asks the API is written out over a socke
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_service_manager_journey.py"
 site = "def program() -> Path:"
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_tag_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs beyond a build every other journey shares is the service manager restarting a process, about twenty seconds, which is the thing under test."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_tag_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs beyond a build every other journey shares is the service manager restarting a process, about twenty seconds, which is the thing under test."
 
 # --- the real-printer smoke test's device precondition: two lookup sites ------
 
@@ -1748,7 +1772,7 @@ reason = "This reference document is read by people on the forge and by agents f
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_registry_proof_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. This journey runs the tier recipe over all six registry proofs because that recipe is the one a person and the install-path workflow run, and a journey over fewer would prove a recipe nobody runs; behind the tier's own `test-e2e` target is the only edge there is."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. This journey runs the tier recipe over all six registry proofs because that recipe is the one a person and the install-path workflow run, and a journey over fewer would prove a recipe nobody runs; behind the tier's own `test-e2e` target is the only edge there is."
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
@@ -1794,13 +1818,13 @@ reason = "The first step of the same strictly ordered bring-up the `http.client.
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/actions.py"
+file = "tests/repo-e2e-independent/tests/actions.py"
 site = "JOB_KEYS = frozenset("
 reason = "The same ground as the entry for `Runner` above: the job keys the forge accepts are documented prose with no machine-readable schema to generate from, and the drift gate is the forge itself — the same workflow text runs on GitHub on every push and every dispatch. What keeps the set honest is that it is a refusal list rather than an approximation: a workflow carrying a job key outside it fails the journey by name, and `test_actions_runner.py` pins the modelled keys over a workflow small enough to read against the forge's documentation."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/actions.py"
+file = "tests/repo-e2e-independent/tests/actions.py"
 site = "NAMED_BASH = "
 reason = "The same ground as the entries above it: the invocation the forge gives a `run:` step whose shell is named `bash` is documented prose (`bash --noprofile --norc -eo pipefail {0}`) with no machine-readable source, and the drift gate is the forge, where the platform-dispatch workflow's `run` job — the one job here that names that shell — runs on its first dispatch after the merge; `test_actions_runner.py` pins the invocation over a workflow small enough to read against the documentation, and any other named shell is refused rather than modelled."
 
@@ -1837,7 +1861,7 @@ reason = "One status for every stop is the exit contract of this route, and the 
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_install_powershell_script_journey.py"
 site = "def _built_here"
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The release build is asked for only on a Windows host of the platform under test — everywhere else the artifact carries a stand-in — and there it is the same `target/release` program the shell form's journey and every route proof of the tier already build once and share."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. The release build is asked for only on a Windows host of the platform under test — everywhere else the artifact carries a stand-in — and there it is the same `target/release` program the shell form's journey and every route proof of the tier already build once and share."
 
 # `tests/repo-e2e/tests/test_install_powershell_script_journey.py` drives the
 # committed PowerShell install script on every platform, and only a Windows
@@ -1920,17 +1944,17 @@ reason = "The older release the staged directory carries is a stand-in that repo
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_cargo_build_contract_journey.py"
 site = "def test_cargo_builds_into_the_clones_own_target_from_anywhere_inside_it("
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs — three `cargo metadata` reads and one `cargo build` of a planted crate with no dependencies — is seconds, and the copy it runs over is what proves the target directory is the copy's own."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs — three `cargo metadata` reads and one `cargo build` of a planted crate with no dependencies — is seconds, and the copy it runs over is what proves the target directory is the copy's own."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_cargo_build_contract_journey.py"
 site = "def test_dev_test_and_release_builds_carry_no_debuginfo("
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs is bounded by design: three `cargo check` runs of the workspace's smallest crate rather than builds, because the profile shows on rustc's command line before anything is linked, and the copy they run over is what proves where the build lands."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs is bounded by design: three `cargo check` runs of the workspace's smallest crate rather than builds, because the profile shows on rustc's command line before anything is linked, and the copy they run over is what proves where the build lands."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_tag_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
 site = "def __init__(self, gate_copy: CopiesTheTree, tags: tuple[str, ...] = ()) -> None:"
 reason = "The same ground the entry for this rule at `def released` in this file states: this repository's end-to-end tier is one project by design, and no per-project end-to-end target exists for a narrower edge to hang from. Wiring the copy to the stand-in registry adds nothing to that journey's cost; it composes the registry tables onto the copy's own build contract so the publishes the journey drives build under it, which is the cheaper build."
 
@@ -1948,25 +1972,25 @@ reason = "The rule is about wiring an external-service suite INTO the pull-reque
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "echo \"release-plz $RELEASE_PLZ_STANDIN_VERSION\""
 reason = "The same stand-in the entry at `RELEASE_PLZ_STANDIN = ` in this file covers, and the same ground: the layer under test is the committed workflow's scheduling, and `release-plz` is stood in because it reaches crates.io and a forge. This branch exists because the workflow now runs `just install-tools release-plz`, whose first act is to ask the `release-plz` on PATH which release it is — so a stand-in that answered nothing was read as a copy holding no release, replaced, and then found still first on PATH, which failed the `release` job before any scheduling happened. Answering is what a stand-in for a program owes: it says it is the release `repo-policy.toml` holds, read off the policy rather than restated, and the real installer then takes its own already-present path over it. The alternative is worse on the rule's own terms — every journey run would download a release archive from GitHub, putting the network inside a tier that is about a workflow's `needs` and `if` expressions."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ"
 reason = "The environment the stand-in's `--version` answer reads, and the same ground as the entry at that answer: `release-plz` is stood in because the real one reaches crates.io and a forge, and the layer under test is the committed workflow's scheduling. This line hands the stand-in the release `repo-policy.toml` holds, read off the policy rather than restated, so the workflow's real `just install-tools release-plz` step finds the held release on PATH and takes its own already-present path; answering anything else would have the journey download a release archive from GitHub inside a tier about `needs` and `if` expressions. The directive sits here as well as at the answer because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "echo \"release-plz $RELEASE_PLZ_STANDIN_VERSION\""
 reason = "The same answer the `e2e_not_mocked` entries at this site and at `RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ` cover. It lets the workflow's real `just install-tools release-plz` step decide that nothing needs installing, so this journey does not take the installer's download path. That path is not this journey's subject, and it is proven where it is: `tools/repo-checks/tests/test_release_plz_release.py` drives `python -m repo_checks install-release-plz` against a loopback stand-in release, refusing a tampered archive before anything reaches PATH, and the gate's own `just test-e2e` runs `install-tools release-plz` first, downloading the held archive from the producer and verifying it against the committed digest. What this journey asks is whether the committed workflow's `needs` and `if` expressions reach the build and the publish, and taking the download path here would put the network inside that tier and add nothing to what the installer's own tests prove."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "RELEASE_PLZ_STANDIN_VERSION=HELD_RELEASE_PLZ"
 reason = "The same answer the `e2e_not_mocked` entries at this site and at the stand-in's `--version` answer cover. It lets the workflow's real `just install-tools release-plz` step decide that nothing needs installing, so this journey does not take the installer's download path. That path is not this journey's subject, and it is proven where it is: `tools/repo-checks/tests/test_release_plz_release.py` drives `python -m repo_checks install-release-plz` against a loopback stand-in release, refusing a tampered archive before anything reaches PATH, and the gate's own `just test-e2e` runs `install-tools release-plz` first, downloading the held archive from the producer and verifying it against the committed digest. What this journey asks is whether the committed workflow's `needs` and `if` expressions reach the build and the publish, and taking the download path here would put the network inside that tier and add nothing to what the installer's own tests prove."
 
@@ -1992,7 +2016,7 @@ reason = "This is the producer's asset name, not a second local contract: each i
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tools/repo-checks/src/repo_checks/powershell_release.py"
 site = "FLAVOURS = {"
-reason = "These are the producer's platform names. An install reads the selected release's own hashes.sha256 and refuses a flavour whose archive name is absent; tests/test_powershell_release.py drives that refusal with a listing naming another flavour. A networked gate against the current mutable release would add availability and re-cut risk to every code change without making an unlisted build installable."
+reason = "These are the producer's platform names. An install reads the selected release's own hashes.sha256 and refuses a flavour whose archive name is absent; tests/host/test_powershell_release.py drives that refusal with a listing naming another flavour. A networked gate against the current mutable release would add availability and re-cut risk to every code change without making an unlisted build installable."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
@@ -2014,15 +2038,15 @@ reason = "This is the producer's own release route on the forge, the same kind o
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "GH_STANDIN = "
 reason = "GitHub's CLI, stood in because the real one arms auto-merge on a real pull request of a real repository, which no journey may do. The layer under test is the committed `release-pr` job — its drafting step's answer handed to the real `just release-pr-arm` recipe and the real `release_artifacts arm-release-pr` over the copy — and the stand-in is the forge at the far side of that: it records every call with the token it was given, so the journey can prove the job armed exactly the pull request the answer named under RELEASE_PLZ_TOKEN and nothing else, and refuses with the forge's own words where a journey tells it to, so the job's loud failure is proven as well."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_arming.py"
+file = "tools/release-artifacts/tests/independent/test_arming.py"
 site = "GH = "
-reason = "The forge's CLI, stood in because the real `gh pr merge --auto` arms a real pull request on github.com, which no test may do. What is under test is this repository's own arming command, driven through its real command line over the drafting program's real answer shape; the stand-in is only the forge beyond it, recording each call so the tests can prove exactly the named pull request is armed and nothing else, and refusing one where told so the collected refusal is proven too. The end-to-end journey over the committed workflow's `release-pr` job is `tests/repo-e2e/tests/test_release_workflow_journey.py`."
+reason = "The forge's CLI, stood in because the real `gh pr merge --auto` arms a real pull request on github.com, which no test may do. What is under test is this repository's own arming command, driven through its real command line over the drafting program's real answer shape; the stand-in is only the forge beyond it, recording each call so the tests can prove exactly the named pull request is armed and nothing else, and refusing one where told so the collected refusal is proven too. The end-to-end journey over the committed workflow's `release-pr` job is `tests/repo-e2e-independent/tests/test_release_workflow_journey.py`."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -2032,175 +2056,175 @@ reason = "The same ground as this program's entry at `registries.py`'s `urllib.r
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "bumping.bump_workspace_version(copy.root, version)"
 reason = "What this fixture builds is the tree a merged release pull request leaves, and the helper writes exactly that: `test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes` in this file is its drift gate, driving the real `release-plz update` over one copy and the helper over another and requiring every manifest and `Cargo.lock` to match byte for byte. Each loop-guard case would otherwise pay for a second copy of the tree and a second drafting run to set up the state its one drafting run is about. The program under test, the real `release-plz` deciding whether to draft, is not what is substituted: it runs for real over the result."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "def test_the_commit_a_merged_release_pull_request_leaves_drafts_no_further_release("
 reason = "The same ground as this file's entry at `llmlint: ignore[expensive_tests_stay_behind_their_own_edge]`: the end-to-end tier is one project by design, `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, and a project of its own would carry the same target name and need the same edges to the release tooling it drives. The journey costs one run of the drafting computation, about eight seconds."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "def test_a_fix_after_the_release_commit_is_drafted_as_the_next_release("
 reason = "The control for the journey above it, and the same ground: one project for the end-to-end tier by design, no narrower edge to hang it from, one run of the drafting computation. Without it the journey above could pass on a tool that drafted nothing for any reason."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "def test_a_merge_body_quoting_the_breaking_footer_would_draft_a_release("
 reason = "The control that makes the arming's fixed merge body load-bearing rather than decorative: without it the loop-guard journey could pass because the tool ignored bodies altogether, and a later change could drop `SQUASH_BODY` with nothing failing. It needs the held `release-plz` to decide, which only this tier installs, and costs one more run of the drafting computation, about eight seconds."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "connection = http.client.HTTPConnection(host, int(port), timeout=30)"
 reason = "What this journey sends is a request no typed client can be made to send: a `Content-Length` header that is not the body's length and not an ASCII count at all. Every typed HTTP client computes that header from the body it is given, so the only way to put `²` on the wire is to write the header by hand with `putheader`, which the standard library's connection alone allows. The journey makes one request and reads one answer, with nothing to run concurrently, and the stand-in it reaches is this module's own, on loopback."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "bumping.bump_workspace_version(released.root, version),"
 reason = "The helper is the subject of this journey rather than a shortcut through it: this is its drift gate, and what it asserts is that the helper's output equals what the real `release-plz update` wrote over a second copy, byte for byte. No user-facing command runs the helper — the suites that simulate a release pull request are its only callers — so calling it directly is how its only callers use it, and the user-facing program it is compared with does run for real, unsubstituted, on the line above."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes("
 reason = "This is the drift gate for `release_artifacts.bumping`, and a gate for how the helper matches `release-plz` needs the held `release-plz`, which only the end-to-end tier installs (`just test-e2e` runs `just install-tools release-plz` first, and this module skips without it). No narrower edge exists that carries that program, so it sits with the other journeys that drive it. It costs two copies of the tree and one run of the drafting computation, about ten seconds."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "with EmptyIndex() as registry:"
 reason = "The same stand-in registry this file's entry at `llmlint: ignore[e2e_not_mocked]` covers, used by the two loop-guard journeys: crates.io is stood in because nothing here may publish to it, and everything under test is real — the real `release-plz` program, its real `release_commits` decision over a real git history of a real copy. The directive sits at each use because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "class DraftingForge:"
 reason = "GitHub's API, stood in because the real `release-pr` opens a branch, a commit and a pull request on github.com, and no journey may do that. It answers only the four requests the held release makes to open a pull request, with the fields GitHub's documents carry that the program reads, and answers `404` to anything else, so a release that began asking for something new fails here naming the request. What it exists to observe is the program's own output: the answer `release-plz release-pr --output json` writes once it has opened a pull request, which the program alone writes and nothing here restates. That answer is the committed sample's drift gate, and the real arming recipe then reads it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "def answer(self, method: str, path: str, body: dict[str, object]) -> tuple[int, object]:"
 reason = "The one method that decides what the stand-in GitHub answers. It is a lookup from the method and path of a request to a status code and a document, and it recognises only the requests the held release sends when it opens a pull request. Every response the program reads comes from here, so a release that begins asking for anything else gets a `404` naming nothing it expected and fails the journey. The thing under test is the program's own answer, and nothing in this method writes it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "return 200, []"
 reason = "The answer to the first thing the held release asks: which release pull requests are open already. An empty list is what GitHub gives a repository with none, and it sends the program down the branch that opens a new one. That branch is the one whose answer the committed sample records, and the reason arming exists."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "return 201, {\"ref\": body.get(\"ref\"), \"object\": {\"sha\": body.get(\"sha\")}}"
 reason = "GitHub's `201` for creating the release branch's ref, echoing back the ref and commit the program sent. The program reads nothing else from it before it goes on to commit to that branch, and taking its own values back means the stand-in adds no data of its own to the run."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "return 200, {\"data\": {\"createCommitOnBranch\": {\"commit\": {\"oid\": digest}}}}"
 reason = "The GraphQL `createCommitOnBranch` result the held release commits the version bump with. It returns the one field the program checks (the new commit's `oid`), and the program stops with `did not return commit object` if that field is missing, which is how the fields to give it were established. The `oid` is a digest of the request, since no git object store sits behind the stand-in and none is needed for the answer being compared."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "return 201, {"
 reason = "The opened pull request, carrying the fields the held release deserialises from it (it refuses a document missing `id` or `user.id`) and the URL GitHub gives a pull request of this repository. From this document the program takes the `number` and `html_url` that its own answer reports, and those two values are what the real arming recipe then checks and arms, so they have to be the ones a real GitHub would give."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "return 404, {\"message\": \"Not Found\"}"
 reason = "GitHub's own `404` for any request the stand-in does not recognise. If the held release starts asking for something new, it gets this answer and the journey fails with the program's own words, so the stand-in never answers a request nobody checked."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "def test_the_committed_drafting_answer_is_what_the_held_program_writes_and_is_armed("
 reason = "A drift gate for a third-party answer has to run the third-party program, and this repository's end-to-end tier is where the held `release-plz` is installed (`just test-e2e` runs `install-tools release-plz` first) and the only project with a `test-e2e` target. One run costs one drafting computation of about eight seconds plus a `just` recipe, and a project of its own would carry the same target name and need the same edges to the release tooling, so there is no narrower edge that would spare an unrelated change this journey."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "gh_stand_in(stand_ins)"
 reason = "The drift gate ends by handing the program's real answer to the real `just release-pr-arm`, so a reader that no longer accepts what the program writes fails here and not in a release. The `gh` that recipe calls last is stood in because the real one would arm auto-merge on a real pull request. It is the same stand-in the workflow journey installs, imported from there rather than written a second time, and it records the arguments it was called with so the journey can show that only the pull request the stand-in forge opened was armed."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "PATH=f\"{stand_ins}{os.pathsep}{os.environ['PATH']}\","
 reason = "The line that makes the drift-gate journey's `gh` the stand-in installed at `gh_stand_in(stand_ins)` rather than the real one, by putting its directory first on the search path the real `just release-pr-arm` resolves `gh` through. The real `gh` is not reached here because it would arm auto-merge on a real pull request on github.com. Everything before it on that path runs unsubstituted: the recipe, `release_artifacts arm-release-pr`, and the answer the held `release-plz` wrote a moment earlier. Only the forge's own CLI, the far side of the boundary, is replaced, and the journey reads what it was called with."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "GH_STANDIN_RECORD=str(armings),"
 reason = "Where the `gh` stand-in in the drift-gate journey records its calls, and the only thing the journey reads from it: the argument lists `release_artifacts arm-release-pr` passed. The recipe, the module and the answer it read are all real (the answer is what the held release-plz wrote a moment earlier), so this line points at where the far side of the forge boundary is observed and replaces nothing under test."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "with EmptyIndex() as registry, DraftingForge(ours.owner, ours.name) as forge:"
 reason = "Where the drift-gate journey starts both stand-ins the held `release-plz release-pr` is pointed at. Opening a pull request on the real forge and reading the real crates.io are the two things no journey may do, and every other part of the run is real: the held program, the committed step's own arguments, and a real copy of the tree carrying a `fix:` since its last release. What the journey checks is the answer that program writes, compared with the committed sample and handed to the real arming recipe, and neither stand-in produces any part of that answer."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "gh_stand_in(stand_ins)"
 reason = "Where the stand-in the entry at `GH_STANDIN = ` covers is installed, beside the release program's and `just`'s stand-ins that `driven`'s own entries cover, and on the same ground: the real `gh` would arm auto-merge on a real pull request. The directive sits here as well because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "RELEASE_PLZ_STANDIN_DRAFTED=str(drafted_file) if drafted else \"\","
 reason = "Hands the `release-plz` stand-in the pull request a journey says was drafted, which is the one input the drafting branch at `if [ -n \"${RELEASE_PLZ_STANDIN_DRAFTED:-}\" ]; then` answers from. The real `release-pr` would open that pull request on github.com, which no journey may do; what the journey tests is the committed job's handling of the answer, through the real `just release-pr-arm` over a real copy. Left empty, the stand-in fails as the wedged drafting run did, so the journeys that predate arming run unchanged."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "GH_STANDIN_RECORD=str(armings),"
 reason = "Where the `gh` stand-in writes each call it receives and the token it received it under. That record is how the journey shows the job armed only the pull request the drafting answer named, under RELEASE_PLZ_TOKEN, and nothing else. A real `gh` would leave nothing a journey could read without arming a real pull request, and the arming code the record observes (`release_artifacts arm-release-pr`, reached through the real recipe) runs unsubstituted."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "GH_STANDIN_REFUSAL=refusal,"
 reason = "Makes the `gh` stand-in refuse arming in the forge's own words, so the journey can show that a refused arming fails the drafting job and names the pull request instead of leaving the release blocked without a word. Getting a real forge to refuse needs a real pull request that cannot be merged, and no journey may create one. The code that turns the refusal into a failed job is the real recipe and module, run over the copy."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "return driven(copy, tmp_path, WORKFLOW, only={DRAFTING}, drafted=drafted, refusal=refusal)"
 reason = "The same ground as `driven`'s own entries: a journey cannot fire the forge, so the committed workflow's own text is run under the forge's documented scheduling rules by `actions.py`, with every `run:` step — here the drafting step and the real `just release-pr-arm` recipe — executed for real over a copy of the tree. The forge's hosted run of the same text is what every push to `main` shows."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "if [ -n \"${RELEASE_PLZ_STANDIN_DRAFTED:-}\" ]; then"
 reason = "The drafting branch of the same `release-plz` stand-in the entry at `RELEASE_PLZ_STANDIN = ` covers, and the same ground: the real `release-pr` opens a pull request on github.com, which no journey may do. It answers what a journey says was drafted, and only when asked with `--output json`, exactly as the real program's `main.rs` does; what is under test is the committed job's handling of that answer — the real `just release-pr-arm` over a real copy — and the real program's drafting decision is proven for real by `test_release_path_journey.py`'s loop-guard journeys. The directive sits here because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "with open(os.environ[\"GH_STANDIN_RECORD\"], \"a\", encoding=\"utf-8\") as record:"
 reason = "The body of the `gh` stand-in the entry at `GH_STANDIN = ` covers, and the same ground: the real `gh pr merge --auto` arms a real pull request on github.com. It records every call with its token and refuses with the forge's own words where told to. That the real `gh` still takes every option the arming step hands it is proven against the `gh` release `repo-policy.toml` holds by `tests/skill-install/tests/test_forge_cli_journey.py`. The directive sits here because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "RELEASE_SUBJECTS = ("
 reason = "The subjects are read from release-plz's own source rather than assumed — every arm of `release_plz_core::pr::pr_title` in the 0.3.167 release `repo-policy.toml` holds (`release_plz_core` 0.38.4, `src/pr.rs`), for a `release-plz.toml` naming no `pr_name`, which this one does not — and the loop-guard journey is driven over all three rather than over the one release pull request #41 happened to carry (`chore: release v0.3.0`). A live drift gate would have release-plz open a pull request on a forge, which no tier may do. What the guard itself decides is not restated anywhere: the real program runs over each subject and its own `release_commits` decision is what is read back."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "if sys.platform == \"win32\":"
 reason = "Where the `gh` stand-in the entry at `GH_STANDIN = ` covers is written to disk, and the same ground: the real `gh pr merge --auto` arms a real pull request on github.com. What this function adds is only how the host runs it — an interpreter line on POSIX, a `.cmd` beside the code on Windows, where the arming program's `PATHEXT` lookup would otherwise pass it over for the runner's real `gh.exe`. The directive sits here because an `ignore` covers only the line beneath it."
 
@@ -2212,25 +2236,25 @@ reason = "The judged tier asked in one round for the answer's `head_branch` to b
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "if [ \"$argument\" = \"json\" ]; then cat \"$RELEASE_PLZ_STANDIN_DRAFTED\"; fi"
 reason = "The line of the drafting branch that prints the answer, and the same ground as the entry at that branch's opening `if`: the real `release-pr` opens a pull request on github.com, and the answer printed is the committed sample of what release-plz 0.3.167 writes. The directive sits here because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "refusal = os.environ.get(\"GH_STANDIN_REFUSAL\", \"\")"
 reason = "The refusal the `gh` stand-in the entry at `GH_STANDIN = ` covers answers with where a journey asks, and the same ground: the forge's refusal is the one outcome a journey cannot cause on the real forge without breaking a real repository's settings, and it is the one the job must fail loudly on. The directive sits here because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "done = drafting("
 reason = "The three drafting journeys' calls into the helper whose own entry (at `return driven(copy, tmp_path, WORKFLOW, only={DRAFTING}`) states the ground: the committed workflow's own text run under the forge's documented rules by `actions.py`, every `run:` step executed for real over a copy, with only the two programs that would reach a forge stood in. Each journey hands it the answer those programs would give — a pull request drafted, one refused, none drafted — because those are the three outcomes the job must handle and none can be caused on the real forge by a test. The directive sits at each call because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "done = drafting("
 reason = "The three drafting journeys' calls into the helper that installs the stand-ins the entries at `GH_STANDIN = ` and `if [ -n \"${RELEASE_PLZ_STANDIN_DRAFTED:-}\" ]; then` cover, on the same ground: the only two programs stood in are the two that would reach the real forge, where `release-plz release-pr` would open a real pull request and `gh pr merge --auto` would arm one, and this node's task forbids both (no hosted run, no live pull request). Everything under test is real: the committed workflow's text run under the forge's documented rules by `actions.py`, every `run:` step executed over a copy of the tree, the real `just release-pr-arm` recipe and the real `release_artifacts arm-release-pr` command reading the answer. Each journey hands in one of the three answers the job must handle — a pull request drafted, the forge refusing to arm it, none drafted — which no test can cause on the real forge. The directive sits at each call because an `ignore` covers only the line beneath it."
 
@@ -2242,73 +2266,73 @@ reason = "This node's acceptance criteria place this proof in `tools/contract-co
 
 [[suppression]]
 rule = "test_tiers_split_by_project_not_by_marker"
-file = "tools/release-artifacts/tests/test_contract_version.py"
+file = "tools/release-artifacts/tests/independent/test_contract_version.py"
 site = "llmlint: ignore[test_tiers_split_by_project_not_by_marker]"
 reason = "This node's acceptance criteria place this proof in `tools/release-artifacts/tests/`, and it is where its neighbours are, on the ground the entry for this rule at `tools/release-artifacts/tests/test_registries.py` states: `test_artifacts.py` in the same directory already builds every package this project ships, so what edges this project's `test` target is what it proves rather than what it costs. Moving it out would leave the stamp in `build.py` measured by no tier carrying a coverage floor, since the end-to-end tier is not measured."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "(directory / \"gh.py\").write_text(GH_STANDIN, encoding=\"utf-8\")"
 reason = "Where the stand-in the entry at `GH_STANDIN = ` covers is written onto a Windows host's path, on that entry's ground: the real `gh` would arm auto-merge on a real pull request, which this node's task forbids a test to do. The directive sits here as well because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "program = directory / \"gh\""
 reason = "Where the same stand-in is written onto a POSIX host's path, on the ground the entry at `GH_STANDIN = ` states: the real `gh` would arm auto-merge on a real pull request. The directive sits here as well because an `ignore` covers only the line beneath it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "launcher = f'@\"{sys.executable}\" \"%~dp0gh.py\" %*\\r\\n'"
 reason = "The one line a Windows host needs to find the `gh` stand-in by name: a Python program resolves `gh` through `PATHEXT`, so the stand-in is a `.cmd` handing its code to this interpreter, and without it the runner's own `gh.exe` — which reaches github.com and would arm auto-merge on a live pull request — is what the arming step would run. What is under test is which pull request `release_artifacts arm-release-pr` asks the forge to arm, and that is answered by what the stand-in records, not by a live forge."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "(directory / \"gh.cmd\").write_text(launcher, encoding=\"utf-8\")"
 reason = "Writes that launcher where the drafting job's path finds it ahead of the runner's installed `gh`; the ground is the launcher's own entry. Only with this file in place does a Windows run of the journey arm nothing on github.com, where the real CLI would act on a real pull request of this repository."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "program.write_text(f\"#!{sys.executable}\\n{GH_STANDIN}\", encoding=\"utf-8\")"
 reason = "Writes the POSIX form of the `gh` stand-in, run by its interpreter line, onto the path the drafting job searches first. The real CLI there would reach github.com under RELEASE_PLZ_TOKEN's stand-in value and try to arm a live pull request; the journey instead reads back, from this program's record, the exact `pr merge --auto --squash <url>` call and token the committed job made."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "program.chmod(0o755)"
 reason = "Makes that POSIX stand-in executable so the job's `gh` lookup lands on it rather than passing it over for the host's installed CLI, which reaches github.com. It is part of installing the stand-in rather than a separate substitution, and carries the ground of the entry for the line above it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "record.write(json.dumps({\"argv\": sys.argv[1:], \"token\": os.environ.get(\"GH_TOKEN\", \"\")}))"
 reason = "The stand-in's record of each call — its arguments and the token it was handed — which is the observation the journeys assert on: that the job armed exactly the pull request its drafting answer named, under RELEASE_PLZ_TOKEN, and made no other call. A live `gh` records nothing a test could read back and would act on github.com instead."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "record.write(\"\\\\n\")"
 reason = "Ends each recorded call with a newline so the journey reads one call per line; the record exists only because the real CLI, which would arm a live pull request on github.com, cannot be run, and this line is part of writing it."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "print(refusal, file=sys.stderr)"
 reason = "Answers with the forge's own refusal text where a journey asks for one, so the job's loud failure is proven. No test can make github.com refuse to arm a real pull request of this repository on demand — that needs the repository's auto-merge setting switched off — so the refusal is the stand-in's, in the words `gh` reports it with."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "raise SystemExit(1)"
 reason = "Exits non-zero as the real CLI does when the forge refuses, which is what the committed arming step must turn into a failed job naming the pull request. It is the exit half of the refusal the entry at `print(refusal, file=sys.stderr)` covers, and is stood in on the same ground: a live refusal cannot be caused on github.com by a test."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "if refusal:"
 reason = "The branch selecting the stand-in's refusal answer, taken only when a journey hands it the forge's refusal text; the ground is the entry at `print(refusal, file=sys.stderr)`. The real `gh` has no such switch, and making github.com refuse to arm a live pull request is not something a test may do."
 
@@ -2492,27 +2516,27 @@ reason = "The file name here is the contract's own `String` — `PrintStartedPay
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "IssuesForge(REPOSITORY, RUN_TOKEN)"
 reason = "What stands in is GitHub's REST API for issues, and only it: the release workflow's reporting job opens, comments on and closes an issue, and a journey that did that on github.com would leave a real `release-broken` issue on this repository — or on whatever repository a token reached — every time the gate ran. Everything under test is real: the committed workflow's own text run under the forge's documented scheduling rules by `actions.py`, its `always()` condition and its two step conditions evaluated over what the real drafting and publishing jobs answered, the real `just release-broken` and `just release-mended` recipes and the real `release_artifacts` command speaking HTTP to the stand-in, which keeps what each run left so a sequence of runs reads as the forge's would. The stand-in is `release_artifacts.issues_standin`, whose own refusals `tools/release-artifacts/tests/test_tracking.py` proves over real connections."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "return driven("
 reason = "The helper the three tracking journeys run the committed workflow through, on the ground `driven`'s own entries and the entry at `IssuesForge(REPOSITORY, RUN_TOKEN)` state: the programs stood in are the ones that would reach a registry or the real forge, and the issues API is the stand-in a sequence of runs shares, so the issue a first failing run opens is the one a second comments on and a succeeding one closes."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "return driven("
 reason = "The same ground as `driven`'s own entry: a journey cannot fire the forge, so the committed workflow's text is run under the forge's documented rules by `actions.py`, every `run:` step executed for real over a copy of the tree. This helper names one push-triggered run of it, which is how the forge starts every run the reporting job acts on."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "with IssuesForge(REPOSITORY, CREDENTIAL) as standing:"
-reason = "GitHub's issues API, stood in because the real one would open a real issue on github.com, which no test may do. What is under test is this repository's own tracking command, driven through its real command line with the environment the forge hands a step, speaking real HTTP through `registries.exchange` — the one place this tool audits a URL and attaches a credential. The stand-in keeps what each call left, records the credential every request carried, and refuses where told, so the open-comment-close sequence and every refusal are proven over a real connection. The journey over the committed workflow's reporting job is `tests/repo-e2e/tests/test_release_workflow_journey.py`."
+reason = "GitHub's issues API, stood in because the real one would open a real issue on github.com, which no test may do. What is under test is this repository's own tracking command, driven through its real command line with the environment the forge hands a step, speaking real HTTP through `registries.exchange` — the one place this tool audits a URL and attaches a credential. The stand-in keeps what each call left, records the credential every request carried, and refuses where told, so the open-comment-close sequence and every refusal are proven over a real connection. The journey over the committed workflow's reporting job is `tests/repo-e2e-independent/tests/test_release_workflow_journey.py`."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -2522,25 +2546,25 @@ reason = "The same ground as the entry for this rule at `urllib.request.Request(
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "exchange("
 reason = "These two tests prove the issues stand-in's own refusals over a real connection, and they do it through `registries.exchange` because that is the one client `tracking` speaks to the forge with: a second, asynchronous client here would prove the stand-in against a client nothing in this repository uses. The entry at `answered = exchange(` in `tracking.py` states why that client is synchronous."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e/tests/test_release_workflow_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
 reason = "The tracking journeys run with this repository's existing release journeys in the one repo-e2e project, which this repository keeps as one project by design (the entry for this rule at `tests/repo-e2e/project.json` records it), and the manager's ruling for this change requires them in the required gate on every pull request, so that a release workflow that can no longer say it is broken fails before it merges. They drive the committed workflow's own text over a copy of the tree, which is the edge `tests/repo-e2e/project.json`'s `implicitDependencies` already select this module by; no narrower project would need fewer."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "with RacedForge(REPOSITORY, CREDENTIAL) as raced:"
 reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForge(REPOSITORY, CREDENTIAL) as standing:` covers, made to answer as the forge does when a second run creates the label between this run's read and its creation. That interleaving cannot be caused on demand against the real forge, and the step's handling of it is what the test proves, through the real command line and real HTTP."
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "with MislistingForge(REPOSITORY, CREDENTIAL) as mislisting:"
 reason = "The same stand-in of GitHub's issues API the entry at `with IssuesForge(REPOSITORY, CREDENTIAL) as standing:` covers, made to list an issue by a number no issue carries. The real forge cannot be made to answer that, and what the test proves is the step's refusal of it, through the real command line and real HTTP, before it writes anything."
 
@@ -2552,7 +2576,7 @@ reason = "The drift gate's one download: GitHub's published REST description, fe
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
-file = "tests/repo-e2e/tests/test_release_path_journey.py"
+file = "tests/repo-e2e-independent/tests/test_release_path_journey.py"
 site = "for changelog in sorted(copy.root.glob(\"crates/*/CHANGELOG.md\")):"
 reason = "The fixture writes a section into every crate's changelog because a merged release pull request touches every crate's changelog, and that touch is what the drafting tool attributes the merge commit to each crate by: it reads a crate's history off the files under the crate's directory, and with every internal requirement inherited from the root manifest the version move alone touches none of them. What the section says is not read by anything under test — the loop guard and its control turn on the merge commit's subject and body. Having the drafting tool write them would need a release-worthy history before the merge and a full semver-checked draft of all twelve crates per journey, each well over a minute, to produce text these journeys then ignore; the version half the same fixture writes is held to what the held release-plz writes by `test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes`."
 
@@ -2688,19 +2712,19 @@ reason = "A release-time proof that runs four `launchctl` commands one after ano
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = ".github/lib/graph.mjs"
 site = "export function triggers("
-reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e-independent/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = ".github/lib/graph.mjs"
 site = "function cellsOf("
-reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e-independent/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = ".github/lib/graph.mjs"
 site = "export function condition("
-reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
+reason = "GitHub's scheduling rules — trigger filters and their defaults, matrix include and exclude, the implicit `success()` of a job condition — are documented prose with no machine-readable source to derive from; the expression grammar itself is not restated here but evaluated by GitHub's own published library, `@actions/expressions`. The drift gate is the forge: these same workflow files run on GitHub on every pull request and push, and the change that introduced this graph cites those runs' observed jobs beside the graph's prediction. Meanwhile the graph refuses by name every construct outside the subset it resolves — a path filter, an unmodelled glob, a matrix built by an expression, a remote reusable workflow — rather than approximating it, the same discipline `tests/repo-e2e-independent/tests/actions.py` keeps under its own entry for this rule. `cancelled()` is false because the budgets measure what a run requests when nothing cancels it."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
@@ -2748,7 +2772,7 @@ reason = "This restates onevcs's probe contract (docs/contract.md, \"What a prob
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_fresh_clone_journey.py"
 site = "def test_a_clones_commands_sync_its_own_environment_and_start_no_daemon"
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the journey proves a copy's own `uv run` syncs the copy's lock under a caller exporting `UV_NO_SYNC`, which only an environment that does not already hold the dependencies can show, and with uv's cache warm from the shared environment that sync links rather than downloads."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put this behind. Its cost is the property under test: the journey proves a copy's own `uv run` syncs the copy's lock under a caller exporting `UV_NO_SYNC`, which only an environment that does not already hold the dependencies can show, and with uv's cache warm from the shared environment that sync links rather than downloads."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -2776,7 +2800,7 @@ reason = "The request is made by number over a raw socket on purpose: the journe
 
 [[suppression]]
 rule = "e2e_not_mocked"
-file = "tools/release-artifacts/tests/test_tracking.py"
+file = "tools/release-artifacts/tests/independent/test_tracking.py"
 site = "standing = IssuesForge(REPOSITORY, CREDENTIAL)"
 reason = "The same stand-in forge as this file's other entry, for the same reason: the real issues API would open a real issue on github.com. What this journey adds is that the stand-in is ready to serve the real tracking command while every name lookup on the thread that started it is refused."
 
@@ -2796,7 +2820,7 @@ reason = "This stand-in plays Obico's webhook plugin, which posts one body with 
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_octoprint_tier.py"
 site = "def test_the_bring_down_recipe_stops_what_the_bring_up_recipe_started("
-reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this journey there — its section on the integration tier names `test_octoprint_tier.py` as the gate's own proof that the bring-down leaves nothing running — and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put it behind. Proving that a failed walk keeps the instance's logs adds no second bring-up: the walk fails on purpose over the one instance it already starts."
+reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this journey there — its section on the integration tier names `test_octoprint_tier.py` as the gate's own proof that the bring-down leaves nothing running — and `tests/repo-e2e/project.json` is the only project declaring a `test-e2e` target, so no narrower edge exists to put it behind. Proving that a failed walk keeps the instance's logs adds no second bring-up: the walk fails on purpose over the one instance it already starts."
 
 [[suppression]]
 rule = "e2e_not_mocked"
@@ -2809,6 +2833,7 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-sdk/src/contract.rs"
 site = "marks: Vec<UnverifiedMark>,"
 reason = "Generated: the schema bounds these marks with `minItems: 1`, and core holds them as `UnverifiedMarks`, which cannot be built empty and refuses an empty list on read, so no supervisor answers an empty list here. The contract generator has no non-empty list type yet in any of the three clients; `tools/contract-codegen`'s Rust emitter writes this directive above every list the schema says is never empty, and teaching it `minItems` across the Rust, Python and TypeScript clients is the drafted follow-up 'Teach the contract generator minItems'."
+
 
 [[suppression]]
 rule = "clippy::trivially_copy_pass_by_ref"
@@ -4715,3 +4740,51 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/repo-checks/src/repo_checks/checks_real_prints.py"
 site = "listing = run("
 reason = "One blocking `git ls-files` a synchronous repository check reads its answer from before it goes on, through `repo_checks.shell.run`, the one subprocess path this repository allows. There is nothing to overlap it with, and git's command line is the interface, so no typed client applies."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/tests/caches.test.mjs"
+site = "const CACHELESS = new Set(["
+reason = "Which of the actions ci.yml uses keep a cache, and which input of each turns it off, turns its restore off or decides whether it saves, is each action's own `action.yml` at the major tag the workflow pins. That file lives in the action's own repository, and the gate runs offline, so no gate step can read it. actionlint, run by `just lint-workflows`, already refuses an input that `actions/cache/restore`, `actions/cache/save` or `actions/setup-node` does not declare. It carries no metadata for the Rust toolchain, uv or Bun setup actions, so for those three nothing here reconciles the table. The test assumes no action's default: a caching step that leaves its save input unset is refused, and an action the table does not name is refused rather than assumed cacheless. A renamed input would therefore leave a step this test accepts while its action ignores the input. That shows up on the forge as pull-request caches in the repository's cache list. A scheduled check that reads each pinned action's `action.yml` is drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = ".github/tests/caches.test.mjs"
+site = "const CACHING = {"
+reason = "Which of the actions ci.yml uses keep a cache, and which input of each turns it off, turns its restore off or decides whether it saves, is each action's own `action.yml` at the major tag the workflow pins. That file lives in the action's own repository, and the gate runs offline, so no gate step can read it. actionlint, run by `just lint-workflows`, already refuses an input that `actions/cache/restore`, `actions/cache/save` or `actions/setup-node` does not declare. It carries no metadata for the Rust toolchain, uv or Bun setup actions, so for those three nothing here reconciles the table. The test assumes no action's default: a caching step that leaves its save input unset is refused, and an action the table does not name is refused rather than assumed cacheless. A renamed input would therefore leave a step this test accepts while its action ignores the input. That shows up on the forge as pull-request caches in the repository's cache list. A scheduled check that reads each pinned action's `action.yml` is drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/real-prints-lfs/test_lfs_fixture.py"
+site = "def restored_from(cache: Path, key: str, prefixes: list[str]) -> Path | None:"
+reason = "Which entry `actions/cache/restore` hands back is that action's own behaviour: the key's own entry, and otherwise the newest entry a restore key prefixes. It is documented in the action's own repository and enforced by the forge's cache service, and the journeys run offline, so no gate step can read either. This stand-in is how the fixture journeys run the committed `ci-steps.yml` at all. Without it the steps could not be driven over a real git-lfs and a counting remote. It models only the two outcomes those steps branch on, `cache-hit` and the restored directory. The forge reconciles it on every run: each real run's cache step logs the key it restored, and a fallback the stand-in got wrong would show there as a fetch that downloaded every object."
+
+[[suppression]]
+rule = "code_lands_in_the_domain_that_owns_it"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "pub fn pass_replay_time(wait: core::time::Duration) -> bool {"
+reason = "The real-print replay's clock already lives here, before this change: `Timestamp::now` reads it under the `replay-clock` feature, from the private `replay_clock` module's file and offset, because `now` is the one instant every crate of the server reads. Passing time on that clock writes the same file and offset, so it sits with the reader; put anywhere else, one clock has two owners, and the replay suite, which is Python driving the built programs, holds no Rust code the server could call. Every build but the suite's answers `false` and changes nothing, and no domain's entry is added to this crate."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "AGENTS.md"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
+reason = "`repo-policy.toml`'s `smoke.section` names \"The real-printer smoke test\" section of the root AGENTS.md as where the smoke test is described, and this paragraph is that section's statement of what a run does to the machine, which the person standing beside the printer reads before starting it; a nested file is not where that section points them. This change edits one phrase of it, because the context answer it described no longer carries the job."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "AGENTS.md"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
+reason = "The paragraph predates this change, which only replaced \"the job\" with \"the print's state\" so that it stays true of the trimmed context answer the smoke reads. It is the judgment `Smoke.step_context` cannot carry by itself: what a run will do to a real printer, in order, stated before anybody starts one, since this is the one test here whose defect damages hardware."
+
+[[suppression]]
+rule = "instruction_layer_localized"
+file = "CLAUDE.md"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "agents_md_durable_and_terse"
+file = "CLAUDE.md"
+site = "was required: the context read reports the printer, the print's state and effective bounds"
+reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."

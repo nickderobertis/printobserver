@@ -146,7 +146,7 @@ fn every_stated_observation_interval_is_the_servers_default() {
 
 /// One count the way the architecture reference writes it, as a word.
 fn counted(count: usize) -> &'static str {
-    const WORDS: [&str; 42] = [
+    const WORDS: [&str; 43] = [
         "Zero",
         "One",
         "Two",
@@ -189,6 +189,7 @@ fn counted(count: usize) -> &'static str {
         "Thirty-nine",
         "Forty",
         "Forty-one",
+        "Forty-two",
     ];
     WORDS.get(count).copied().unwrap_or_else(|| {
         panic!("{count} kinds: spell the count here and in the architecture reference")

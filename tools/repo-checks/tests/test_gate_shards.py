@@ -366,13 +366,18 @@ def test_a_shard_stops_at_its_first_failing_tier_with_its_exit(tree: Callable[[]
     )
 
 
+#: The test directories of the end-to-end tier's two projects.
+END_TO_END_SUITES = ("tests/repo-e2e/tests", "tests/repo-e2e-independent/tests")
+
+
 def collected(part: str, *selection: str) -> tuple[int, list[str]]:
     """The end-to-end tier's collection, as `PRINTOBSERVER_E2E_PART=part` leaves it.
 
-    Through pytest's own collection of the committed suite, with the same
-    marker selection its project target runs it under, at the verbosity the
-    repository's own `addopts` sets, which lists one test a line; `part` empty
-    is the unsharded tier.
+    Through pytest's own collection of the committed suites of both of the
+    tier's projects, `repo-e2e` and `repo-e2e-independent`, which a part names
+    files of alike, with the same marker selection its project target runs it
+    under, at the verbosity the repository's own `addopts` sets, which lists one
+    test a line; `part` empty is the unsharded tier.
     """
     environment = {
         **{key: value for key, value in os.environ.items() if key != END_TO_END_PART_VARIABLE},
@@ -387,7 +392,7 @@ def collected(part: str, *selection: str) -> tuple[int, list[str]]:
         **({END_TO_END_PART_VARIABLE: part} if part else {}),
     }
     shown = run(
-        ["uv", "run", "-q", "pytest", "tests/repo-e2e/tests", "--collect-only", *selection],
+        ["uv", "run", "-q", "pytest", *END_TO_END_SUITES, "--collect-only", *selection],
         cwd=REPO_ROOT,
         env=environment,
         timeout=600,

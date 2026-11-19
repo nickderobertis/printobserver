@@ -23,6 +23,27 @@
 # as carried by `integration-macos`, the gate's cell is reported by its
 # aggregator `gate-macos`, and AGENTS.md's "The consolidated macOS lanes" says
 # why.
+#
+# Every run restores the caches a run on `main` saved, and only a run on `main`
+# saves one: the Rust toolchain's through `cache-save-if`, uv's through
+# `save-cache`, and Bun's and the release program's through a save step
+# conditioned on the ref. A pull request's cache is scoped to its merge ref, which no other
+# run restores, so three open pull requests saving theirs filled the
+# repository's 10 GB quota and evicted `main`'s, and every pull request after
+# ran cold. Bun's own cache cannot be split that way — the action saves on any
+# ref whose key missed — so it is off, and its executable is restored and saved
+# around it by the cache action's two halves: the action uses a `~/.bun/bin/bun`
+# already at the version `package.json` pins rather than downloading one.
+#
+# The one cache a pull request saves is the real-print suite's LFS store, keyed
+# on the cases' content: `skilltest` saves it only when that key missed, so only
+# a pull request changing the cases saves one, and its later pushes restore it
+# rather than download the cases again. `skilltest-classify` restores it on every
+# push to `main`, whether or not the push owes the suite, which keeps `main`'s
+# entry from the forge's 7-day eviction, and fetches and saves it when the key
+# missed. Every restore of it falls back by key prefix to the newest older store,
+# so a fetch downloads only the objects that store lacks.
+# `.github/tests/caches.test.mjs` holds every cache step to this.
 
 name: ci
 
@@ -64,7 +85,19 @@ jobs:
           # checkout carries.
           fetch-depth: 0
       - uses: extractions/setup-just@v3
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - id: classify
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -121,13 +154,29 @@ jobs:
       # request, and the last commit this workflow passed on for a push to it.
       - uses: nrwl/nx-set-shas@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       # `just` from the same action as the cargo tools: `extractions/setup-just`
       # has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -145,12 +194,13 @@ jobs:
         env:
           GATE_TIME_KIND: gate
 
-  # `linux-x86_64`'s gate reaches past 1,800 s on one 4-processor runner once a
-  # change reaches the whole graph — 1,980 s on run 41558713748 and 2,006 s on
-  # the release sweep 41532109264 — because its `test` and `test-e2e` tiers run
-  # side by side on the same processors. Four shards give the Rust crates'
-  # tests, every other project's tests beside the other tiers, and each half of
-  # the end-to-end tier a runner of their own.
+  # `linux-x86_64`'s gate reached past the line `gate-time` held when it was
+  # split, on one 4-processor runner once a change reached the whole graph —
+  # 1,980 s on run 41558713748 and 2,006 s on the release sweep 41532109264 —
+  # because its `test` and `test-e2e` tiers run side by side on the same
+  # processors. Four shards give the Rust crates' tests, every other project's
+  # tests beside the other tiers, and each half of the end-to-end tier a runner
+  # of their own.
   gate-shard-linux-x86_64:
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
@@ -202,11 +252,26 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -237,6 +302,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just shard-verdict gate linux-x86_64
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -247,8 +314,8 @@ jobs:
           PRINTOBSERVER_PLATFORM: linux-x86_64
           GITHUB_TOKEN: ${{ github.token }}
 
-  # A platform whose gate does not fit one runner in the 30 minutes each
-  # platform is held to is split: one matrix cell per shard, each running the
+  # A platform whose gate does not fit one runner inside the line `budgets.yaml`'s
+  # `gate-time` holds each platform to is split: one matrix cell per shard, each running the
   # gate tiers `just gate-shards <shards>` hands that shard, and an aggregating
   # job carrying the required name. AGENTS.md's "Commits, releases, and merging"
   # records which platform is split and the run that measured it over.
@@ -307,13 +374,28 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       # `just` from the same action as the cargo tools: `extractions/setup-just`
       # has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -341,6 +423,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just shard-verdict gate windows-aarch64
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -406,13 +490,28 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       # `just` from the same action as the cargo tools, as every gate cell takes
       # it, so the two Windows shard jobs set their hosts up alike.
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -440,6 +539,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just shard-verdict gate windows-x86_64
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -494,25 +595,48 @@ jobs:
         with:
           lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # The release program every client's world carries, in a cache of its
       # own: keyed on the source, toolchain and profile it is built from, and
       # saved only when that key missed, so it holds one program and nothing of
       # the Rust toolchain's cache. A restored program whose key no longer
-      # holds is built over rather than used.
+      # holds is built over rather than used. Saved by a run on `main` alone,
+      # as the header says every cache here is.
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - id: release-program-cache
+        uses: actions/cache/restore@v4
         with:
           path: .release-program
           key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
       - run: just release-program
+      - if: github.ref == 'refs/heads/main' && steps.release-program-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .release-program
+          key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
       - run: just octoprint-up
       - run: just test-integration
       # Both teardowns run after failure: stop the printer environment, then
@@ -587,11 +711,26 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
@@ -619,6 +758,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just shard-verdict gate macos-aarch64
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -651,20 +792,42 @@ jobs:
         with:
           lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - run: just runner-temp
       - run: just bootstrap
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - id: release-program-cache
+        uses: actions/cache/restore@v4
         with:
           path: .release-program
           key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
       - run: just release-program
+      - if: github.ref == 'refs/heads/main' && steps.release-program-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .release-program
+          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
       - run: just octoprint-up
       - run: just test-integration
       - if: always()
@@ -698,6 +861,8 @@ jobs:
           fetch-depth: 0
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just setup-llmlint
       # The deterministic half runs first: a config, plugin or suppression slip
       # fails here without spending a harness call.
@@ -721,7 +886,21 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       # The release `repo-policy.toml` holds gh at, installed from that
       # release's own archive once its published checksums vouch for it, ahead
       # of the runner's own gh on PATH.
@@ -737,6 +916,9 @@ jobs:
   skilltest-classify:
     name: skilltest-classify
     runs-on: ubuntu-24.04
+    env:
+      # The real-print cases' LFS store is warmed by a push to `main` alone.
+      REAL_PRINTS_STORE: ${{ github.ref == 'refs/heads/main' }}
     outputs:
       owed: ${{ steps.classify.outputs.owed }}
       reason: ${{ steps.classify.outputs.reason }}
@@ -749,11 +931,34 @@ jobs:
           fetch-depth: 0
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - id: classify
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: just skilltest-classify "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
+      # The steps `tests/real-prints-lfs/ci-steps.yml` holds, verbatim, run on a
+      # push to `main` alone: the header says why this job warms the store.
+      - id: real-prints-key
+        if: env.REAL_PRINTS_STORE == 'true'
+        run: just real-prints-cache-key >> "$GITHUB_OUTPUT"
+      - id: real-prints-cache
+        if: env.REAL_PRINTS_STORE == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.real-prints-key.outputs.key }}
+          restore-keys: real-prints-lfs-
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
+        run: just real-prints-fetch
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.real-prints-key.outputs.key }}
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit == 'true'
+        run: just real-prints-checkout
 
   # The real-print suite, on the harness and model production runs. Where the
   # classifier says it is not owed this is skipped, which the forge reports as a
@@ -768,6 +973,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # The real-print cases' LFS store, restored, and saved where its key missed.
+      REAL_PRINTS_STORE: "true"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -776,26 +983,45 @@ jobs:
       # Before anything costs anything: a run with no credential fails saying so.
       - run: just skilltest-credential
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: actions/setup-node@v4
       - run: just bootstrap
       # The steps `tests/real-prints-lfs/ci-steps.yml` holds, verbatim.
       - id: real-prints-key
+        if: env.REAL_PRINTS_STORE == 'true'
         run: just real-prints-cache-key >> "$GITHUB_OUTPUT"
       - id: real-prints-cache
+        if: env.REAL_PRINTS_STORE == 'true'
         uses: actions/cache/restore@v4
         with:
           path: .git/lfs/objects
           key: ${{ steps.real-prints-key.outputs.key }}
-      - if: steps.real-prints-cache.outputs.cache-hit != 'true'
+          restore-keys: real-prints-lfs-
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
         run: just real-prints-fetch
-      - if: steps.real-prints-cache.outputs.cache-hit != 'true'
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .git/lfs/objects
           key: ${{ steps.real-prints-key.outputs.key }}
-      - if: steps.real-prints-cache.outputs.cache-hit == 'true'
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit == 'true'
         run: just real-prints-checkout
       - run: just skilltest-install-harness
       - run: just skilltest-record
@@ -819,8 +1045,12 @@ jobs:
         with:
           lfs: false
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       # The releases `repo-policy.toml` holds the two tools at, installed
       # prebuilt, so the recipe's own install finds them held and compiles
       # nothing.
@@ -845,6 +1075,8 @@ jobs:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: just check-pr-title
         env:
           # Passed through the environment rather than interpolated into the

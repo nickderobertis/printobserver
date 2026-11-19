@@ -39,8 +39,19 @@ use crate::world::World;
 use super::answers::{answered, at};
 use super::running;
 
-/// Drive every point of the cross-product, and hold each to all of it.
-pub fn the_cross_product_walk(world: &World) {
+/// How much of each command's cross-product a walk drives.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// Every point of it.
+    Every,
+    /// The covering points alone ([`walk::covering`]), for a world whose
+    /// machine takes its own time over each.
+    Covering,
+}
+
+/// Drive every point of the cross-product, or its covering points, and hold
+/// each to all of it.
+pub fn the_cross_product_walk(world: &World, reach: Reach) {
     let driven = walk::walk(world);
     let uncovered = walk::covers(&driven, world);
     assert!(
@@ -49,7 +60,12 @@ pub fn the_cross_product_walk(world: &World) {
     );
 
     for planned in &driven {
-        for index in 0..walk::invocations(planned, world).len() {
+        let points = walk::invocations(planned, world);
+        let chosen = match reach {
+            Reach::Every => (0..points.len()).collect(),
+            Reach::Covering => walk::covering(&points),
+        };
+        for index in chosen {
             // Before every invocation rather than once per command: a real
             // machine is moved by the command that just ran, so the next
             // invocation of that same command needs it put back — and a heater

@@ -21,8 +21,8 @@
 //! after the first poll at which the supervisor can have noticed it
 //! ([`EXPIRY_POLL`]). The read before the expiry is made in this process and
 //! asserted on the instant its answer arrived; the reads after it go through
-//! the traced program, where a slow read can only land on the side of the
-//! expiry it is about. What keeps the window before an expiry clear of
+//! the program, where a slow read can only land on the side of the expiry it
+//! is about. What keeps the window before an expiry clear of
 //! everything but the read is documented where each piece is:
 //! `asked_and_read_before_its_expiry` (the deadline), `one_bounded_intervention`
 //! (the host), `until` (the wait) and `checkpoint_the_store` (the store).

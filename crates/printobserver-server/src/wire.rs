@@ -17,7 +17,7 @@ use printobserver_core::{
     PrintRecord, RecoveryAction, RecoveryActionKind, RecoveryDecision, SpoolCommand, SpoolId,
     SpoolRecord, SpoolTrust,
 };
-use printobserver_core::{DetectorHealth, PrintContext};
+use printobserver_core::{AgentContext, DetectorHealth};
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::schemars::JsonSchema;
@@ -600,8 +600,11 @@ pub struct StatusAnswer {
 
 /// What a context read answers.
 ///
+/// The context is the agent's view of it ([`AgentContext`]): each fact once,
+/// as it is now, and the events newer than the one asked `since`.
+///
 /// The latest image is **materialized** here rather than left as the handle
-/// [`PrintContext`] carries: the one thing a supervision turn does with an
+/// [`printobserver_core::PrintContext`] carries: the one thing a supervision turn does with an
 /// image is look at it, and a handle is not something anything can open. The
 /// path is absolute on this server's own filesystem, exactly as
 /// [`ImageAnswer`]'s is, and is absent when there is no image or when the
@@ -611,7 +614,7 @@ pub struct StatusAnswer {
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct ContextAnswer {
     /// Everything a supervision turn is given about the print.
-    pub context: PrintContext,
+    pub context: AgentContext,
     /// Where the latest image's bytes are, absolute on this host.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_path: Option<PathBuf>,

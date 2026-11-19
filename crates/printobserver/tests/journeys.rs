@@ -65,6 +65,8 @@ mod carrying;
 mod closing;
 #[path = "journeys/confirming.rs"]
 mod confirming;
+#[path = "journeys/contexting.rs"]
+mod contexting;
 #[path = "journeys/documented.rs"]
 mod documented;
 #[path = "journeys/documenting.rs"]
@@ -138,6 +140,18 @@ fn the_operators_word_that_the_bed_is_clear_is_honoured_until_a_print_starts() {
     let world = World::open(world::STOOD_IN);
 
     bed_clearing::the_operators_word_is_honoured_until_a_print_starts(&world);
+}
+
+/// A turn reads a print's context, then only what came after the newest
+/// event it read, through this program.
+///
+/// A world of its own, because the journey's adjustments are the only events
+/// its reads are held to.
+#[test]
+fn a_context_read_since_an_event_answers_only_what_came_after_it() {
+    let world = World::open(world::STOOD_IN);
+
+    contexting::a_read_since_an_event_answers_only_what_came_after_it(&world);
 }
 
 /// An operator keeps the spool ledger through this program, and reads all of

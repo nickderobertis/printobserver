@@ -401,8 +401,8 @@ integration cell and the job carrying it, and `.github/budgets.yaml` holds both
 bounds against the graph `github-workflows:test` evaluates.
 
 The gate is two shards and the integration tier a job of its own because one
-3-core runner cannot run the gate, let alone both lanes, under `gate-time`'s
-1,800 s: they are bound by the same processors. The macOS shards leave the
+3-core runner could not run the gate, let alone both lanes, inside the line
+`gate-time` held when they were split: they are bound by the same processors. The macOS shards leave the
 Windows-target lint, which reads only the committed tree, to the Linux gate
 cells, through `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere`.
 
@@ -554,7 +554,7 @@ exactly that ceiling.
 
 **What it verifies**, in this order, reading the printer's own answer back at
 every point and failing the run naming the point where that answer was not what
-was required: the context read reports the printer, the job and effective bounds
+was required: the context read reports the printer, the print's state and effective bounds <!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This change only keeps this phrase of a pre-existing paragraph true of the trimmed context. suppressions.toml has the full reasons. -->
 no wider than the configuration allows; the smoke print starts; each adjustable
 is set just inside its bound and read back from the machine; each is then asked
 for just outside its bound, and the rejection is confirmed to have changed
@@ -1251,7 +1251,7 @@ platform, named as the two inputs of a manual dispatch, and no other job — one
 hosted macOS runner rather than every job's, on a branch, without pushing to it.
 What runs where is decided by the committed script `repo_checks.dispatching`
 (`just dispatch-resolve`, `just dispatch-run`) rather than by the workflow's own
-expressions, so `tests/repo-e2e` drives the selection on a host that is not a
+expressions, so `tests/repo-e2e-independent` drives the selection on a host that is not a
 runner; the forge dispatches a workflow only from the default branch, so the
 workflow's own first run exists only after it merges. `just check-repo`'s
 `platform-dispatch` holds the workflow to that shape: `workflow_dispatch` alone,
@@ -1287,10 +1287,11 @@ it, because a context named here that nothing reports blocks every pull request
 forever.
 
 **The two Windows gates and `linux-x86_64`'s are sharded.** A 4-processor
-Windows runner cannot run the whole gate in 1,800 s with its tiers in turn, and
-running the end-to-end and test tiers beside each other there starves Nx's
-plugin workers. The `linux-x86_64` runner runs them side by side and still
-exceeds 1,800 s once a change reaches the whole graph. So each of those
+Windows runner could not run the whole gate with its tiers in turn inside the
+line `gate-time` held when they were split, and running the end-to-end and test
+tiers beside each other there starves Nx's plugin workers. The `linux-x86_64`
+runner runs them side by side and exceeded that line once a change reached the
+whole graph. So each of those
 platforms' work runs in the cells of `gate-shard-<platform>`,
 reporting `gate-shard (<platform>, <k>/<n>)`, each running in turn the tiers
 `just gate-shards <n>` hands it; and `gate-<platform>` reports the required
@@ -1304,15 +1305,15 @@ shard-verdict` over the workflow's own `needs`, and then the `gate-time` step.
 `repo_checks.gate_jobs` is the one reading of how long a sharded or unsharded
 context is waited on.
 
-**Every required gate and integration context is held to 1,800 s, inside
-itself.** The root `budgets.yaml` registers `gate-time`, and every job reporting
-one of the ten contexts ends with the `gate-time` step, which fails that context
-over budget — so the merge path refuses the change with no protection change —
-except on the release pull request's full sweep, where it only reports. The
-figure is the critical path of the context's jobs' own running time: the longest
-job behind it, then the aggregator. A job queued for a runner is GitHub's
-capacity rather than this repository's work, so every queue is reported and
-none is charged. A context over budget is brought under by making its work
+**Every required gate and integration context is held to `gate-time`'s line,
+inside itself.** The root `budgets.yaml` registers `gate-time` and is the one
+place its threshold is written. Every job reporting one of the ten contexts
+ends with the `gate-time` step, which fails that context over budget — so the
+merge path refuses the change with no protection change — except on the
+release pull request's full sweep, where it only reports. The figure is the
+critical path of the context's jobs' own running time: the longest job behind
+it, then the aggregator. A job queued for a runner is GitHub's capacity rather
+than this repository's work, so every queue is reported and none is charged. A context over budget is brought under by making its work
 faster or sharding it behind its own required name, never by loosening the
 budget.
 
@@ -1418,7 +1419,7 @@ every ordinary push — while the Python and JavaScript registries refuse a
 version they already serve, so the artifact build and publish are gated on what
 that step *answered* it released, never on its exit status. `just check-repo`'s
 `release-gating` reads the workflow for both, and
-`tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
+`tests/repo-e2e-independent/tests/test_release_workflow_journey.py` runs the committed
 workflow under the forge's scheduling rules to prove them.
 
 **Every release is a release of all twelve crates, at one version.** They
@@ -1428,7 +1429,7 @@ is inherited from its `[workspace.dependencies]` entry rather than written in
 the crate's own manifest. Without both, a change touching some crates drafts a
 version every crate moves to while the others' requirements stay behind, and
 `cargo update` refuses the draft.
-`tests/repo-e2e/tests/test_release_path_journey.py` drafts a release of one
+`tests/repo-e2e-independent/tests/test_release_path_journey.py` drafts a release of one
 crate in the required gate to hold this.
 
 **When nothing is releasing, read the open `release-broken` issue first.** The
@@ -1493,7 +1494,7 @@ anywhere else is one a person would have to hand-maintain.
 cannot draft while a tag names a version some publishable crate never published
 — the state the first run left, with two scaffold crates at `0.1.0` and eleven
 absent. Every version after it is release automation's. Do not repeat this to
-unstick a run: `tests/repo-e2e/tests/test_release_path_journey.py` drives the
+unstick a run: `tests/repo-e2e-independent/tests/test_release_path_journey.py` drives the
 drafting tool against a stand-in registry and refuses a tree at a tagged
 version, which is the state to fix instead.
 
@@ -1512,7 +1513,7 @@ over unpublished crates is the quieter failure: release-plz skips every package
 whose tag exists *before* it asks the registry, so the next push releases
 nothing, exits 0, answers `released=`, and skips the artifacts. The repair is
 to delete the tag and the GitHub Release, never to move the version.
-`tests/repo-e2e/tests/test_release_tag_journey.py` holds the configuration to
+`tests/repo-e2e-independent/tests/test_release_tag_journey.py` holds the configuration to
 this.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
@@ -1541,10 +1542,15 @@ the way a user does: the compiled binary as a subprocess, the real recipes, the
 real checks. "Done" means every user-facing journey, happy path **and**
 failure/recovery — not one smoke test. Coverage is a floor, not the target.
 
-The end-to-end tier lives in `tests/repo-e2e`. It drives bootstrap in a fresh
-copy carrying no build products, dependency installation, hooks, repository
-checks, release tooling, the opt-in smoke interface and the real OctoPrint
-recipes. A gate that stops gating is not a silent failure: the next defective
+The end-to-end tier lives in `tests/repo-e2e` and `tests/repo-e2e-independent`.
+It drives bootstrap in a fresh copy carrying no build products, dependency
+installation, hooks, repository checks, release tooling, the opt-in smoke
+interface and the real OctoPrint recipes. A journey whose subject behaves the
+same on every platform — one driving only this repository's own tooling,
+workflows and records — belongs to `tests/repo-e2e-independent`, whose project
+carries the `platform:independent` tag so CI may run it once; every other
+journey belongs to `tests/repo-e2e`, which runs on every platform.
+`test_end_to_end_projects.py` is the record of which file is whose. A gate that stops gating is not a silent failure: the next defective
 change exposes it, so we do not run whole gates over defect copies to test that
 the gate gates. Structural wiring has one deterministic proof instead:
 `repo_checks.checks_repo.recipe_set`, reached by `just check-repo`, requires

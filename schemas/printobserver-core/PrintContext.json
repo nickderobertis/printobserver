@@ -653,6 +653,66 @@
       ],
       "type": "object"
     },
+    "PlanFact": {
+      "description": "A fact of the plan the print's file does not state.",
+      "oneOf": [
+        {
+          "const": "layer",
+          "description": "The file marks no layers.",
+          "type": "string"
+        },
+        {
+          "const": "final_z",
+          "description": "The file states no final height.",
+          "type": "string"
+        },
+        {
+          "const": "types",
+          "description": "The file labels no extrusion types.",
+          "type": "string"
+        },
+        {
+          "const": "minutes_left",
+          "description": "The file carries no estimate of the time left, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "flow_factor",
+          "description": "The file sets no flow factor, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "fan_percent",
+          "description": "The file sets no part-cooling fan speed, by the current position.",
+          "type": "string"
+        },
+        {
+          "const": "objects",
+          "description": "The file labels no objects.",
+          "type": "string"
+        },
+        {
+          "const": "rise",
+          "description": "No frame of this print is half an hour old with a position to rise\nfrom, so how far the parts should have grown is not known, and no\ngrowth can be judged from frames closer together.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlanMismatch": {
+      "description": "A setting in force that the plan at this height says is wrong for what is\nbeing laid.",
+      "oneOf": [
+        {
+          "const": "fan_off_over_bridges",
+          "description": "The part-cooling fan is off while the current layer or the few below\nit, which a frame shows, bridge or overhang.",
+          "type": "string"
+        },
+        {
+          "const": "flow_low_over_walls",
+          "description": "The flow factor is well under one while the current layer lays walls.",
+          "type": "string"
+        }
+      ]
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -919,6 +979,170 @@
       "title": "Reported",
       "type": "object"
     },
+    "Rise": {
+      "additionalProperties": false,
+      "description": "How far the plan has risen since one earlier frame of this print that was\nseen: the height a camera should show the parts to have gained since then.",
+      "properties": {
+        "mm": {
+          "description": "Two heights of the print's highest point, in millimetres: the first\nis where the plan had it when that frame was captured, the second how\nfar it should have risen since — the rise of every layer since that\nlays anything but supports. They are the plate's, not every part's: a\npart the plan has finished does not grow with it.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "since": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a periodic observation or a look at this print was\ngiven, as that observation or look states its capture time."
+        }
+      },
+      "required": [
+        "since",
+        "mm"
+      ],
+      "type": "object"
+    },
+    "SetValue": {
+      "additionalProperties": false,
+      "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
+      "properties": {
+        "changed": {
+          "description": "What the latest change made through this program set it to, when one\nwas made after the file last set it.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "file": {
+          "description": "What the file's own commands set it to, by the current position.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SlicerPlan": {
+      "additionalProperties": false,
+      "description": "What the slicer planned at the print's current file position: the shape\nand place of what should be printing, read from the print's own G-code.\n\nThese are the slicer's plan rather than an observation: a feature named\nhere is part of the design at this height, and nothing here says how well\nit printed.",
+      "properties": {
+        "at_odds": {
+          "description": "Each setting in force the plan at this height says is wrong.",
+          "items": {
+            "$ref": "#/$defs/PlanMismatch"
+          },
+          "type": "array"
+        },
+        "fan_percent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SetValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The part-cooling fan speed, in percent."
+        },
+        "final_z_mm": {
+          "description": "The final layer's height, in millimetres.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "flow_factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SetValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The flow factor, one meaning one hundred percent."
+        },
+        "layer": {
+          "description": "The layer the print is in, counting the first as 1; absent before the\nfirst.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "minutes_left": {
+          "description": "The slicer's own estimate of the minutes left, at the current position.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "object_count": {
+          "description": "How many objects the file lays down; absent when it labels none.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "objects": {
+          "description": "The bed area each object the file lays down covers, unnamed, as\n`[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of\nthe file's object numbers.",
+          "items": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "rise": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rise"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How far the plan has risen since an earlier frame; absent before any\nframe is half an hour old."
+        },
+        "types": {
+          "description": "What the current layer lays material as, in the order the file first\nnames each: `Perimeter`, `Support material`, `Bridge infill`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unknown": {
+          "description": "The facts the file does not state, which are therefore unknown rather\nthan absent.",
+          "items": {
+            "$ref": "#/$defs/PlanFact"
+          },
+          "type": "array"
+        },
+        "z_mm": {
+          "description": "The current layer's height, in millimetres.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
       "format": "date-time",
@@ -1032,6 +1256,17 @@
         "$ref": "#/$defs/EventRecord"
       },
       "type": "array"
+    },
+    "slicer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SlicerPlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the slicer planned at the job's current file position, read from\nthe print's own G-code: absent when the file could not be read, or the\njob is not this print's."
     }
   },
   "required": [

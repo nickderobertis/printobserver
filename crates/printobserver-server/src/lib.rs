@@ -65,6 +65,8 @@ pub use operations::{
     PRINTER_LOOK, Parameter, RECOVERY_STATUS, RecoveryActionKind, SpoolCommandKind, VERSION_PREFIX,
     ValueKind, command_for, operation, printer_wide_of,
 };
+/// The longest wait one look takes, which a refusal's advice is held to.
+pub use printobserver_core::MAX_LOOK_WAIT_S;
 /// The harness identities this program can sign in, as the adapter declares
 /// them: the command-line program reads the table through this crate, which is
 /// the one edge it has to the adapter.

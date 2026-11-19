@@ -12,7 +12,7 @@ import pytest
 from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.shell import run
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 PROBE = """
 import json, os, tempfile
 with tempfile.NamedTemporaryFile() as opened:

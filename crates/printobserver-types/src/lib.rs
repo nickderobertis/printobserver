@@ -73,6 +73,7 @@ pub mod event;
 pub mod file_name;
 pub mod ids;
 pub mod image;
+pub mod labelled;
 pub mod printer_state;
 pub mod raw;
 pub mod reported;

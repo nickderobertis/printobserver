@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One heater, in degrees Celsius: each reading absent when the printer did not\nreport it, or reported one outside what a heater can read.",
+  "properties": {
+    "actual_c": {
+      "description": "The temperature it is at.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "target_c": {
+      "description": "The temperature it is driving towards.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  },
+  "title": "AgentHeater",
+  "type": "object"
+}

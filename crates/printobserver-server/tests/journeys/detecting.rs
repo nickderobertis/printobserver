@@ -265,7 +265,9 @@ async fn a_detector_outage_is_recorded_once_each_way_and_read_with_its_start() {
     let (_, context) = world
         .get(&world.operation_url("/v1/prints/{print_id}/context", print_id))
         .await;
-    assert_eq!(context["context"]["detector"], health);
+    // The context states the detector's status alone, and the outage among
+    // the print's events; since when is the status read's.
+    assert_eq!(context["context"]["detector"], "unavailable", "{context}");
     assert!(
         context["context"]["recent_events"]
             .as_array()
