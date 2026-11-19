@@ -419,6 +419,27 @@ def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
     expect.contains(same.stderr, "name one file", describing="the refusal")
 
 
+def test_an_output_that_cannot_be_written_after_the_fit_is_refused(tmp_path: Path) -> None:
+    """A directory standing at either output path passes the checks before the fit, then fails."""
+    marks = _fixture_marks(tmp_path)
+    image_blocked = tmp_path / "image"
+    (image_blocked / "verification.jpg").mkdir(parents=True)
+    image = _run(marks, image_blocked)
+    expect.equal(image.returncode, 2, describing="the exit status for an unwritable image")
+    expect.contains(image.stderr, "could not be written", describing="the image refusal")
+    expect.truth(
+        not (image_blocked / "calibration.json").exists(),
+        describing="no calibration written beside an image that failed",
+    )
+    out_blocked = tmp_path / "out"
+    (out_blocked / "calibration.json").mkdir(parents=True)
+    out = _run(marks, out_blocked)
+    expect.equal(out.returncode, 2, describing="the exit status for an unwritable calibration")
+    expect.contains(
+        out.stderr, str(out_blocked / "calibration.json"), describing="the calibration refusal"
+    )
+
+
 def test_a_slice_is_read_in_every_positioning_mode_and_past_any_machine_is_refused(
     tmp_path: Path,
 ) -> None:

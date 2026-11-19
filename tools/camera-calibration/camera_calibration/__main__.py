@@ -299,10 +299,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         _verification(fitted, marks, images, args.verification_image)
         # Both outputs' directories and the image's format are checked before
-        # the fit, and `test_an_output_it_cannot_write_is_refused` proves those
-        # refusals. A write failing after them (a disk filling during the
-        # fit) is answered by the two handlers below; no test forces one,
-        # since that needs a filesystem made to fail a minute into a fit.
+        # the fit; a write failing after them is answered by the handlers
+        # below, which `test_an_output_that_cannot_be_written_after_the_fit_is_refused`
+        # drives with a directory standing at each output path.
         args.out.write_text(json.dumps(asdict(written), indent=2) + "\n", encoding="utf-8")
     except (MarksError, GcodeError, CalibrationError) as error:
         print(f"camera_calibration: {error}", file=sys.stderr)

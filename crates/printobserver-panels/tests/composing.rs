@@ -1,6 +1,7 @@
 //! The check image's refusals and edges, on one recorded frame and planned
 //! geometry written here: a frame that is no JPEG, geometry landing nowhere in
-//! the frame, an active object off the frame, and every refusal's words.
+//! the frame, an active object off the frame, a previous frame of another
+//! resolution, and every refusal's words.
 
 use printobserver_core::{ExtrusionKind, LayerToolpath, ObjectOutline, ToolpathSegment};
 use printobserver_panels::compose::{IMAGE_HEIGHT, PANEL_WIDTH};
@@ -95,6 +96,25 @@ fn a_frame_that_is_no_jpeg_is_refused() {
         compose(&frame(), Some(b"not a jpeg"), &path, &outlines),
         Err(ComposeError::Undecodable { .. })
     ));
+}
+
+#[test]
+fn a_previous_frame_of_another_resolution_is_refused() {
+    let low = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/frames/fan-cut-bridge/01-healthy-before-fault-p41.jpg"
+    ))
+    .expect("the 1280x720 recorded frame");
+    let path = square([125.0, 110.0], 10.6, ExtrusionKind::Other);
+    let outlines = [outline([125.0, 110.0])];
+    assert_eq!(
+        compose(&frame(), Some(&low), &path, &outlines),
+        Err(ComposeError::FrameMismatch {
+            field: FrameField::Resolution,
+            expected: "1920x1080".to_owned(),
+            got: "1280x720".to_owned(),
+        })
+    );
 }
 
 #[test]

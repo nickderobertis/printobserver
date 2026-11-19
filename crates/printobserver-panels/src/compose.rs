@@ -127,9 +127,10 @@ pub(crate) fn decode(jpeg: &[u8]) -> Result<RgbImage, ComposeError> {
 /// # Errors
 ///
 /// In the order they are checked: [`ComposeError::Undecodable`] for a frame
-/// that is no JPEG; [`ComposeError::FrameMismatch`] for one of another size
-/// or stream than the calibration's; [`ComposeError::CameraMoved`] or
-/// [`ComposeError::DriftUnverified`] from the drift check; and
+/// that is no JPEG; [`ComposeError::FrameMismatch`] for a current or previous
+/// frame of another size, or a stream, other than the calibration's;
+/// [`ComposeError::CameraMoved`] or [`ComposeError::DriftUnverified`] from
+/// the drift check; and
 /// [`ComposeError::OutlineOffFrame`] when neither the toolpath nor the active
 /// object lands in the frame.
 pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, ComposeError> {
@@ -141,6 +142,15 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
         .previous
         .map(|(jpeg, at)| decode(jpeg).map(|frame| (frame, at)))
         .transpose()?;
+    if let Some((frame, _)) = &previous {
+        // Panel 3 is scaled by the current frame's factors, so a previous
+        // frame of another size would be drawn distorted rather than refused.
+        check_frame(
+            inputs.calibration,
+            [frame.width(), frame.height()],
+            inputs.camera_snapshot_url,
+        )?;
+    }
 
     let projector = inputs.calibration.projector();
     let drawn = project_toolpath(&projector, inputs.toolpath, inputs.print_z_mm);
