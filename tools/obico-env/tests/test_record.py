@@ -232,6 +232,41 @@ def test_a_recording_that_cannot_be_written_is_an_error_rather_than_a_verdict(
     absent(run.stdout + run.stderr, BEARER, describing="what it said")
 
 
+def test_a_provenance_that_cannot_be_written_leaves_the_recording_as_it_was(
+    obico: Obico, tmp_path: Path
+) -> None:
+    """The recording is never replaced without its provenance, and nothing half-written stays."""
+    out = tmp_path / "obico-printer.json"
+    out.write_text("the recording before\n", encoding="utf-8")
+    (tmp_path / "obico-printer.provenance.json").mkdir()
+    run = record(obico, out)
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, "could not be written", describing="the refusal")
+    equal(out.read_text(encoding="utf-8"), "the recording before\n", describing="the recording")
+    equal(
+        sorted(path.name for path in tmp_path.iterdir()),
+        ["obico-printer.json", "obico-printer.provenance.json"],
+        describing="what is left beside it",
+    )
+
+
+@pytest.mark.parametrize("baseline", ["{ cut short", None])
+def test_a_baseline_that_cannot_be_read_records_nothing(
+    obico: Obico, tmp_path: Path, baseline: str | None
+) -> None:
+    """A recording to compare with that is malformed or absent is refused before any write."""
+    compare = tmp_path / "baseline.json"
+    if baseline is not None:
+        compare.write_text(baseline, encoding="utf-8")
+    out = tmp_path / "obico-printer.json"
+    run = run_record(
+        "--url", obico.url, "--printer-id", "1", "--out", str(out), "--compare-with", str(compare)
+    )
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, "could not be read", describing="the refusal")
+    truth(not out.exists(), describing="no recording")
+
+
 def test_a_refused_bearer_records_nothing(obico: Obico, tmp_path: Path) -> None:
     """Obico's 403 is reported, and nothing is written."""
     out = tmp_path / "obico-printer.json"

@@ -37,6 +37,7 @@ recorded nothing, saying why on stderr. Credentials are never printed.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -256,6 +257,7 @@ def record(
     bearer: AccessToken,
     out: Path,
     *,
+    baseline: Path,
     known: tuple[str, ...] = (),
 ) -> Recorded:
     """Read the printer answer under the bearer and write it, sanitized, with its provenance.
@@ -289,11 +291,10 @@ def record(
     if any(credential and credential in written for credential in credentials):
         message = f"a credential survived sanitizing the answer to {path}; nothing was written"
         raise RecordError(message)
-    committed = REPOSITORY_ROOT / RECORDING
     try:
-        before = json.loads(committed.read_text(encoding="utf-8"))
+        before = json.loads(baseline.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
-        message = f"the committed recording {RECORDING} could not be read: {error}"
+        message = f"the recording to compare with, {baseline}, could not be read: {error}"
         raise RecordError(message) from error
     provenance = Provenance(
         obico_revision=OBICO_REVISION,
@@ -305,26 +306,46 @@ def record(
         recorded_by="uv run python tools/obico-env/obico_record.py --state-dir <state-dir>",
     )
     provenance_path = out.with_suffix(".provenance.json")
-    try:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(written, encoding="utf-8")
-        provenance_path.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
-    except OSError as error:
-        message = f"the recording could not be written to {out}: {error}"
-        raise RecordError(message) from error
+    replace_together([(out, written), (provenance_path, json.dumps(provenance, indent=2) + "\n")])
     moved = differences(before, clean)
     note(f"recorded {path} ({answered.status}) to {out}, replacing {len(replaced)} credential(s)")
     return Recorded(
         **provenance,
         recording=str(out),
         provenance=str(provenance_path),
-        compared_with=RECORDING,
+        compared_with=str(baseline),
         verdict="differs" if moved else "agrees",
         differences=moved,
     )
 
 
-def from_stack(state_dir: Path, out: Path) -> Recorded:
+def replace_together(files: list[tuple[Path, str]]) -> None:
+    """Write every file, or leave every one as it was.
+
+    Each is written beside its target first and only then moved into place, the
+    last of them first, so a recording never stands beside another run's
+    provenance: a failure before the last move leaves the recording untouched.
+
+    Raises:
+        RecordError: If any of them cannot be written, having removed what it wrote.
+    """
+    staged = [(target, target.with_name(f".{target.name}.writing")) for target, _ in files]
+    try:
+        for (target, text), (_, temporary) in zip(files, staged, strict=True):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(text, encoding="utf-8")
+        for target, temporary in reversed(staged):
+            temporary.replace(target)
+    except OSError as error:
+        for _, temporary in staged:
+            # A temporary under a parent that is no directory was never made.
+            with contextlib.suppress(OSError):
+                temporary.unlink(missing_ok=True)
+        message = f"the recording could not be written to {files[0][0]}: {error}"
+        raise RecordError(message) from error
+
+
+def from_stack(state_dir: Path, out: Path, baseline: Path) -> Recorded:
     """Post a snapshot, mint a bearer, and record, against the stack under `state_dir`.
 
     Raises:
@@ -341,10 +362,17 @@ def from_stack(state_dir: Path, out: Path) -> Recorded:
         raise RecordError(str(error)) from error
     note(f"the printer posted a snapshot to {instance.url} ({posted})")
     bearer = mint_access_token(instance.stack)
-    return record(instance.url, instance.printer_id, bearer, out, known=(instance.printer_token,))
+    return record(
+        instance.url,
+        instance.printer_id,
+        bearer,
+        out,
+        baseline=baseline,
+        known=(instance.printer_token,),
+    )
 
 
-def from_address(url: str, printer: int, out: Path) -> Recorded:
+def from_address(url: str, printer: int, out: Path, baseline: Path) -> Recorded:
     """Record from an Obico named by its address, with the bearer the environment holds.
 
     Raises:
@@ -361,7 +389,7 @@ def from_address(url: str, printer: int, out: Path) -> Recorded:
     if not bearer:
         message = f"--url reads with the bearer {BEARER_VARIABLE} holds; it is unset"
         raise RecordError(message)
-    return record(url, identified, AccessToken(bearer), out)
+    return record(url, identified, AccessToken(bearer), out, baseline=baseline)
 
 
 def argument_parser() -> argparse.ArgumentParser:
@@ -375,6 +403,11 @@ def argument_parser() -> argparse.ArgumentParser:
         default=str(REPOSITORY_ROOT / RECORDING),
         help="where the recording goes (default: %(default)s)",
     )
+    parser.add_argument(
+        "--compare-with",
+        default=str(REPOSITORY_ROOT / RECORDING),
+        help="the recording whose shape the new one is compared with (default: %(default)s)",
+    )
     return parser
 
 
@@ -382,11 +415,12 @@ def main(argv: list[str] | None = None) -> int:
     """Record once: 0 when the shape agrees, 1 when it differs, 2 when nothing was recorded."""
     arguments = argument_parser().parse_args(argv)
     out = Path(arguments.out)
+    baseline = Path(arguments.compare_with)
     try:
         if arguments.state_dir:
-            recorded = from_stack(Path(arguments.state_dir), out)
+            recorded = from_stack(Path(arguments.state_dir), out, baseline)
         elif arguments.url or arguments.printer_id:
-            recorded = from_address(arguments.url, arguments.printer_id, out)
+            recorded = from_address(arguments.url, arguments.printer_id, out, baseline)
         else:
             message = "pass `--state-dir`, or both `--url` and `--printer-id`"
             raise RecordError(message)
