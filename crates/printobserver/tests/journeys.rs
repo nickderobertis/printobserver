@@ -144,6 +144,15 @@ fn no_run_of_the_tiers_walk_prints_the_credential() {
     tier::run(&world, tier::CREDENTIAL);
 }
 
+/// A record left open with the machine idle is ended by the operator's close,
+/// not by the printer watch, however long after the close comes.
+#[test]
+fn a_record_left_open_past_a_default_poll_is_ended_by_its_close() {
+    let world = World::open(world::STOOD_IN);
+
+    tier::run(&world, tier::CLOSE_PAST_A_POLL);
+}
+
 /// A print started at the printer is found with `printobserver prints`, read
 /// by the identifier that names, and joined by the first alert about it.
 ///

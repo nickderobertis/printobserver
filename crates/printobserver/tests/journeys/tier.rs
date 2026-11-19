@@ -25,7 +25,9 @@
 //! the credential's redaction. Between them they are most of the tier's time,
 //! and none of them needs what the walk leaves behind beyond a print this
 //! program started, so each is a test of its own over a world of its own that
-//! runs beside [`WALK`] rather than after it.
+//! runs beside [`WALK`] rather than after it. [`CLOSE_PAST_A_POLL`] is one
+//! more beside it, over a world with no print started at all: an operator's
+//! close of a record left open past the watch's default poll.
 
 use crate::machine::Reports;
 use crate::world::World;
@@ -47,6 +49,10 @@ pub const INTERVENTIONS: &str = "interventions";
 /// No run of the walk printing the credential.
 pub const CREDENTIAL: &str = "credential";
 
+/// A record left open past a default poll, ended by its own close: a world of
+/// its own, with no print started first.
+pub const CLOSE_PAST_A_POLL: &str = "close-past-a-poll";
+
 /// The cross-product walk alone, which is what a real machine adds.
 pub const AGAINST_A_REAL_MACHINE: &str = "against-a-real-machine";
 
@@ -54,8 +60,12 @@ pub const AGAINST_A_REAL_MACHINE: &str = "against-a-real-machine";
 ///
 /// # Panics
 ///
-/// Panics when the depth is not one of the five this tier runs at.
+/// Panics when the depth is not one of the six this tier runs at.
 pub fn run(world: &World, depth: &str) {
+    if depth == CLOSE_PAST_A_POLL {
+        closing::a_record_left_open_past_a_default_poll_is_ended_by_its_close(world);
+        return;
+    }
     let beside: Option<fn(&World)> = match depth {
         DEFECTS => Some(tainting::every_assertion_here_refuses_the_defect_it_is_about),
         INTERVENTIONS => Some(durations::every_adjustment_is_a_bounded_intervention),

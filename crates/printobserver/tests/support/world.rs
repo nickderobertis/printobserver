@@ -1384,6 +1384,16 @@ pub fn committed_skill() -> PathBuf {
         .join("SKILL.md")
 }
 
+/// How often a world's supervisor has its printer watch read the machine: the
+/// most `supervisor.printer_poll_s` admits.
+///
+/// A watch read that finds the machine idle closes every open record, so one
+/// landing between a journey telling the machine to be idle and that journey's
+/// own close ends the record behind it. The watch sleeps a whole poll before
+/// its first read, and every journey here acts on its world well inside five
+/// minutes of opening it; one driving the watch itself configures its own.
+pub const WATCH_POLL_S: u64 = printobserver_server::config::PRINTER_POLL_RANGE_S.1;
+
 /// The configuration a second supervisor is started under.
 fn server_document(state: &Path, printer: &Printer, skill: &Path) -> String {
     toml_of(&server_value(state, printer, skill))
@@ -1402,6 +1412,7 @@ pub fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
         "supervisor": {
             "harness": "claude-code",
             "skill_path": skill.display().to_string(),
+            "printer_poll_s": WATCH_POLL_S,
         },
         "ingress": { "shared_secret": SECRET, "answer_bound_ms": 1000 },
         // The machine's own facts every recovery is checked against.
