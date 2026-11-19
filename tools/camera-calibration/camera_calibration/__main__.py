@@ -104,6 +104,13 @@ def _frames(marks: Marks) -> list[np.ndarray]:
             raise CalibrationError(msg)
         images.append(image)
     sizes = {(image.shape[1], image.shape[0]) for image in images}
+    for frame, image in zip(marks.frames, images, strict=True):
+        height, width = image.shape[:2]
+        for curve in frame.curves:
+            for x, y in curve.px:
+                if not (0 <= x < width and 0 <= y < height):
+                    msg = f"{frame.frame} is {width}x{height}, and a mark on it is at ({x}, {y})"
+                    raise CalibrationError(msg)
     if len(sizes) != 1:
         msg = (
             f"the marked frames are of {len(sizes)} sizes ({sorted(sizes)}); a calibration "
@@ -119,10 +126,12 @@ def _landmarks(marks: Marks, images: list[np.ndarray]) -> list[LandmarkRecord]:
     grey = grey.astype(np.uint8)
     half = PATCH_PX // 2
     out: list[LandmarkRecord] = []
+    height, width = grey.shape
     for landmark in marks.landmarks:
         u, v = (round(value) for value in landmark.center_px)
-        patch = grey[v - half : v + half, u - half : u + half]
-        if patch.shape != (PATCH_PX, PATCH_PX):
+        inside = half <= u <= width - half and half <= v <= height - half
+        patch = grey[v - half : v + half, u - half : u + half] if inside else None
+        if patch is None or patch.shape != (PATCH_PX, PATCH_PX):
             msg = f"landmark {landmark.name} at {landmark.center_px} is too near the frame's edge"
             raise CalibrationError(msg)
         ok, png = cv2.imencode(".png", patch)
@@ -163,8 +172,15 @@ def _verification(
     while len(tiles) % 2:
         tiles.append(np.zeros_like(tiles[0]))
     rows = [np.hstack(tiles[at : at + 2]) for at in range(0, len(tiles), 2)]
-    if not cv2.imwrite(str(path), np.vstack(rows), [cv2.IMWRITE_JPEG_QUALITY, 85]):
-        msg = f"{path} could not be written"
+    try:
+        written = cv2.imwrite(str(path), np.vstack(rows), [cv2.IMWRITE_JPEG_QUALITY, 85])
+    except cv2.error as error:
+        written = False
+        reason = str(error).strip().splitlines()[-1] if str(error).strip() else "OpenCV refused it"
+    else:
+        reason = "OpenCV wrote nothing"
+    if not written:
+        msg = f"{path} could not be written: {reason}"
         raise CalibrationError(msg)
 
 
@@ -236,14 +252,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True, help="where the calibration is written")
     parser.add_argument("--verification-image", type=Path, required=True)
     args = parser.parse_args(argv)
-    address = urlsplit(args.snapshot_url)
-    if address.scheme not in ("http", "https") or not address.hostname:
+    try:
+        address = urlsplit(args.snapshot_url)
+        named = address.scheme in ("http", "https") and bool(address.hostname)
+    except ValueError:
+        named = False
+    if not named:
         print(f"--snapshot-url {args.snapshot_url!r} is not an http(s) address", file=sys.stderr)
         return 2
     for output in (args.out, args.verification_image):
         if not output.parent.is_dir():
             print(f"camera_calibration: {output.parent} is not a directory", file=sys.stderr)
             return 2
+    if args.verification_image.suffix.lower() not in (".jpg", ".jpeg"):
+        print(f"camera_calibration: {args.verification_image} is not a .jpg path", file=sys.stderr)
+        return 2
     try:
         marks = load(args.marks)
         images = _frames(marks)
@@ -268,6 +291,11 @@ def main(argv: list[str] | None = None) -> int:
             args.drift_tolerance_px,
         )
         _verification(fitted, marks, images, args.verification_image)
+        # Both outputs' directories and the image's format are checked before
+        # the fit, and `test_an_output_it_cannot_write_is_refused` proves those
+        # refusals. A write failing after them (a disk filling during the
+        # fit) is answered by the two handlers below; no test forces one,
+        # since that needs a filesystem made to fail a minute into a fit.
         args.out.write_text(json.dumps(asdict(written), indent=2) + "\n", encoding="utf-8")
     except (MarksError, GcodeError, CalibrationError) as error:
         print(f"camera_calibration: {error}", file=sys.stderr)

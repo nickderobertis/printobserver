@@ -6,25 +6,21 @@
     "lang:python",
     "type:tooling"
   ],
-  "implicitDependencies": [
-    "printobserver-core",
-    "printobserver-panels"
-  ],
   "targets": {
     "format": {
-      "command": "uv run -q --project=tools/camera-calibration ruff format tools/camera-calibration"
+      "command": "uv run -q --package=camera-calibration ruff format tools/camera-calibration"
     },
     "format-check": {
-      "command": "uv run -q --project=tools/camera-calibration ruff format --check tools/camera-calibration"
+      "command": "uv run -q --package=camera-calibration ruff format --check tools/camera-calibration"
     },
     "lint": {
-      "command": "uv run -q --project=tools/camera-calibration ruff check tools/camera-calibration"
+      "command": "uv run -q --package=camera-calibration ruff check tools/camera-calibration"
     },
     "typecheck": {
-      "command": "uv run -q --project=tools/camera-calibration ty check --project=tools/camera-calibration tools/camera-calibration && uv run -q --project=tools/camera-calibration ty check --project=tools/camera-calibration --python-platform win32 tools/camera-calibration"
+      "command": "uv run -q --package=camera-calibration ty check --project=tools/camera-calibration tools/camera-calibration && uv run -q --package=camera-calibration ty check --project=tools/camera-calibration --python-platform win32 tools/camera-calibration"
     },
     "test": {
-      "command": "uv run -q --project=tools/camera-calibration --directory=tools/camera-calibration pytest tests",
+      "command": "uv run -q --package=camera-calibration --directory=tools/camera-calibration pytest tests",
       "inputs": [
         "{projectRoot}/**/*",
         "{workspaceRoot}/tests/real-prints/cameras/**/*",

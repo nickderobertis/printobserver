@@ -225,16 +225,31 @@ def test_frames_of_two_sizes_are_refused(tmp_path: Path) -> None:
     expect.contains(run.stderr, "of 2 sizes", describing="the refusal")
 
 
-def _edited(directory: Path, change: Callable[[dict[str, Any]], None]) -> Path:
+def _edited(
+    directory: Path, change: Callable[[dict[str, Any]], None], name: str = "edited"
+) -> Path:
     doc = json.loads(_fixture_marks(directory).read_text(encoding="utf-8"))
     change(doc)
-    path = directory / "edited.json"
+    path = directory / f"{name}.json"
     path.write_text(json.dumps(doc), encoding="utf-8")
     return path
 
 
 def _first_curve(doc: dict[str, Any]) -> dict[str, Any]:
     return doc["frames"][0]["curves"][0]
+
+
+def _repeat_marks(doc: dict[str, Any], *, frames: int) -> None:
+    """Keep `frames` frames, each curve's marks repeated to stay above the least count."""
+    doc["frames"] = doc["frames"][:frames]
+    for frame in doc["frames"]:
+        for curve in frame["curves"]:
+            curve["px"] = curve["px"] * 4
+
+
+def _set_heights(doc: dict[str, Any], heights: list[float]) -> None:
+    for frame, height in zip(doc["frames"], heights, strict=True):
+        frame["zc_mm"] = height
 
 
 @pytest.mark.parametrize(
@@ -250,6 +265,10 @@ def _first_curve(doc: dict[str, Any]) -> dict[str, Any]:
         (lambda doc: doc["frames"][0].update(zc_mm=None), "not a finite number"),
         (lambda doc: doc["frames"][0].pop("case"), "names no `case`"),
         (lambda doc: doc.update(frames=doc["frames"][:4]), "a fit needs at least 30 points"),
+        (lambda doc: _repeat_marks(doc, frames=4), "on 4 frames"),
+        (lambda doc: _set_heights(doc, [0.4] * 7), "at 1 bed heights"),
+        (lambda doc: _set_heights(doc, [1.0, 2, 3, 4, 5, 6, 7]), "spanning 6.0 mm"),
+        (lambda doc: _first_curve(doc).update(px=[[5000, 10]]), "a mark on it is at"),
         (lambda doc: doc.update(landmarks=["rail"]), "landmarks[0] is not an object"),
         (lambda doc: doc["landmarks"][0].update(center_px=[1915, 5]), "too near the frame's edge"),
     ],
@@ -269,6 +288,7 @@ def test_marks_the_fit_cannot_use_are_refused_naming_why(
         (("--calibrated-at", "27/09/2026"), None, "not a YYYY-MM-DD date"),
         (("--drift-tolerance-px", "inf"), None, "not a positive number"),
         ((), "http://", "not an http(s) address"),
+        ((), "http://[::1", "not an http(s) address"),
     ],
 )
 def test_arguments_the_tool_cannot_use_are_refused(
@@ -294,6 +314,51 @@ def test_a_frame_no_decoder_reads_and_a_slice_with_no_layers_are_refused(tmp_pat
     expect.contains(run.stderr, "marks no layer", describing="the refusal")
 
 
+def test_unreadable_marks_and_slices_lacking_an_outline_are_refused(tmp_path: Path) -> None:
+    """Unreadable marks, unreadable heights and a missing outline are refused with exit 2.
+
+    Marks that are no JSON, a slice whose heights are no numbers, and a slice
+    with no outline where a mark says one lies.
+    """
+    garbled = tmp_path / "garbled.json"
+    garbled.write_text("{ not json", encoding="utf-8")
+    cases = [(garbled, "garbled.json")]
+    bad_height = tmp_path / "bad-height.gcode"
+    bad_height.write_text(";LAYER_CHANGE\n;Z:high\n", encoding="utf-8")
+    cases.append(
+        (
+            _edited(
+                tmp_path, lambda doc: doc["frames"][0].update(gcode=str(bad_height)), "heights"
+            ),
+            "no number",
+        )
+    )
+    no_walls = tmp_path / "no-walls.gcode"
+    no_walls.write_text(
+        ";LAYER_CHANGE\n;Z:0.2\nG90\nM83\n;TYPE:Internal infill\nG1 X1 Y1\nG1 X9 Y1 E1\n",
+        encoding="utf-8",
+    )
+    top_marked = next(
+        number
+        for number, frame in enumerate(json.loads(MARKS.read_text(encoding="utf-8"))["frames"])
+        if any(curve["what"] == "top" for curve in frame["curves"])
+    )
+    cases.append(
+        (
+            _edited(
+                tmp_path,
+                lambda doc: doc["frames"][top_marked].update(gcode=str(no_walls)),
+                "walls",
+            ),
+            "no top outline",
+        )
+    )
+    for marks, refusal in cases:
+        run = _run(marks, tmp_path)
+        expect.equal(run.returncode, 2, describing=f"the exit status for {marks.name}")
+        expect.contains(run.stderr, refusal, describing="the refusal")
+
+
 def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
     """A calibration path in a directory that is not there is refused before any fit."""
     run = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
@@ -317,3 +382,8 @@ def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
     )
     expect.equal(run.returncode, 2, describing="the exit status")
     expect.contains(run.stderr, "absent", describing="the refusal")
+    image = _run(
+        _fixture_marks(tmp_path), tmp_path, "--verification-image", str(tmp_path / "check.bmp")
+    )
+    expect.equal(image.returncode, 2, describing="the exit status for a .bmp image")
+    expect.contains(image.stderr, "not a .jpg path", describing="the refusal")

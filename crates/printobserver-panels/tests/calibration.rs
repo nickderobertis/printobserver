@@ -95,6 +95,9 @@ fn an_invalid_calibration_is_refused_naming_its_key() {
     edit("camera_snapshot_url", |v| {
         v["camera_snapshot_url"] = "http://".into();
     });
+    edit("landmarks.center_px", |v| {
+        v["landmarks"][0]["center_px"] = printobserver_types::serde_json::json!([1e300, 5.0]);
+    });
     edit("fit.calibrated_at", |v| {
         v["fit"]["calibrated_at"] = "27/09/2026".into();
     });

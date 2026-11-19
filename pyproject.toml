@@ -14,11 +14,9 @@
 # prints a warning on success trains the next reader to ignore its output.
 
 [tool.uv.workspace]
-members = []
-# A project with an environment of its own: its numpy, scipy and OpenCV are no
-# other project's to install.
-# llmlint: ignore[projects_stay_in_one_uv_workspace] See suppressions.toml.
-exclude = ["tools/camera-calibration"]
+# The camera calibration tool's numpy, scipy and OpenCV are resolved here, and
+# installed only when that package is synced or run.
+members = ["tools/camera-calibration"]
 
 [dependency-groups]
 dev = [

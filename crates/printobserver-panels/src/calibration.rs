@@ -242,6 +242,12 @@ impl CameraCalibration {
         let mut patches = Vec::with_capacity(calibration.landmarks.len());
         for landmark in &calibration.landmarks {
             finite("landmarks.center_px", &landmark.center_px, false)?;
+            let [w, h] = calibration.image_size_px.map(f64::from);
+            if !((0.0..w).contains(&landmark.center_px[0])
+                && (0.0..h).contains(&landmark.center_px[1]))
+            {
+                return Err(invalid("landmarks.center_px", "lies outside the frame"));
+            }
             if !(1..=MAX_SEARCH_RADIUS_PX).contains(&landmark.search_radius_px) {
                 return Err(invalid(
                     "landmarks.search_radius_px",

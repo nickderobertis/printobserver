@@ -73,6 +73,18 @@ def _arc(
     return points
 
 
+def _height(text: str, path: Path) -> float:
+    """A `;Z:` line's height, refused unless it is a finite number of millimetres."""
+    try:
+        height = float(text)
+    except ValueError:
+        height = math.nan
+    if not math.isfinite(height):
+        msg = f"{path} carries a layer height {text.strip()!r} that is no number"
+        raise GcodeError(msg)
+    return height
+
+
 def parse(path: Path) -> list[Layer]:
     """Every layer of a slice, with its extrusion segments and outer walls.
 
@@ -91,7 +103,7 @@ def parse(path: Path) -> list[Layer]:
                 if line == ";LAYER_CHANGE":
                     pending = True
                 elif line.startswith(";Z:") and pending:
-                    layers.append(Layer(float(line[3:])))
+                    layers.append(Layer(_height(line[3:], path)))
                     pending = False
                 elif line.startswith(";TYPE:"):
                     kind = line[6:].strip()

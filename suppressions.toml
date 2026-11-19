@@ -4735,8 +4735,6 @@ file = "CLAUDE.md"
 site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
 
-# --- the camera calibration and the check image's panels ---------------------
-
 [[suppression]]
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-panels/src/calibration.rs"
@@ -4755,17 +4753,7 @@ file = "crates/printobserver-panels/src/error.rs"
 site = "FrameMismatch {"
 reason = "The task's contract fixes this variant as `FrameMismatch { field, expected, got }`, with `field` one of resolution or stream, and the server and the tests match on that shape; splitting it into two typed variants is a change to that agreed surface rather than this node's to make."
 
-[[suppression]]
-rule = "projects_stay_in_one_uv_workspace"
-file = "pyproject.toml"
-site = "exclude = [\"tools/camera-calibration\"]"
-reason = "The task requires the calibration tool to be its own uv project with numpy, scipy and OpenCV, which nothing else in the repository needs: as a member of the root workspace those would be resolved into the one environment every Python project and every gate cell syncs. The tool imports no other project of this repository, so a second lock shares nothing that could drift."
 
-[[suppression]]
-rule = "projects_stay_in_one_uv_workspace"
-file = "tools/camera-calibration/pyproject.toml"
-site = "[project]"
-reason = "The task requires the calibration tool to be its own uv project with numpy, scipy and OpenCV, which nothing else in the repository needs; see the root pyproject.toml's entry. Its tests import nothing of another project."
 
 [[suppression]]
 rule = "S603"
@@ -4784,3 +4772,9 @@ rule = "N801"
 file = "tools/camera-calibration/tests/test_calibrate.py"
 site = "class expect:"
 reason = "A namespace of assertions read as `expect.equal(...)`, matching the vocabulary of this repository's own suites (`repo_checks.expect`), which this suite does not import so that changes to `repo-checks` do not select it."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-panels/src/alignment.rs"
+site = "pub struct AlignmentVerdict {"
+reason = "The task's contract fixes this type as `AlignmentVerdict { offset_px: f64, passed: bool }`, which the server reads. Only `verify_first_layer_alignment` builds one, setting `passed` from `offset_px` and the calibration's threshold, so no verdict this crate answers is contradictory."

@@ -58,6 +58,7 @@ pub struct AlignmentInputs<'a> {
 
 /// How far the printed first layer lies from its projection.
 #[derive(Debug, Clone, Copy, PartialEq)]
+// llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub struct AlignmentVerdict {
     /// The offset, in calibration pixels.
     pub offset_px: f64,

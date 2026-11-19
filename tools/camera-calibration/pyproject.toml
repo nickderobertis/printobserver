@@ -1,7 +1,6 @@
-# The offline camera calibration tool: its own environment, because numpy,
-# scipy and OpenCV are needed by nothing else in this repository, and the root
-# environment every other Python project shares stays without them.
-# llmlint: ignore[projects_stay_in_one_uv_workspace] See suppressions.toml.
+# The offline camera calibration tool: a member of the root uv workspace whose
+# numpy, scipy and OpenCV nothing else in this repository needs, so they are
+# installed only when this package is synced or run.
 [project]
 name = "camera-calibration"
 # No version: this tool is never published, and a version field here would be
