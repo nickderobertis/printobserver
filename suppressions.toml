@@ -3097,7 +3097,7 @@ reason = "This case proves the installer writes no state file, which needs a sta
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "release = _stage("
-reason = "The older release is the real program this tree builds, its version string changed in place, so the upgrade runs from a real server to a real server and the version each reports tells them apart. An independently built older release would rebuild the whole workspace a second time on a Windows runner, against the gate-time budget, to change one string."
+reason = "The older release is the real program this tree builds, its version string changed in place, so the upgrade runs from a real server to a real server and the version each reports tells them apart. An independently built older release would rebuild the whole workspace a second time on a Windows runner, against the one-hour `ci-check-time` line, to change one string."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
