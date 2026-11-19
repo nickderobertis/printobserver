@@ -140,9 +140,93 @@ def test_cleanup_refuses_a_foreign_jobs_directory(
     truth(retained.is_file(), describing="the foreign directory contents to survive")
 
 
-@pytest.mark.parametrize("platform", ["windows-aarch64", ""])
-def test_windows_arm_and_manual_dispatch_keep_existing_temp(tmp_path: Path, platform: str) -> None:
-    """Only x86 opts in, even if another host has a writable scratch drive."""
+def test_windows_arm_uses_a_scratch_drive_it_is_handed_and_mounts_no_dev_drive(
+    tmp_path: Path,
+) -> None:
+    """ARM routes temp as x86 does to a drive that is there, mounting no Dev Drive.
+
+    A Dev Drive is mounted only at a bare drive root that is absent: the job's
+    own scratch drive, which the windows-11-arm runner lacks. A drive root that
+    is an existing directory is used as it is, with no disk image made beside
+    the existing temp.
+    """
+    drive = tmp_path / "scratch drive"
+    drive.mkdir()
+    fallback = tmp_path / "existing temp"
+    fallback.mkdir()
+    environment = dict(
+        HOST, PRINTOBSERVER_PLATFORM="windows-aarch64", GITHUB_ENV=str(tmp_path / "job-env")
+    )
+    result = run(
+        ["just", "runner-temp", "setup", str(drive), str(fallback)],
+        cwd=ROOT,
+        env=environment,
+        timeout=30,
+    )
+    passing(result)
+    contains(result.stdout, "(job-owned scratch)")
+    exported = dict(
+        line.split("=", 1)
+        for line in (tmp_path / "job-env").read_text(encoding="utf-8-sig").splitlines()
+    )
+    equal(Path(exported["TEMP"]).parent, drive)
+    equal(list(fallback.iterdir()), [], describing="no disk image beside the existing temp")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a Dev Drive is made on Windows alone")
+@pytest.mark.parametrize(
+    ("fallback_name", "diskpart", "naming"),
+    [
+        pytest.param("existing temp", "@exit /b 5", "diskpart exited 5", id="diskpart-refuses"),
+        pytest.param(
+            "existing temp",
+            "@exit /b 0",
+            "Format-Volume -DevDrive refused",
+            id="nothing-to-format",
+        ),
+        pytest.param("existing t\u00e9mp", "@exit /b 0", "not plain ASCII", id="non-ascii-image"),
+    ],
+)
+def test_a_dev_drive_that_cannot_be_made_refuses_the_setup_naming_the_step(
+    tmp_path: Path, fallback_name: str, diskpart: str, naming: str
+) -> None:
+    """ARM's absent scratch drive, whose Dev Drive cannot be made, fails setup and exports nothing.
+
+    Falling back to the existing temp would hide the slowdown the drive is
+    there to remove, so the job's setup fails naming the step that refused:
+    `diskpart` refusing, a volume `diskpart` never made for `Format-Volume`, or
+    an image path `diskpart` cannot read.
+    """
+    absent = next(f"{letter}:\\" for letter in "QRSTUVWXYZ" if not Path(f"{letter}:\\").exists())
+    programs = tmp_path / "programs"
+    programs.mkdir()
+    (programs / "diskpart.cmd").write_text(
+        f"@echo diskpart said this\r\n{diskpart}\r\n", encoding="ascii"
+    )
+    fallback = tmp_path / fallback_name
+    fallback.mkdir()
+    environment = dict(
+        HOST,
+        PATH=os.pathsep.join([str(programs), os.environ["PATH"]]),
+        PRINTOBSERVER_PLATFORM="windows-aarch64",
+        GITHUB_ENV=str(tmp_path / "job-env"),
+    )
+    result = run(
+        ["just", "runner-temp", "setup", absent, str(fallback)],
+        cwd=ROOT,
+        env=environment,
+        timeout=60,
+    )
+    failing(result, naming=naming)
+    truth(not (tmp_path / "job-env").exists(), describing="no temp exported for children")
+    truth(not Path(absent).exists(), describing="no drive mounted at the absent root")
+
+
+@pytest.mark.parametrize("platform", ["linux-x86_64", ""])
+def test_other_platforms_and_manual_dispatch_keep_existing_temp(
+    tmp_path: Path, platform: str
+) -> None:
+    """Only the Windows jobs opt in, even if another host has a writable scratch drive."""
     environment_file = tmp_path / "job-env"
     environment = dict(
         HOST,

@@ -47,11 +47,14 @@ bootstrap:
     uv run -q python -m repo_checks install-tools
     uv run -q python -m repo_checks install-hooks
 
-# Set the Windows x86 job's temp before bootstrap, and clean only its scratch.
+# Set the Windows jobs' temp before bootstrap, and clean only its scratch: on
+# x86 a directory of the runner's scratch drive, and on ARM, whose runner has
+# none, one on a trusted Dev Drive the script mounts there first.
 # Validate before Git's Windows bash can discard carriage returns.
 runner-temp action="setup" drive="D:\\" fallback="":
     @: {{assert(drive == replace(replace(drive, "\r", ""), "\n", ""), "Paths must contain no line breaks. Supply a single-line path.")}}{{assert(fallback == replace(replace(fallback, "\r", ""), "\n", ""), "Paths must contain no line breaks. Supply a single-line path.")}}; \
-    if [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-x86_64" ]; then exit 0; fi; \
+    if [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-x86_64" ] && \
+    [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-aarch64" ]; then exit 0; fi; \
     if ! command -v pwsh >/dev/null 2>&1; then \
     echo 'pwsh is not on PATH; install PowerShell Core or restore pwsh to PATH, then retry just runner-temp.' >&2; exit 1; \
     fi; \
