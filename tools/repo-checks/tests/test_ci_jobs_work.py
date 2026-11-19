@@ -23,7 +23,11 @@ What is held:
   run in `lint` alone, and every other project's in each `test` job alone;
 * no Nx task runs twice in one job, and `lint`'s own steps — the title, the
   supply chain, the skill install and the judged lint — run there once and in no
-  `test` job.
+  `test` job;
+* no timing budget's project (the justfile's `TIMED` tag) is tested beside the
+  end-to-end tier: where `CI_E2E_BESIDE_TESTS` starts that tier beside the test
+  tier, those projects run in an Nx invocation of their own before it starts,
+  and where it does not, the tier starts after every test task.
 
 A step dropped or changed, and work omitted or doubled, are each made in a copy
 of the workflow and found.
@@ -379,6 +383,8 @@ class Work:
     units: tuple[Unit, ...]
     own: tuple[str, ...]
     integration: tuple[str, ...]
+    #: The tasks of each Nx invocation, in the order they were asked for.
+    invocations: tuple[tuple[str, ...], ...] = ()
 
     @property
     def tasks(self) -> list[str]:
@@ -391,6 +397,7 @@ def work(record: Path, graph: Mapping[str, set[str]]) -> Work:
     units: list[Unit] = []
     own: list[str] = []
     integration: list[str] = []
+    invocations: list[tuple[str, ...]] = []
     lines = record.read_text(encoding="utf-8").splitlines() if record.exists() else []
     for line in lines:
         entry = json.loads(line)
@@ -399,6 +406,7 @@ def work(record: Path, graph: Mapping[str, set[str]]) -> Work:
             continue
         if argv[:2] == ["bunx", "nx"]:
             tasks = planned(argv, graph)
+            invocations.append(tuple(tasks))
             if any(task.startswith("test-skill-install:") for task in tasks):
                 own.append("nx test-skill-install")
                 continue
@@ -413,7 +421,7 @@ def work(record: Path, graph: Mapping[str, set[str]]) -> Work:
         if "octoprint_env.py" in " ".join(argv):
             integration.append(_tier_free(argv))
         units.append(Unit(_tier_free(argv), entry["side"]))
-    return Work(tuple(units), tuple(own), tuple(integration))
+    return Work(tuple(units), tuple(own), tuple(integration), tuple(invocations))
 
 
 def _task(unit: str) -> bool:
@@ -475,6 +483,10 @@ class Ran:
     graph: dict[str, set[str]]
     tagged: frozenset[str]
     tag: str
+    #: The projects carrying the justfile's `TIMED` tag, and whether the copy's
+    #: `ci-measured` starts the end-to-end tier beside the test tier on this host.
+    timed: frozenset[str] = frozenset()
+    beside: bool = False
 
 
 def ran_in(copy: Copy) -> Ran:
@@ -498,7 +510,62 @@ def ran_in(copy: Copy) -> Ran:
     reference = records / "reference.jsonl"
     copy.run_recipes(reference, ("check", "all"), *((recipe,) for recipe in INTEGRATION))
     truth(lint is not None, describing="the `lint` job run")
-    return Ran(lint or Work((), (), ()), tested, work(reference, graph), graph, tagged, tag)
+    timing = evaluated(copy, "TIMED")
+    return Ran(
+        lint or Work((), (), ()),
+        tested,
+        work(reference, graph),
+        graph,
+        tagged,
+        tag,
+        frozenset(project.name for project in projects(repo) if timing in project.tags),
+        evaluated(copy, "CI_E2E_BESIDE_TESTS") == "true",
+    )
+
+
+def evaluated(copy: Copy, variable: str) -> str:
+    """The value the copy's justfile gives `variable` on this host.
+
+    Raises:
+        AssertionError: If `just` cannot evaluate it.
+    """
+    done = run(["just", "--evaluate", variable], cwd=copy.root)
+    if done.returncode != 0:
+        msg = f"`just --evaluate {variable}` exited {done.returncode}:\n{done.stderr}"
+        raise AssertionError(msg)
+    return done.stdout.strip()
+
+
+#: The targets of a timing budget's project that take or read its figure.
+MEASURING = ("test", "budgets")
+
+
+def timing_findings(test: Work, timed: frozenset[str], beside: bool) -> list[str]:
+    """How one job's timing budgets' projects run beside its end-to-end tier, if they do."""
+    found: list[str] = []
+    calls = test.invocations
+    e2e = next(
+        (i for i, call in enumerate(calls) if any(t.startswith("test-e2e:") for t in call)), None
+    )
+    for index, call in enumerate(calls):
+        # Only a measuring task — a test recording the figure, or the check
+        # reading it — is a timing budget's run; any other target is not timed.
+        measured = [task.split(":", 1) for task in call if task.split(":", 1)[0] in MEASURING]
+        if not {project for _, project in measured} & timed:
+            continue
+        beside_them = sorted({project for _, project in measured} - timed)
+        if beside and beside_them:
+            found.append(f"timing projects are tested with {beside_them}")
+        if e2e is not None and index > e2e:
+            found.append(f"timing projects are tested after the end-to-end tier started: {call}")
+    if not beside and e2e is not None:
+        found.extend(
+            f"`{task}` is asked for after the end-to-end tier, which runs beside it"
+            for call in calls[e2e + 1 :]
+            for task in call
+            if task.startswith("test:")
+        )
+    return found
 
 
 @pytest.fixture(scope="module")
@@ -563,6 +630,64 @@ def test_lints_own_steps_run_there_once_and_the_integration_tier_in_each_test_jo
             sorted(committed.whole.integration),
             describing=f"the integration tier in `test ({platform})`",
         )
+
+
+def test_no_timing_budget_is_measured_beside_the_end_to_end_tier(committed: Ran) -> None:
+    """Each `test` job tests the timing budgets' projects with nothing beside them."""
+    truth(committed.timed, describing="projects carrying the justfile's `TIMED` tag")
+    for platform, test in sorted(committed.tested.items()):
+        asked = {task.split(":", 1)[1] for call in test.invocations for task in call}
+        truth(
+            committed.timed <= asked,
+            describing=f"`test ({platform})` testing every timing budget's project",
+        )
+        equal(
+            timing_findings(test, committed.timed, committed.beside),
+            [],
+            describing=f"the timing projects beside the end-to-end tier in `test ({platform})`",
+        )
+
+
+#: The lines of the committed `ci-measured` that test the timing projects alone.
+TIMED_FIRST = (
+    '    PRINTOBSERVER_GATE_PROJECTS="$PRINTOBSERVER_GATE_PROJECTS,"{{quote(TIMED)}} \\\n'
+    "    just test {{quote(tier)}} || status=$?; \\\n"
+    '    tested="$PRINTOBSERVER_GATE_PROJECTS,!"{{quote(TIMED)}}; \\\n'
+)
+E2E_BESIDE = "    just test-e2e {{quote(tier)}} & e2e=$!; \\\n"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "naming"),
+    [
+        pytest.param(TIMED_FIRST, "", "timing projects are tested with", id="tested-with-the-rest"),
+        pytest.param(
+            TIMED_FIRST + E2E_BESIDE,
+            E2E_BESIDE + TIMED_FIRST,
+            "after the end-to-end tier started",
+            id="tested-after-the-tier-started",
+        ),
+    ],
+)
+def test_a_timing_budget_measured_beside_the_end_to_end_tier_is_found(
+    doubled: Callable[[], Copy], old: str, new: str, naming: str
+) -> None:
+    """The timing projects folded back into the test tier, or tested once it started, are found."""
+    copy = doubled()
+    path = copy.root / "justfile"
+    text = path.read_text(encoding="utf-8")
+    truth(old in text, describing="the committed `ci-measured` lines the defect edits")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+    ran = ran_in(copy)
+    if not ran.beside:
+        pytest.skip("this host's `ci-measured` starts no end-to-end tier beside the test tier")
+    said = "\n".join(
+        finding
+        for test in ran.tested.values()
+        for finding in timing_findings(test, ran.timed, ran.beside)
+    )
+
+    truth(naming in said, describing=f"a finding naming {naming!r} in:\n{said}")
 
 
 def broken(copy: Copy, old: str, new: str) -> Ran:

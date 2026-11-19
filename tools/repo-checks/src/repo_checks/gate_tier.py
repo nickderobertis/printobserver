@@ -25,7 +25,9 @@ excluded from the Nx invocation, so the two sides of one tag together run
 exactly what the unnarrowed run does, none of it twice. Continuous integration
 runs its measured tiers that way (`just ci-measured`): the projects tagged
 `platform:independent` once, in the `lint` job, and every other project in each
-platform's `test` job.
+platform's `test` job. Several sides joined by `,` narrow to the projects on
+every one of them, which is how `just ci-measured` measures one side's timing
+budgets (`type:budget`) apart from the rest of that side.
 
 Two verbs:
 
@@ -131,27 +133,11 @@ class Scope:
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectFilter:
+class Side:
     """One side of a project tag: the projects carrying it, or those carrying none of it."""
 
     tag: str
     negated: bool
-
-    @classmethod
-    def named(cls, named: str) -> ProjectFilter:
-        """The side a caller named, as `<tag>` or `!<tag>`.
-
-        Raises:
-            TierError: If it is neither, so no project could be told apart by it.
-        """
-        found = TAG_FILTER.match(named)
-        if found is None:
-            msg = (
-                f"{PROJECTS_VARIABLE}={named!r} is not a project tag such as `lang:rust`, "
-                f"or one with `!` in front for the projects carrying none of it"
-            )
-            raise TierError(msg)
-        return cls(found["tag"], found["negated"] is not None)
 
     def admits(self, tags: Iterable[str]) -> bool:
         """Whether a project carrying `tags` is on this side."""
@@ -162,8 +148,48 @@ class ProjectFilter:
         return f"{'!' if self.negated else ''}{self.tag}"
 
 
+@dataclass(frozen=True, slots=True)
+class ProjectFilter:
+    """Sides of project tags a run is narrowed to, a project admitted where every one admits it.
+
+    One side alone is one tag's side, and `<tag>,!<other>` that side less the
+    projects carrying the other.
+    """
+
+    sides: tuple[Side, ...]
+
+    @classmethod
+    def named(cls, named: str) -> ProjectFilter:
+        """The sides a caller named, each as `<tag>` or `!<tag>`, joined by `,`.
+
+        Raises:
+            TierError: If one is neither, so no project could be told apart by it.
+        """
+        sides: list[Side] = []
+        for side in named.split(","):
+            found = TAG_FILTER.match(side)
+            if found is None:
+                msg = (
+                    f"{PROJECTS_VARIABLE}={named!r} is not a project tag such as `lang:rust`, "
+                    f"or one with `!` in front for the projects carrying none of it, "
+                    f"or several of those joined by `,`"
+                )
+                raise TierError(msg)
+            sides.append(Side(found["tag"], found["negated"] is not None))
+        return cls(tuple(sides))
+
+    def admits(self, tags: Iterable[str]) -> bool:
+        """Whether a project carrying `tags` is on every side."""
+        carried = set(tags)
+        return all(side.admits(carried) for side in self.sides)
+
+    def __str__(self) -> str:
+        """As a caller names it."""
+        return ",".join(str(side) for side in self.sides)
+
+
 def project_filter(environ: Mapping[str, str] | None = None) -> ProjectFilter | None:
-    """The side of a tag `PRINTOBSERVER_GATE_PROJECTS` narrows a run to, or none.
+    """The sides of tags `PRINTOBSERVER_GATE_PROJECTS` narrows a run to, or none.
 
     Raises:
         TierError: If it names no tag `ProjectFilter.named` reads.

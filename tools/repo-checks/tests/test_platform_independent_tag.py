@@ -25,7 +25,14 @@ from repo_checks.__main__ import main
 from repo_checks.checks_graph import platform_independent_tag, projects
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
-from repo_checks.gate_tier import AFFECTED, ALL, BASE_VARIABLE, PROJECTS_VARIABLE, command
+from repo_checks.gate_tier import (
+    AFFECTED,
+    ALL,
+    BASE_VARIABLE,
+    PROJECTS_VARIABLE,
+    TierError,
+    command,
+)
 from repo_checks.model import Repo
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
@@ -292,3 +299,25 @@ def test_the_committed_graph_is_partitioned_by_the_two_halves() -> None:
 
         equal(independent, tagged_names, describing=f"the `{target}` projects `just ci-lint` runs")
         equal(dependent, every - tagged_names, describing=f"the `{target}` projects `ci-test` runs")
+
+
+@pytest.mark.parametrize("tier", [AFFECTED, ALL])
+def test_sides_joined_by_a_comma_select_the_projects_on_every_one(
+    tmp_path: Path, tier: str
+) -> None:
+    """`<side>,<tag>` and `<side>,!<tag>` split one side in two, none of it twice or left out.
+
+    That is how `just ci-measured` tests one side's timing budgets alone before
+    the rest of it: the two runs together are the side's one run.
+    """
+    repo, base = selection_repository(tmp_path / "repository")
+    side = sides()["ci-test"]
+
+    def chosen(named: str) -> set[str]:
+        return selected(repo, tier, "test", {PROJECTS_VARIABLE: named, BASE_VARIABLE: base})
+
+    equal(chosen(f"{side},lang:rust"), {"alpha"}, describing="the side's `lang:rust` projects")
+    equal(chosen(f"{side},!lang:rust"), {"beta"}, describing="the rest of the side")
+    equal(chosen("platform:independent,lang:rust"), set(), describing="sides no project is on")
+    with pytest.raises(TierError, match="joined by `,`"):
+        command(repo, tier, ["test"], {PROJECTS_VARIABLE: f"{side},,lang:rust"})
