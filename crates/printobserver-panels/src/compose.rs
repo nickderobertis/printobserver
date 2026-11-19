@@ -161,7 +161,6 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
     let scale = f64::from(PANEL_WIDTH) / f64::from(size[0]);
     let scale_y = f64::from(PANEL_HEIGHT) / f64::from(size[1]);
 
-    // Panel 1: the toolpath over the whole frame.
     let mut whole = scaled(&current, None);
     for piece in &below {
         line(&mut whole, piece.from, piece.to, scale, scale_y, BELOW_GREY);
@@ -179,11 +178,9 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
     paste(&mut image, &whole, 0);
     band(&mut image, 0, "1 NOW: planned toolpath of this layer", true);
 
-    // Panel 2: the close-up, nothing drawn.
     paste(&mut image, &scaled(&current, Some(rect)), 1);
     band(&mut image, 1, "2 NOW: close-up, nothing drawn", false);
 
-    // Panel 3: the previous check.
     let third = band_top(2) + BAND_HEIGHT;
     if let Some((frame, at)) = &previous {
         paste(&mut image, &scaled(frame, None), 2);

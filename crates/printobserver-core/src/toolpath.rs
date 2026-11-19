@@ -196,7 +196,8 @@ fn directions() -> &'static [[f64; 2]; OUTLINE_DIRECTIONS] {
 }
 
 impl Reach {
-    /// Reach a point.
+    /// Push every direction's extent out to `(x, y)`; a point inside the
+    /// cached inner circle cannot move any extent, so it is skipped.
     pub(crate) fn point(&mut self, x: f64, y: f64) {
         let ([cx, cy], radius) = self.inside;
         let (dx, dy) = (x - cx, y - cy);
@@ -244,8 +245,10 @@ impl Reach {
         self.inside = (centre, radius);
     }
 
-    /// Reach an arc of the circle about `centre` through `start`, sweeping
-    /// `sweep` radians counter-clockwise from the angle `from`, and its ends.
+    /// Push out the extents of the directions whose circle point the arc
+    /// sweeps over: `sweep` radians counter-clockwise from the angle `from`
+    /// about `centre`. The arc's ends are not reached here; the caller gives
+    /// them to `point`.
     pub(crate) fn arc(&mut self, centre: [f64; 2], radius: f64, from: f64, sweep: f64) {
         let tau = core::f64::consts::TAU;
         let held = directions();

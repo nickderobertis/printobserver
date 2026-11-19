@@ -1436,9 +1436,9 @@ fn arc_extremes(
 /// One arc's circle and the part of it swept.
 #[derive(Debug, Clone, Copy)]
 struct ArcGeometry {
-    /// The centre.
+    /// The circle's centre in bed mm, from `I`/`J` or the `R` form.
     centre: [f64; 2],
-    /// The radius.
+    /// The distance from that centre to the move's start, in mm.
     radius: f64,
     /// The angle the sweep starts at, counter-clockwise: the arc's start for
     /// `G3`, its end for `G2`.
