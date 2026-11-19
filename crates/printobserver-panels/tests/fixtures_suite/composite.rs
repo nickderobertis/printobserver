@@ -604,21 +604,37 @@ fn the_bands_carry_the_colour_key_and_the_previous_checks_time() {
         let top = 2 * (BAND_HEIGHT + PANEL_HEIGHT);
         image::imageops::crop_imm(&composite, 0, top, PANEL_WIDTH, BAND_HEIGHT).to_image()
     };
-    let at = |hours: i64| {
+    let at = |seconds_ago: i64| {
         Timestamp::now()
-            .plus_seconds(-hours * 3600)
+            .plus_seconds(-seconds_ago)
             .expect("an instant")
     };
-    let morning = at(5);
+    // Four hours, eleven minutes and eleven seconds apart, so the hour, the
+    // minute and the second each read differently whatever the host's zone.
+    let morning = at(5 * 3600);
+    let later_at = at(5 * 3600 - (4 * 3600 + 11 * 60 + 11));
     let (first, _) = compose_at(PETG, PETG_WALLS, Some((PETG_BEFORE, morning)), None);
     let (again, _) = compose_at(PETG, PETG_WALLS, Some((PETG_BEFORE, morning)), None);
-    let (later, _) = compose_at(PETG, PETG_WALLS, Some((PETG_BEFORE, at(1))), None);
+    let (later, _) = compose_at(PETG, PETG_WALLS, Some((PETG_BEFORE, later_at)), None);
+    let same = pixels_apart(&band(&first), &band(&again));
+    assert_eq!(same, 0, "one time, one label ({same} pixels apart)");
+    let apart = pixels_apart(&band(&first), &band(&later));
     assert!(
-        mean_difference(&band(&first), &band(&again)) < 0.5,
-        "one time, one label"
+        apart >= GLYPH_PIXELS,
+        "a frame captured four hours later is labelled with its own time \
+         ({apart} pixels apart, at least {GLYPH_PIXELS} owed)"
     );
-    assert!(
-        mean_difference(&band(&first), &band(&later)) > 0.5,
-        "a frame captured four hours later is labelled with its own time"
-    );
+}
+
+/// How many pixels a changed digit of a label moves at the least: a glyph's
+/// strokes, well clear of the JPEG ringing beside them.
+const GLYPH_PIXELS: usize = 40;
+
+/// How many pixels of two label bands differ as a glyph's stroke does from the
+/// band behind it, rather than as JPEG noise does.
+fn pixels_apart(a: &RgbImage, b: &RgbImage) -> usize {
+    a.pixels()
+        .zip(b.pixels())
+        .filter(|(x, y)| colour_distance(**x, **y) > 96)
+        .count()
 }
