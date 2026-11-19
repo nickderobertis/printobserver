@@ -81,6 +81,12 @@ class expect:  # noqa: N801 - read as `expect.equal(...)`, the vocabulary of thi
             raise AssertionError(message)
 
 
+# A marks file as `json.loads` gives it back. Its values are `Any` because
+# these tests write values of every wrong type into it on purpose, to prove
+# the tool refuses each one; a narrower type would forbid the very documents
+# under test.
+Marks = dict[str, Any]
+
 # What the README states: the RMS bound a fit of these marks meets, and how far
 # a refit may land from the committed file, per number.
 RMS_BOUND_PX = 4.0
@@ -239,9 +245,7 @@ def test_frames_of_two_sizes_are_refused(tmp_path: Path) -> None:
     expect.contains(run.stderr, "of 2 sizes", describing="the refusal")
 
 
-def _edited(
-    directory: Path, change: Callable[[dict[str, Any]], None], name: str = "edited"
-) -> Path:
+def _edited(directory: Path, change: Callable[[Marks], None], name: str = "edited") -> Path:
     doc = json.loads(_fixture_marks(directory).read_text(encoding="utf-8"))
     change(doc)
     path = directory / f"{name}.json"
@@ -249,11 +253,11 @@ def _edited(
     return path
 
 
-def _first_curve(doc: dict[str, Any]) -> dict[str, Any]:
+def _first_curve(doc: Marks) -> Marks:
     return doc["frames"][0]["curves"][0]
 
 
-def _repeat_marks(doc: dict[str, Any], *, frames: int) -> None:
+def _repeat_marks(doc: Marks, *, frames: int) -> None:
     """Keep `frames` frames, each curve's marks repeated to stay above the least count."""
     doc["frames"] = doc["frames"][:frames]
     for frame in doc["frames"]:
@@ -261,7 +265,7 @@ def _repeat_marks(doc: dict[str, Any], *, frames: int) -> None:
             curve["px"] = curve["px"] * 4
 
 
-def _set_heights(doc: dict[str, Any], heights: list[float]) -> None:
+def _set_heights(doc: Marks, heights: list[float]) -> None:
     for frame, height in zip(doc["frames"], heights, strict=True):
         frame["zc_mm"] = height
 
@@ -291,7 +295,7 @@ def _set_heights(doc: dict[str, Any], heights: list[float]) -> None:
     ],
 )
 def test_marks_the_fit_cannot_use_are_refused_naming_why(
-    tmp_path: Path, change: Callable[[dict[str, Any]], None], refusal: str
+    tmp_path: Path, change: Callable[[Marks], None], refusal: str
 ) -> None:
     """Each kind of unusable marks file is refused with exit 2, naming what is wrong."""
     run = _run(_edited(tmp_path, change), tmp_path)

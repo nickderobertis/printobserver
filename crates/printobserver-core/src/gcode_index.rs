@@ -2081,7 +2081,11 @@ impl crate::supervisor::Supervisor {
     /// or whose file could not be read.
     pub async fn print_gcode_index(&self, print_id: PrintId) -> Option<Arc<GcodeIndex>> {
         // A store that cannot be read answers nothing, as a print it does not
-        // hold does; the alignment check asks again at the next read.
+        // hold does, and its caller asks again at the next read. No test makes
+        // the store fail here, since every store fake failure lands on the read
+        // before this one; the same `None` for a print the store does not
+        // hold is proved by `the_spool_goes_when_the_print_closes_and_strays_are_swept`,
+        // and the alignment check's asking again by its retried-fetch journey.
         let print = self.stores().prints.print(print_id).await.ok()??;
         if print.ended_at.is_some() {
             return None;
@@ -2116,8 +2120,11 @@ impl crate::supervisor::Supervisor {
             .collect();
         // A directory that cannot be listed, an entry that cannot be read and
         // a spool that cannot be removed each leave a file behind, which the
-        // next start's sweep tries again; no test makes the filesystem refuse
-        // them, since that needs one made to fail beneath a running server.
+        // next start's sweep tries again. No test makes the filesystem refuse
+        // them, since that needs one made to fail beneath a running server;
+        // what proves the sweep is that it removes exactly the spools of
+        // closed prints and nothing else, at start and on a close
+        // (`the_spool_goes_when_the_print_closes_and_strays_are_swept`).
         let Ok(entries) = std::fs::read_dir(&directory) else {
             return Ok(());
         };

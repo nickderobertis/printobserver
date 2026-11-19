@@ -294,6 +294,12 @@ async fn a_print_is_checked_once_its_first_layer_is_down_and_keeps_its_verdict_w
         "a print whose first layer is not down is pending"
     );
 
+    std::fs::write(&verdict_file, b"not a verdict").expect("a verdict file is corrupted");
+    assert_eq!(
+        journey.world.server.print_alignment(print_id),
+        PrintAlignment::Pending,
+        "a verdict that cannot be read back is no verdict"
+    );
     printer.at_byte(position_at(&index, bytes.len(), 0.6));
     let verdict = decided(&journey.world, print_id).await;
     let PrintAlignment::Passed { offset_px } = verdict else {

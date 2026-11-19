@@ -148,7 +148,9 @@ impl Alignments {
         active: ActiveJob,
     ) -> Option<PrintAlignment> {
         let calibration = self.calibration.as_ref()?;
-        if self.path_of(active.print_id).exists() {
+        // A verdict file that cannot be read back is no verdict, and is
+        // decided again over it.
+        if self.print_alignment(active.print_id) != PrintAlignment::Pending {
             return None;
         }
         let position = u64::try_from(active.file_position_bytes?).ok()?;
@@ -226,6 +228,13 @@ impl Alignments {
     }
 
     /// Delete the verdict of every print that is not open.
+    ///
+    /// A store that cannot list the open prints, a directory that cannot be
+    /// listed and a file that cannot be removed each leave a verdict behind,
+    /// which the next read's sweep tries again. No test makes either refuse,
+    /// since that needs a store or filesystem made to fail beneath a running
+    /// server; the `aligning` journeys prove the sweep removes a closed
+    /// print's verdict and keeps an open one's, after a close and at start.
     pub async fn sweep(&self) {
         let Ok(open) = self.prints.open_prints().await else {
             return;
