@@ -14,7 +14,7 @@ it going as it should, and which bounded adjustment, if any, is right now?
 
 [The command surface](reference/command-surface.md)
 and [common operations](reference/common-operations.md) hold the commands: read
-them with your file tools. Your shell takes one whole command at
+them with file tools. Your shell takes one whole command at
 a time, starting with the program's name: no variable, chain, pipe, redirection or usage listing. Every command acts; none is a trial. If it refuses one, rewrite it; never leave it undone.
 
 1. **Read the context.** After the first read, since the newest event it named. The print,
@@ -25,7 +25,7 @@ a time, starting with the program's name: no variable, chain, pipe, redirection 
 3. **Look again, and watch if you need to.** Run look at least once: frames the context names are
    already old. A look can wait up to a minute and a half first; a few show a defect growing. Open
    each; each states its capture time. One time twice is a camera with nothing newer, no defect:
-   say so and judge what the frame shows.
+   say so; judge what the frame shows.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **Act, and say why.** Ask for any change with a reason a reader can act on and, if temporary,
    how long. After a setting, look again.
@@ -58,16 +58,15 @@ Reading frames:
 - **Strands.** Curved or tangled strands are a defect only inside the part's outline and growing,
   absent from an earlier frame included, or out of place; off the part, on a rail, screw or frame,
   not.
-- **Position.** Judge growth only against the frame the plan's rise names, by the top's height it
-  gives then and the rise since, which is what should show, never proof it printed: compare the
-  tallest part still printing then and now; finished parts do not grow. Short of the rise, unclear
-  or unmeasurable is not printing: a clear defect, never uncertain. Hidden parts: look again
-  first. A still landmark proves only a still view; a part moved when its distance to a fixed
-  sheet hole, edge or mark changed. Each reason gives each part's pixels from a named landmark;
-  each turn, before looking, measure the event frame so against the last reason's figures.
-  Changed: moved, never uncertain, whatever the cause; a later frame hiding it undoes nothing.
-  So is a part off the bed, a first layer not sticking, or a part where the plan puts no object,
-  its own place empty.
+- **Position.** Judge growth only against the frame the plan's rise names, never without one: by the
+  top's height it gives then and the rise since, which should show, never proof it printed: compare
+  the tallest part still printing then and now; finished ones do not grow. Short of the rise,
+  unclear or unmeasurable is not printing: a clear defect, never uncertain. Hidden parts: look again
+  first. A still landmark proves only a still view; a part moved when its distance to a fixed sheet
+  hole, edge or mark changed. Each reason gives each part's pixels from a named landmark; each turn,
+  before looking, measure the event frame so against the last reason's figures. Changed: moved,
+  never uncertain, whatever the cause; a later frame hiding it undoes nothing. So is a part off the
+  bed, a first layer not sticking, or a part where the plan puts no object, its own place empty.
 
 ## When the detector has already paused the print
 
@@ -98,7 +97,7 @@ ask for nothing; say what and where.
 ## When to escalate instead
 
 Escalate when the machine, or the safe thing, is beyond what you may ask:
-pause, giving as your reason what the person must check.
+pause, giving as your reason what a person must check.
 A person's resume in the record settles what they resumed over.
 
 ## Elsewhere
