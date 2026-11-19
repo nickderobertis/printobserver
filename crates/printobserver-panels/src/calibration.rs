@@ -97,7 +97,9 @@ pub struct Fit {
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct CameraCalibration {
-    /// Always [`SCHEMA_VERSION`].
+    /// Always [`SCHEMA_VERSION`], which the generated schema pins, so the
+    /// calibration tool's tests refuse a file of any other version.
+    #[schemars(range(min = 1, max = 1))]
     pub schema_version: u32,
     /// How the printer moves its bed.
     pub motion: Motion,

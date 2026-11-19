@@ -73,6 +73,15 @@ def _arc(
     return points
 
 
+def _words(code: str, path: Path) -> dict[str, float]:
+    """A command's axis and extrusion words, refused unless each is finite."""
+    words = {letter: float(value) for letter, value in _WORD.findall(code)}
+    if not all(math.isfinite(value) for value in words.values()):
+        msg = f"{path} carries a command with a number past any machine: {code!r}"
+        raise GcodeError(msg)
+    return words
+
+
 def _height(text: str, path: Path) -> float:
     """A `;Z:` line's height, refused unless it is a finite number of millimetres."""
     try:
@@ -120,11 +129,11 @@ def parse(path: Path) -> list[Layer]:
                     relative_e = head == "M83"
                     continue
                 case "G92":
-                    e = float(dict(_WORD.findall(code)).get("E", e))
+                    e = _words(code, path).get("E", e)
                     continue
                 case _:
                     continue
-            words = {k: float(v) for k, v in _WORD.findall(code[len(head) :])}
+            words = _words(code[len(head) :], path)
             if relative_axes:
                 nx, ny = x + words.get("X", 0.0), y + words.get("Y", 0.0)
             else:

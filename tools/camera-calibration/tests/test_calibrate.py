@@ -12,6 +12,7 @@ repository commits for tests — the frames under
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -23,6 +24,7 @@ import jsonschema
 import numpy as np
 import pytest
 from camera_calibration import fit as fitting
+from camera_calibration import gcode
 from camera_calibration.marks import load
 from camera_calibration.model import Camera
 
@@ -264,6 +266,7 @@ def _set_heights(doc: dict[str, Any], heights: list[float]) -> None:
         (lambda doc: _first_curve(doc).update(px=[[1, 2, 3]]), "not an [x, y] pixel"),
         (lambda doc: doc["frames"][0].update(zc_mm=None), "not a finite number"),
         (lambda doc: doc["frames"][0].pop("case"), "names no `case`"),
+        (lambda doc: doc["frames"].append("a frame"), "is not an object"),
         (lambda doc: doc.update(frames=doc["frames"][:4]), "a fit needs at least 30 points"),
         (lambda doc: _repeat_marks(doc, frames=4), "on 4 frames"),
         (lambda doc: _set_heights(doc, [0.4] * 7), "at 1 bed heights"),
@@ -289,6 +292,7 @@ def test_marks_the_fit_cannot_use_are_refused_naming_why(
         (("--drift-tolerance-px", "inf"), None, "not a positive number"),
         ((), "http://", "not an http(s) address"),
         ((), "http://[::1", "not an http(s) address"),
+        ((), "http://localhost:99999/frame.jpeg", "not an http(s) address"),
     ],
 )
 def test_arguments_the_tool_cannot_use_are_refused(
@@ -387,3 +391,44 @@ def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
     )
     expect.equal(image.returncode, 2, describing="the exit status for a .bmp image")
     expect.contains(image.stderr, "not a .jpg path", describing="the refusal")
+
+
+def test_a_slice_is_read_in_every_positioning_mode_and_past_any_machine_is_refused(
+    tmp_path: Path,
+) -> None:
+    """Every positioning mode is followed, and a word too large for any machine is refused.
+
+    Relative axes, absolute extrusion and a reset extruder are each read as a
+    slicer means them.
+    """
+    slice_path = tmp_path / "modes.gcode"
+    slice_path.write_text(
+        ";LAYER_CHANGE\n;Z:0.2\n;TYPE:External perimeter\nG90\nM82\nG92 E0\n"
+        "G1 X10 Y10\nG1 X20 Y10 E1\nG91\nG1 X0 Y10 E1\nG1 X5 Y0 E0\nG90\nM83\nG1 X30 Y30 E-1\n",
+        encoding="utf-8",
+    )
+    layers = gcode.parse(slice_path)
+    expect.equal(
+        layers[0].outer,
+        [(10.0, 10.0, 20.0, 10.0), (20.0, 10.0, 20.0, 20.0)],
+        describing="the extruding moves, absolute then relative, and no travel or retraction",
+    )
+    huge = tmp_path / "huge.gcode"
+    huge.write_text(";LAYER_CHANGE\n;Z:0.2\nG1 X" + "9" * 400 + " Y1 E1\n", encoding="utf-8")
+    try:
+        gcode.parse(huge)
+    except gcode.GcodeError as error:
+        expect.contains(str(error), "past any machine", describing="the refusal")
+    else:
+        message = "a slice with an infinite coordinate was read"
+        raise AssertionError(message)
+
+
+def test_the_workspace_lock_holds_this_tools_requirements() -> None:
+    """The root uv.lock, where this member's requirements resolve, is current with them."""
+    uv = shutil.which("uv")
+    expect.truth(uv, describing="uv is on PATH")
+    run = subprocess.run(  # noqa: S603 - uv, by its resolved path, with no shell
+        [str(uv), "lock", "--check"], cwd=ROOT, capture_output=True, text=True, check=False
+    )
+    expect.passing(run, describing="`uv lock --check` at the workspace root")

@@ -203,9 +203,10 @@
       "description": "How the printer moves its bed."
     },
     "schema_version": {
-      "description": "Always [`SCHEMA_VERSION`].",
+      "description": "Always [`SCHEMA_VERSION`], which the generated schema pins, so the\ncalibration tool's tests refuse a file of any other version.",
       "format": "uint32",
-      "minimum": 0,
+      "maximum": 1,
+      "minimum": 1,
       "type": "integer"
     }
   },

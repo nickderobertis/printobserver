@@ -4778,3 +4778,9 @@ rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-panels/src/alignment.rs"
 site = "pub struct AlignmentVerdict {"
 reason = "The task's contract fixes this type as `AlignmentVerdict { offset_px: f64, passed: bool }`, which the server reads. Only `verify_first_layer_alignment` builds one, setting `passed` from `offset_px` and the calibration's threshold, so no verdict this crate answers is contradictory."
+
+[[suppression]]
+rule = "S603"
+file = "tools/camera-calibration/tests/test_calibrate.py"
+site = "run = subprocess.run(  # noqa: S603 - uv, by its resolved path"
+reason = "The lock-freshness gate runs uv, resolved to an absolute path by `shutil.which`, with an argument list and no shell; the suite does not import `repo_checks.shell` so that changes to `repo-checks` do not select it."

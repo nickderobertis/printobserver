@@ -10,8 +10,9 @@ requires-python = ">=3.14"
 dependencies = [
     "numpy>=2.3",
     "scipy>=1.16",
-    # Only to cross-check this tool's own projection against OpenCV's fisheye
-    # model; the fit itself is scipy's.
+    # Reading and writing the frames, cutting landmark patches, drawing the
+    # verification image, and cross-checking this tool's projection against
+    # OpenCV's fisheye model. The fit itself is scipy's.
     "opencv-python-headless>=4.12",
 ]
 

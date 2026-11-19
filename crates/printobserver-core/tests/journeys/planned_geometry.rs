@@ -316,7 +316,24 @@ fn a_layers_toolpath_is_read_from_the_spool_as_the_file_plans_it() {
         index.layer_toolpath(LayerRef::of_index(index.layer_count())),
         Err(printobserver_core::SpoolError::UnknownLayer)
     );
-    std::fs::remove_file(spool_path(&dir, print.id)).expect("the spool is removed");
+    let spooled = spool_path(&dir, print.id);
+    let length = std::fs::metadata(&spooled)
+        .expect("the spool is there")
+        .len();
+    std::fs::File::options()
+        .write(true)
+        .open(&spooled)
+        .and_then(|file| file.set_len(length / 2))
+        .expect("the spool is cut short");
+    let last = LayerRef::of_index(index.layer_count() - 1);
+    assert!(
+        matches!(
+            index.layer_toolpath(last),
+            Err(printobserver_core::SpoolError::Io { .. })
+        ),
+        "a layer past a spool cut short is a read that failed, not a short layer"
+    );
+    std::fs::remove_file(&spooled).expect("the spool is removed");
     assert!(
         matches!(
             index.layer_toolpath(LayerRef::of_index(0)),
@@ -552,5 +569,35 @@ fn the_spool_goes_when_the_print_closes_and_strays_are_swept() {
         "the print closed"
     );
     assert!(!spool.exists(), "the spool went with the print");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The spool also goes when the operator closes a print the printer no longer
+/// runs.
+#[test]
+fn the_spool_goes_when_the_operator_closes_the_print() {
+    let dir = spool_dir("operator-close");
+    let (world, print) = printing(SEVEN_OBJECTS, Some(dir.clone()));
+    let _ = index_of(&world, &print);
+    let spool = spool_path(&dir, print.id);
+    assert!(spool.exists());
+    world.printer.reports_job(None, PrinterState::Operational);
+    world.printer.reports_state(PrinterState::Operational);
+    let answered = world
+        .request(
+            print.id,
+            printobserver_core::PrintAction::ClosePrint {
+                outcome: printobserver_core::PrintOutcome::Cancelled,
+                reason: "the operator closes a print nothing runs".to_owned(),
+                actor: printobserver_core::Actor::Operator,
+            },
+        )
+        .expect("the close is recorded");
+    assert_eq!(
+        answered.record.decision,
+        printobserver_core::PolicyDecision::Accepted,
+        "{answered:?}"
+    );
+    assert!(!spool.exists(), "the spool went with the operator's close");
     let _ = std::fs::remove_dir_all(dir);
 }

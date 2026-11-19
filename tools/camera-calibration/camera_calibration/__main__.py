@@ -135,6 +135,8 @@ def _landmarks(marks: Marks, images: list[np.ndarray]) -> list[LandmarkRecord]:
             msg = f"landmark {landmark.name} at {landmark.center_px} is too near the frame's edge"
             raise CalibrationError(msg)
         ok, png = cv2.imencode(".png", patch)
+        # No test reaches this: OpenCV encodes any 8-bit grey patch as PNG, so
+        # it would take a broken OpenCV; the refit tests encode every landmark.
         if not ok:
             msg = f"landmark {landmark.name}'s patch could not be encoded"
             raise CalibrationError(msg)
@@ -254,7 +256,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         address = urlsplit(args.snapshot_url)
+        # Reading the port refuses one that is no number or past 65535.
         named = address.scheme in ("http", "https") and bool(address.hostname)
+        named = named and (address.port is None or address.port > 0)
     except ValueError:
         named = False
     if not named:

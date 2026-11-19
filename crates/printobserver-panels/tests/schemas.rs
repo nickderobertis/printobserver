@@ -23,4 +23,12 @@ fn the_calibration_schema_is_what_the_type_generates() {
         )],
     );
     assert!(findings.is_empty(), "{findings:#?}");
+    let schema = schema_of::<CameraCalibration>();
+    let version = &schema["properties"]["schema_version"];
+    let pinned = u64::from(printobserver_panels::SCHEMA_VERSION);
+    assert_eq!(
+        (version["minimum"].as_u64(), version["maximum"].as_u64()),
+        (Some(pinned), Some(pinned)),
+        "the schema pins the one version the reader takes, so a file of another fails validation"
+    );
 }
