@@ -4,7 +4,8 @@
 //! The REST host serves `GET /api/v1/printers/{id}/` from [`RECORDED_PRINTER`]
 //! — the answer a real self-hosted `Obico`, brought up at revision
 //! `49c0bc70` by `tools/obico-env`, gave that read under a bearer
-//! `access_token` while it watched a running print, with the printer's own
+//! `access_token` while it had a running print, recorded by
+//! `tools/obico-env/obico_record.py`, with the printer's own
 //! credential `auth_token` (which the answer carries twice, once on the
 //! printer and once on its current print's printer) replaced by a sentinel.
 //! A journey moves only the three fields the status reads between reads:
@@ -28,119 +29,24 @@ use tokio::task::JoinHandle;
 
 /// The printer answer the REST host serves: the body a real self-hosted
 /// `Obico` at revision `49c0bc70` answered `GET /api/v1/printers/1/` with,
-/// `200`, under `Authorization: Bearer <access_token>`, while it watched a
-/// running print and had taken a snapshot of it — verbatim, but for both
-/// copies of the printer's credential `auth_token`, which are the sentinel.
-// llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
-pub const RECORDED_PRINTER: &str = r#"{
-  "id": 1,
-  "name": "printobserver",
-  "created_at": "2026-11-08T03:25:04.004260Z",
-  "action_on_failure": "PAUSE",
-  "watching_enabled": true,
-  "not_watching_reason": null,
-  "tools_off_on_pause": true,
-  "bed_off_on_pause": false,
-  "retract_on_pause": 6.5,
-  "lift_z_on_pause": 2.5,
-  "detective_sensitivity": 1.0,
-  "min_timelapse_secs_on_finish": 600,
-  "min_timelapse_secs_on_cancel": 300,
-  "auth_token": "SENTINEL-obico-printer-auth-token-0b6f3c",
-  "archived_at": null,
-  "agent_name": "octoprint_obico",
-  "agent_version": "2.5.2",
-  "pic": {
-    "img_url": "http://localhost:32780/media/tsd-pics/raw/1/1/1794108307.523408.jpg?digest=YidceGUxM2xSOVx4ZGZceDExPmJaNVx4ZWJceGM0XHg4Y1x4OTVceGMxMVx4Y2ZceDEzJlx4ZmFceGI1XHhkZl0_XHhlMVx4ZDhceDg2XHg4MSpceGFjXHhjMyc="
-  },
-  "status": {
-    "_ts": 1794108305,
-    "state": {
-      "text": "Printing",
-      "flags": {
-        "operational": true,
-        "printing": true,
-        "paused": false,
-        "cancelling": false,
-        "error": false,
-        "ready": false,
-        "closedOrError": false
-      }
-    },
-    "job": {
-      "file": {
-        "name": "benchy.gcode",
-        "display": "benchy.gcode"
-      }
-    },
-    "progress": {
-      "completion": 12.5,
-      "printTime": 900,
-      "printTimeLeft": 6300
-    }
-  },
-  "settings": {
-    "data_channel_id": "",
-    "temp_profiles": [],
-    "printer_metadata": "{}",
-    "tsd_plugin_version": "",
-    "octoprint_version": "",
-    "platform_uname": "[]",
-    "installed_plugins": "[]",
-    "webcam_flipV": false,
-    "webcam_flipH": false,
-    "webcam_rotate90": false,
-    "webcam_rotation": 0,
-    "webcam_streamRatio": "16:9",
-    "ratio169": true,
-    "agent_name": "octoprint_obico",
-    "agent_version": "2.5.2"
-  },
-  "current_print": {
-    "id": 1,
-    "printer": {
-      "id": 1,
-      "name": "printobserver",
-      "created_at": "2026-11-08T03:25:04.004260Z",
-      "action_on_failure": "PAUSE",
-      "watching_enabled": true,
-      "not_watching_reason": null,
-      "tools_off_on_pause": true,
-      "bed_off_on_pause": false,
-      "retract_on_pause": 6.5,
-      "lift_z_on_pause": 2.5,
-      "detective_sensitivity": 1.0,
-      "min_timelapse_secs_on_finish": 600,
-      "min_timelapse_secs_on_cancel": 300,
-      "auth_token": "SENTINEL-obico-printer-auth-token-0b6f3c",
-      "archived_at": null,
-      "agent_name": "octoprint_obico",
-      "agent_version": "2.5.2"
-    },
-    "g_code_file": null,
-    "filename": "benchy.gcode",
-    "started_at": "2026-11-08T03:25:04.015845Z",
-    "ended_at": null,
-    "finished_at": null,
-    "cancelled_at": null,
-    "uploaded_at": null,
-    "alerted_at": null,
-    "alert_acknowledged_at": null,
-    "alert_muted_at": null,
-    "paused_at": null,
-    "video_url": null,
-    "tagged_video_url": null,
-    "poster_url": null,
-    "alert_overwrite": null,
-    "filament_used": null,
-    "print_time": null,
-    "access_consented_at": null,
-    "video_archived_at": null,
-    "need_alert_overwrite": false,
-    "need_print_shot_feedback": false
-  },
-  "normalized_p": 0.0
-}"#;
+/// `200`, under `Authorization: Bearer <access_token>`, while it had a running
+/// print and a snapshot of it — verbatim, but for both copies of the printer's
+/// credential `auth_token`, which are the sentinel. `obico-printer.provenance.json`
+/// beside it says the same, and `tools/obico-env/obico_record.py` is the command
+/// that wrote both and re-reads them from the stack `tools/obico-env` brings up.
+pub const RECORDED_PRINTER: &str = include_str!("obico-printer.json");
+
+/// The recorded answer, held to the identifiers the journeys name it by.
+fn recorded() -> Value {
+    let answer: Value = serde_json::from_str(RECORDED_PRINTER).expect("the recording is JSON");
+    assert_eq!(answer["id"], json!(RECORDED_PRINTER_ID), "the recorded printer");
+    assert_eq!(
+        answer["auth_token"],
+        json!(AUTH_TOKEN_SENTINEL),
+        "the recording's credential is the sentinel"
+    );
+    answer
+}
 
 /// The printer the recorded answer is.
 pub const RECORDED_PRINTER_ID: i64 = 1;
@@ -233,7 +139,7 @@ impl Host {
         let held = Arc::new(Mutex::new(Held {
             mood: Mood::Answering,
             any_printer: false,
-            answer: serde_json::from_str(RECORDED_PRINTER).expect("the recording is JSON"),
+            answer: recorded(),
             health: "200 OK",
             received: Vec::new(),
         }));

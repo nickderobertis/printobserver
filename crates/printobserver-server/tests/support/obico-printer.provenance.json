@@ -1,0 +1,12 @@
+{
+  "obico_revision": "49c0bc7001a3fd8d56297fc3032ba287bfe1d50b",
+  "request": "GET /api/v1/printers/1/",
+  "authentication": "Authorization: Bearer <[obico] access_token>",
+  "status": 200,
+  "sentinel": "SENTINEL-obico-printer-auth-token-0b6f3c",
+  "credentials_replaced": [
+    "auth_token",
+    "current_print.printer.auth_token"
+  ],
+  "recorded_by": "uv run python tools/obico-env/obico_record.py --state-dir <state-dir>"
+}
