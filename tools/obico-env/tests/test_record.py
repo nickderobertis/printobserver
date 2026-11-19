@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from obico_env import OBICO_REVISION
 from repo_checks.expect import absent, contains, equal, failing, passing, truth
 from repo_checks.loopback import UNREACHABLE, LoopbackServer
 from repo_checks.shell import run as shell_run
@@ -82,7 +83,8 @@ class Obico:
 @pytest.fixture
 def obico() -> Iterator[Obico]:
     """The committed recording's shape, carrying live credentials again."""
-    answer = json.loads(RECORDING.read_text(encoding="utf-8").replace(SENTINEL, PRINTER_CREDENTIAL))
+    recording = RECORDING.read_text(encoding="utf-8").replace(SENTINEL, PRINTER_CREDENTIAL)
+    answer = json.loads(recording)["answer"]
     # A credential the command knows of, somewhere no credential key names it.
     answer["pic"]["img_url"] += f"&leaked={BEARER}"
     stand_in = Obico(answer)
@@ -119,16 +121,11 @@ def test_it_records_the_answer_read_with_the_bearer_and_no_credential(
     equal(obico.authorizations, [f"Bearer {BEARER}"], describing="what the command sent")
 
     written = out.read_text(encoding="utf-8")
-    provenance_text = out.with_suffix(".provenance.json").read_text(encoding="utf-8")
     for credential in (BEARER, PRINTER_CREDENTIAL):
-        for where, text in (
-            ("the recording", written),
-            ("its provenance", provenance_text),
-            ("what it said", run.stdout + run.stderr),
-        ):
+        for where, text in (("the recording", written), ("what it said", run.stdout + run.stderr)):
             absent(text, credential, describing=where)
 
-    recorded = json.loads(written)
+    recorded = json.loads(written)["answer"]
     equal(recorded["auth_token"], SENTINEL, describing="the printer's credential")
     equal(recorded["current_print"]["printer"]["auth_token"], SENTINEL, describing="its copy")
     served = obico.answer
@@ -137,7 +134,7 @@ def test_it_records_the_answer_read_with_the_bearer_and_no_credential(
     equal(recorded["current_print"]["id"], served["current_print"]["id"], describing="the print")
     truth(recorded["pic"]["img_url"].endswith(f"&leaked={SENTINEL}"), describing="the URL scrubbed")
 
-    provenance = json.loads(provenance_text)
+    provenance = json.loads(written)["provenance"]
     equal(provenance["request"], "GET /api/v1/printers/1/", describing="the request")
     equal(provenance["status"], 200, describing="the status")
     equal(
@@ -168,7 +165,7 @@ def test_credentials_are_found_inside_lists_and_under_every_credential_key(
     contains(replaced, "settings.temp_profiles[0].token", describing="where credentials were")
     contains(replaced, "api_key", describing="where credentials were")
     equal(
-        json.loads(written)["settings"]["temp_profiles"][1],
+        json.loads(written)["answer"]["settings"]["temp_profiles"][1],
         {"token": None},
         describing="a credential Obico left empty",
     )
@@ -232,29 +229,29 @@ def test_a_recording_that_cannot_be_written_is_an_error_rather_than_a_verdict(
     absent(run.stdout + run.stderr, BEARER, describing="what it said")
 
 
-def test_a_provenance_that_cannot_be_written_leaves_the_recording_as_it_was(
-    obico: Obico, tmp_path: Path
-) -> None:
-    """The recording is never replaced without its provenance, and nothing half-written stays."""
+def test_a_recording_that_fails_to_land_leaves_the_one_before(obico: Obico, tmp_path: Path) -> None:
+    """The recording is replaced in one move or not at all, and nothing half-written stays."""
     out = tmp_path / "obico-printer.json"
     out.write_text("the recording before\n", encoding="utf-8")
-    (tmp_path / "obico-printer.provenance.json").mkdir()
+    (tmp_path / ".obico-printer.json.writing").mkdir()
     run = record(obico, out)
     equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
     contains(run.stderr, "could not be written", describing="the refusal")
     equal(out.read_text(encoding="utf-8"), "the recording before\n", describing="the recording")
-    equal(
-        sorted(path.name for path in tmp_path.iterdir()),
-        ["obico-printer.json", "obico-printer.provenance.json"],
-        describing="what is left beside it",
-    )
 
 
-@pytest.mark.parametrize("baseline", ["{ cut short", None])
+def test_the_committed_recording_names_the_revision_the_environment_pins() -> None:
+    """The provenance's revision is the one `tools/obico-env` stands up, so a re-run compares it."""
+    provenance = json.loads(RECORDING.read_text(encoding="utf-8"))["provenance"]
+    equal(provenance["obico_revision"], OBICO_REVISION, describing="the recorded revision")
+    equal(provenance["sentinel"], SENTINEL, describing="the recorded sentinel")
+
+
+@pytest.mark.parametrize("baseline", ["{ cut short", None, "[]", '{"answer": 1}'])
 def test_a_baseline_that_cannot_be_read_records_nothing(
     obico: Obico, tmp_path: Path, baseline: str | None
 ) -> None:
-    """A recording to compare with that is malformed or absent is refused before any write."""
+    """A baseline that is absent, malformed or no recording is refused before any write."""
     compare = tmp_path / "baseline.json"
     if baseline is not None:
         compare.write_text(baseline, encoding="utf-8")
@@ -263,7 +260,7 @@ def test_a_baseline_that_cannot_be_read_records_nothing(
         "--url", obico.url, "--printer-id", "1", "--out", str(out), "--compare-with", str(compare)
     )
     equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
-    contains(run.stderr, "could not be read", describing="the refusal")
+    contains(run.stderr, str(compare), describing="the refusal")
     truth(not out.exists(), describing="no recording")
 
 

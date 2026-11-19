@@ -27,14 +27,24 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
-/// The printer answer the REST host serves; `obico-printer.provenance.json`
-/// beside it says where it came from.
+/// The recording the REST host serves the `answer` of; its `provenance` says
+/// where that answer came from.
 pub const RECORDED_PRINTER: &str = include_str!("obico-printer.json");
 
 /// The recorded answer, held to the identifiers the journeys name it by.
 fn recorded() -> Value {
-    let answer: Value = serde_json::from_str(RECORDED_PRINTER).expect("the recording is JSON");
-    assert_eq!(answer["id"], json!(RECORDED_PRINTER_ID), "the recorded printer");
+    let recording: Value = serde_json::from_str(RECORDED_PRINTER).expect("the recording is JSON");
+    assert_eq!(
+        recording["provenance"]["sentinel"],
+        json!(AUTH_TOKEN_SENTINEL),
+        "the sentinel the recording's credentials were replaced with"
+    );
+    let answer = recording["answer"].clone();
+    assert_eq!(
+        answer["id"],
+        json!(RECORDED_PRINTER_ID),
+        "the recorded printer"
+    );
     assert_eq!(
         answer["auth_token"],
         json!(AUTH_TOKEN_SENTINEL),

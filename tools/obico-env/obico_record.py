@@ -24,9 +24,10 @@ a credential's key is replaced with the sentinel, and so is every appearance of 
 credential this command knows of anywhere else in the answer, before anything is
 written. An answer that is not `200`, not a JSON object, or not the printer
 asked for with a running print and a snapshot, is refused and nothing is
-written. Beside the recording it writes where it came
-from: the revision, the request, the authentication scheme, the status and this
-command. It then compares the shape it recorded — the fields and the JSON type of
+written. The recording is one file, written in one replace: the whole answer as
+served under `answer`, and under `provenance` where it came from — the revision,
+the request, the authentication scheme, the status and this command. It then
+compares the shape of the answer it recorded — the fields and the JSON type of
 each, as the tier compares the webhook body — with the committed recording's.
 
 Exit status is 0 when it recorded a shape the committed recording agrees with, 1
@@ -142,11 +143,17 @@ class Provenance(TypedDict):
     recorded_by: str
 
 
+class Recording(TypedDict):
+    """The file a run writes: Obico's whole answer, and where it came from."""
+
+    provenance: Provenance
+    answer: object
+
+
 class Recorded(Provenance):
     """What a run reports: the provenance, where it wrote, and how the shape compares."""
 
     recording: str
-    provenance: str
     compared_with: str
     verdict: Literal["agrees", "differs"]
     differences: list[str]
@@ -285,17 +292,9 @@ def record(
             "printer's running print with a snapshot, which is what the double serves"
         )
         raise RecordError(message)
+    before = answer_recorded_in(baseline)
     credentials = (bearer, *known)
     clean, replaced = sanitized(answer, credentials)
-    written = json.dumps(clean, indent=2) + "\n"
-    if any(credential and credential in written for credential in credentials):
-        message = f"a credential survived sanitizing the answer to {path}; nothing was written"
-        raise RecordError(message)
-    try:
-        before = json.loads(baseline.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:
-        message = f"the recording to compare with, {baseline}, could not be read: {error}"
-        raise RecordError(message) from error
     provenance = Provenance(
         obico_revision=OBICO_REVISION,
         request=f"GET {path}",
@@ -305,43 +304,56 @@ def record(
         credentials_replaced=replaced,
         recorded_by="uv run python tools/obico-env/obico_record.py --state-dir <state-dir>",
     )
-    provenance_path = out.with_suffix(".provenance.json")
-    replace_together([(out, written), (provenance_path, json.dumps(provenance, indent=2) + "\n")])
+    written = json.dumps(Recording(provenance=provenance, answer=clean), indent=2) + "\n"
+    if any(credential and credential in written for credential in credentials):
+        message = f"a credential survived sanitizing the answer to {path}; nothing was written"
+        raise RecordError(message)
+    replace(out, written)
     moved = differences(before, clean)
     note(f"recorded {path} ({answered.status}) to {out}, replacing {len(replaced)} credential(s)")
     return Recorded(
         **provenance,
         recording=str(out),
-        provenance=str(provenance_path),
         compared_with=str(baseline),
         verdict="differs" if moved else "agrees",
         differences=moved,
     )
 
 
-def replace_together(files: list[tuple[Path, str]]) -> None:
-    """Write every file, or leave every one as it was.
-
-    Each is written beside its target first and only then moved into place, the
-    last of them first, so a recording never stands beside another run's
-    provenance: a failure before the last move leaves the recording untouched.
+def answer_recorded_in(baseline: Path) -> dict[str, object]:
+    """The answer a recording this command wrote holds, to compare a new one with.
 
     Raises:
-        RecordError: If any of them cannot be written, having removed what it wrote.
+        RecordError: If `baseline` is not such a recording.
     """
-    staged = [(target, target.with_name(f".{target.name}.writing")) for target, _ in files]
     try:
-        for (target, text), (_, temporary) in zip(files, staged, strict=True):
-            target.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(text, encoding="utf-8")
-        for target, temporary in reversed(staged):
-            temporary.replace(target)
+        recording = json.loads(baseline.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        message = f"the recording to compare with, {baseline}, could not be read: {error}"
+        raise RecordError(message) from error
+    answer = recording.get("answer") if isinstance(recording, dict) else None
+    if not isinstance(answer, dict) or not isinstance(recording.get("provenance"), dict):
+        message = f"{baseline} holds no recording: no `provenance` and `answer` objects"
+        raise RecordError(message)
+    return answer
+
+
+def replace(out: Path, text: str) -> None:
+    """Put `text` at `out` in one move, so a failure leaves what was there.
+
+    Raises:
+        RecordError: If it cannot be written, having removed what it wrote.
+    """
+    temporary = out.with_name(f".{out.name}.writing")
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_text(text, encoding="utf-8")
+        temporary.replace(out)
     except OSError as error:
-        for _, temporary in staged:
-            # A temporary under a parent that is no directory was never made.
-            with contextlib.suppress(OSError):
-                temporary.unlink(missing_ok=True)
-        message = f"the recording could not be written to {files[0][0]}: {error}"
+        # A temporary under a parent that is no directory was never made.
+        with contextlib.suppress(OSError):
+            temporary.unlink(missing_ok=True)
+        message = f"the recording could not be written to {out}: {error}"
         raise RecordError(message) from error
 
 
