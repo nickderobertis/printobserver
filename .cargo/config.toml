@@ -16,3 +16,12 @@ target-dir = "target"
 # binary drops the 2-3x of its size debuginfo was. `release` is untouched.
 [profile.dev]
 debug = 0
+
+# The real-print suite's own build. Its programs carry the `replay-clock` and
+# `test-responder` features, so they differ from the ordinary `dev` build of the
+# same names; a profile of their own puts them in `target/skilltest/`, where the
+# suite reads them, and never over the `target/debug/printobserver` every other
+# target builds and digests. Sharing that path let the suite's build replace the
+# program a concurrent test had already packaged, mid-run.
+[profile.skilltest]
+inherits = "dev"

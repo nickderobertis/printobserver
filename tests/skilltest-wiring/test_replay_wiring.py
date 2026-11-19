@@ -1189,6 +1189,28 @@ def test_a_false_image_is_refused_rather_than_read_as_none() -> None:
     equal(is_event({**event, "image": False}), False)
 
 
+def test_the_suites_build_leaves_the_ordinary_program_alone() -> None:
+    """The replay build never replaces the program every other target builds and digests.
+
+    This target runs after `build-programs`. Had that build written its replay-clock
+    `printobserver` over the dev profile's, a concurrent test would find a program other
+    than the one it had already packaged.
+    """
+    metadata = run(
+        ["cargo", "metadata", "--format-version", "1", "--no-deps", "--offline"], cwd=REPO
+    )
+    equal(metadata.returncode, 0, describing=f"cargo metadata: {metadata.stderr}")
+    built = program("printobserver")
+    ordinary = Path(json.loads(metadata.stdout)["target_directory"]) / "debug" / built.name
+    replay_clock = b"PRINTOBSERVER_REPLAY_REAL_WAITS"
+    contains(built.read_bytes(), replay_clock, describing="the suite's own build")
+    if ordinary.is_file():
+        truth(
+            replay_clock not in ordinary.read_bytes(),
+            describing=f"{ordinary} to be the ordinary build, not the suite's",
+        )
+
+
 def test_the_kept_harness_is_a_copy_that_starts_and_outlives_its_install(
     scratch: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

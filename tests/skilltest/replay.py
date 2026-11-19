@@ -86,7 +86,8 @@ class ReplayError(Exception):
 def program(name: str) -> Path:
     """A built program of this workspace."""
     suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
-    return REPO / "target" / "skilltest" / f"{name}{suffix}"
+    target = Path(os.environ.get("CARGO_TARGET_DIR") or REPO / "target")
+    return target / "skilltest" / f"{name}{suffix}"
 
 
 def _installer_template() -> str:
