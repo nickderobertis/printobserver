@@ -5,14 +5,15 @@ The detector status reads one `GET /api/v1/printers/{id}/` per observation
 interval under the `[obico] access_token`, sent as `Authorization: Bearer`. The
 double those journeys run against serves a recording of that answer, and this is
 the command that makes it: re-running it against the stack `obico_env.py up`
-left is how the recording is compared with the real Obico again.
+left is how the recording is compared with the real Obico again, and the
+scheduled Obico tier does exactly that.
 
     obico_record.py --state-dir .obico-env
     obico_record.py --url URL --printer-id ID     (bearer from OBICO_RECORD_ACCESS_TOKEN)
 
 Against a state directory it does what a user and the agent beside a printer do,
 through Obico's own code: the printer posts a snapshot through Obico's printer
-API, so the answer carries one, and an access token is minted for the
+API, so the answer carries one, and a read-only access token is minted for the
 provisioned account through Obico's own OAuth2 models — the kind of token
 `[obico] access_token` holds. Then it reads the answer with that token as a
 bearer, and nothing else. Given an address instead, it reads whatever Obico
@@ -21,13 +22,16 @@ answers there, with the bearer the environment variable holds.
 The answer carries the printer's own credential, `auth_token`. Every value under
 a credential's key is replaced with the sentinel, and so is every appearance of a
 credential this command knows of anywhere else in the answer, before anything is
-written; an answer that is not `200`, not a JSON object, or missing a field the
-status reads is refused and nothing is written. Beside the recording it writes
-where it came from: the revision, the request path, the authentication scheme,
-the status, and this command.
+written. An answer that is not `200`, not a JSON object, not the printer asked
+for, or without the fields the status reads in the types it reads them in, is
+refused and nothing is written. Beside the recording it writes where it came
+from: the revision, the request, the authentication scheme, the status and this
+command. It then compares the shape it recorded — the fields and the JSON type of
+each, as the tier compares the webhook body — with the committed recording's.
 
-Exit status is 0 when it recorded, and 2 when it did not, saying why on stderr.
-Credentials are never printed.
+Exit status is 0 when it recorded a shape the committed recording agrees with, 1
+when it recorded one that differs, naming every field that moved, and 2 when it
+recorded nothing, saying why on stderr. Credentials are never printed.
 """
 
 from __future__ import annotations
@@ -37,11 +41,12 @@ import json
 import os
 import sys
 import urllib.error
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Literal, NewType, TypedDict
 
 from obico_env import ACCOUNT_EMAIL, OBICO_REVISION, Stack, note, run_program
-from obico_tier import PrinterToken, TierError, http, post_snapshot, stack_under
+from obico_tier import TierError, differences, http, is_service_address, post_snapshot, stack_under
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -58,15 +63,18 @@ CREDENTIAL_KEYS = frozenset(
     {"auth_token", "access_token", "refresh_token", "token", "password", "secret", "api_key"}
 )
 
-#: The fields the detector status reads, which an answer must carry to be recorded.
-STATUS_FIELDS = ("id", "current_print", "pic", "normalized_p")
-
 #: The variable the bearer is read from when no state directory mints one: an
 #: argument would put the credential in the process table.
 BEARER_VARIABLE = "OBICO_RECORD_ACCESS_TOKEN"
 
-# Run inside the web container through Obico's own `manage.py shell`: mint an
-# OAuth2 access token for the provisioned account through the same models
+#: A printer, by Obico's identifier for it: a positive integer.
+PrinterId = NewType("PrinterId", int)
+
+#: An OAuth2 access token of Obico's, sent as a bearer. A credential, so never reported.
+AccessToken = NewType("AccessToken", str)
+
+# Run inside the web container through Obico's own `manage.py shell`: mint a
+# read-only OAuth2 access token for the provisioned account through the models
 # Obico's own authorization flow writes, reusing one application across runs.
 MINT_SCRIPT = """
 import json, secrets
@@ -92,7 +100,7 @@ token = get_access_token_model().objects.create(
     application=application,
     token=secrets.token_urlsafe(30),
     expires=timezone.now() + timedelta(minutes=10),
-    scope='read write',
+    scope='read',
 )
 print('OBICO_RECORD_MINTED ' + token.token)
 """
@@ -104,8 +112,45 @@ class RecordError(Exception):
     """Nothing was recorded, with what stopped it."""
 
 
-def mint_access_token(stack: Stack) -> str:
-    """An access token for the provisioned account, minted through Obico's own models.
+@dataclass(frozen=True)
+class Answered:
+    """What Obico answered the printer read: its status and its body."""
+
+    status: int
+    body: bytes
+
+
+class Provenance(TypedDict):
+    """Where a recording came from, written beside it."""
+
+    obico_revision: str
+    request: str
+    authentication: str
+    status: int
+    sentinel: str
+    credentials_replaced: list[str]
+    recorded_by: str
+
+
+class Recorded(Provenance):
+    """What a run reports: the provenance, where it wrote, and how the shape compares."""
+
+    recording: str
+    provenance: str
+    compared_with: str
+    verdict: Literal["agrees", "differs"]
+    differences: list[str]
+
+
+def positive_printer(value: object) -> PrinterId | None:
+    """`value` as a printer identifier, or `None` when it is not a positive integer."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return PrinterId(value)
+    return None
+
+
+def mint_access_token(stack: Stack) -> AccessToken:
+    """A read-only access token for the provisioned account, minted through Obico's own models.
 
     Raises:
         RecordError: If Obico does not say it minted one.
@@ -117,29 +162,30 @@ def mint_access_token(stack: Stack) -> str:
     )
     for line in answered.stdout.splitlines():
         if line.startswith(MINTED) and line[len(MINTED) :].strip():
-            return line[len(MINTED) :].strip()
+            return AccessToken(line[len(MINTED) :].strip())
     # What Obico said is not echoed: a partial line could carry the token.
     message = "Obico's `manage.py shell` did not report a minted access token"
     raise RecordError(message)
 
 
-def read_printer(url: str, printer_id: int, access_token: str) -> tuple[int, bytes]:
-    """Obico's answer to the printer read, under the bearer, as status and body.
+def read_printer(url: str, printer: PrinterId, bearer: AccessToken) -> Answered:
+    """Obico's answer to the printer read under the bearer.
 
     Raises:
         RecordError: If Obico cannot be reached at all.
     """
     try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         status, body, _ = http(
-            f"{url.rstrip('/')}/api/v1/printers/{printer_id}/",
-            headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+            f"{url.rstrip('/')}/api/v1/printers/{printer}/",
+            headers={"Authorization": f"Bearer {bearer}", "Accept": "application/json"},
         )
     except urllib.error.HTTPError as refused:
-        return refused.code, b""
+        return Answered(refused.code, b"")
     except (OSError, ValueError) as error:
         message = f"Obico at {url} could not be read: {error}"
         raise RecordError(message) from error
-    return status, body
+    return Answered(status, body)
 
 
 def sanitized(answer: object, known: tuple[str, ...]) -> tuple[object, list[str]]:
@@ -152,87 +198,117 @@ def sanitized(answer: object, known: tuple[str, ...]) -> tuple[object, list[str]
     replaced: list[str] = []
 
     def walk(value: object, where: str) -> object:
-        if isinstance(value, dict):
-            kept: dict[str, object] = {}
-            for key, item in value.items():
-                at = f"{where}.{key}" if where else key
-                if key in CREDENTIAL_KEYS and item is not None:
-                    replaced.append(at)
-                    kept[key] = SENTINEL
-                else:
-                    kept[key] = walk(item, at)
-            return kept
-        if isinstance(value, list):
-            return [walk(item, f"{where}[{index}]") for index, item in enumerate(value)]
-        if isinstance(value, str):
-            scrubbed = value
-            for credential in known:
-                if credential and credential in scrubbed:
-                    scrubbed = scrubbed.replace(credential, SENTINEL)
-            if scrubbed != value:
-                replaced.append(where)
-            return scrubbed
-        return value
+        match value:
+            case dict():
+                kept: dict[object, object] = {}
+                for key, item in value.items():
+                    at = f"{where}.{key}" if where else str(key)
+                    if key in CREDENTIAL_KEYS and item is not None:
+                        replaced.append(at)
+                        kept[key] = SENTINEL
+                    else:
+                        kept[key] = walk(item, at)
+                return kept
+            case list():
+                return [walk(item, f"{where}[{index}]") for index, item in enumerate(value)]
+            case str():
+                scrubbed = value
+                for credential in known:
+                    if credential:
+                        scrubbed = scrubbed.replace(credential, SENTINEL)
+                if scrubbed != value:
+                    replaced.append(where)
+                return scrubbed
+            case _:
+                return value
 
     return walk(answer, ""), replaced
 
 
+def unreadable_fields(answer: dict[str, object], printer: PrinterId) -> list[str]:
+    """Every field the detector status reads that the answer lacks, or carries mistyped."""
+    wrong: list[str] = []
+    if answer.get("id") != printer:
+        wrong.append(f"id (not {printer})")
+    current = answer.get("current_print")
+    if not isinstance(current, dict) or positive_printer(current.get("id")) is None:
+        wrong.append("current_print.id")
+    pic = answer.get("pic")
+    if not isinstance(pic, dict) or not isinstance(pic.get("img_url"), str):
+        wrong.append("pic.img_url")
+    score = answer.get("normalized_p")
+    if isinstance(score, bool) or not isinstance(score, int | float):
+        wrong.append("normalized_p")
+    return wrong
+
+
 def record(
     url: str,
-    printer_id: int,
-    access_token: str,
+    printer: PrinterId,
+    bearer: AccessToken,
     out: Path,
     *,
     known: tuple[str, ...] = (),
-) -> dict[str, Any]:
+) -> Recorded:
     """Read the printer answer under the bearer and write it, sanitized, with its provenance.
 
     Raises:
         RecordError: If the answer is not one to record; nothing is written then.
     """
-    path = f"/api/v1/printers/{printer_id}/"
-    status, body = read_printer(url, printer_id, access_token)
-    if status != 200:
-        message = f"Obico answered {path} {status} under the bearer access token, not 200"
+    path = f"/api/v1/printers/{printer}/"
+    answered = read_printer(url, printer, bearer)
+    if answered.status != 200:
+        message = f"Obico answered {path} {answered.status} under the bearer access token, not 200"
         raise RecordError(message)
     try:
-        answer = json.loads(body)
+        answer = json.loads(answered.body)
     except ValueError as error:
         message = f"Obico's answer to {path} is not JSON: {error}"
         raise RecordError(message) from error
     if not isinstance(answer, dict):
         message = f"Obico's answer to {path} is not a JSON object"
         raise RecordError(message)
-    missing = [name for name in STATUS_FIELDS if answer.get(name) is None]
-    if missing:
+    wrong = unreadable_fields(answer, printer)
+    if wrong:
         message = (
-            f"Obico's answer to {path} carries no {', '.join(missing)}: the stack has no "
-            "running print with a snapshot, so it is not the answer the double serves"
+            f"Obico's answer to {path} carries no usable {', '.join(wrong)}: it is not "
+            "a running print's answer with a snapshot, which is what the double serves"
         )
         raise RecordError(message)
-    clean, replaced = sanitized(answer, (access_token, *known))
-    written = json.dumps(clean)
-    if any(credential and credential in written for credential in (access_token, *known)):
+    credentials = (bearer, *known)
+    clean, replaced = sanitized(answer, credentials)
+    written = json.dumps(clean, indent=2) + "\n"
+    if any(credential and credential in written for credential in credentials):
         message = f"a credential survived sanitizing the answer to {path}; nothing was written"
         raise RecordError(message)
-    provenance = {
-        "obico_revision": OBICO_REVISION,
-        "request": f"GET {path}",
-        "authentication": "Authorization: Bearer <[obico] access_token>",
-        "status": status,
-        "sentinel": SENTINEL,
-        "credentials_replaced": replaced,
-        "recorded_by": "uv run python tools/obico-env/obico_record.py --state-dir <state-dir>",
-    }
+    committed = REPOSITORY_ROOT / RECORDING
+    before = json.loads(committed.read_text(encoding="utf-8")) if committed.is_file() else {}
+    provenance = Provenance(
+        obico_revision=OBICO_REVISION,
+        request=f"GET {path}",
+        authentication="Authorization: Bearer <[obico] access_token>",
+        status=answered.status,
+        sentinel=SENTINEL,
+        credentials_replaced=replaced,
+        recorded_by="uv run python tools/obico-env/obico_record.py --state-dir <state-dir>",
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(clean, indent=2) + "\n", encoding="utf-8")
+    out.write_text(written, encoding="utf-8")
     provenance_path = out.with_suffix(".provenance.json")
     provenance_path.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
-    note(f"recorded {path} ({status}) to {out}, replacing {len(replaced)} credential(s)")
-    return {"recording": str(out), "provenance": str(provenance_path), **provenance}
+    moved = differences(before, clean)
+    note(f"recorded {path} ({answered.status}) to {out}, replacing {len(replaced)} credential(s)")
+    return Recorded(
+        **provenance,
+        recording=str(out),
+        provenance=str(provenance_path),
+        compared_with=RECORDING,
+        verdict="differs" if moved else "agrees",
+        differences=moved,
+    )
 
 
-def from_stack(state_dir: Path, out: Path) -> dict[str, Any]:
+def from_stack(state_dir: Path, out: Path) -> Recorded:
     """Post a snapshot, mint a bearer, and record, against the stack under `state_dir`.
 
     Raises:
@@ -240,25 +316,41 @@ def from_stack(state_dir: Path, out: Path) -> dict[str, Any]:
     """
     try:
         instance = stack_under(state_dir)
-    except TierError as error:
-        raise RecordError(str(error)) from error
-    written = json.loads((state_dir / "instance.json").read_text(encoding="utf-8"))
-    printer_id = written.get("printer_id")
-    if not isinstance(printer_id, int):
-        message = f"{state_dir / 'instance.json'} names no printer; run `just obico-up` again"
-        raise RecordError(message)
-    try:
+        if instance.printer_id is None:
+            message = f"{state_dir / 'instance.json'} names no printer; run `just obico-up` again"
+            raise RecordError(message)
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         posted = post_snapshot(instance.url, instance.printer_token)
     except TierError as error:
         raise RecordError(str(error)) from error
     note(f"the printer posted a snapshot to {instance.url} ({posted})")
-    token = mint_access_token(instance.stack)
-    known: tuple[str, ...] = (PrinterToken(instance.printer_token),)
-    return record(instance.url, printer_id, token, out, known=known)
+    bearer = mint_access_token(instance.stack)
+    printer = PrinterId(instance.printer_id)
+    return record(instance.url, printer, bearer, out, known=(instance.printer_token,))
+
+
+def from_address(url: str, printer: int, out: Path) -> Recorded:
+    """Record from an Obico named by its address, with the bearer the environment holds.
+
+    Raises:
+        RecordError: If the address, the printer or the bearer is not one to use.
+    """
+    if not is_service_address(url):
+        message = f"{url!r} is no http(s) address with a host and port"
+        raise RecordError(message)
+    identified = positive_printer(printer)
+    if identified is None:
+        message = f"--printer-id {printer} is not a positive integer"
+        raise RecordError(message)
+    bearer = os.environ.get(BEARER_VARIABLE, "")
+    if not bearer:
+        message = f"--url reads with the bearer {BEARER_VARIABLE} holds; it is unset"
+        raise RecordError(message)
+    return record(url, identified, AccessToken(bearer), out)
 
 
 def argument_parser() -> argparse.ArgumentParser:
-    """The command surface."""
+    """Two ways to name the Obico to read, and where the recording goes."""
     parser = argparse.ArgumentParser(prog="obico-record", description=__doc__)
     parser.add_argument("--state-dir", default="", help="the stack `obico_env.py up` left")
     parser.add_argument("--url", default="", help="an Obico to read, in place of a state dir")
@@ -272,26 +364,24 @@ def argument_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Record once, answering 0 when it did and 2 when it did not."""
+    """Record once: 0 when the shape agrees, 1 when it differs, 2 when nothing was recorded."""
     arguments = argument_parser().parse_args(argv)
     out = Path(arguments.out)
     try:
         if arguments.state_dir:
-            answer = from_stack(Path(arguments.state_dir), out)
-        elif arguments.url and arguments.printer_id:
-            token = os.environ.get(BEARER_VARIABLE, "")
-            if not token:
-                message = f"--url reads with the bearer {BEARER_VARIABLE} holds; it is unset"
-                raise RecordError(message)
-            answer = record(arguments.url, arguments.printer_id, token, out)
+            recorded = from_stack(Path(arguments.state_dir), out)
+        elif arguments.url or arguments.printer_id:
+            recorded = from_address(arguments.url, arguments.printer_id, out)
         else:
             message = "pass `--state-dir`, or both `--url` and `--printer-id`"
             raise RecordError(message)
     except RecordError as error:
         print(f"obico-record: recorded nothing: {error}", file=sys.stderr)
         return 2
-    print(json.dumps(answer, indent=2))
-    return 0
+    print(json.dumps(recorded, indent=2))
+    for moved in recorded["differences"]:
+        note(f"  moved since the committed recording: {moved}")
+    return 0 if recorded["verdict"] == "agrees" else 1
 
 
 if __name__ == "__main__":

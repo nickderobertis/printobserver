@@ -27,13 +27,8 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
-/// The printer answer the REST host serves: the body a real self-hosted
-/// `Obico` at revision `49c0bc70` answered `GET /api/v1/printers/1/` with,
-/// `200`, under `Authorization: Bearer <access_token>`, while it had a running
-/// print and a snapshot of it — verbatim, but for both copies of the printer's
-/// credential `auth_token`, which are the sentinel. `obico-printer.provenance.json`
-/// beside it says the same, and `tools/obico-env/obico_record.py` is the command
-/// that wrote both and re-reads them from the stack `tools/obico-env` brings up.
+/// The printer answer the REST host serves; `obico-printer.provenance.json`
+/// beside it says where it came from.
 pub const RECORDED_PRINTER: &str = include_str!("obico-printer.json");
 
 /// The recorded answer, held to the identifiers the journeys name it by.

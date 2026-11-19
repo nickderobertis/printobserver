@@ -4782,3 +4782,15 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/obico_record.py"
+site = "status, body, _ = http("
+reason = "One read, once, by a command a person runs by hand to re-record a fixture: there is nothing for an async client to overlap, and the answer is kept as Obico's raw bytes on purpose, because the recording is the whole body as served rather than a typed model of the fields this repository reads. It goes through the Obico tier's one `http` helper, so the tooling carries one HTTP client rather than two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/obico_record.py"
+site = "posted = post_snapshot(instance.url, instance.printer_token)"
+reason = "The Obico tier's own snapshot post, reused unchanged so the recorder puts a snapshot on the stack exactly as the tier does; it runs once, before the one read, in a strictly ordered command with nothing to overlap."

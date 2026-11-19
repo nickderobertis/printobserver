@@ -4,9 +4,8 @@
 it; the stand-in serves the committed recording's own shape with a live-looking
 credential put back where the sentinel is, and answers only the bearer Obico
 would, so what is proven is that the command reads with that bearer and writes
-nothing that carries a credential. The run against the real stack is the one
-`tools/obico-env` brings up, and is the comparison the recording's provenance
-names rather than something every test pays for.
+nothing that carries a credential. `test_live_record.py` runs it against the
+real stack.
 """
 
 from __future__ import annotations
@@ -22,8 +21,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from repo_checks.expect import absent, equal, failing, passing, truth
-from repo_checks.loopback import LoopbackServer
+from repo_checks.expect import absent, contains, equal, failing, passing, truth
+from repo_checks.loopback import UNREACHABLE, LoopbackServer
 from repo_checks.shell import run as shell_run
 
 TOOL = Path(__file__).resolve().parents[1]
@@ -36,11 +35,12 @@ SENTINEL = "SENTINEL-obico-printer-auth-token-0b6f3c"
 
 
 class Obico:
-    """Serves one printer's answer at its path, to the bearer alone, as Obico does."""
+    """Serves one printer's body at its path, to the bearer alone, as Obico does."""
 
     def __init__(self, answer: dict[str, Any]) -> None:
-        """Take the answer it serves."""
+        """Serve `answer` as JSON until `body` is set to other bytes."""
         self.answer = answer
+        self.body: bytes | None = None
         self.authorizations: list[str] = []
         stand_in = self
 
@@ -51,6 +51,8 @@ class Obico:
                     self._answer(404, b"{}")
                 elif self.headers.get("Authorization") != f"Bearer {BEARER}":
                     self._answer(403, b'{"detail": "not authenticated"}')
+                elif stand_in.body is not None:
+                    self._answer(200, stand_in.body)
                 else:
                     self._answer(200, json.dumps(stand_in.answer).encode())
 
@@ -83,18 +85,19 @@ def obico() -> Iterator[Obico]:
     thread.join(timeout=10)
 
 
-def record(
-    obico: Obico, out: Path, bearer: str | None = BEARER
-) -> subprocess.CompletedProcess[str]:
+def run_record(*arguments: str, bearer: str | None = BEARER) -> subprocess.CompletedProcess[str]:
     """Run the command the way a person does, the bearer in its variable."""
     env = {key: value for key, value in os.environ.items() if key != "OBICO_RECORD_ACCESS_TOKEN"}
     if bearer is not None:
         env["OBICO_RECORD_ACCESS_TOKEN"] = bearer
-    return shell_run(
-        [sys.executable, str(RECORD), "--url", obico.url, "--printer-id", "1", "--out", str(out)],
-        env=env,
-        timeout=120,
-    )
+    return shell_run([sys.executable, str(RECORD), *arguments], env=env, timeout=120)
+
+
+def record(
+    obico: Obico, out: Path, bearer: str | None = BEARER
+) -> subprocess.CompletedProcess[str]:
+    """Record printer 1 from the stand-in into `out`."""
+    return run_record("--url", obico.url, "--printer-id", "1", "--out", str(out), bearer=bearer)
 
 
 def test_it_records_the_answer_read_with_the_bearer_and_no_credential(
@@ -103,7 +106,7 @@ def test_it_records_the_answer_read_with_the_bearer_and_no_credential(
     """Every credential is the sentinel, every other field as served, with provenance beside."""
     out = tmp_path / "obico-printer.json"
     run = record(obico, out)
-    passing(run, describing="recording against the stand-in")
+    passing(run, describing="recording the committed shape against the stand-in")
     equal(obico.authorizations, [f"Bearer {BEARER}"], describing="what the command sent")
 
     written = out.read_text(encoding="utf-8")
@@ -138,6 +141,66 @@ def test_it_records_the_answer_read_with_the_bearer_and_no_credential(
         ["auth_token", "current_print.printer.auth_token", "pic.img_url"],
         describing="where credentials were",
     )
+    equal(json.loads(run.stdout)["verdict"], "agrees", describing="the committed shape compared")
+
+
+def test_credentials_are_found_inside_lists_and_under_every_credential_key(
+    obico: Obico, tmp_path: Path
+) -> None:
+    """A token in an array, or under another credential's key, is the sentinel too."""
+    obico.answer["settings"]["temp_profiles"] = [{"token": "list-held-secret"}]
+    obico.answer["api_key"] = "an-api-key"
+    out = tmp_path / "obico-printer.json"
+    run = record(obico, out)
+    written = out.read_text(encoding="utf-8")
+    for credential in ("list-held-secret", "an-api-key"):
+        absent(written, credential, describing="the recording")
+    replaced = json.loads(run.stdout)["credentials_replaced"]
+    contains(replaced, "settings.temp_profiles[0].token", describing="where credentials were")
+    contains(replaced, "api_key", describing="where credentials were")
+
+
+def test_a_shape_that_moved_is_recorded_and_named(obico: Obico, tmp_path: Path) -> None:
+    """Exit 1, the recording written, and every field that moved named."""
+    obico.answer["a_field_obico_added"] = 3
+    del obico.answer["settings"]
+    out = tmp_path / "obico-printer.json"
+    run = record(obico, out)
+    equal(run.returncode, 1, describing=f"the exit for a moved shape:\n{run.stderr}")
+    truth(out.is_file(), describing="the recording written anyway")
+    moved = "\n".join(json.loads(run.stdout)["differences"])
+    contains(moved, "unexpected field `a_field_obico_added`", describing="what moved")
+    contains(moved, "missing field `settings`", describing="what moved")
+
+
+@pytest.mark.parametrize(
+    ("change", "naming"),
+    [
+        ({"id": 2}, "id (not 1)"),
+        ({"pic": None}, "pic.img_url"),
+        ({"current_print": None}, "current_print.id"),
+        ({"normalized_p": "0.4"}, "normalized_p"),
+    ],
+)
+def test_an_answer_the_status_could_not_read_is_not_recorded(
+    obico: Obico, tmp_path: Path, change: dict[str, object], naming: str
+) -> None:
+    """The wrong printer, no snapshot, no print or a mistyped score: refused, nothing written."""
+    obico.answer.update(change)
+    out = tmp_path / "obico-printer.json"
+    failing(record(obico, out), naming=naming)
+    truth(not out.exists(), describing="no recording")
+
+
+@pytest.mark.parametrize(("body", "naming"), [(b"<html>", "is not JSON"), (b"[]", "not a JSON")])
+def test_a_body_that_is_no_answer_is_not_recorded(
+    obico: Obico, tmp_path: Path, body: bytes, naming: str
+) -> None:
+    """A body that is not one JSON object is refused, nothing written."""
+    obico.body = body
+    out = tmp_path / "obico-printer.json"
+    failing(record(obico, out), naming=naming)
+    truth(not out.exists(), describing="no recording")
 
 
 def test_a_refused_bearer_records_nothing(obico: Obico, tmp_path: Path) -> None:
@@ -154,9 +217,43 @@ def test_no_bearer_reads_nothing(obico: Obico, tmp_path: Path) -> None:
     equal(obico.authorizations, [], describing="what reached Obico")
 
 
-def test_an_answer_with_no_snapshot_is_not_recorded(obico: Obico, tmp_path: Path) -> None:
-    """The double needs a snapshot to move; an answer without one is refused."""
-    obico.answer["pic"] = None
+@pytest.mark.parametrize(
+    ("arguments", "naming"),
+    [
+        ((), "pass `--state-dir`"),
+        (("--url", "ftp://127.0.0.1:1", "--printer-id", "1"), "no http(s) address"),
+        (("--url", "http://127.0.0.1:1", "--printer-id", "-3"), "not a positive integer"),
+        (("--url", f"http://{UNREACHABLE[0]}:{UNREACHABLE[1]}", "--printer-id", "1"), "could not"),
+    ],
+)
+def test_an_obico_it_cannot_read_is_refused_naming_why(
+    tmp_path: Path, arguments: tuple[str, ...], naming: str
+) -> None:
+    """No address, a bad one, a bad printer or nothing listening: exit 2, nothing written."""
     out = tmp_path / "obico-printer.json"
-    failing(record(obico, out), naming="pic")
-    truth(not out.exists(), describing="no recording without a snapshot")
+    run = run_record(*arguments, "--out", str(out))
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, naming, describing="the refusal")
+    truth(not out.exists(), describing="no recording")
+
+
+def test_a_stack_record_naming_no_printer_is_refused_before_anything_is_posted(
+    tmp_path: Path,
+) -> None:
+    """A state directory whose record names no printer stops before the stack is touched."""
+    (tmp_path / "instance.json").write_text(
+        json.dumps(
+            {
+                "state_dir": str(tmp_path),
+                "project": "printobserver-obico",
+                "url": "http://127.0.0.1:1",
+                "printer_token": "a-token",
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "obico-printer.json"
+    run = run_record("--state-dir", str(tmp_path), "--out", str(out))
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, "names no printer", describing="the refusal")
+    absent(run.stderr, "a-token", describing="the refusal")
