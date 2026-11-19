@@ -672,20 +672,28 @@ E2E_BESIDE = "    just test-e2e {{quote(tier)}} & e2e=$!; \\\n"
 def test_a_timing_budget_measured_beside_the_end_to_end_tier_is_found(
     doubled: Callable[[], Copy], old: str, new: str, naming: str
 ) -> None:
-    """The timing projects folded back into the test tier, or tested once it started, are found."""
+    """The timing projects folded back into the test tier, or tested once it started, are found.
+
+    One `test` cell is run rather than every job: the defect is in the recipe
+    every cell runs, and what is found is that cell's own order of invocations.
+    """
     copy = doubled()
     path = copy.root / "justfile"
     text = path.read_text(encoding="utf-8")
     truth(old in text, describing="the committed `ci-measured` lines the defect edits")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
-    ran = ran_in(copy)
-    if not ran.beside:
+    if evaluated(copy, "CI_E2E_BESIDE_TESTS") != "true":
         pytest.skip("this host's `ci-measured` starts no end-to-end tier beside the test tier")
-    said = "\n".join(
-        finding
-        for test in ran.tested.values()
-        for finding in timing_findings(test, ran.timed, ran.beside)
-    )
+    repo = Repo(copy.root)
+    graph = {project.name: set(project.targets) for project in projects(repo)}
+    timing = evaluated(copy, "TIMED")
+    timed = frozenset(project.name for project in projects(repo) if timing in project.tags)
+    workflow = load_workflow(copy.root / CI)
+    cell = next(cell for cell in cells(workflow) if cell.job == TEST_JOB)
+    record = copy.root.parent / "records" / f"{cell.job}-{cell.platform}.jsonl"
+    record.parent.mkdir(exist_ok=True)
+    copy.run_job(workflow, cell, record)
+    said = "\n".join(timing_findings(work(record, graph), timed, beside=True))
 
     truth(naming in said, describing=f"a finding naming {naming!r} in:\n{said}")
 
