@@ -15,6 +15,9 @@
 
 [tool.uv.workspace]
 members = []
+# A project with an environment of its own: its numpy, scipy and OpenCV are no
+# other project's to install.
+exclude = ["tools/camera-calibration"]
 
 [dependency-groups]
 dev = [

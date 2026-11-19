@@ -62,6 +62,7 @@ printobserver-core = { path = "crates/printobserver-core", version = "0.13.1" }
 printobserver-obico = { path = "crates/printobserver-obico", version = "0.13.1" }
 printobserver-octoprint = { path = "crates/printobserver-octoprint", version = "0.13.1" }
 printobserver-oneharness = { path = "crates/printobserver-oneharness", version = "0.13.1" }
+printobserver-panels = { path = "crates/printobserver-panels", version = "0.13.1" }
 printobserver-printer-api = { path = "crates/printobserver-printer-api", version = "0.13.1" }
 printobserver-sdk = { path = "crates/printobserver-sdk", version = "0.13.1" }
 printobserver-server = { path = "crates/printobserver-server", version = "0.13.1" }
@@ -83,3 +84,18 @@ missing_docs = "deny"
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
+
+# Decoding, correlating and drawing full-size camera frames is the work of the
+# panels crate and the image crates under it; unoptimised, its recorded-frame
+# tests take minutes. Every other crate builds as before.
+[profile.dev.package.printobserver-panels]
+opt-level = 3
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.imageproc]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
