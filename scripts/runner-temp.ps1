@@ -92,7 +92,7 @@ try {
         $leaf = Split-Path -Leaf $scratch
         $marker = Join-Path $scratch '.printobserver-owned'
         if ($leaf -ne $env:PRINTOBSERVER_JOB_SCRATCH_OWNER -or
-            $leaf -notmatch '^printobserver-[0-9a-f]{32}$' -or
+            $leaf -notmatch '^po-[0-9a-f]{16}$' -or
             -not (Test-Path -LiteralPath $marker -PathType Leaf) -or
             (Get-Content -LiteralPath $marker -Raw).Trim() -ne $leaf) {
             throw "Refusing cleanup of unowned scratch: $scratch. Clear the foreign PRINTOBSERVER_JOB_SCRATCH and PRINTOBSERVER_JOB_SCRATCH_OWNER values."
@@ -133,7 +133,9 @@ try {
         $onDevDrive = $true
     }
     if (Test-Path -LiteralPath $DriveRoot -PathType Container) {
-        $candidate = Join-Path $DriveRoot ('printobserver-' + [guid]::NewGuid().ToString('N'))
+        # A short leaf: a build under it reaches Windows' 260-character path limit
+        # on a runner that does not enable long paths, as the ARM one does not.
+        $candidate = Join-Path $DriveRoot ('po-' + [guid]::NewGuid().ToString('N').Substring(0, 16))
         $created = $false
         try {
             New-Item -ItemType Directory -Path $candidate | Out-Null

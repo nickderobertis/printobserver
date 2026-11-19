@@ -97,6 +97,13 @@ def test_children_use_scratch_or_usable_fallback_and_cleanup_keeps_unrelated_fil
     chosen = Path(environment["TEMP"])
     expected_parent = tmp_path / ("scratch drive" if drive_present else "existing temp")
     equal(chosen.parent if drive_present else chosen, expected_parent)
+    if drive_present:
+        # A build under a longer leaf reaches Windows' 260-character path limit
+        # on the ARM runner, which does not enable long paths.
+        truth(
+            len(chosen.name) <= 19,
+            describing=f"a scratch leaf of 19 characters at most: {chosen.name}",
+        )
     result = run(["just", "--command", sys.executable, "-c", PROBE], cwd=ROOT, env=environment)
     passing(result)
     answer = json.loads(result.stdout)
@@ -127,7 +134,7 @@ def test_cleanup_refuses_a_foreign_jobs_directory(
 ) -> None:
     """A foreign path in the job environment is refused without removing it."""
     environment = _setup(tmp_path, drive_present=False)
-    foreign = tmp_path / ("printobserver-" + "a" * 32)
+    foreign = tmp_path / ("po-" + "a" * 16)
     foreign.mkdir()
     if has_another_jobs_marker:
         (foreign / ".printobserver-owned").write_text(foreign.name, encoding="utf-8")
@@ -245,7 +252,7 @@ def test_other_platforms_and_manual_dispatch_keep_existing_temp(
 def test_cleanup_checks_the_recorded_owners_directory_marker(tmp_path: Path, defect: str) -> None:
     """Matching the job token alone never authorizes a directory with invalid identity."""
     environment = _setup(tmp_path, drive_present=False)
-    leaf = "wrong-leaf" if defect == "invalid-leaf" else "printobserver-" + "b" * 32
+    leaf = "wrong-leaf" if defect == "invalid-leaf" else "po-" + "b" * 16
     scratch = tmp_path / leaf
     scratch.mkdir()
     retained = scratch / "unrelated"
@@ -416,7 +423,7 @@ def test_file_creation_failure_removes_the_partially_created_scratch(
     limit = os.pathconf(tmp_path, "PC_PATH_MAX")
     drive = tmp_path / "drive"
     drive.mkdir()
-    parent_length = limit - (60 if stage == "marker" else 80)
+    parent_length = limit - (30 if stage == "marker" else 50)
     while parent_length - len(str(drive)) >= 2:
         remaining = parent_length - len(str(drive)) - 1
         drive /= "d" * min(180, remaining)
