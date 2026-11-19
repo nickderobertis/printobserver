@@ -544,4 +544,3 @@ fn the_close_up_is_the_active_objects_not_every_objects() {
         "{rect:?} is not the box holding every outline"
     );
 }
-
