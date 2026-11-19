@@ -108,12 +108,40 @@ use world::World;
 ///
 /// One world rather than one per journey: the supervisor is a process and the
 /// store is a file, and starting sixteen of each to walk sixteen commands would
-/// spend the tier's time on process startup rather than on what it proves.
+/// spend the tier's time on process startup rather than on what it proves. The
+/// three tests after it are the tier's longest journeys, each over a world of
+/// its own so that they run beside this one rather than after it.
 #[test]
 fn every_client_command_is_proven_against_a_real_supervisor() {
     let world = World::open(world::STOOD_IN);
 
     tier::run(&world, tier::WHOLE);
+}
+
+/// Every assertion the tier makes refuses the defect it is about, driven over
+/// the tainted variant of this program.
+#[test]
+fn every_assertion_of_the_tier_refuses_the_defect_it_is_about() {
+    let world = World::open(world::STOOD_IN);
+
+    tier::run(&world, tier::DEFECTS);
+}
+
+/// Every adjustment the tier drives is a bounded intervention that puts the
+/// prior value back.
+#[test]
+fn every_adjustment_of_the_tier_is_a_bounded_intervention() {
+    let world = World::open(world::STOOD_IN);
+
+    tier::run(&world, tier::INTERVENTIONS);
+}
+
+/// No run of the tier's walk prints the credential it authenticated with.
+#[test]
+fn no_run_of_the_tiers_walk_prints_the_credential() {
+    let world = World::open(world::STOOD_IN);
+
+    tier::run(&world, tier::CREDENTIAL);
 }
 
 /// A print started at the printer is found with `printobserver prints`, read

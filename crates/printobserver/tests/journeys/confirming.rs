@@ -85,6 +85,38 @@ pub fn the_cross_product_walk(world: &World, reach: Reach) {
     }
 }
 
+/// Start a print through this program, as the walk does, and follow it.
+///
+/// A journey run over a world of its own rather than after the walk starts
+/// from where the walk leaves every journey after it: on a print this program
+/// started, which the supervisor's record and this world agree is the running
+/// one. The world's own seeded print is not that — the supervisor opens a
+/// print of its own for the machine's job on the first action it takes — so a
+/// journey about it would read one print and act on another.
+///
+/// # Panics
+///
+/// Panics when the walk drives no `start-print`, or when the start fails any
+/// assertion the walk holds it to.
+pub fn on_a_print_this_program_started(world: &World) {
+    let planned = walk::walk(world)
+        .into_iter()
+        .find(|one| one.command.name == "start-print")
+        .expect("the walk drives `start-print`");
+    world.wants(planned.reports);
+    let one = &walk::about_now(&planned, world);
+    let points = walk::invocations(one, world);
+    let index = walk::covering(&points)
+        .into_iter()
+        .next()
+        .expect("`start-print` has a covering invocation");
+    let invocation = walk::invocations(one, world).swap_remove(index);
+    let ran = drive(world, &invocation);
+    let received = world.proxy.the_one_request();
+    the_request_carries_the_callers_values(one, &received);
+    the_effect_is_confirmed_by_reading_it_back(world, one, &invocation, &ran);
+}
+
 /// One invocation, run and held to the two things every run is held to.
 pub fn drive(world: &World, invocation: &Invocation) -> Ran {
     world.proxy.forget();
