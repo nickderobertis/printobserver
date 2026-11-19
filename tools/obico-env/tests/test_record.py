@@ -42,6 +42,7 @@ class Obico:
         self.answer = answer
         self.body: bytes | None = None
         self.authorizations: list[str] = []
+        self.snapshots: list[str] = []
         stand_in = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -55,6 +56,14 @@ class Obico:
                     self._answer(200, stand_in.body)
                 else:
                     self._answer(200, json.dumps(stand_in.answer).encode())
+
+            def do_POST(self) -> None:
+                """Take a snapshot the printer posts, as Obico's printer API does."""
+                length = int(self.headers.get("Content-Length", "0"))
+                self.rfile.read(length)
+                stand_in.snapshots.append(self.headers.get("Authorization", ""))
+                code = 200 if self.path == "/api/v1/octo/pic/" else 404
+                self._answer(code, b"{}")
 
             def _answer(self, status: int, body: bytes) -> None:
                 self.send_response(status)
@@ -176,16 +185,16 @@ def test_a_shape_that_moved_is_recorded_and_named(obico: Obico, tmp_path: Path) 
 @pytest.mark.parametrize(
     ("change", "naming"),
     [
-        ({"id": 2}, "id (not 1)"),
-        ({"pic": None}, "pic.img_url"),
-        ({"current_print": None}, "current_print.id"),
-        ({"normalized_p": "0.4"}, "normalized_p"),
+        ({"id": 2}, "no id 1"),
+        ({"id": True}, "no id 1"),
+        ({"pic": None}, "no pic"),
+        ({"current_print": None}, "no current_print"),
     ],
 )
 def test_an_answer_the_status_could_not_read_is_not_recorded(
     obico: Obico, tmp_path: Path, change: dict[str, object], naming: str
 ) -> None:
-    """The wrong printer, no snapshot, no print or a mistyped score: refused, nothing written."""
+    """Another printer, an id that is no integer, no snapshot or no print: nothing written."""
     obico.answer.update(change)
     out = tmp_path / "obico-printer.json"
     failing(record(obico, out), naming=naming)
@@ -237,23 +246,63 @@ def test_an_obico_it_cannot_read_is_refused_naming_why(
     truth(not out.exists(), describing="no recording")
 
 
+def test_a_credential_sanitizing_cannot_reach_is_refused_and_nothing_written(
+    obico: Obico, tmp_path: Path
+) -> None:
+    """A credential where no value is — as a field's name — stops the run rather than leaking."""
+    obico.answer[BEARER] = 1
+    out = tmp_path / "obico-printer.json"
+    run = record(obico, out)
+    failing(run, naming="a credential survived")
+    absent(run.stdout + run.stderr, BEARER, describing="what it said")
+    truth(not out.exists(), describing="no recording")
+
+
+def stack_record(state_dir: Path, url: str, **more: object) -> None:
+    """The record `obico_env.py up` writes, for a stack under `state_dir` at `url`."""
+    record = {
+        "state_dir": str(state_dir),
+        "project": "printobserver-record-absent",
+        "url": url,
+        "printer_token": PRINTER_CREDENTIAL,
+        **more,
+    }
+    (state_dir / "instance.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+def test_a_stack_that_refuses_the_snapshot_is_refused_naming_it(tmp_path: Path) -> None:
+    """The tier's snapshot refusal comes out as the recorder's, with no credential in it."""
+    stack_record(tmp_path, f"http://{UNREACHABLE[0]}:{UNREACHABLE[1]}", printer_id=1)
+    out = tmp_path / "obico-printer.json"
+    run = run_record("--state-dir", str(tmp_path), "--out", str(out))
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, "refused the printer's snapshot", describing="the refusal")
+    absent(run.stdout + run.stderr, PRINTER_CREDENTIAL, describing="what it said")
+    truth(not out.exists(), describing="no recording")
+
+
+def test_a_stack_that_mints_no_bearer_is_refused_and_reads_nothing(
+    obico: Obico, tmp_path: Path
+) -> None:
+    """The snapshot is posted with the printer's token; no bearer minted, no read made."""
+    stack_record(tmp_path, obico.url, printer_id=1)
+    out = tmp_path / "obico-printer.json"
+    run = run_record("--state-dir", str(tmp_path), "--out", str(out), bearer=None)
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    equal(obico.snapshots, [f"Token {PRINTER_CREDENTIAL}"], describing="the snapshot posted")
+    contains(run.stderr, "did not report a minted access token", describing="the refusal")
+    equal(obico.authorizations, [], describing="reads made with no bearer")
+    absent(run.stdout + run.stderr, PRINTER_CREDENTIAL, describing="what it said")
+    truth(not out.exists(), describing="no recording")
+
+
 def test_a_stack_record_naming_no_printer_is_refused_before_anything_is_posted(
     tmp_path: Path,
 ) -> None:
     """A state directory whose record names no printer stops before the stack is touched."""
-    (tmp_path / "instance.json").write_text(
-        json.dumps(
-            {
-                "state_dir": str(tmp_path),
-                "project": "printobserver-obico",
-                "url": "http://127.0.0.1:1",
-                "printer_token": "a-token",
-            }
-        ),
-        encoding="utf-8",
-    )
+    stack_record(tmp_path, "http://127.0.0.1:1", printer_id=0)
     out = tmp_path / "obico-printer.json"
     run = run_record("--state-dir", str(tmp_path), "--out", str(out))
     equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
     contains(run.stderr, "names no printer", describing="the refusal")
-    absent(run.stderr, "a-token", describing="the refusal")
+    absent(run.stderr, PRINTER_CREDENTIAL, describing="the refusal")

@@ -22,9 +22,9 @@ answers there, with the bearer the environment variable holds.
 The answer carries the printer's own credential, `auth_token`. Every value under
 a credential's key is replaced with the sentinel, and so is every appearance of a
 credential this command knows of anywhere else in the answer, before anything is
-written. An answer that is not `200`, not a JSON object, not the printer asked
-for, or without the fields the status reads in the types it reads them in, is
-refused and nothing is written. Beside the recording it writes where it came
+written. An answer that is not `200`, not a JSON object, or not the printer
+asked for with a running print and a snapshot, is refused and nothing is
+written. Beside the recording it writes where it came
 from: the revision, the request, the authentication scheme, the status and this
 command. It then compares the shape it recorded — the fields and the JSON type of
 each, as the tier compares the webhook body — with the committed recording's.
@@ -46,7 +46,16 @@ from pathlib import Path
 from typing import Literal, NewType, TypedDict
 
 from obico_env import ACCOUNT_EMAIL, OBICO_REVISION, Stack, note, run_program
-from obico_tier import TierError, differences, http, is_service_address, post_snapshot, stack_under
+from obico_tier import (
+    PrinterId,
+    TierError,
+    differences,
+    http,
+    is_service_address,
+    positive_printer,
+    post_snapshot,
+    stack_under,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -66,9 +75,6 @@ CREDENTIAL_KEYS = frozenset(
 #: The variable the bearer is read from when no state directory mints one: an
 #: argument would put the credential in the process table.
 BEARER_VARIABLE = "OBICO_RECORD_ACCESS_TOKEN"
-
-#: A printer, by Obico's identifier for it: a positive integer.
-PrinterId = NewType("PrinterId", int)
 
 #: An OAuth2 access token of Obico's, sent as a bearer. A credential, so never reported.
 AccessToken = NewType("AccessToken", str)
@@ -140,13 +146,6 @@ class Recorded(Provenance):
     compared_with: str
     verdict: Literal["agrees", "differs"]
     differences: list[str]
-
-
-def positive_printer(value: object) -> PrinterId | None:
-    """`value` as a printer identifier, or `None` when it is not a positive integer."""
-    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-        return PrinterId(value)
-    return None
 
 
 def mint_access_token(stack: Stack) -> AccessToken:
@@ -225,21 +224,21 @@ def sanitized(answer: object, known: tuple[str, ...]) -> tuple[object, list[str]
     return walk(answer, ""), replaced
 
 
-def unreadable_fields(answer: dict[str, object], printer: PrinterId) -> list[str]:
-    """Every field the detector status reads that the answer lacks, or carries mistyped."""
-    wrong: list[str] = []
-    if answer.get("id") != printer:
-        wrong.append(f"id (not {printer})")
-    current = answer.get("current_print")
-    if not isinstance(current, dict) or positive_printer(current.get("id")) is None:
-        wrong.append("current_print.id")
-    pic = answer.get("pic")
-    if not isinstance(pic, dict) or not isinstance(pic.get("img_url"), str):
-        wrong.append("pic.img_url")
-    score = answer.get("normalized_p")
-    if isinstance(score, bool) or not isinstance(score, int | float):
-        wrong.append("normalized_p")
-    return wrong
+def not_a_running_print_with_a_snapshot(answer: dict[str, object], printer: PrinterId) -> list[str]:
+    """What keeps the answer from being this printer's running print with a snapshot.
+
+    Only that state is checked here. Whether the recording carries every field the
+    detector status reads, in the form it reads it, is the server's own reader's to
+    say, and the server journeys say it by parsing this recording with that reader.
+    """
+    lacking: list[str] = []
+    if positive_printer(answer.get("id")) != printer:
+        lacking.append(f"id {printer}")
+    if not isinstance(answer.get("current_print"), dict):
+        lacking.append("current_print")
+    if not isinstance(answer.get("pic"), dict):
+        lacking.append("pic")
+    return lacking
 
 
 def record(
@@ -268,11 +267,11 @@ def record(
     if not isinstance(answer, dict):
         message = f"Obico's answer to {path} is not a JSON object"
         raise RecordError(message)
-    wrong = unreadable_fields(answer, printer)
-    if wrong:
+    lacking = not_a_running_print_with_a_snapshot(answer, printer)
+    if lacking:
         message = (
-            f"Obico's answer to {path} carries no usable {', '.join(wrong)}: it is not "
-            "a running print's answer with a snapshot, which is what the double serves"
+            f"Obico's answer to {path} carries no {', '.join(lacking)}: it is not this "
+            "printer's running print with a snapshot, which is what the double serves"
         )
         raise RecordError(message)
     credentials = (bearer, *known)
@@ -325,8 +324,7 @@ def from_stack(state_dir: Path, out: Path) -> Recorded:
         raise RecordError(str(error)) from error
     note(f"the printer posted a snapshot to {instance.url} ({posted})")
     bearer = mint_access_token(instance.stack)
-    printer = PrinterId(instance.printer_id)
-    return record(instance.url, printer, bearer, out, known=(instance.printer_token,))
+    return record(instance.url, instance.printer_id, bearer, out, known=(instance.printer_token,))
 
 
 def from_address(url: str, printer: int, out: Path) -> Recorded:

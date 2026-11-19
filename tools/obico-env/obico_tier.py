@@ -388,6 +388,9 @@ REPOINTED = "OBICO_TIER_REPOINTED "
 #: as `Authorization: Token <token>`. A credential, so it is never reported.
 PrinterToken = NewType("PrinterToken", str)
 
+#: A printer, by Obico's identifier for it: a positive integer.
+PrinterId = NewType("PrinterId", int)
+
 
 @dataclass(frozen=True)
 class Instance:
@@ -398,7 +401,7 @@ class Instance:
     printer_token: PrinterToken
     #: The printer the bring-up provisioned, or `None` when the record names
     #: none that is a positive integer — which only a reader of it needs.
-    printer_id: int | None = None
+    printer_id: PrinterId | None = None
 
 
 INSTANCE_FIELDS = ("state_dir", "project", "url", "printer_token")
@@ -442,12 +445,15 @@ def stack_under(state_dir: Path) -> Instance:
         stack=Stack(Path(record["state_dir"]), record["project"]),
         url=url,
         printer_token=PrinterToken(record["printer_token"]),
-        printer_id=(
-            printer_id
-            if isinstance(printer_id, int) and not isinstance(printer_id, bool) and printer_id > 0
-            else None
-        ),
+        printer_id=positive_printer(printer_id),
     )
+
+
+def positive_printer(value: object) -> PrinterId | None:
+    """`value` as a printer identifier, or `None` when it is not a positive integer."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return PrinterId(value)
+    return None
 
 
 def is_service_address(url: str) -> bool:
