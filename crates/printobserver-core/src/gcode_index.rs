@@ -2070,12 +2070,11 @@ impl crate::supervisor::Supervisor {
     }
 
     /// One open print's G-code index, built from its file — and spooled —
-    /// when this supervisor has none for it yet; nothing for a print that has
-    /// ended, names no file, or whose file could not be read.
-    pub async fn print_gcode_index(
-        &self,
-        print: &crate::records::PrintRecord,
-    ) -> Option<Arc<GcodeIndex>> {
+    /// when this supervisor has none for it yet; nothing for a print the
+    /// store does not hold or could not read, that has ended, names no file,
+    /// or whose file could not be read.
+    pub async fn print_gcode_index(&self, print_id: PrintId) -> Option<Arc<GcodeIndex>> {
+        let print = self.stores().prints.print(print_id).await.ok()??;
         if print.ended_at.is_some() {
             return None;
         }

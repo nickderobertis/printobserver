@@ -486,6 +486,7 @@ impl Server {
             detail: error.to_string(),
         })?;
         let clock = Arc::new(SystemClock);
+        let alignments = prepare_state(&config, &ports)?;
         let due = overdue(&ports.stores.actions, clock.now())
             .await
             .map_err(|error| StartError::Reconciliation {
@@ -516,6 +517,7 @@ impl Server {
         .map_err(|error| StartError::Reconciliation {
             detail: error.to_string(),
         })?;
+        Box::pin(sweep_left_behind(&supervisor, &alignments)).await?;
 
         let ingress = IngressState::start(
             Arc::clone(&supervisor),
@@ -530,6 +532,7 @@ impl Server {
             &supervisor,
             Arc::clone(&ports.printer),
             detector_check(&config)?,
+            Arc::clone(&alignments),
         );
         // Every events read waits on this, and every write that stores an
         // event raises it once committed — whichever of this server's parts
@@ -572,13 +575,61 @@ impl Server {
             serving,
             observing,
             watching,
+            alignments,
         })
     }
+}
+
+/// The directories this start keeps per-print state in — each open print's
+/// G-code spool, and every print's alignment verdict — made when absent.
+fn prepare_state(
+    config: &ServerConfig,
+    ports: &Ports,
+) -> Result<Arc<crate::alignment::Alignments>, StartError> {
+    let spool_dir = gcode_spool_dir(&config.state_dir);
+    std::fs::create_dir_all(&spool_dir).map_err(|error| StartError::State {
+        detail: format!("{}: {error}", spool_dir.display()),
+    })?;
+    crate::alignment::Alignments::new(
+        &config.state_dir,
+        config.camera_calibration.clone(),
+        Arc::clone(&ports.stores.prints),
+    )
+    .map(Arc::new)
+    .map_err(|error| StartError::State {
+        detail: format!(
+            "{}: {error}",
+            crate::alignment::verdict_dir(&config.state_dir).display()
+        ),
+    })
+}
+
+/// Delete what a print closed while no server ran left behind: its G-code
+/// spool and its alignment verdict.
+async fn sweep_left_behind(
+    supervisor: &Supervisor,
+    alignments: &crate::alignment::Alignments,
+) -> Result<(), StartError> {
+    supervisor
+        .sweep_gcode_spools()
+        .await
+        .map_err(|error| StartError::Reconciliation {
+            detail: error.to_string(),
+        })?;
+    alignments.sweep().await;
+    Ok(())
+}
+
+/// Where each open print's G-code is spooled, under a state directory.
+#[must_use]
+pub fn gcode_spool_dir(state_dir: &Path) -> std::path::PathBuf {
+    state_dir.join("gcode-spool")
 }
 
 /// What supervision is configured with, from the server's own configuration.
 fn core_config_of(config: &ServerConfig) -> CoreConfig {
     let mut core_config = CoreConfig::new(config.safety.clone(), context_command());
+    core_config.gcode_spool_dir = Some(gcode_spool_dir(&config.state_dir));
     core_config
         .camera_snapshot_url
         .clone_from(&config.camera_snapshot_url);
@@ -876,6 +927,8 @@ pub struct Running {
     /// The printer watch's tasks: its reads, its push reader and its detector
     /// check.
     watching: crate::watch::Watching,
+    /// Every print's first-layer alignment verdict.
+    alignments: Arc<crate::alignment::Alignments>,
 }
 
 impl core::fmt::Debug for Running {
@@ -889,6 +942,16 @@ impl core::fmt::Debug for Running {
 }
 
 impl Running {
+    /// One print's first-layer alignment verdict, which a check reads before
+    /// drawing the planned toolpath on its image.
+    #[must_use]
+    pub fn print_alignment(
+        &self,
+        print_id: printobserver_types::PrintId,
+    ) -> crate::alignment::PrintAlignment {
+        self.alignments.print_alignment(print_id)
+    }
+
     /// Where this server is answering.
     #[must_use]
     pub const fn address(&self) -> SocketAddr {

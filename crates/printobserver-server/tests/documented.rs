@@ -144,6 +144,53 @@ fn every_stated_observation_interval_is_the_servers_default() {
     }
 }
 
+/// Every configuration an operator edits, and the README's description of
+/// the configuration, shows the optional `[camera] calibration` key, says what
+/// it names, and says an invalid file is refused at start — the key the
+/// server reads as `camera.calibration`.
+#[test]
+fn every_configuration_shows_the_camera_calibration() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let key = printobserver_server::ConfigField::CameraCalibration.key();
+    let (table, field) = key.split_once('.').expect("a dotted key");
+    for relative in [
+        "scripts/install-service.sh",
+        "scripts/install-service.ps1",
+        "scripts/install.sh",
+        "scripts/install.ps1",
+        "tests/real-prints/service-config.toml",
+    ] {
+        let path = root.join(relative);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} reads: {error}", path.display()));
+        let lines: Vec<&str> = text
+            .lines()
+            .map(|line| line.trim_start_matches('#').trim())
+            .collect();
+        let in_table = lines
+            .iter()
+            .position(|line| *line == format!("[{table}]"))
+            .unwrap_or_else(|| panic!("{relative} shows no [{table}] table"));
+        assert!(
+            lines[in_table..]
+                .iter()
+                .take_while(|line| !line.starts_with('[') || **line == format!("[{table}]"))
+                .any(|line| line.starts_with(&format!("{field} = "))),
+            "{relative} shows no `{field}` in its [{table}] table"
+        );
+        let folded = lines.join(" ");
+        assert!(
+            folded.contains("calibration file") && folded.contains("refuses to start"),
+            "{relative} does not say what `{key}` names and that an invalid file is refused"
+        );
+    }
+    let readme = std::fs::read_to_string(root.join("README.md")).expect("the README reads");
+    assert!(
+        readme.contains(&format!("`{key}` is optional")) && readme.contains("refuses to start"),
+        "the README does not describe `{key}`"
+    );
+}
+
 /// One count the way the architecture reference writes it, as a word.
 fn counted(count: usize) -> &'static str {
     const WORDS: [&str; 42] = [

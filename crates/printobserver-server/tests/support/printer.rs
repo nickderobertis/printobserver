@@ -68,6 +68,10 @@ struct Held {
     unreadable: bool,
     /// The files it holds, with their analysis and their print tallies.
     files: Vec<FileFacts>,
+    /// The G-code of each file a whole-file read streams, by name.
+    gcode: Vec<(String, Vec<u8>)>,
+    /// How many whole-file reads were asked of each file, by name.
+    gcode_reads: Vec<String>,
 }
 
 /// A printer these journeys drive the server against.
@@ -151,6 +155,8 @@ impl RecordingPrinter {
                 calls: Vec::new(),
                 unreadable: false,
                 files: Vec::new(),
+                gcode: Vec::new(),
+                gcode_reads: Vec::new(),
             }),
             meeting: Mutex::new((0, 0)),
             arrived: Condvar::new(),
@@ -259,6 +265,37 @@ impl RecordingPrinter {
             file.failures += 1;
         }
         file.last_print = Some(FilePrint { at, success });
+    }
+
+    /// Hold one file's G-code, which a whole-file read streams in 64 KiB
+    /// pieces as the `OctoPrint` adapter's download does, and report it as the
+    /// job's file and its size.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
+    pub fn holds_gcode(&self, name: &str, bytes: &[u8]) {
+        let mut held = self.held.lock().expect("the machine is not poisoned");
+        held.gcode.retain(|(held_name, _)| held_name != name);
+        held.gcode.push((name.to_owned(), bytes.to_vec()));
+        held.job.file_name = Some(name.to_owned());
+        held.job.size_bytes = i64::try_from(bytes.len()).ok();
+    }
+
+    /// How many whole-file reads one file was asked for.
+    ///
+    /// # Panics
+    ///
+    /// Panics when a thread panicked while it held the machine's state.
+    #[must_use]
+    pub fn gcode_reads(&self, name: &str) -> usize {
+        self.held
+            .lock()
+            .expect("the machine is not poisoned")
+            .gcode_reads
+            .iter()
+            .filter(|read| read.as_str() == name)
+            .count()
     }
 
     /// Report the job at this byte of its file, as a print part-way through
@@ -473,6 +510,33 @@ impl RecordingPrinter {
 }
 
 impl PrinterPort for RecordingPrinter {
+    fn read_gcode<'a>(
+        &'a self,
+        file_name: FileName,
+        sink: &'a mut dyn printobserver_printer_api::GcodeSink,
+    ) -> BoxFuture<'a, Result<(), PrinterError>> {
+        let bytes = {
+            let mut held = self.held.lock().expect("the machine is not poisoned");
+            held.gcode_reads.push(file_name.as_str().to_owned());
+            held.gcode
+                .iter()
+                .find(|(name, _)| name == file_name.as_str())
+                .map(|(_, bytes)| bytes.clone())
+        };
+        Box::pin(async move {
+            let bytes = bytes.ok_or_else(|| PrinterError::Refused {
+                status: 404,
+                detail: format!("no file {file_name}"),
+            })?;
+            for piece in bytes.chunks(1 << 16) {
+                if sink.take(piece).is_break() {
+                    break;
+                }
+            }
+            Ok(())
+        })
+    }
+
     fn snapshot(&self) -> BoxFuture<'_, Result<PrinterSnapshot, PrinterError>> {
         let taken = self.unread().map_or_else(|| Ok(Self::snapshot(self)), Err);
         Box::pin(async move { taken })

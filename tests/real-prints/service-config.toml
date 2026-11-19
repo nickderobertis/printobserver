@@ -46,6 +46,10 @@ shared_secret = "<redacted>"
 
 [camera]
 snapshot_url = "http://127.0.0.1:1984/api/frame.jpeg?src=buddy"
+# The camera's calibration file, fitted for this printer and camera from these cases' frames:
+# tests/real-prints/cameras/core-one-2026-09-27.json, copied beside the state
+# directory. The service refuses to start with an unreadable or invalid file.
+calibration = 'C:\ProgramData\printobserver\state\cameras\core-one-2026-09-27.json'
 
 [obico]
 url = "http://127.0.0.1:3334"

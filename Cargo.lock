@@ -1796,6 +1796,7 @@ dependencies = [
  "printobserver-obico",
  "printobserver-octoprint",
  "printobserver-oneharness",
+ "printobserver-panels",
  "printobserver-printer-api",
  "printobserver-store-sqlite",
  "printobserver-supervisor-api",

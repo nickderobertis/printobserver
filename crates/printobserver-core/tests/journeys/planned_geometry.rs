@@ -56,7 +56,7 @@ fn printing(text: &str, dir: Option<PathBuf>) -> (World, PrintRecord) {
 
 /// The print's index, built through the core.
 fn index_of(world: &World, print: &PrintRecord) -> Arc<GcodeIndex> {
-    block_on(world.core.print_gcode_index(print)).expect("the index is built")
+    block_on(world.core.print_gcode_index(print.id)).expect("the index is built")
 }
 
 /// One move a direct parse finds: a line, or an arc with its centre.

@@ -276,6 +276,15 @@ Windows:
   such as go2rtc's `frame.jpeg` for the printer's camera; with it, the agent's
   `printobserver look` takes a fresh frame, and without it a look carries the
   printer's state and no frame.
+- `camera.calibration` is optional, and the template carries it commented out.
+  It is the path of the camera's calibration file, which
+  [`tools/camera-calibration`](tools/camera-calibration/README.md) fits once per
+  printer from marks on printed parts, and again whenever the camera moves; with
+  it, a check can draw each layer's planned toolpath where it sits in the
+  camera's own view, after each print's first layer has been checked to land on
+  the printed one. The service reads and validates the file at start and
+  refuses to start with an unreadable or invalid one, naming
+  `camera.calibration`. Left out, nothing is drawn.
 - `obico.url` and `obico.access_token` are optional and given together, and the
   template carries them commented out. They are Obico's own address and an
   OAuth2 access token from its administration. When Obico paused a print and

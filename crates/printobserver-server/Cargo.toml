@@ -29,6 +29,7 @@ printobserver-core.workspace = true
 printobserver-obico.workspace = true
 printobserver-octoprint.workspace = true
 printobserver-oneharness.workspace = true
+printobserver-panels.workspace = true
 printobserver-printer-api.workspace = true
 printobserver-store-sqlite.workspace = true
 printobserver-supervisor-api.workspace = true

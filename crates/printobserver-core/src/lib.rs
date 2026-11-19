@@ -159,6 +159,7 @@ pub use toolpath::{
 pub use turn_access::{OpenedTurn, TurnAuthority};
 pub use turn_lock::{TurnGuard, TurnLocks};
 pub use watch::{
-    DEFAULT_PRINTER_POLL, DEFAULT_UNATTENDED_WINDOW, DetectorHealth, DetectorHealthStatus,
-    DetectorProbe, HeadPosition, PRINTER_WATCH_KINDS, PUSH_CHANNEL_DOWN, PositionProbe, Watched,
+    ActiveJob, DEFAULT_PRINTER_POLL, DEFAULT_UNATTENDED_WINDOW, DetectorHealth,
+    DetectorHealthStatus, DetectorProbe, HeadPosition, PRINTER_WATCH_KINDS, PUSH_CHANNEL_DOWN,
+    PositionProbe, Watched,
 };
