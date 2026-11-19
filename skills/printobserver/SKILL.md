@@ -59,10 +59,10 @@ Reading frames:
   absent from an earlier frame included, or out of place; off the part, on a rail, screw or frame,
   not.
 - **Position.** Judge growth only against the frame the plan's rise names, never without one: by the
-  top's height it gives then and the rise since, which should show, never proof it printed: compare
-  the tallest part still printing then and now; finished ones do not grow. Short of the rise,
-  unclear or unmeasurable is not printing: a clear defect, never uncertain. Hidden parts: look again
-  first. A still landmark proves only a still view, a shifted one no growth; a part moved when its
+  top's height it gives then and the rise since, which should show, never proof it printed: measure
+  the tallest part still printing in pixels over a fixed mark, then and now; finished ones do not
+  grow. Short of the rise, unclear or unmeasurable is not printing: a clear defect, never uncertain.
+  Hidden parts: look again first. A still landmark proves only a still view; a part moved when its
   distance to a fixed sheet hole, edge or mark changed. Each reason gives each part's pixels from a
   named landmark; each turn, before looking, measure the event frame so against the last reason's
   figures. Changed: moved, never uncertain, whatever the cause; a later frame hiding it undoes
@@ -99,7 +99,7 @@ ask for nothing; say what and where.
 
 Escalate when the machine, or the safe thing, is beyond what you may ask:
 pause, your reason saying what a person must check.
-A person's resume in the record settles what they resumed over.
+A person's resume settles what they resumed over.
 
 ## Elsewhere
 
