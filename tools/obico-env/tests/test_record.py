@@ -313,6 +313,17 @@ def test_a_refused_bearer_records_nothing(obico: Obico, tmp_path: Path) -> None:
     truth(not out.exists(), describing="no recording after a refusal")
 
 
+def test_a_bearer_that_is_no_token_is_never_sent_or_shown(obico: Obico, tmp_path: Path) -> None:
+    """A bearer carrying a line break would split the header: refused, and not echoed."""
+    out = tmp_path / "obico-printer.json"
+    bearer = f"{BEARER}\r\nX-Injected: yes"
+    run = record(obico, out, bearer=bearer)
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, "not an RFC 6750 bearer token", describing="the refusal")
+    absent(run.stdout + run.stderr, BEARER, describing="what it said")
+    equal(obico.authorizations, [], describing="what reached Obico")
+
+
 def test_no_bearer_reads_nothing(obico: Obico, tmp_path: Path) -> None:
     """With no bearer to send, nothing is asked of Obico."""
     out = tmp_path / "obico-printer.json"

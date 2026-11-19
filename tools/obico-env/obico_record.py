@@ -42,6 +42,7 @@ import contextlib
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -79,6 +80,9 @@ CREDENTIAL_KEYS = frozenset(
 #: The variable the bearer is read from when no state directory mints one: an
 #: argument would put the credential in the process table.
 BEARER_VARIABLE = "OBICO_RECORD_ACCESS_TOKEN"
+
+#: The syntax RFC 6750 gives a bearer token, so nothing else reaches a header.
+BEARER_SYNTAX = re.compile(r"[A-Za-z0-9\-._~+/]+=*")
 
 #: An OAuth2 access token of Obico's, sent as a bearer. A credential, so never reported.
 AccessToken = NewType("AccessToken", str)
@@ -282,6 +286,10 @@ def record(
         RecordError: If the answer is not one to record; nothing is written then.
     """
     path = f"/api/v1/printers/{printer}/"
+    if not BEARER_SYNTAX.fullmatch(bearer):
+        # The value is not echoed: it is a credential, however malformed.
+        message = "the access token is not an RFC 6750 bearer token; nothing was sent"
+        raise RecordError(message)
     answered = read_printer(url, printer, bearer)
     if answered.status != 200:
         message = f"Obico answered {path} {answered.status} under the bearer access token, not 200"
