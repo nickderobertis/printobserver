@@ -212,23 +212,6 @@ async fn held_turn(watch: &Watch) -> (String, reqwest::Client) {
         .expect("the ingress answers")
         .status();
     assert_eq!(status, reqwest::StatusCode::ACCEPTED);
-    for _ in 0..200 {
-        if !watch.agent.passes().is_empty() {
-            break;
-        }
-        tokio::time::sleep(core::time::Duration::from_millis(50)).await;
-    }
-    if watch.agent.passes().is_empty() {
-        eprintln!(
-            "DIAG turns={} history={:#}",
-            watch.agent.turns().len(),
-            Value::Array(watch.history().await)
-        );
-        let _ = std::process::Command::new("kill")
-            .args(["-USR1", &std::process::id().to_string()])
-            .status();
-        tokio::time::sleep(core::time::Duration::from_secs(120)).await;
-    }
     let pass = watch
         .agent
         .issued(1)
