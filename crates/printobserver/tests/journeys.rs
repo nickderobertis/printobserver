@@ -104,7 +104,7 @@ mod upgrading;
 
 use world::World;
 
-/// The whole tier, over one supervisor.
+/// The tier's walk and the journeys after it, over one supervisor.
 ///
 /// One world rather than one per journey: the supervisor is a process and the
 /// store is a file, and starting sixteen of each to walk sixteen commands would
@@ -115,7 +115,7 @@ use world::World;
 fn every_client_command_is_proven_against_a_real_supervisor() {
     let world = World::open(world::STOOD_IN);
 
-    tier::run(&world, tier::WHOLE);
+    tier::run(&world, tier::WALK);
 }
 
 /// Every assertion the tier makes refuses the defect it is about, driven over

@@ -7,7 +7,8 @@
 //!
 //! # The depths
 //!
-//! [`WHOLE`] is what the fast tier runs, over a world whose printer port
+//! [`WALK`] is the fast tier's cross-product at every spelling and the
+//! journeys that act on what it leaves, over a world whose printer port
 //! reaches a socket. [`AGAINST_A_REAL_MACHINE`] is what the printer
 //! integration tier runs: the same cross-product, over the `OctoPrint` `just
 //! octoprint-up` provisioned. What the second leaves out is everything that is
@@ -24,7 +25,7 @@
 //! the credential's redaction. Between them they are most of the tier's time,
 //! and none of them needs what the walk leaves behind beyond a print this
 //! program started, so each is a test of its own over a world of its own that
-//! runs beside [`WHOLE`] rather than after it.
+//! runs beside [`WALK`] rather than after it.
 
 use crate::machine::Reports;
 use crate::world::World;
@@ -35,7 +36,7 @@ use super::{
 
 /// The walk and every journey about this program that needs what it left,
 /// over one print.
-pub const WHOLE: &str = "whole";
+pub const WALK: &str = "walk";
 
 /// Every assertion here, over the defect it is about.
 pub const DEFECTS: &str = "defects";
@@ -59,7 +60,7 @@ pub fn run(world: &World, depth: &str) {
         DEFECTS => Some(tainting::every_assertion_here_refuses_the_defect_it_is_about),
         INTERVENTIONS => Some(durations::every_adjustment_is_a_bounded_intervention),
         CREDENTIAL => Some(redaction::no_run_of_the_walk_prints_the_credential),
-        WHOLE | AGAINST_A_REAL_MACHINE => None,
+        WALK | AGAINST_A_REAL_MACHINE => None,
         _ => panic!("there is no `{depth}` depth to run this tier at"),
     };
     if let Some(journey) = beside {
@@ -69,7 +70,7 @@ pub fn run(world: &World, depth: &str) {
     }
     confirming::the_cross_product_walk(
         world,
-        if depth == WHOLE {
+        if depth == WALK {
             confirming::Reach::Every
         } else {
             confirming::Reach::Covering
