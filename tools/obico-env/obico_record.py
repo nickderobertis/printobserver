@@ -160,7 +160,7 @@ class Recorded(Provenance):
     differences: list[str]
 
 
-def mint_access_token(stack: Stack) -> AccessToken:
+def mint_access_token(stack: Stack, timeout: float) -> AccessToken:
     """A read-only access token for the provisioned account, minted through Obico's own models.
 
     Raises:
@@ -169,7 +169,7 @@ def mint_access_token(stack: Stack) -> AccessToken:
     try:
         answered = run_program(
             stack.compose("exec", "-T", "web", "python", "manage.py", "shell"),
-            timeout=600,
+            timeout=timeout,
             stdin=MINT_SCRIPT.format(request=json.dumps({"email": ACCOUNT_EMAIL})),
         )
     except StartupError as error:
@@ -365,7 +365,7 @@ def replace(out: Path, text: str) -> None:
         raise RecordError(message) from error
 
 
-def from_stack(state_dir: Path, out: Path, baseline: Path) -> Recorded:
+def from_stack(state_dir: Path, out: Path, baseline: Path, mint_timeout: float) -> Recorded:
     """Post a snapshot, mint a bearer, and record, against the stack under `state_dir`.
 
     Raises:
@@ -381,7 +381,7 @@ def from_stack(state_dir: Path, out: Path, baseline: Path) -> Recorded:
     except TierError as error:
         raise RecordError(str(error)) from error
     note(f"the printer posted a snapshot to {instance.url} ({posted})")
-    bearer = mint_access_token(instance.stack)
+    bearer = mint_access_token(instance.stack, mint_timeout)
     return record(
         instance.url,
         instance.printer_id,
@@ -424,6 +424,12 @@ def argument_parser() -> argparse.ArgumentParser:
         help="where the recording goes (default: %(default)s)",
     )
     parser.add_argument(
+        "--mint-timeout",
+        type=float,
+        default=600.0,
+        help="seconds to wait for Obico to mint the bearer (default: %(default)s)",
+    )
+    parser.add_argument(
         "--compare-with",
         default=str(REPOSITORY_ROOT / RECORDING),
         help="the recording whose shape the new one is compared with (default: %(default)s)",
@@ -438,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
     baseline = Path(arguments.compare_with)
     try:
         if arguments.state_dir:
-            recorded = from_stack(Path(arguments.state_dir), out, baseline)
+            recorded = from_stack(Path(arguments.state_dir), out, baseline, arguments.mint_timeout)
         elif arguments.url or arguments.printer_id:
             recorded = from_address(arguments.url, arguments.printer_id, out, baseline)
         else:

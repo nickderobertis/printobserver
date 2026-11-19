@@ -402,6 +402,38 @@ def test_a_host_with_no_docker_mints_nothing_and_says_so(obico: Obico, tmp_path:
     truth(not out.exists(), describing="no recording")
 
 
+@pytest.mark.parametrize(
+    ("docker", "naming"),
+    [
+        ("#!/nonexistent/interpreter\n", "FileNotFoundError"),
+        ("#!/bin/sh\nexec sleep 60\n", "TimeoutExpired"),
+    ],
+)
+def test_a_mint_that_cannot_run_or_never_answers_records_nothing(
+    obico: Obico, tmp_path: Path, docker: str, naming: str
+) -> None:
+    """A Docker that cannot be launched, or never answers in time: exit 2 naming which."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(docker, encoding="utf-8")
+    (bin_dir / "docker").chmod(0o755)
+    stack_record(tmp_path, obico.url, printer_id=1)
+    out = tmp_path / "obico-printer.json"
+    run = run_record(
+        "--state-dir",
+        str(tmp_path),
+        "--out",
+        str(out),
+        "--mint-timeout",
+        "1",
+        bearer=None,
+        path=f"{bin_dir}{os.pathsep}/usr/bin{os.pathsep}/bin",
+    )
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, f"no access token could be minted: {naming}", describing="the refusal")
+    truth(not out.exists(), describing="no recording")
+
+
 def test_a_stack_record_naming_no_printer_is_refused_before_anything_is_posted(
     tmp_path: Path,
 ) -> None:
