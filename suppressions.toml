@@ -4658,6 +4658,12 @@ site = "llmlint: ignore[async_typed_clients_at_boundaries]"
 reason = "A test that makes a package manager race itself across copies: the concurrency is the thread pool around this one blocking call to the program under test, and `repo_checks.shell.run` is how every subprocess here starts. An async client would change nothing a test of this kind reads."
 
 [[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_isolation_copies.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "This change only schedules the same 60 locked installs this journey already made, one copy's in turn and the copies beside each other, so that no two run in one copy; it adds no cost and moves no edge. Where the journey sits in the graph is `repo-e2e`'s placement from before this change, and putting it behind an edge of its own is a change to that project rather than to this journey's schedule."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest-wiring/test_replay_wiring.py"
 site = "run("
