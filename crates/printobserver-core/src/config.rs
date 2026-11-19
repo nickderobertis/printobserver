@@ -225,6 +225,10 @@ pub struct CoreConfig {
     pub recovery: Option<crate::records::RecoveryConfig>,
     /// Who may ask for which recovery action.
     pub recovery_grants: crate::records::RecoveryGrants,
+    /// Where each open print's G-code is spooled as its index is built, so a
+    /// layer's toolpath is read back without reading the file again; absent,
+    /// nothing is spooled and no toolpath can be read.
+    pub gcode_spool_dir: Option<std::path::PathBuf>,
 }
 
 impl CoreConfig {
@@ -246,6 +250,7 @@ impl CoreConfig {
             unattended_window: crate::watch::DEFAULT_UNATTENDED_WINDOW,
             recovery: None,
             recovery_grants: crate::records::RecoveryGrants::default(),
+            gcode_spool_dir: None,
         }
     }
 

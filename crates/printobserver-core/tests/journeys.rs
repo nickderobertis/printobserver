@@ -111,6 +111,9 @@ mod filament_change;
 mod pairing;
 #[path = "journeys/planning.rs"]
 mod planning;
+
+#[path = "journeys/planned_geometry.rs"]
+mod planned_geometry;
 #[path = "journeys/preflight.rs"]
 mod preflight;
 

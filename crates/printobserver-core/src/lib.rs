@@ -74,6 +74,7 @@ pub mod recovery;
 pub mod spools;
 pub mod store;
 pub mod supervisor;
+pub mod toolpath;
 pub mod turn_access;
 pub mod turn_lock;
 pub mod unobserved;
@@ -152,6 +153,9 @@ pub use store::{
     TimelineStore, resolve_history_limit,
 };
 pub use supervisor::{Issued, RecoveryIssued, Supervisor};
+pub use toolpath::{
+    ExtrusionKind, LayerRef, LayerToolpath, ObjectOutline, SpoolError, ToolpathSegment, spool_path,
+};
 pub use turn_access::{OpenedTurn, TurnAuthority};
 pub use turn_lock::{TurnGuard, TurnLocks};
 pub use watch::{
