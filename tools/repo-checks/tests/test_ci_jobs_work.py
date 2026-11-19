@@ -24,10 +24,9 @@ What is held:
 * no Nx task runs twice in one job, and `lint`'s own steps — the title, the
   supply chain, the skill install and the judged lint — run there once and in no
   `test` job;
-* no timing budget's project (the justfile's `TIMED` tag) is tested beside the
-  end-to-end tier: where `CI_E2E_BESIDE_TESTS` starts that tier beside the test
-  tier, those projects run in an Nx invocation of their own before it starts,
-  and where it does not, the tier starts after every test task.
+* no timing budget's project (the justfile's `TIMED` tag) is tested beside other
+  work: those projects run in an Nx invocation of their own, before the
+  end-to-end tier starts, whether or not it starts beside the test tier.
 
 A step dropped or changed, and work omitted or doubled, are each made in a copy
 of the workflow and found.
@@ -483,10 +482,8 @@ class Ran:
     graph: dict[str, set[str]]
     tagged: frozenset[str]
     tag: str
-    #: The projects carrying the justfile's `TIMED` tag, and whether the copy's
-    #: `ci-measured` starts the end-to-end tier beside the test tier on this host.
+    #: The projects carrying the justfile's `TIMED` tag.
     timed: frozenset[str] = frozenset()
-    beside: bool = False
 
 
 def ran_in(copy: Copy) -> Ran:
@@ -519,7 +516,6 @@ def ran_in(copy: Copy) -> Ran:
         tagged,
         tag,
         frozenset(project.name for project in projects(repo) if timing in project.tags),
-        evaluated(copy, "CI_E2E_BESIDE_TESTS") == "true",
     )
 
 
@@ -540,8 +536,8 @@ def evaluated(copy: Copy, variable: str) -> str:
 MEASURING = ("test", "budgets")
 
 
-def timing_findings(test: Work, timed: frozenset[str], beside: bool) -> list[str]:
-    """How one job's timing budgets' projects run beside its end-to-end tier, if they do."""
+def timing_findings(test: Work, timed: frozenset[str]) -> list[str]:
+    """How one job's timing budgets' projects run beside other work, if they do."""
     found: list[str] = []
     calls = test.invocations
     e2e = next(
@@ -554,17 +550,10 @@ def timing_findings(test: Work, timed: frozenset[str], beside: bool) -> list[str
         if not {project for _, project in measured} & timed:
             continue
         beside_them = sorted({project for _, project in measured} - timed)
-        if beside and beside_them:
+        if beside_them:
             found.append(f"timing projects are tested with {beside_them}")
         if e2e is not None and index > e2e:
             found.append(f"timing projects are tested after the end-to-end tier started: {call}")
-    if not beside and e2e is not None:
-        found.extend(
-            f"`{task}` is asked for after the end-to-end tier, which runs beside it"
-            for call in calls[e2e + 1 :]
-            for task in call
-            if task.startswith("test:")
-        )
     return found
 
 
@@ -632,7 +621,7 @@ def test_lints_own_steps_run_there_once_and_the_integration_tier_in_each_test_jo
         )
 
 
-def test_no_timing_budget_is_measured_beside_the_end_to_end_tier(committed: Ran) -> None:
+def test_no_timing_budget_is_measured_beside_other_work(committed: Ran) -> None:
     """Each `test` job tests the timing budgets' projects with nothing beside them."""
     truth(committed.timed, describing="projects carrying the justfile's `TIMED` tag")
     for platform, test in sorted(committed.tested.items()):
@@ -642,9 +631,9 @@ def test_no_timing_budget_is_measured_beside_the_end_to_end_tier(committed: Ran)
             describing=f"`test ({platform})` testing every timing budget's project",
         )
         equal(
-            timing_findings(test, committed.timed, committed.beside),
+            timing_findings(test, committed.timed),
             [],
-            describing=f"the timing projects beside the end-to-end tier in `test ({platform})`",
+            describing=f"the timing projects beside other work in `test ({platform})`",
         )
 
 
@@ -658,12 +647,19 @@ TIMED_FIRST = (
 
 @pytest.mark.parametrize(
     ("old", "new", "naming"),
-    [pytest.param(TIMED_FIRST, "", "timing projects are tested with", id="tested-with-the-rest")],
+    [
+        pytest.param(
+            TIMED_FIRST,
+            '    tested="$PRINTOBSERVER_GATE_PROJECTS"; \\\n',
+            "timing projects are tested with",
+            id="tested-with-the-rest",
+        )
+    ],
 )
-def test_a_timing_budget_measured_beside_the_end_to_end_tier_is_found(
+def test_a_timing_budget_measured_beside_other_work_is_found(
     doubled: Callable[[], Copy], old: str, new: str, naming: str
 ) -> None:
-    """The timing projects folded back into the test tier beside the end-to-end tier are found.
+    """The timing projects folded back into the test tier, beside the rest of it, are found.
 
     One `test` cell is run rather than every job: the defect is in the recipe
     every cell runs, and what is found is that cell's own invocations. A defect
@@ -676,8 +672,6 @@ def test_a_timing_budget_measured_beside_the_end_to_end_tier_is_found(
     text = path.read_text(encoding="utf-8")
     truth(old in text, describing="the committed `ci-measured` lines the defect edits")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
-    if evaluated(copy, "CI_E2E_BESIDE_TESTS") != "true":
-        pytest.skip("this host's `ci-measured` starts no end-to-end tier beside the test tier")
     repo = Repo(copy.root)
     graph = {project.name: set(project.targets) for project in projects(repo)}
     timing = evaluated(copy, "TIMED")
@@ -687,7 +681,7 @@ def test_a_timing_budget_measured_beside_the_end_to_end_tier_is_found(
     record = copy.root.parent / "records" / f"{cell.job}-{cell.platform}.jsonl"
     record.parent.mkdir(exist_ok=True)
     copy.run_job(workflow, cell, record)
-    said = "\n".join(timing_findings(work(record, graph), timed, beside=True))
+    said = "\n".join(timing_findings(work(record, graph), timed))
 
     truth(naming in said, describing=f"a finding naming {naming!r} in:\n{said}")
 

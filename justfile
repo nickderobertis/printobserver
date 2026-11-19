@@ -152,7 +152,7 @@ ci-test tier="affected":
     just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" {{quote(tier)}}
 
 # The project tag every project measuring a timing budget carries: the side of
-# a tier `just ci-measured` measures alone, before it starts anything beside it.
+# a tier `just ci-measured` measures alone, before it starts anything else.
 TIMED := "type:budget"
 
 # The `test` tier with its coverage, the `build` tier and the end-to-end tier
@@ -160,10 +160,11 @@ TIMED := "type:budget"
 # SIDE is the tag, or the tag with `!` in front for the projects carrying none
 # of it. The end-to-end tier starts beside the test tier where
 # `CI_E2E_BESIDE_TESTS` says so, and both are waited out whatever either
-# answers. There the side's `TIMED` projects are tested first, alone, because
-# a wall-time budget their tests record measured beside the end-to-end tier is
-# a figure of that tier's load rather than of the code (`gcode-index-seconds`
-# read 3.0 to 5.3 s beside it on Linux against 1.6 s alone, over a 5 s line).
+# answers. The side's `TIMED` projects are tested first, alone, because a
+# wall-time budget their tests record beside other work is a figure of that
+# work's load rather than of the code: `gcode-index-seconds` read 3.0 to 5.3 s
+# beside the end-to-end tier on Linux, and 5.1 s beside the other crates' tests
+# on Windows, against 1.2 to 1.9 s alone, over a 5 s line.
 # The Rust floor is ruled on here; the Python data is kept under
 # `coverage-data/<KEEP>`, because a source and the tests measuring it can sit
 # on the two sides, and the `budgets` job rules on the floor over each
@@ -171,11 +172,10 @@ TIMED := "type:budget"
 ci-measured side keep tier="affected":
     status=0; export PRINTOBSERVER_GATE_PROJECTS={{quote(side)}}; \
     export PRINTOBSERVER_COVERAGE_KEEP="coverage-data/"{{quote(keep)}}; \
-    tested="$PRINTOBSERVER_GATE_PROJECTS"; \
-    if {{CI_E2E_BESIDE_TESTS}}; then \
     PRINTOBSERVER_GATE_PROJECTS="$PRINTOBSERVER_GATE_PROJECTS,"{{quote(TIMED)}} \
     just test {{quote(tier)}} || status=$?; \
     tested="$PRINTOBSERVER_GATE_PROJECTS,!"{{quote(TIMED)}}; \
+    if {{CI_E2E_BESIDE_TESTS}}; then \
     just test-e2e {{quote(tier)}} & e2e=$!; \
     fi; \
     PRINTOBSERVER_GATE_PROJECTS="$tested" just test {{quote(tier)}} && \
