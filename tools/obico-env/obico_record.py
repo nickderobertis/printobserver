@@ -41,13 +41,14 @@ import argparse
 import contextlib
 import json
 import os
+import subprocess
 import sys
 import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NewType, TypedDict
 
-from obico_env import ACCOUNT_EMAIL, OBICO_REVISION, Stack, note, run_program
+from obico_env import ACCOUNT_EMAIL, OBICO_REVISION, Stack, StartupError, note, run_program
 from obico_tier import (
     PrinterId,
     TierError,
@@ -165,11 +166,18 @@ def mint_access_token(stack: Stack) -> AccessToken:
     Raises:
         RecordError: If Obico does not say it minted one.
     """
-    answered = run_program(
-        stack.compose("exec", "-T", "web", "python", "manage.py", "shell"),
-        timeout=600,
-        stdin=MINT_SCRIPT.format(request=json.dumps({"email": ACCOUNT_EMAIL})),
-    )
+    try:
+        answered = run_program(
+            stack.compose("exec", "-T", "web", "python", "manage.py", "shell"),
+            timeout=600,
+            stdin=MINT_SCRIPT.format(request=json.dumps({"email": ACCOUNT_EMAIL})),
+        )
+    except StartupError as error:
+        message = f"no access token could be minted: {error.detail}"
+        raise RecordError(message) from error
+    except (OSError, subprocess.TimeoutExpired) as error:
+        message = f"no access token could be minted: {type(error).__name__}"
+        raise RecordError(message) from error
     for line in answered.stdout.splitlines():
         if line.startswith(MINTED) and line[len(MINTED) :].strip():
             return AccessToken(line[len(MINTED) :].strip())

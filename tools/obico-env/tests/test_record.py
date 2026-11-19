@@ -96,11 +96,15 @@ def obico() -> Iterator[Obico]:
     thread.join(timeout=10)
 
 
-def run_record(*arguments: str, bearer: str | None = BEARER) -> subprocess.CompletedProcess[str]:
+def run_record(
+    *arguments: str, bearer: str | None = BEARER, path: str | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run the command the way a person does, the bearer in its variable."""
     env = {key: value for key, value in os.environ.items() if key != "OBICO_RECORD_ACCESS_TOKEN"}
     if bearer is not None:
         env["OBICO_RECORD_ACCESS_TOKEN"] = bearer
+    if path is not None:
+        env["PATH"] = path
     return shell_run([sys.executable, str(RECORD), *arguments], env=env, timeout=120)
 
 
@@ -240,6 +244,44 @@ def test_a_recording_that_fails_to_land_leaves_the_one_before(obico: Obico, tmp_
     equal(out.read_text(encoding="utf-8"), "the recording before\n", describing="the recording")
 
 
+def test_a_recording_that_cannot_be_moved_into_place_leaves_nothing_behind(
+    obico: Obico, tmp_path: Path
+) -> None:
+    """Written beside its target but refused the move: the target stands, the temporary goes."""
+    out = tmp_path / "obico-printer.json"
+    out.mkdir()
+    (out / "kept").write_text("", encoding="utf-8")
+    run = record(obico, out)
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, "could not be written", describing="the refusal")
+    equal(sorted(path.name for path in tmp_path.iterdir()), [out.name], describing="what is left")
+    equal([path.name for path in out.iterdir()], ["kept"], describing="the target")
+
+
+def test_recording_over_the_baseline_compares_with_what_it_replaced(
+    obico: Obico, tmp_path: Path
+) -> None:
+    """Re-recorded in place, as a person does: what moved is named against the old file."""
+    out = tmp_path / "obico-printer.json"
+    old = json.loads(RECORDING.read_text(encoding="utf-8"))
+    old["answer"]["a_field_obico_dropped"] = "x"
+    out.write_text(json.dumps(old), encoding="utf-8")
+    run = run_record(
+        "--url", obico.url, "--printer-id", "1", "--out", str(out), "--compare-with", str(out)
+    )
+    equal(run.returncode, 1, describing=f"the exit for a moved shape:\n{run.stderr}")
+    contains(
+        "\n".join(json.loads(run.stdout)["differences"]),
+        "missing field `a_field_obico_dropped`",
+        describing="what moved",
+    )
+    absent(
+        json.loads(out.read_text(encoding="utf-8"))["answer"],
+        "a_field_obico_dropped",
+        describing="the recording now in place",
+    )
+
+
 def test_the_committed_recording_names_the_revision_the_environment_pins() -> None:
     """The provenance's revision is the one `tools/obico-env` stands up, so a re-run compares it."""
     provenance = json.loads(RECORDING.read_text(encoding="utf-8"))["provenance"]
@@ -345,6 +387,18 @@ def test_a_stack_that_mints_no_bearer_is_refused_and_reads_nothing(
     contains(run.stderr, "did not report a minted access token", describing="the refusal")
     equal(obico.authorizations, [], describing="reads made with no bearer")
     absent(run.stdout + run.stderr, PRINTER_CREDENTIAL, describing="what it said")
+    truth(not out.exists(), describing="no recording")
+
+
+def test_a_host_with_no_docker_mints_nothing_and_says_so(obico: Obico, tmp_path: Path) -> None:
+    """Docker absent: the documented refusal, exit 2, rather than a traceback."""
+    stack_record(tmp_path, obico.url, printer_id=1)
+    out = tmp_path / "obico-printer.json"
+    run = run_record(
+        "--state-dir", str(tmp_path), "--out", str(out), bearer=None, path=str(tmp_path)
+    )
+    equal(run.returncode, 2, describing=f"the exit:\n{run.stderr}")
+    contains(run.stderr, "docker is not on PATH", describing="the refusal")
     truth(not out.exists(), describing="no recording")
 
 
