@@ -23,7 +23,15 @@ const FRAME: &str = "agent-031-obs-125703-p43.2.jpg";
 
 /// Compose a check of a frame's bytes at the PETG frame's layer.
 fn compose(jpeg: &[u8], url: &str) -> Result<(), ComposeError> {
-    let calibration = calibration();
+    compose_under(&calibration(), jpeg, url)
+}
+
+/// The same, under a calibration of the test's own.
+fn compose_under(
+    calibration: &printobserver_panels::CameraCalibration,
+    jpeg: &[u8],
+    url: &str,
+) -> Result<(), ComposeError> {
     let index = index(PETG);
     let print_z = recorded_z(PETG, FRAME);
     let path = toolpath(PETG, layer_at_z(&index, print_z));
@@ -37,9 +45,59 @@ fn compose(jpeg: &[u8], url: &str) -> Result<(), ComposeError> {
         toolpath: &path,
         object_layer_below: None,
         print_z_mm: print_z,
-        calibration: &calibration,
+        calibration,
     })
     .map(|_| ())
+}
+
+/// The committed calibration with its JSON edited.
+fn edited(
+    change: impl FnOnce(&mut printobserver_types::serde_json::Value),
+) -> printobserver_panels::CameraCalibration {
+    let mut value: printobserver_types::serde_json::Value =
+        printobserver_types::serde_json::from_slice(&crate::support::calibration_bytes())
+            .expect("JSON");
+    change(&mut value);
+    printobserver_panels::CameraCalibration::from_json(
+        &printobserver_types::serde_json::to_vec(&value).expect("JSON"),
+    )
+    .expect("the edited calibration is valid")
+}
+
+/// A stored patch with no texture matches nothing, so its landmark counts as
+/// hidden; and one landmark found displaced, with the rest where they were,
+/// is no moved camera.
+#[test]
+fn a_flat_stored_patch_is_hidden_and_one_displaced_landmark_is_no_moved_camera() {
+    let url = snapshot_url();
+    let mut flat = Vec::new();
+    image::GrayImage::from_pixel(48, 48, image::Luma([128]))
+        .write_to(
+            &mut std::io::Cursor::new(&mut flat),
+            image::ImageFormat::Png,
+        )
+        .expect("a flat PNG");
+    let flat = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &flat);
+    let flattened = edited(|value| {
+        for landmark in value["landmarks"]
+            .as_array_mut()
+            .expect("landmarks")
+            .iter_mut()
+            .take(3)
+        {
+            landmark["patch_png_base64"] = flat.clone().into();
+        }
+    });
+    assert_eq!(
+        compose_under(&flattened, &frame(PETG, FRAME), &url),
+        Err(ComposeError::DriftUnverified)
+    );
+    let displaced = edited(|value| {
+        let x = value["landmarks"][0]["center_px"][0].as_f64().expect("x");
+        value["landmarks"][0]["center_px"][0] = (x - 20.0).into();
+    });
+    compose_under(&displaced, &frame(PETG, FRAME), &url)
+        .expect("one landmark 20 px off, the rest in place, still composes");
 }
 
 /// A frame moved by `dx` pixels, its uncovered edge filled grey.

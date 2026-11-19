@@ -116,6 +116,18 @@ fn an_invalid_calibration_is_refused_naming_its_key() {
     for (field, value) in &cases {
         assert_eq!(refused_field(value), *field);
     }
+    let mut tiny = committed();
+    let mut png = Vec::new();
+    image::GrayImage::new(1, 1)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .expect("a one-pixel PNG");
+    tiny["landmarks"][0]["patch_png_base64"] =
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png).into();
+    assert_eq!(
+        refused_field(&tiny),
+        "landmarks.patch_png_base64",
+        "a one-pixel patch"
+    );
     let mut unknown = committed();
     unknown["extra"] = 1.into();
     assert!(matches!(

@@ -263,6 +263,8 @@ def _set_heights(doc: dict[str, Any], heights: list[float]) -> None:
         (lambda doc: doc["frames"][0].update(curves="none"), "not a list"),
         (lambda doc: _first_curve(doc).update(what="side"), "neither a `top` nor a `first`"),
         (lambda doc: _first_curve(doc).update(z="high"), "not a finite number"),
+        (lambda doc: _first_curve(doc).update(z=10**400), "not a finite number"),
+        (lambda doc: _first_curve(doc).update(what=["top"]), "neither a `top` nor a `first`"),
         (lambda doc: _first_curve(doc).update(px=[[1, 2, 3]]), "not an [x, y] pixel"),
         (lambda doc: doc["frames"][0].update(zc_mm=None), "not a finite number"),
         (lambda doc: doc["frames"][0].pop("case"), "names no `case`"),

@@ -76,10 +76,16 @@ class Marks:
 
 
 def _number(value: object, where: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
-        msg = f"{where} is {value!r}, not a finite number"
+    number = math.nan
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        try:
+            number = float(value)
+        except OverflowError:
+            number = math.nan
+    if not math.isfinite(number):
+        msg = f"{where} is {value!r:.40}, not a finite number"
         raise MarksError(msg)
-    return float(value)
+    return number
 
 
 def _list(entry: dict[str, Any], key: str, where: str) -> list[Any]:
@@ -135,13 +141,14 @@ def load(path: Path) -> Marks:
         curves = []
         for index, curve in enumerate(_list(entry, "curves", where)):
             spot = f"{where} curves[{index}]"
-            if not isinstance(curve, dict) or curve.get("what") not in set(Outline):
+            what = curve.get("what") if isinstance(curve, dict) else None
+            if not isinstance(what, str) or what not in set(Outline):
                 msg = f"{spot} marks neither a `top` nor a `first` outline"
                 raise MarksError(msg)
             points = _list(curve, "px", spot)
             curves.append(
                 Curve(
-                    Outline(curve["what"]),
+                    Outline(what),
                     _number(curve.get("z"), f"{spot} z"),
                     tuple(_point(point, f"{spot} px") for point in points),
                 )

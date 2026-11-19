@@ -601,3 +601,72 @@ fn the_spool_goes_when_the_operator_closes_the_print() {
     assert!(!spool.exists(), "the spool went with the operator's close");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A layer's toolpath is read in the positioning modes in force where the
+/// layer begins — relative axes and absolute extrusion set before its
+/// `;LAYER_CHANGE` — and an arc is cut into chords no longer than half a
+/// millimetre, up to 4096 of them for one arc.
+#[test]
+fn a_layer_is_read_in_the_modes_its_start_inherits_and_arcs_are_cut_into_short_chords() {
+    use printobserver_printer_api::GcodeSink as _;
+
+    let text = "\
+;LAYER_CHANGE
+;Z:0.2
+G90
+M83
+;TYPE:External perimeter
+G1 X10 Y10
+G1 X20 Y10 E1
+G91
+M82
+G92 E0
+;LAYER_CHANGE
+;Z:0.4
+G1 X0 Y10 E1
+G1 X5 Y0 E1
+G1 X5 Y0 E2
+G90
+G2 X30 Y20 I0 J-1000 E5
+G3 X40 Y20 I5 J0 E6
+";
+    let dir = spool_dir("modes");
+    let mut builder = printobserver_core::IndexBuilder::spooling(dir.join("modes.gcode"))
+        .expect("the spool is created");
+    let _ = builder.take(text.as_bytes());
+    let index = builder.finish();
+    let toolpath = index
+        .layer_toolpath(LayerRef::of_index(1))
+        .expect("the layer reads back");
+    let lines: Vec<([f32; 2], [f32; 2])> = toolpath.segments[..3]
+        .iter()
+        .map(|segment| (segment.from_mm, segment.to_mm))
+        .collect();
+    assert_eq!(
+        lines,
+        vec![
+            ([20.0, 10.0], [20.0, 20.0]),
+            ([20.0, 20.0], [25.0, 20.0]),
+            ([25.0, 20.0], [30.0, 20.0]),
+        ],
+        "relative axes, with extrusion relative under G91 as firmware reads it"
+    );
+    let arcs = &toolpath.segments[3..];
+    let length = |segment: &ToolpathSegment| {
+        f64::from(segment.to_mm[0] - segment.from_mm[0])
+            .hypot(f64::from(segment.to_mm[1] - segment.from_mm[1]))
+    };
+    assert_eq!(
+        arcs.len() - 32,
+        4096,
+        "a whole circle of radius 1 m is cut into the cap"
+    );
+    for chord in &arcs[4096..] {
+        assert!(
+            length(chord) <= 0.5 + 1e-3,
+            "a chord of {} mm",
+            length(chord)
+        );
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
