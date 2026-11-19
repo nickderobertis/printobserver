@@ -24,6 +24,7 @@ from camera_calibration import fit as fitting
 from camera_calibration.marks import load
 from camera_calibration.model import Camera
 from repo_checks import expect
+from repo_checks.shell import run
 
 TOOL = Path(__file__).resolve().parents[1]
 ROOT = TOOL.parents[1]
@@ -69,7 +70,7 @@ def _fixture_marks(directory: Path, *, without_edges: bool = False) -> Path:
 
 
 def _run(marks: Path, directory: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 - this interpreter, running this tool
+    return run(
         [
             sys.executable,
             "-m",
@@ -86,9 +87,6 @@ def _run(marks: Path, directory: Path) -> subprocess.CompletedProcess[str]:
             str(directory / "verification.jpg"),
         ],
         cwd=TOOL,
-        capture_output=True,
-        text=True,
-        check=False,
     )
 
 

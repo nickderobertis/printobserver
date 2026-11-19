@@ -591,6 +591,7 @@ cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
 "printobserver-octoprint" = ["printobserver-printer-api", "printobserver-types"]
 "printobserver-obico" = ["printobserver-vision-api", "printobserver-core", "printobserver-types"]
 "printobserver-oneharness" = ["printobserver-supervisor-api", "printobserver-types"]
+"printobserver-panels" = ["printobserver-types", "printobserver-core"]
 "printobserver-store-sqlite" = [
     "printobserver-core",
     "printobserver-supervisor-api",
@@ -606,6 +607,7 @@ cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
     "printobserver-octoprint",
     "printobserver-obico",
     "printobserver-oneharness",
+    "printobserver-panels",
     "printobserver-store-sqlite",
 ]
 "printobserver-sdk" = []
@@ -620,6 +622,9 @@ cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
 # reach either crate at run time.
 [crates.may_depend_on_in_tests]
 "printobserver" = ["printobserver-core", "printobserver-store-sqlite"]
+# The panels crate's recorded-frame tests stream a case's G-code into the real
+# index builder through the printer port's sink, as the whole-file read does.
+"printobserver-panels" = ["printobserver-printer-api"]
 
 [supervisor]
 # The one implementation of the supervisor port, and the artifacts it is held
@@ -793,6 +798,7 @@ mended_recipe = "release-mended"
 "crate:printobserver-octoprint" = { built_by = "release-plz" }
 "crate:printobserver-obico" = { built_by = "release-plz" }
 "crate:printobserver-oneharness" = { built_by = "release-plz" }
+"crate:printobserver-panels" = { built_by = "release-plz" }
 "crate:printobserver-store-sqlite" = { built_by = "release-plz" }
 "crate:printobserver-core" = { built_by = "release-plz" }
 "crate:printobserver-server" = { built_by = "release-plz" }

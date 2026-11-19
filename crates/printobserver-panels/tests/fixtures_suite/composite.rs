@@ -85,17 +85,13 @@ fn scaled(frame: &RgbImage, rect: Option<[u32; 4]>) -> RgbImage {
 
 /// The mean absolute channel difference of two same-sized images.
 fn mean_difference(a: &RgbImage, b: &RgbImage) -> f64 {
-    let total: u64 = a
+    let total: u32 = a
         .as_raw()
         .iter()
         .zip(b.as_raw())
-        .map(|(x, y)| u64::from(x.abs_diff(*y)))
+        .map(|(x, y)| u32::from(x.abs_diff(*y)))
         .sum();
-    #[expect(clippy::cast_precision_loss, reason = "a panel's channel count")]
-    let count = a.as_raw().len() as f64;
-    #[expect(clippy::cast_precision_loss, reason = "a sum of byte differences")]
-    let total = total as f64;
-    total / count
+    f64::from(total) / f64::from(u32::try_from(a.as_raw().len()).expect("a count"))
 }
 
 /// How far one colour is from another, the largest channel difference.
@@ -203,9 +199,8 @@ fn share_carrying(panel: &RgbImage, samples: &[([f64; 2], [f64; 2])], colour: Rg
         .iter()
         .filter(|(at, _)| carries(panel, *at, colour, 60))
         .count();
-    #[expect(clippy::cast_precision_loss, reason = "a few thousand samples")]
-    let share = hits as f64 / samples.len().max(1) as f64;
-    share
+    f64::from(u32::try_from(hits).expect("a count"))
+        / f64::from(u32::try_from(samples.len().max(1)).expect("a count"))
 }
 
 /// A planned support and a planned bridge are each drawn in their kind's
@@ -549,3 +544,4 @@ fn the_close_up_is_the_active_objects_not_every_objects() {
         "{rect:?} is not the box holding every outline"
     );
 }
+

@@ -1,0 +1,31 @@
+{
+  "name": "printobserver-panels",
+  "root": "crates/printobserver-panels",
+  "projectType": "library",
+  "tags": [
+    "lang:rust",
+    "type:core"
+  ],
+  "implicitDependencies": [
+    "printobserver-core",
+    "printobserver-printer-api",
+    "printobserver-types"
+  ],
+  "targets": {
+    "format": {
+      "command": "cargo fmt -p printobserver-panels"
+    },
+    "format-check": {
+      "command": "cargo fmt -p printobserver-panels -- --check"
+    },
+    "lint": {
+      "command": "cargo clippy -p printobserver-panels --all-targets --locked -- -D warnings"
+    },
+    "test": {
+      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-panels-%p-%m.profraw; fi; exec cargo llvm-cov nextest -p printobserver-panels --no-report --no-tests=pass -E \"not binary(fixtures)\"'"
+    },
+    "build": {
+      "command": "cargo build -p printobserver-panels --locked"
+    }
+  }
+}

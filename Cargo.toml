@@ -1,4 +1,4 @@
-# The printobserver Rust workspace: twelve crates, cut by domain.
+# The printobserver Rust workspace: thirteen crates, cut by domain.
 #
 # The dependency rule this design rests on is the edge table `repo-policy.toml`'s
 # `crates.may_depend_on` declares — for every crate, the workspace crates it may

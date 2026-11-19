@@ -13,9 +13,8 @@
 //! 3. The previous check's frame scaled whole, nothing drawn, or a
 //!    placeholder on the print's first check.
 
-use ab_glyph::{FontRef, PxScale};
 use image::{Rgb, RgbImage, imageops::FilterType};
-use imageproc::drawing::{draw_filled_rect_mut, draw_line_segment_mut, draw_text_mut};
+use imageproc::drawing::{draw_filled_rect_mut, draw_line_segment_mut};
 use imageproc::rect::Rect;
 use printobserver_core::{ExtrusionKind, LayerToolpath, ObjectOutline};
 use printobserver_types::Timestamp;
@@ -24,6 +23,7 @@ use crate::calibration::CameraCalibration;
 use crate::drift::{check_drift, check_frame};
 use crate::error::ComposeError;
 use crate::geometry::project_toolpath;
+use crate::text::draw_text;
 
 /// A panel's width.
 pub const PANEL_WIDTH: u32 = 1024;
@@ -48,10 +48,6 @@ pub const BELOW_GREY: Rgb<u8> = Rgb([150, 150, 150]);
 const BAND: Rgb<u8> = Rgb([24, 24, 24]);
 /// The label text.
 const TEXT: Rgb<u8> = Rgb([235, 235, 235]);
-
-/// The bundled label font, Liberation Mono (SIL OFL 1.1; its licence is
-/// `assets/LiberationMono-LICENSE.txt`).
-const FONT: &[u8] = include_bytes!("../assets/LiberationMono-Regular.ttf");
 
 /// The colour a segment of each kind is drawn in.
 #[must_use]
@@ -161,9 +157,6 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
     }
     let rect = rect.unwrap_or_else(|| whole_width_rect(size));
 
-    let font = FontRef::try_from_slice(FONT).map_err(|error| ComposeError::Encode {
-        detail: error.to_string(),
-    })?;
     let mut image = RgbImage::from_pixel(PANEL_WIDTH, IMAGE_HEIGHT, BAND);
     let scale = f64::from(PANEL_WIDTH) / f64::from(size[0]);
     let scale_y = f64::from(PANEL_HEIGHT) / f64::from(size[1]);
@@ -184,23 +177,11 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
         );
     }
     paste(&mut image, &whole, 0);
-    band(
-        &mut image,
-        &font,
-        0,
-        "1 NOW: planned toolpath of this layer",
-        true,
-    );
+    band(&mut image, 0, "1 NOW: planned toolpath of this layer", true);
 
     // Panel 2: the close-up, nothing drawn.
     paste(&mut image, &scaled(&current, Some(rect)), 1);
-    band(
-        &mut image,
-        &font,
-        1,
-        "2 NOW: close-up, nothing drawn",
-        false,
-    );
+    band(&mut image, 1, "2 NOW: close-up, nothing drawn", false);
 
     // Panel 3: the previous check.
     let third = band_top(2) + BAND_HEIGHT;
@@ -209,7 +190,6 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
         let local = at.as_utc().with_timezone(&chrono::Local).format("%H:%M:%S");
         band(
             &mut image,
-            &font,
             2,
             &format!("3 PREVIOUS CHECK {local}: whole view, nothing drawn"),
             false,
@@ -220,16 +200,15 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
             Rect::at(0, signed(third)).of_size(PANEL_WIDTH, PANEL_HEIGHT),
             Rgb([48, 48, 48]),
         );
-        draw_text_mut(
+        draw_text(
             &mut image,
             TEXT,
             40,
             signed(third + PANEL_HEIGHT / 2 - 16),
-            PxScale::from(32.0),
-            &font,
+            32.0,
             NO_EARLIER_CHECK,
         );
-        band(&mut image, &font, 2, "3 PREVIOUS CHECK: none", false);
+        band(&mut image, 2, "3 PREVIOUS CHECK: none", false);
     }
 
     let mut jpeg = Vec::new();
@@ -281,9 +260,9 @@ fn line(panel: &mut RgbImage, from: [f64; 2], to: [f64; 2], sx: f64, sy: f64, co
 }
 
 /// One label band: its text, and for panel 1 the colour key.
-fn band(image: &mut RgbImage, font: &FontRef<'_>, n: u32, text: &str, key: bool) {
+fn band(image: &mut RgbImage, n: u32, text: &str, key: bool) {
     let top = signed(band_top(n));
-    draw_text_mut(image, TEXT, 8, top + 9, PxScale::from(20.0), font, text);
+    draw_text(image, TEXT, 8, top + 9, 20.0, text);
     if !key {
         return;
     }
@@ -294,15 +273,7 @@ fn band(image: &mut RgbImage, font: &FontRef<'_>, n: u32, text: &str, key: bool)
             Rect::at(x, top + 14).of_size(12, 12),
             colour_of(kind),
         );
-        draw_text_mut(
-            image,
-            TEXT,
-            x + 16,
-            top + 11,
-            PxScale::from(16.0),
-            font,
-            name,
-        );
+        draw_text(image, TEXT, x + 16, top + 11, 16.0, name);
         x += 16 + 10 * i32::try_from(name.len()).unwrap_or(0) + 18;
     }
 }

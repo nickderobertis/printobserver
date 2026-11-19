@@ -2,17 +2,30 @@
   "name": "camera-calibration",
   "root": "tools/camera-calibration",
   "projectType": "library",
-  "tags": ["lang:python", "type:tooling"],
-  "implicitDependencies": ["printobserver-panels", "printobserver-core"],
+  "tags": [
+    "lang:python",
+    "type:tooling"
+  ],
+  "implicitDependencies": [
+    "printobserver-panels",
+    "printobserver-core",
+    "repo-checks"
+  ],
   "targets": {
-    "format": { "command": "uv run -q --project tools/camera-calibration ruff format tools/camera-calibration" },
-    "format-check": { "command": "uv run -q --project tools/camera-calibration ruff format --check tools/camera-calibration" },
-    "lint": { "command": "uv run -q --project tools/camera-calibration ruff check tools/camera-calibration" },
+    "format": {
+      "command": "uv run -q --project=tools/camera-calibration ruff format tools/camera-calibration"
+    },
+    "format-check": {
+      "command": "uv run -q --project=tools/camera-calibration ruff format --check tools/camera-calibration"
+    },
+    "lint": {
+      "command": "uv run -q --project=tools/camera-calibration ruff check tools/camera-calibration"
+    },
     "typecheck": {
-      "command": "uv run -q --project tools/camera-calibration --directory tools/camera-calibration ty check && uv run -q --project tools/camera-calibration --directory tools/camera-calibration ty check --python-platform win32"
+      "command": "uv run -q --project=tools/camera-calibration ty check --project=tools/camera-calibration tools/camera-calibration && uv run -q --project=tools/camera-calibration ty check --project=tools/camera-calibration --python-platform win32 tools/camera-calibration"
     },
     "test": {
-      "command": "uv run -q --project tools/camera-calibration --directory tools/camera-calibration pytest tests",
+      "command": "uv run -q --project=tools/camera-calibration --directory=tools/camera-calibration pytest tests",
       "inputs": [
         "{projectRoot}/**/*",
         "{workspaceRoot}/tests/real-prints/cameras/**/*",

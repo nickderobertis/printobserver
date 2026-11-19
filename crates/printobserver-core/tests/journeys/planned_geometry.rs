@@ -141,9 +141,10 @@ fn direct(text: &str) -> Vec<DirectLayer> {
                 }
             }
             Some("M486") => {
-                if let Some(number) = word(code, 'S') {
-                    #[expect(clippy::cast_possible_truncation, reason = "an object number")]
-                    let number = number as i64;
+                if let Some(number) = code
+                    .split_whitespace()
+                    .find_map(|token| token.strip_prefix('S')?.parse::<i64>().ok())
+                {
                     object = (number >= 0).then_some(number);
                 }
             }
@@ -405,11 +406,11 @@ fn each_labelled_object_has_its_outline_and_owns_its_blocks() {
     for ((outline, area), number) in outlines.iter().zip(&plan.objects).zip(&numbers) {
         assert!(outline.hull_mm.len() >= 3 && outline.hull_mm.len() <= 64);
         for vertex in &outline.hull_mm {
-            #[expect(clippy::cast_precision_loss, reason = "whole millimetres")]
-            let within = f64::from(vertex[0]) >= area[0] as f64 - 0.1
-                && f64::from(vertex[0]) <= area[2] as f64 + 0.1
-                && f64::from(vertex[1]) >= area[1] as f64 - 0.1
-                && f64::from(vertex[1]) <= area[3] as f64 + 0.1;
+            let edge = |at: usize| f64::from(i32::try_from(area[at]).expect("a bed edge"));
+            let within = f64::from(vertex[0]) >= edge(0) - 0.1
+                && f64::from(vertex[0]) <= edge(2) + 0.1
+                && f64::from(vertex[1]) >= edge(1) - 0.1
+                && f64::from(vertex[1]) <= edge(3) + 0.1;
             assert!(within, "object {number}'s outline lies inside its bed area");
         }
         for point in &laid[number] {

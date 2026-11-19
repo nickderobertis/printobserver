@@ -11,8 +11,9 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-# The label font's reader, the one `imageproc`'s text drawing takes.
-ab_glyph = "0.2"
+# Turns the label font's glyph outlines into coverage. The font itself is read
+# by `skrifa`.
+ab_glyph_rasterizer = "0.1"
 base64.workspace = true
 # The previous check's capture time, in the host's local time, in panel 3's
 # label.
@@ -20,12 +21,14 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # The decoders and encoder the frames and the check image need, and no other
 # format: a camera frame is a JPEG and a landmark patch a PNG.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
-# Line drawing and the label text, with none of the crate's optional parallel
-# or transform machinery.
-imageproc = { version = "0.27", default-features = false, features = ["text"] }
+# Line drawing and the frame's blur, with none of the crate's optional
+# parallel, text or transform machinery.
+imageproc = { version = "0.27", default-features = false }
 nalgebra = "0.35"
 printobserver-core = { workspace = true }
 printobserver-types = { workspace = true }
+# The label font's reader: the bundled font's glyph outlines and metrics.
+skrifa = "0.50"
 
 [dev-dependencies]
 jsonschema.workspace = true

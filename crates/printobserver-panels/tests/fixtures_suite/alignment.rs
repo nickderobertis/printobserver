@@ -85,8 +85,7 @@ fn moved_px(
         .filter_map(|(p, q)| Some((p.as_ref()?, q.as_ref()?)))
         .map(|(p, q)| (p[0] - q[0]).hypot(p[1] - q[1]))
         .collect();
-    #[expect(clippy::cast_precision_loss, reason = "a few hundred points")]
-    let count = moves.len() as f64;
+    let count = f64::from(u32::try_from(moves.len()).expect("a count"));
     moves.iter().sum::<f64>() / count
 }
 
