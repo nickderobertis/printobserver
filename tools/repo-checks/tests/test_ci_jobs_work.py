@@ -654,28 +654,22 @@ TIMED_FIRST = (
     "    just test {{quote(tier)}} || status=$?; \\\n"
     '    tested="$PRINTOBSERVER_GATE_PROJECTS,!"{{quote(TIMED)}}; \\\n'
 )
-E2E_BESIDE = "    just test-e2e {{quote(tier)}} & e2e=$!; \\\n"
 
 
 @pytest.mark.parametrize(
     ("old", "new", "naming"),
-    [
-        pytest.param(TIMED_FIRST, "", "timing projects are tested with", id="tested-with-the-rest"),
-        pytest.param(
-            TIMED_FIRST + E2E_BESIDE,
-            E2E_BESIDE + TIMED_FIRST,
-            "after the end-to-end tier started",
-            id="tested-after-the-tier-started",
-        ),
-    ],
+    [pytest.param(TIMED_FIRST, "", "timing projects are tested with", id="tested-with-the-rest")],
 )
 def test_a_timing_budget_measured_beside_the_end_to_end_tier_is_found(
     doubled: Callable[[], Copy], old: str, new: str, naming: str
 ) -> None:
-    """The timing projects folded back into the test tier, or tested once it started, are found.
+    """The timing projects folded back into the test tier beside the end-to-end tier are found.
 
     One `test` cell is run rather than every job: the defect is in the recipe
-    every cell runs, and what is found is that cell's own order of invocations.
+    every cell runs, and what is found is that cell's own invocations. A defect
+    starting the end-to-end tier before the timing projects is not made here:
+    the doubles finish at once, so which of the two starts records first is a
+    race rather than a finding.
     """
     copy = doubled()
     path = copy.root / "justfile"
