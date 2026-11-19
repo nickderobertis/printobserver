@@ -17,6 +17,10 @@ use printobserver_types::serde::{Deserialize, Serialize};
 /// The calibration file's one schema version.
 pub const SCHEMA_VERSION: u32 = 1;
 
+/// The furthest a landmark is searched for, in pixels: the drift check scores
+/// every offset within it, so a radius past this is no landmark search.
+pub const MAX_SEARCH_RADIUS_PX: u32 = 256;
+
 /// How the printer moves its bed: the one motion a calibration describes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde")]
@@ -84,6 +88,7 @@ pub struct Fit {
     /// How many frames the marks were on.
     pub frames: u32,
     /// The date the frames were taken, `YYYY-MM-DD`.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     pub calibrated_at: String,
 }
 
@@ -110,6 +115,7 @@ pub struct CameraCalibration {
     pub drift_tolerance_px: f64,
     /// The `[camera] snapshot_url` the calibrated frames came from; a frame
     /// from any other is refused.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     pub camera_snapshot_url: String,
     /// The first-layer alignment check's pass threshold, in pixels.
     pub alignment_max_offset_px: f64,
@@ -155,6 +161,11 @@ fn invalid(field: &'static str, reason: impl Into<String>) -> CalibrationError {
         field,
         reason: reason.into(),
     }
+}
+
+/// Whether text is a calendar date written `YYYY-MM-DD`.
+fn is_date(text: &str) -> bool {
+    chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok() && text.len() == 10
 }
 
 /// Refuse a number that is not finite, or not above zero when it must be.
@@ -223,15 +234,19 @@ impl CameraCalibration {
             &[calibration.alignment_max_offset_px],
             true,
         )?;
-        let url = calibration.camera_snapshot_url.as_str();
-        if !(url.starts_with("http://") || url.starts_with("https://")) {
-            return Err(invalid("camera_snapshot_url", "is not an http(s) address"));
+        printobserver_vision_api::WebAddress::new(&calibration.camera_snapshot_url)
+            .map_err(|why| invalid("camera_snapshot_url", why))?;
+        if !is_date(&calibration.fit.calibrated_at) {
+            return Err(invalid("fit.calibrated_at", "is not a YYYY-MM-DD date"));
         }
         let mut patches = Vec::with_capacity(calibration.landmarks.len());
         for landmark in &calibration.landmarks {
             finite("landmarks.center_px", &landmark.center_px, false)?;
-            if landmark.search_radius_px == 0 {
-                return Err(invalid("landmarks.search_radius_px", "must be above zero"));
+            if !(1..=MAX_SEARCH_RADIUS_PX).contains(&landmark.search_radius_px) {
+                return Err(invalid(
+                    "landmarks.search_radius_px",
+                    format!("must be from 1 to {MAX_SEARCH_RADIUS_PX}"),
+                ));
             }
             let png = base64::engine::general_purpose::STANDARD
                 .decode(&landmark.patch_png_base64)

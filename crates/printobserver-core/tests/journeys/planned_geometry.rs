@@ -312,7 +312,40 @@ fn a_layers_toolpath_is_read_from_the_spool_as_the_file_plans_it() {
         index_of(&plain, &plain_print).layer_toolpath(LayerRef::of_index(0)),
         Err(printobserver_core::SpoolError::NoSpool)
     );
+    assert_eq!(
+        index.layer_toolpath(LayerRef::of_index(index.layer_count())),
+        Err(printobserver_core::SpoolError::UnknownLayer)
+    );
+    std::fs::remove_file(spool_path(&dir, print.id)).expect("the spool is removed");
+    assert!(
+        matches!(
+            index.layer_toolpath(LayerRef::of_index(0)),
+            Err(printobserver_core::SpoolError::Io { .. })
+        ),
+        "a spool gone from under the index is a read that failed, not an empty layer"
+    );
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A spool directory nothing can be written in leaves an index with no
+/// toolpaths, and the context's plan is answered all the same.
+#[test]
+fn a_spool_that_cannot_be_created_leaves_the_plan_without_toolpaths() {
+    let nowhere = spool_dir("nowhere").join("not-a-directory");
+    let (world, print) = printing(SEVEN_OBJECTS, Some(nowhere));
+    let index = index_of(&world, &print);
+    assert_eq!(index.object_outlines().len(), 7, "the outlines are planned");
+    assert_eq!(
+        index.layer_toolpath(LayerRef::of_index(0)),
+        Err(printobserver_core::SpoolError::NoSpool)
+    );
+    assert!(
+        world
+            .context(print.id)
+            .expect("the context reads")
+            .slicer
+            .is_some()
+    );
 }
 
 /// A support-only layer's nearest object layer is the one below that lays the
@@ -495,9 +528,15 @@ fn the_spool_goes_when_the_print_closes_and_strays_are_swept() {
 
     let stray = spool_path(&dir, printobserver_types::PrintId::new());
     std::fs::write(&stray, b"G1 X0").expect("a stray is written");
+    let unrelated = dir.join("notes.txt");
+    std::fs::write(&unrelated, b"kept").expect("an unrelated file is written");
     block_on(world.core.sweep_gcode_spools()).expect("the sweep runs");
     assert!(!stray.exists(), "a spool of no open print is swept");
     assert!(spool.exists(), "the open print's spool stays");
+    assert!(unrelated.exists(), "a file that is no spool is left alone");
+    let (unspooled, _) = printing(SEVEN_OBJECTS, None);
+    block_on(unspooled.core.sweep_gcode_spools())
+        .expect("with no spool directory, nothing to sweep");
 
     world
         .printer

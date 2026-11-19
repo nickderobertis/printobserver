@@ -145,7 +145,7 @@ struct Aligning {
     /// The service.
     world: World,
     /// The camera; dropped with the journey.
-    _camera: ScriptedHost,
+    camera: ScriptedHost,
     /// Where the calibration file is; dropped with the journey.
     _calibration: TempDir,
 }
@@ -154,13 +154,13 @@ struct Aligning {
 /// committed calibration as `calibration` edits it — or none.
 async fn start(
     bytes: &[u8],
-    frame: Vec<u8>,
+    frame: Vec<Scripted>,
     calibration: Option<fn(Value, &[u8]) -> Value>,
 ) -> Aligning {
     let printer = RecordingPrinter::printing();
     printer.holds_gcode(FILE, bytes);
     printer.at_byte(0);
-    let camera = ScriptedHost::answering(vec![Scripted::frame(frame)]).await;
+    let camera = ScriptedHost::answering(frame).await;
     let held = TempDir::new().expect("a directory for the calibration");
     let path = held.path().join("calibration.json");
     if let Some(edit) = calibration {
@@ -195,7 +195,7 @@ async fn start(
     .await;
     Aligning {
         world,
-        _camera: camera,
+        camera,
         _calibration: held,
     }
 }
@@ -275,7 +275,10 @@ async fn a_print_is_checked_once_its_first_layer_is_down_and_keeps_its_verdict_w
     let (_, first_ends) = index.first_object_layer().expect("a first object layer");
     let journey = start(
         &bytes,
-        frame("jar-top-petg-healthy", "agent-007-obs-121230-p01.3.jpg"),
+        vec![Scripted::frame(frame(
+            "jar-top-petg-healthy",
+            "agent-007-obs-121230-p01.3.jpg",
+        ))],
         Some(as_committed),
     )
     .await;
@@ -308,7 +311,7 @@ async fn a_print_is_checked_once_its_first_layer_is_down_and_keeps_its_verdict_w
 
     let Aligning {
         world,
-        _camera,
+        camera: _camera,
         _calibration,
     } = journey;
     let world = Box::pin(world.restart()).await;
@@ -348,7 +351,10 @@ async fn a_wrong_projection_or_resolution_fails_and_nothing_to_check_is_unavaila
     let bytes = slice("jar-top-petg.gcode");
     let index = index_of(&bytes);
     let past = position_at(&index, bytes.len(), 0.6);
-    let petg = frame("jar-top-petg-healthy", "agent-007-obs-121230-p01.3.jpg");
+    let petg = vec![Scripted::frame(frame(
+        "jar-top-petg-healthy",
+        "agent-007-obs-121230-p01.3.jpg",
+    ))];
 
     let moved = start(&bytes, petg.clone(), Some(moved_calibration)).await;
     moved.world.printer.at_byte(past);
@@ -362,12 +368,28 @@ async fn a_wrong_projection_or_resolution_fails_and_nothing_to_check_is_unavaila
         ),
         other => panic!("a projection moved 49 px did not fail on its offset: {other:?}"),
     }
-    drop(moved);
+    let failed = moved.world.server.print_alignment(print_id);
+    let Aligning {
+        world,
+        camera: _camera,
+        _calibration,
+    } = moved;
+    let world = Box::pin(world.restart()).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(
+        world.server.print_alignment(print_id),
+        failed,
+        "a failed print stays failed: it is checked once"
+    );
+    drop(world);
 
     let fan = slice("fan-cut-test.gcode");
     let small = start(
         &fan,
-        frame("fan-cut-bridge", "01-healthy-before-fault-p41.jpg"),
+        vec![Scripted::frame(frame(
+            "fan-cut-bridge",
+            "01-healthy-before-fault-p41.jpg",
+        ))],
         Some(as_committed),
     )
     .await;
@@ -466,4 +488,85 @@ async fn a_calibration_is_validated_at_start() {
             "{refusal}"
         );
     }
+}
+
+/// The committed calibration fitted on another stream than the journey's
+/// camera.
+fn other_stream(mut calibration: Value, _: &[u8]) -> Value {
+    calibration["camera_snapshot_url"] = Value::String("http://127.0.0.1:9/elsewhere".to_owned());
+    calibration
+}
+
+/// A camera that is not the calibration's stream fails naming the stream; a
+/// first layer projecting nowhere in the frame fails at the furthest offset
+/// the check looks; and a refused fetch and an undecodable frame are tried
+/// again at the next read, which then passes.
+#[tokio::test(flavor = "multi_thread")]
+async fn another_stream_or_an_off_frame_layer_fails_and_a_bad_fetch_is_retried() {
+    let bytes = slice("jar-top-petg.gcode");
+    let index = index_of(&bytes);
+    let past = position_at(&index, bytes.len(), 0.6);
+    let good = frame("jar-top-petg-healthy", "agent-007-obs-121230-p01.3.jpg");
+
+    let elsewhere = start(
+        &bytes,
+        vec![Scripted::frame(good.clone())],
+        Some(other_stream),
+    )
+    .await;
+    elsewhere.world.printer.at_byte(past);
+    let print_id = adopted(&elsewhere.world).await;
+    assert_eq!(
+        decided(&elsewhere.world, print_id).await,
+        PrintAlignment::Failed {
+            reason: AlignmentFailure::Stream
+        }
+    );
+    drop(elsewhere);
+
+    // The camera sits at the bed's front looking back: a layer laid far in
+    // front of the printer is behind it.
+    let behind = b";LAYER_CHANGE\n;Z:0.2\nG90\nM83\n;TYPE:External perimeter\nG1 X100 Y-5000\nG1 X150 Y-5000 E2\nG1 X150 Y-4950 E2\n;LAYER_CHANGE\n;Z:0.4\nG1 X100 Y-4950 E2\n";
+    let off = start(
+        behind,
+        vec![Scripted::frame(good.clone())],
+        Some(as_committed),
+    )
+    .await;
+    off.world
+        .printer
+        .at_byte(i64::try_from(behind.len()).expect("a size") - 2);
+    let print_id = adopted(&off.world).await;
+    assert_eq!(
+        decided(&off.world, print_id).await,
+        PrintAlignment::Failed {
+            reason: AlignmentFailure::Offset { offset_px: 60.0 }
+        }
+    );
+    drop(off);
+
+    let flaky = start(
+        &bytes,
+        vec![
+            Scripted::refusing("404 Not Found", "no frame yet"),
+            Scripted::frame(b"not a jpeg".to_vec()),
+            Scripted::frame(b"not a jpeg".to_vec()),
+            Scripted::frame(b"not a jpeg".to_vec()),
+            Scripted::frame(b"not a jpeg".to_vec()),
+            Scripted::frame(good),
+        ],
+        Some(as_committed),
+    )
+    .await;
+    flaky.world.printer.at_byte(past);
+    let print_id = adopted(&flaky.world).await;
+    let verdict = decided(&flaky.world, print_id).await;
+    assert!(
+        matches!(verdict, PrintAlignment::Passed { .. }),
+        "the check passed once a good frame came: {verdict:?}"
+    );
+    assert!(
+        flaky.camera.exchanges().len() >= 3,
+        "the refused and undecodable fetches were each followed by another"
+    );
 }

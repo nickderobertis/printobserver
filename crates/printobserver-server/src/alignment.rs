@@ -207,7 +207,11 @@ impl Alignments {
         self.decide(active.print_id, verdict)
     }
 
-    /// Keep a verdict, and say it.
+    /// Keep a verdict, and say it. A verdict the filesystem refuses to keep is
+    /// decided again at the next read rather than lost; no test makes the
+    /// state directory refuse a write, which needs a filesystem made to fail
+    /// beneath a running server, and the retry is the same path a fetch that
+    /// gave no frame takes, which `aligning` proves.
     fn decide(&self, print_id: PrintId, verdict: PrintAlignment) -> Option<PrintAlignment> {
         let bytes = printobserver_types::serde_json::to_vec(&verdict).ok()?;
         let path = self.path_of(print_id);

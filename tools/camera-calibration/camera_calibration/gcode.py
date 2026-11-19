@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,15 @@ CHORD_MM = 0.5
 """The longest chord an arc is cut into."""
 
 _WORD = re.compile(r"([XYZEIJ])(-?\d*\.?\d+)")
+
+
+class Outline(StrEnum):
+    """Which planned outline a mark lies on."""
+
+    TOP = "top"
+    """The outer walls of the layer at the mark's height."""
+    FIRST = "first"
+    """Every extrusion of the first layer laying any, the brim included."""
 
 
 @dataclass
@@ -88,19 +98,20 @@ def parse(path: Path) -> list[Layer]:
                 continue
             code = line.split(";", 1)[0].strip()
             head = code.split(" ", 1)[0]
-            if head == "G90":
-                relative_axes = False
-            elif head == "G91":
-                relative_axes = True
-            elif head == "M82":
-                relative_e = False
-            elif head == "M83":
-                relative_e = True
-            elif head == "G92":
-                words = dict(_WORD.findall(code))
-                e = float(words.get("E", e))
-            if head not in ("G0", "G1", "G2", "G3"):
-                continue
+            match head:
+                case "G0" | "G1" | "G2" | "G3":
+                    pass
+                case "G90" | "G91":
+                    relative_axes = head == "G91"
+                    continue
+                case "M82" | "M83":
+                    relative_e = head == "M83"
+                    continue
+                case "G92":
+                    e = float(dict(_WORD.findall(code)).get("E", e))
+                    continue
+                case _:
+                    continue
             words = {k: float(v) for k, v in _WORD.findall(code[len(head) :])}
             if relative_axes:
                 nx, ny = x + words.get("X", 0.0), y + words.get("Y", 0.0)
@@ -135,7 +146,7 @@ def parse(path: Path) -> list[Layer]:
     return layers
 
 
-def outline(layers: list[Layer], what: str, z: float) -> np.ndarray:
+def outline(layers: list[Layer], what: Outline, z: float) -> np.ndarray:
     """The planned outline a mark is matched to, as world segments (N, 6).
 
     `first` is every extrusion of the first layer laying any, the brim included;
@@ -147,17 +158,17 @@ def outline(layers: list[Layer], what: str, z: float) -> np.ndarray:
     Raises:
         GcodeError: If the slice has no such layer.
     """
-    if what == "first":
-        layer = next((one for one in layers if one.segments), None)
-        chosen = layer.segments if layer else []
-    elif what == "top":
-        walled = [one for one in layers if one.outer]
-        exact = [one for one in walled if abs(one.z - z) < 1e-3]
-        layer = exact[-1] if exact else min(walled, key=lambda one: abs(one.z - z), default=None)
-        chosen = layer.outer if layer else []
-    else:
-        msg = f"an outline is `first` or `top`, not {what!r}"
-        raise GcodeError(msg)
+    match what:
+        case Outline.FIRST:
+            layer = next((one for one in layers if one.segments), None)
+            chosen = layer.segments if layer else []
+        case Outline.TOP:
+            walled = [one for one in layers if one.outer]
+            exact = [one for one in walled if abs(one.z - z) < 1e-3]
+            layer = (
+                exact[-1] if exact else min(walled, key=lambda one: abs(one.z - z), default=None)
+            )
+            chosen = layer.outer if layer else []
     if layer is None or not chosen:
         msg = f"the slice has no {what} outline at z = {z} mm"
         raise GcodeError(msg)

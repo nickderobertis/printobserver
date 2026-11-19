@@ -1760,6 +1760,7 @@ dependencies = [
  "printobserver-core",
  "printobserver-printer-api",
  "printobserver-types",
+ "printobserver-vision-api",
  "skrifa",
 ]
 

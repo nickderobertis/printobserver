@@ -9,7 +9,8 @@
   "implicitDependencies": [
     "printobserver-core",
     "printobserver-printer-api",
-    "printobserver-types"
+    "printobserver-types",
+    "printobserver-vision-api"
   ],
   "targets": {
     "format": {

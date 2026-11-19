@@ -1,6 +1,7 @@
 # The offline camera calibration tool: its own environment, because numpy,
 # scipy and OpenCV are needed by nothing else in this repository, and the root
 # environment every other Python project shares stays without them.
+# llmlint: ignore[projects_stay_in_one_uv_workspace] See suppressions.toml.
 [project]
 name = "camera-calibration"
 # No version: this tool is never published, and a version field here would be
@@ -28,8 +29,8 @@ package = false
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
-pythonpath = [".", "../repo-checks/src"]
+pythonpath = ["."]
 
 [tool.ty.environment]
 python-version = "3.14"
-root = [".", "../repo-checks/src"]
+root = ["."]

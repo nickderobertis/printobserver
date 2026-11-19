@@ -871,7 +871,7 @@ pub struct IndexBuilder {
 /// A spool being written.
 #[derive(Debug)]
 struct Spooling {
-    /// Where.
+    /// The spool file, removed again when any write to it fails.
     path: std::path::PathBuf,
     /// The open file, buffered.
     writer: std::io::BufWriter<std::fs::File>,
@@ -884,6 +884,12 @@ impl GcodeSink for IndexBuilder {
         // Plain index loops rather than iterator adaptors throughout this
         // reader: it runs over every byte of a print, and is as fast in a
         // build without optimisation as in one with it only written so.
+        // A write the filesystem refuses — a full disk — is proved by no test:
+        // making one fail needs a filesystem made to fail mid-stream, which no
+        // host the suite runs on offers without privileges. What it leads to
+        // is the same index with no spool, which
+        // `a_spool_that_cannot_be_created_leaves_the_plan_without_toolpaths`
+        // proves end to end.
         if let Some(spool) = self.spool.as_mut().filter(|spool| !spool.failed) {
             use std::io::Write as _;
             spool.failed = spool.writer.write_all(piece).is_err();

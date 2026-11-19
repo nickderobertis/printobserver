@@ -14,11 +14,24 @@ sits up to several millimetres apart between prints.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-OUTLINES = ("top", "first")
+from camera_calibration.gcode import Outline
+
+LEAST_MARKS = 30
+"""The fewest part-edge marks a fit is given: the README's minimum."""
+
+LEAST_FRAMES = 5
+"""The fewest frames those marks lie on."""
+
+LEAST_HEIGHTS = 3
+"""The fewest distinct bed heights the frames were taken at."""
+
+LEAST_HEIGHT_SPAN_MM = 20.0
+"""How far apart the lowest and highest of those heights are, at the least."""
 
 
 class MarksError(ValueError):
@@ -29,7 +42,7 @@ class MarksError(ValueError):
 class Curve:
     """Marks on one planned outline."""
 
-    what: str
+    what: Outline
     z: float
     px: tuple[tuple[float, float], ...]
 
@@ -63,10 +76,18 @@ class Marks:
 
 
 def _number(value: object, where: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        msg = f"{where} is {value!r}, not a number"
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+        msg = f"{where} is {value!r}, not a finite number"
         raise MarksError(msg)
     return float(value)
+
+
+def _list(entry: dict[str, Any], key: str, where: str) -> list[Any]:
+    value = entry.get(key, [])
+    if not isinstance(value, list):
+        msg = f"{where}'s `{key}` is {value!r}, not a list"
+        raise MarksError(msg)
+    return value
 
 
 def _point(value: object, where: str) -> tuple[float, float]:
@@ -112,18 +133,15 @@ def load(path: Path) -> Marks:
                 msg = f"{where} names {named}, which is not a file"
                 raise MarksError(msg)
         curves = []
-        for index, curve in enumerate(entry.get("curves", [])):
+        for index, curve in enumerate(_list(entry, "curves", where)):
             spot = f"{where} curves[{index}]"
-            if not isinstance(curve, dict) or curve.get("what") not in OUTLINES:
+            if not isinstance(curve, dict) or curve.get("what") not in set(Outline):
                 msg = f"{spot} marks neither a `top` nor a `first` outline"
                 raise MarksError(msg)
-            points = curve.get("px")
-            if not isinstance(points, list):
-                msg = f"{spot} carries no `px` list"
-                raise MarksError(msg)
+            points = _list(curve, "px", spot)
             curves.append(
                 Curve(
-                    curve["what"],
+                    Outline(curve["what"]),
                     _number(curve.get("z"), f"{spot} z"),
                     tuple(_point(point, f"{spot} px") for point in points),
                 )
@@ -138,15 +156,37 @@ def load(path: Path) -> Marks:
                 tuple(curves),
             )
         )
-    if not any(curve.px for frame in frames for curve in frame.curves):
+    _enough(path, frames)
+    landmarks = []
+    for number, entry in enumerate(_list(doc, "landmarks", path.name)):
+        where = f"{path.name} landmarks[{number}]"
+        if not isinstance(entry, dict):
+            msg = f"{where} is not an object"
+            raise MarksError(msg)
+        landmarks.append(
+            LandmarkSpec(_text(entry, "name", where), _point(entry.get("center_px"), where))
+        )
+    return Marks(tuple(frames), tuple(landmarks))
+
+
+def _enough(path: Path, frames: list[MarkedFrame]) -> None:
+    """Refuse marks too few, or on too few frames or heights, to fix a camera."""
+    marked = [frame for frame in frames if any(curve.px for curve in frame.curves)]
+    count = sum(len(curve.px) for frame in marked for curve in frame.curves)
+    if count == 0:
         msg = f"{path} marks no part edge: a fit needs points on printed parts' edges"
         raise MarksError(msg)
-    landmarks = tuple(
-        LandmarkSpec(
-            _text(entry, "name", f"landmarks[{number}]"),
-            _point(entry.get("center_px"), f"landmarks[{number}] center_px"),
+    heights = sorted({round(frame.zc_mm, 3) for frame in marked})
+    if (
+        count < LEAST_MARKS
+        or len(marked) < LEAST_FRAMES
+        or len(heights) < LEAST_HEIGHTS
+        or heights[-1] - heights[0] < LEAST_HEIGHT_SPAN_MM
+    ):
+        msg = (
+            f"{path} marks {count} part-edge points on {len(marked)} frames at "
+            f"{len(heights)} bed heights spanning {heights[-1] - heights[0]:.1f} mm; a fit "
+            f"needs at least {LEAST_MARKS} points on {LEAST_FRAMES} frames at "
+            f"{LEAST_HEIGHTS} heights spanning {LEAST_HEIGHT_SPAN_MM:.0f} mm"
         )
-        for number, entry in enumerate(doc.get("landmarks", []))
-        if isinstance(entry, dict)
-    )
-    return Marks(tuple(frames), landmarks)
+        raise MarksError(msg)

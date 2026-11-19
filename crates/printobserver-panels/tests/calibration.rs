@@ -92,6 +92,15 @@ fn an_invalid_calibration_is_refused_naming_its_key() {
     edit("camera_snapshot_url", |v| {
         v["camera_snapshot_url"] = "frame.jpeg".into();
     });
+    edit("camera_snapshot_url", |v| {
+        v["camera_snapshot_url"] = "http://".into();
+    });
+    edit("fit.calibrated_at", |v| {
+        v["fit"]["calibrated_at"] = "27/09/2026".into();
+    });
+    edit("landmarks.search_radius_px", |v| {
+        v["landmarks"][0]["search_radius_px"] = 100_000.into();
+    });
     edit("landmarks.search_radius_px", |v| {
         v["landmarks"][0]["search_radius_px"] = 0.into();
     });

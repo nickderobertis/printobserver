@@ -15,7 +15,9 @@ import json
 import subprocess
 import sys
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import jsonschema
 import numpy as np
@@ -23,8 +25,6 @@ import pytest
 from camera_calibration import fit as fitting
 from camera_calibration.marks import load
 from camera_calibration.model import Camera
-from repo_checks import expect
-from repo_checks.shell import run
 
 TOOL = Path(__file__).resolve().parents[1]
 ROOT = TOOL.parents[1]
@@ -45,6 +45,38 @@ SLICE_OF = {
         "../../../../printobserver-server/tests/fixtures/real-prints/bubbler-guard-and-pad.gcode"
     ),
 }
+
+
+class expect:  # noqa: N801 - read as `expect.equal(...)`, the vocabulary of this repository's own suites
+    """A few assertions raising `AssertionError` directly, as `assert` would under `-O` not."""
+
+    @staticmethod
+    def truth(condition: object, *, describing: str) -> None:
+        """Fail unless a condition holds."""
+        if not condition:
+            raise AssertionError(describing)
+
+    @staticmethod
+    def equal(actual: object, expected: object, *, describing: str) -> None:
+        """Fail unless two values are equal."""
+        if actual != expected:
+            message = f"{describing}: {actual!r} is not {expected!r}"
+            raise AssertionError(message)
+
+    @staticmethod
+    def contains(whole: str, part: str, *, describing: str) -> None:
+        """Fail unless text carries a part."""
+        if part not in whole:
+            message = f"{describing} does not say {part!r}: {whole!r}"
+            raise AssertionError(message)
+
+    @staticmethod
+    def passing(result: subprocess.CompletedProcess[str], *, describing: str) -> None:
+        """Fail unless a run exited zero."""
+        if result.returncode != 0:
+            message = f"{describing} exited {result.returncode}: {result.stderr}"
+            raise AssertionError(message)
+
 
 # What the README states: the RMS bound a fit of these marks meets, and how far
 # a refit may land from the committed file, per number.
@@ -69,8 +101,10 @@ def _fixture_marks(directory: Path, *, without_edges: bool = False) -> Path:
     return path
 
 
-def _run(marks: Path, directory: Path) -> subprocess.CompletedProcess[str]:
-    return run(
+def _run(
+    marks: Path, directory: Path, *extra: str, url: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
         [
             sys.executable,
             "-m",
@@ -78,15 +112,19 @@ def _run(marks: Path, directory: Path) -> subprocess.CompletedProcess[str]:
             "--marks",
             str(marks),
             "--snapshot-url",
-            _snapshot_url(),
+            url or _snapshot_url(),
             "--calibrated-at",
             "2026-09-27",
             "--out",
             str(directory / "calibration.json"),
             "--verification-image",
             str(directory / "verification.jpg"),
+            *extra,
         ],
         cwd=TOOL,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -145,7 +183,7 @@ def test_the_fit_reproduces_the_committed_calibration(
     )
 
 
-def test_every_mark_reprojects_onto_its_outline_within_the_bound(tmp_path: Path) -> None:
+def test_the_marks_reproject_within_the_rms_bound(tmp_path: Path) -> None:
     """The committed calibration puts the marks within the RMS bound of their outlines."""
     calibration = json.loads(COMMITTED.read_text(encoding="utf-8"))
     lens, pose = calibration["intrinsics"], calibration["bed_pose"]
@@ -185,3 +223,97 @@ def test_frames_of_two_sizes_are_refused(tmp_path: Path) -> None:
     run = _run(marks, tmp_path)
     expect.equal(run.returncode, 2, describing="the exit status")
     expect.contains(run.stderr, "of 2 sizes", describing="the refusal")
+
+
+def _edited(directory: Path, change: Callable[[dict[str, Any]], None]) -> Path:
+    doc = json.loads(_fixture_marks(directory).read_text(encoding="utf-8"))
+    change(doc)
+    path = directory / "edited.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    return path
+
+
+def _first_curve(doc: dict[str, Any]) -> dict[str, Any]:
+    return doc["frames"][0]["curves"][0]
+
+
+@pytest.mark.parametrize(
+    ("change", "refusal"),
+    [
+        (lambda doc: doc.update(frames="none"), "carries no `frames` list"),
+        (lambda doc: doc["frames"][0].update(frame="missing.jpg"), "which is not a file"),
+        (lambda doc: doc["frames"][0].update(gcode="missing.gcode"), "which is not a file"),
+        (lambda doc: doc["frames"][0].update(curves="none"), "not a list"),
+        (lambda doc: _first_curve(doc).update(what="side"), "neither a `top` nor a `first`"),
+        (lambda doc: _first_curve(doc).update(z="high"), "not a finite number"),
+        (lambda doc: _first_curve(doc).update(px=[[1, 2, 3]]), "not an [x, y] pixel"),
+        (lambda doc: doc["frames"][0].update(zc_mm=None), "not a finite number"),
+        (lambda doc: doc["frames"][0].pop("case"), "names no `case`"),
+        (lambda doc: doc.update(frames=doc["frames"][:4]), "a fit needs at least 30 points"),
+        (lambda doc: doc.update(landmarks=["rail"]), "landmarks[0] is not an object"),
+        (lambda doc: doc["landmarks"][0].update(center_px=[1915, 5]), "too near the frame's edge"),
+    ],
+)
+def test_marks_the_fit_cannot_use_are_refused_naming_why(
+    tmp_path: Path, change: Callable[[dict[str, Any]], None], refusal: str
+) -> None:
+    """Each kind of unusable marks file is refused with exit 2, naming what is wrong."""
+    run = _run(_edited(tmp_path, change), tmp_path)
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, refusal, describing="the refusal")
+
+
+@pytest.mark.parametrize(
+    ("extra", "url", "refusal"),
+    [
+        (("--calibrated-at", "27/09/2026"), None, "not a YYYY-MM-DD date"),
+        (("--drift-tolerance-px", "inf"), None, "not a positive number"),
+        ((), "http://", "not an http(s) address"),
+    ],
+)
+def test_arguments_the_tool_cannot_use_are_refused(
+    tmp_path: Path, extra: tuple[str, ...], url: str | None, refusal: str
+) -> None:
+    """An argument that is no date, tolerance or address is refused with exit 2."""
+    run = _run(_fixture_marks(tmp_path), tmp_path, *extra, url=url)
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, refusal, describing="the refusal")
+
+
+def test_a_frame_no_decoder_reads_and_a_slice_with_no_layers_are_refused(tmp_path: Path) -> None:
+    """A frame that is no image, and a slice marking no layer, are refused naming the file."""
+    broken = tmp_path / "broken.jpg"
+    broken.write_bytes(b"not an image")
+    run = _run(_edited(tmp_path, lambda doc: doc["frames"][0].update(frame=str(broken))), tmp_path)
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, "not an image this tool can decode", describing="the refusal")
+    bare = tmp_path / "bare.gcode"
+    bare.write_text("G1 X1 Y1 E1\n", encoding="utf-8")
+    run = _run(_edited(tmp_path, lambda doc: doc["frames"][0].update(gcode=str(bare))), tmp_path)
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, "marks no layer", describing="the refusal")
+
+
+def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
+    """A calibration path in a directory that is not there is refused before any fit."""
+    run = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+        [
+            sys.executable,
+            "-m",
+            "camera_calibration",
+            "--marks",
+            str(_fixture_marks(tmp_path)),
+            "--snapshot-url",
+            _snapshot_url(),
+            "--out",
+            str(tmp_path / "absent" / "calibration.json"),
+            "--verification-image",
+            str(tmp_path / "verification.jpg"),
+        ],
+        cwd=TOOL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, "absent", describing="the refusal")

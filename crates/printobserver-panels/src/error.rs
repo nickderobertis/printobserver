@@ -25,6 +25,7 @@ impl FrameField {
 pub enum ComposeError {
     /// The frame is not the calibration's: another size, or another stream.
     /// It is refused, never scaled.
+    // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
     FrameMismatch {
         /// What differs.
         field: FrameField,

@@ -260,7 +260,7 @@ a crate the workspace lacks, and a crate the table omits.
 | `printobserver-octoprint` | `printobserver-printer-api`, `printobserver-types` |
 | `printobserver-obico` | `printobserver-vision-api`, `printobserver-core`, `printobserver-types` |
 | `printobserver-oneharness` | `printobserver-supervisor-api`, `printobserver-types` |
-| `printobserver-panels` | `printobserver-types`, `printobserver-core` |
+| `printobserver-panels` | `printobserver-types`, `printobserver-core`, `printobserver-vision-api` |
 | `printobserver-store-sqlite` | `printobserver-core`, `printobserver-supervisor-api`, `printobserver-printer-api`, `printobserver-types` |
 | `printobserver-server` | `printobserver-types`, `printobserver-printer-api`, `printobserver-vision-api`, `printobserver-supervisor-api`, `printobserver-core`, `printobserver-octoprint`, `printobserver-obico`, `printobserver-oneharness`, `printobserver-panels`, `printobserver-store-sqlite` |
 | `printobserver-sdk` | — |

@@ -230,9 +230,7 @@ fn unacceptable_watch(field: ConfigField, document: &mut toml::Value) {
     }
 }
 
-/// Make the sheet table unacceptable: a material listed on no sheet, which
-/// no start could ever satisfy.
-/// Optional too: a calibration file that is no calibration.
+/// Make the camera calibration unacceptable: a file that is no calibration.
 fn unacceptable_calibration(root: &std::path::Path, document: &mut toml::Value) {
     let path = root.join("calibration.json");
     std::fs::write(&path, "{\"schema_version\": 1}").expect("a file is written");
@@ -246,6 +244,8 @@ fn unacceptable_calibration(root: &std::path::Path, document: &mut toml::Value) 
     );
 }
 
+/// Make the sheet table unacceptable: a material listed on no sheet, which
+/// no start could ever satisfy.
 fn unacceptable_sheets(document: &mut toml::Value) {
     set(
         document,

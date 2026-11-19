@@ -5,8 +5,8 @@ r"""Fit one printer's camera from marks on printed parts, and write its calibrat
         --out CALIBRATION.json --verification-image CHECK.jpg
 
 Prints one line naming the fit's RMS reprojection error, its worst mark, how many
-marks and frames it used and the two files written. Exits 2 for marks or frames
-it cannot use, naming what and why.
+marks and frames it used and the two files written. Exits 2, naming what and why,
+for an argument, marks or frames it cannot use, or a file it cannot write.
 """
 
 from __future__ import annotations
@@ -15,8 +15,11 @@ import argparse
 import base64
 import datetime
 import json
+import math
 import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import cv2
 import numpy as np
@@ -38,6 +41,60 @@ class CalibrationError(ValueError):
     """Frames the calibration cannot be cut from."""
 
 
+@dataclass(frozen=True)
+class LandmarkRecord:
+    """One chassis landmark, as the calibration file carries it."""
+
+    name: str
+    center_px: list[float]
+    patch_png_base64: str
+    search_radius_px: int
+
+
+@dataclass(frozen=True)
+class IntrinsicsRecord:
+    """The lens: focal lengths, principal point and `k1`-`k4`."""
+
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    k: list[float]
+
+
+@dataclass(frozen=True)
+class BedPoseRecord:
+    """The bed's pose seen from the camera, in OpenCV's convention."""
+
+    rotation_rodrigues: list[float]
+    translation_mm: list[float]
+
+
+@dataclass(frozen=True)
+class FitRecord:
+    """How well the fit went."""
+
+    rms_reprojection_px: float
+    frames: int
+    calibrated_at: str
+
+
+@dataclass(frozen=True)
+class CalibrationRecord:
+    """The calibration file, as `schemas/printobserver-panels/camera-calibration.json` holds it."""
+
+    schema_version: int
+    motion: str
+    image_size_px: list[int]
+    intrinsics: IntrinsicsRecord
+    bed_pose: BedPoseRecord
+    landmarks: list[LandmarkRecord]
+    drift_tolerance_px: float
+    camera_snapshot_url: str
+    alignment_max_offset_px: float
+    fit: FitRecord
+
+
 def _frames(marks: Marks) -> list[np.ndarray]:
     images = []
     for frame in marks.frames:
@@ -56,12 +113,12 @@ def _frames(marks: Marks) -> list[np.ndarray]:
     return images
 
 
-def _landmarks(marks: Marks, images: list[np.ndarray]) -> list[dict[str, object]]:
+def _landmarks(marks: Marks, images: list[np.ndarray]) -> list[LandmarkRecord]:
     """Each landmark's patch, cut from the per-pixel median of the marked frames."""
     grey = np.median(np.stack([cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) for image in images]), 0)
     grey = grey.astype(np.uint8)
     half = PATCH_PX // 2
-    out: list[dict[str, object]] = []
+    out: list[LandmarkRecord] = []
     for landmark in marks.landmarks:
         u, v = (round(value) for value in landmark.center_px)
         patch = grey[v - half : v + half, u - half : u + half]
@@ -73,12 +130,12 @@ def _landmarks(marks: Marks, images: list[np.ndarray]) -> list[dict[str, object]
             msg = f"landmark {landmark.name}'s patch could not be encoded"
             raise CalibrationError(msg)
         out.append(
-            {
-                "name": landmark.name,
-                "center_px": [float(u), float(v)],
-                "patch_png_base64": base64.b64encode(png.tobytes()).decode("ascii"),
-                "search_radius_px": SEARCH_RADIUS_PX,
-            }
+            LandmarkRecord(
+                name=landmark.name,
+                center_px=[float(u), float(v)],
+                patch_png_base64=base64.b64encode(png.tobytes()).decode("ascii"),
+                search_radius_px=SEARCH_RADIUS_PX,
+            )
         )
     return out
 
@@ -115,38 +172,35 @@ def calibration(
     fitted: fitting.Fitted,
     marks: Marks,
     images: list[np.ndarray],
+    landmarks: list[LandmarkRecord],
     snapshot_url: str,
     calibrated_at: str,
     drift_tolerance_px: float,
-) -> dict[str, object]:
+) -> CalibrationRecord:
     """The calibration file's contents."""
     camera = fitted.camera
     height, width = images[0].shape[:2]
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "motion": "bed-z",
-        "image_size_px": [width, height],
-        "intrinsics": {
-            "fx": camera.fx,
-            "fy": camera.fy,
-            "cx": camera.cx,
-            "cy": camera.cy,
-            "k": [camera.k1, 0.0, 0.0, 0.0],
-        },
-        "bed_pose": {
-            "rotation_rodrigues": [float(value) for value in camera.rvec],
-            "translation_mm": [float(value) for value in camera.tvec],
-        },
-        "landmarks": _landmarks(marks, images),
-        "drift_tolerance_px": drift_tolerance_px,
-        "camera_snapshot_url": snapshot_url,
-        "alignment_max_offset_px": ALIGNMENT_MAX_OFFSET_PX,
-        "fit": {
-            "rms_reprojection_px": fitted.rms_px,
-            "frames": len(set(fitted.frames)),
-            "calibrated_at": calibrated_at,
-        },
-    }
+    return CalibrationRecord(
+        schema_version=SCHEMA_VERSION,
+        motion="bed-z",
+        image_size_px=[width, height],
+        intrinsics=IntrinsicsRecord(
+            fx=camera.fx, fy=camera.fy, cx=camera.cx, cy=camera.cy, k=[camera.k1, 0.0, 0.0, 0.0]
+        ),
+        bed_pose=BedPoseRecord(
+            rotation_rodrigues=[float(value) for value in camera.rvec],
+            translation_mm=[float(value) for value in camera.tvec],
+        ),
+        landmarks=landmarks,
+        drift_tolerance_px=drift_tolerance_px,
+        camera_snapshot_url=snapshot_url,
+        alignment_max_offset_px=ALIGNMENT_MAX_OFFSET_PX,
+        fit=FitRecord(
+            rms_reprojection_px=fitted.rms_px,
+            frames=len(set(fitted.frames)),
+            calibrated_at=calibrated_at,
+        ),
+    )
 
 
 def _date(text: str) -> str:
@@ -159,7 +213,7 @@ def _date(text: str) -> str:
 
 def _positive(text: str) -> float:
     value = float(text)
-    if not value > 0:
+    if not (math.isfinite(value) and value > 0):
         msg = f"{text} is not a positive number of pixels"
         raise argparse.ArgumentTypeError(msg)
     return value
@@ -182,27 +236,45 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True, help="where the calibration is written")
     parser.add_argument("--verification-image", type=Path, required=True)
     args = parser.parse_args(argv)
-    if not args.snapshot_url.startswith(("http://", "https://")):
+    address = urlsplit(args.snapshot_url)
+    if address.scheme not in ("http", "https") or not address.hostname:
         print(f"--snapshot-url {args.snapshot_url!r} is not an http(s) address", file=sys.stderr)
         return 2
+    for output in (args.out, args.verification_image):
+        if not output.parent.is_dir():
+            print(f"camera_calibration: {output.parent} is not a directory", file=sys.stderr)
+            return 2
     try:
         marks = load(args.marks)
         images = _frames(marks)
+        landmarks = _landmarks(marks, images)
         height, width = images[0].shape[:2]
         fitted = fitting.fit(marks, (width, height))
         probe = np.array([[0, 0, 0], [250, 220, -50], [125, 110, -100], [10, 200, 0]], float)
         differs = cross_check(fitted.camera, probe)
+        # No test reaches this refusal: it fires only if this tool's projection
+        # stopped being OpenCV's fisheye, which would take a code change, and
+        # every fit the tests run passes through this same cross-check.
         if differs > CROSS_CHECK_PX:
             msg = f"this tool's projection differs from OpenCV's by {differs} px"
             raise CalibrationError(msg)
         written = calibration(
-            fitted, marks, images, args.snapshot_url, args.calibrated_at, args.drift_tolerance_px
+            fitted,
+            marks,
+            images,
+            landmarks,
+            args.snapshot_url,
+            args.calibrated_at,
+            args.drift_tolerance_px,
         )
         _verification(fitted, marks, images, args.verification_image)
+        args.out.write_text(json.dumps(asdict(written), indent=2) + "\n", encoding="utf-8")
     except (MarksError, GcodeError, CalibrationError) as error:
         print(f"camera_calibration: {error}", file=sys.stderr)
         return 2
-    args.out.write_text(json.dumps(written, indent=2) + "\n", encoding="utf-8")
+    except OSError as error:
+        print(f"camera_calibration: {error}", file=sys.stderr)
+        return 2
     print(
         f"fitted {len(fitted.residuals_px)} marks on {len(set(fitted.frames))} frames: "
         f"{fitted.rms_px:.2f} px RMS, worst {fitted.residuals_px.max():.2f} px; "

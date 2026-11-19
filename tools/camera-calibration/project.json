@@ -7,9 +7,8 @@
     "type:tooling"
   ],
   "implicitDependencies": [
-    "printobserver-panels",
     "printobserver-core",
-    "repo-checks"
+    "printobserver-panels"
   ],
   "targets": {
     "format": {

@@ -8,7 +8,9 @@
 //! check image's three panels, their colours and their drawing
 //! ([`compose`]).
 //!
-//! May depend on: `printobserver-types` and `printobserver-core`, whose
+//! May depend on: `printobserver-types`; `printobserver-vision-api`, whose
+//! validated web address the calibration's snapshot URL is held to; and
+//! `printobserver-core`, whose
 //! planned geometry — object outlines and a layer's toolpath in bed
 //! millimetres ([`printobserver_core::toolpath`]) — it draws; the core alone
 //! reads G-code, and this crate never sees a G-code line. It needs no
