@@ -69,6 +69,11 @@ PASSED_THROUGH = (("repo_checks.gate_tier",), ("repo_checks", "tool-version"))
 RECORD, STEP = "CI_WORK_RECORD", "CI_WORK_STEP"
 #: The variable a side of the project tag is handed in, as `gate_tier` reads it.
 SIDE = "PRINTOBSERVER_GATE_PROJECTS"
+#: The variable that has the doubled end-to-end tier's Nx run and the Nx run
+#: whose side ends in its value each wait, for at most a minute, until the other
+#: has begun: a double finishes at once, so without that nothing one runs beside
+#: is seen beside it, and with it two runs started together overlap every time.
+HOLD = "CI_WORK_HOLD_E2E"
 
 #: Leaf runs that prepare a runner rather than do the gate's work: every job
 #: repeats them for its own runner, so they are recorded and not compared.
@@ -127,18 +132,37 @@ CLOSURE = Closure(
 )
 
 DOUBLE = f"""
-import json, os, subprocess, sys
+import json, os, subprocess, sys, time
 name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
 argv = sys.argv[1:]
 if name == "uv" and argv[:4] == ["run", "-q", "python", "-m"]:
     for module in {PASSED_THROUGH!r}:
         if tuple(argv[4 : 4 + len(module)]) == module:
             sys.exit(subprocess.run([sys.executable, "-m", *argv[4:]]).returncode)
+begun = time.monotonic()
+hold = os.environ.get({HOLD!r}, "")
+role = ""
+if hold and name == "bunx":
+    if "test-e2e" in argv:
+        role = "e2e"
+    elif os.environ.get({SIDE!r}, "").endswith(hold):
+        role = "timed"
+if role:
+    with open(os.environ[{RECORD!r}], "a", encoding="utf-8") as record:
+        record.write(json.dumps({{"marker": role}}) + "\\n")
+    other = "timed" if role == "e2e" else "e2e"
+    while time.monotonic() < begun + 60:
+        with open(os.environ[{RECORD!r}], encoding="utf-8") as recorded:
+            if any(json.loads(line).get("marker") == other for line in recorded if line.strip()):
+                break
+        time.sleep(0.05)
 with open(os.environ[{RECORD!r}], "a", encoding="utf-8") as record:
     record.write(json.dumps({{
         "argv": [name, *argv],
         "step": os.environ.get({STEP!r}, ""),
         "side": os.environ.get({SIDE!r}, ""),
+        "begun": begun,
+        "ended": time.monotonic(),
     }}) + "\\n")
 """
 
@@ -375,6 +399,14 @@ class Unit(NamedTuple):
     side: str
 
 
+class Invocation(NamedTuple):
+    """One Nx run a job made: its tasks, and when it began and ended on the host's clock."""
+
+    tasks: tuple[str, ...]
+    begun: float
+    ended: float
+
+
 @dataclass(frozen=True)
 class Work:
     """The units one job did: Nx tasks and other leaf runs, each with the side it ran on."""
@@ -382,8 +414,8 @@ class Work:
     units: tuple[Unit, ...]
     own: tuple[str, ...]
     integration: tuple[str, ...]
-    #: The tasks of each Nx invocation, in the order they were asked for.
-    invocations: tuple[tuple[str, ...], ...] = ()
+    #: Each Nx invocation, in the order they were recorded.
+    invocations: tuple[Invocation, ...] = ()
 
     @property
     def tasks(self) -> list[str]:
@@ -396,16 +428,18 @@ def work(record: Path, graph: Mapping[str, set[str]]) -> Work:
     units: list[Unit] = []
     own: list[str] = []
     integration: list[str] = []
-    invocations: list[tuple[str, ...]] = []
+    invocations: list[Invocation] = []
     lines = record.read_text(encoding="utf-8").splitlines() if record.exists() else []
     for line in lines:
         entry = json.loads(line)
+        if "marker" in entry:
+            continue
         argv: list[str] = entry["argv"]
         if any(tuple(argv[: len(one)]) == one for one in PREPARATION):
             continue
         if argv[:2] == ["bunx", "nx"]:
             tasks = planned(argv, graph)
-            invocations.append(tuple(tasks))
+            invocations.append(Invocation(tuple(tasks), entry["begun"], entry["ended"]))
             if any(task.startswith("test-skill-install:") for task in tasks):
                 own.append("nx test-skill-install")
                 continue
@@ -539,21 +573,25 @@ MEASURING = ("test", "budgets")
 def timing_findings(test: Work, timed: frozenset[str]) -> list[str]:
     """How one job's timing budgets' projects run beside other work, if they do."""
     found: list[str] = []
-    calls = test.invocations
-    e2e = next(
-        (i for i, call in enumerate(calls) if any(t.startswith("test-e2e:") for t in call)), None
-    )
-    for index, call in enumerate(calls):
+    e2e = [
+        call
+        for call in test.invocations
+        if any(task.startswith("test-e2e:") for task in call.tasks)
+    ]
+    for call in test.invocations:
         # Only a measuring task — a test recording the figure, or the check
         # reading it — is a timing budget's run; any other target is not timed.
-        measured = [task.split(":", 1) for task in call if task.split(":", 1)[0] in MEASURING]
+        measured = [task.split(":", 1) for task in call.tasks if task.split(":", 1)[0] in MEASURING]
         if not {project for _, project in measured} & timed:
             continue
         beside_them = sorted({project for _, project in measured} - timed)
         if beside_them:
             found.append(f"timing projects are tested with {beside_them}")
-        if e2e is not None and index > e2e:
-            found.append(f"timing projects are tested after the end-to-end tier started: {call}")
+        found.extend(
+            f"timing projects are tested while the end-to-end tier runs: {call.tasks}"
+            for tier in e2e
+            if tier.begun < call.ended and call.begun < tier.ended
+        )
     return found
 
 
@@ -625,7 +663,7 @@ def test_no_timing_budget_is_measured_beside_other_work(committed: Ran) -> None:
     """Each `test` job tests the timing budgets' projects with nothing beside them."""
     truth(committed.timed, describing="projects carrying the justfile's `TIMED` tag")
     for platform, test in sorted(committed.tested.items()):
-        asked = {task.split(":", 1)[1] for call in test.invocations for task in call}
+        asked = {task.split(":", 1)[1] for call in test.invocations for task in call.tasks}
         truth(
             committed.timed <= asked,
             describing=f"`test ({platform})` testing every timing budget's project",
@@ -643,6 +681,13 @@ TIMED_FIRST = (
     "    just test {{quote(tier)}} || status=$?; \\\n"
     '    tested="$PRINTOBSERVER_GATE_PROJECTS,!"{{quote(TIMED)}}; \\\n'
 )
+#: The lines of the committed `ci-measured` that start the end-to-end tier
+#: beside the test tier.
+E2E_BESIDE = (
+    "    if {{CI_E2E_BESIDE_TESTS}}; then \\\n"
+    "    just test-e2e {{quote(tier)}} & e2e=$!; \\\n"
+    "    fi; \\\n"
+)
 
 
 @pytest.mark.parametrize(
@@ -653,19 +698,29 @@ TIMED_FIRST = (
             '    tested="$PRINTOBSERVER_GATE_PROJECTS"; \\\n',
             "timing projects are tested with",
             id="tested-with-the-rest",
-        )
+        ),
+        pytest.param(
+            TIMED_FIRST + E2E_BESIDE,
+            E2E_BESIDE + TIMED_FIRST,
+            "while the end-to-end tier runs",
+            id="tested-once-the-end-to-end-tier-started",
+        ),
     ],
 )
 def test_a_timing_budget_measured_beside_other_work_is_found(
-    doubled: Callable[[], Copy], old: str, new: str, naming: str
+    doubled: Callable[[], Copy],
+    monkeypatch: pytest.MonkeyPatch,
+    old: str,
+    new: str,
+    naming: str,
 ) -> None:
-    """The timing projects folded back into the test tier, beside the rest of it, are found.
+    """The timing projects tested beside the rest of the test tier, or beside the end-to-end tier.
 
     One `test` cell is run rather than every job: the defect is in the recipe
-    every cell runs, and what is found is that cell's own invocations. A defect
-    starting the end-to-end tier before the timing projects is not made here:
-    the doubles finish at once, so which of the two starts records first is a
-    race rather than a finding.
+    every cell runs, and what is found is that cell's own invocations. The
+    doubled end-to-end tier and the timing run each wait until the other has
+    begun (`HOLD`), so a timing run started once that tier is running is seen
+    beside it every time rather than only when the two starts interleave.
     """
     copy = doubled()
     path = copy.root / "justfile"
@@ -676,6 +731,10 @@ def test_a_timing_budget_measured_beside_other_work_is_found(
     graph = {project.name: set(project.targets) for project in projects(repo)}
     timing = evaluated(copy, "TIMED")
     timed = frozenset(project.name for project in projects(repo) if timing in project.tags)
+    if E2E_BESIDE in new and evaluated(copy, "CI_E2E_BESIDE_TESTS") != "true":
+        pytest.skip("this host's `ci-measured` starts no end-to-end tier beside the test tier")
+    if E2E_BESIDE in new:
+        monkeypatch.setenv(HOLD, f",{timing}")
     workflow = load_workflow(copy.root / CI)
     cell = next(cell for cell in cells(workflow) if cell.job == TEST_JOB)
     record = copy.root.parent / "records" / f"{cell.job}-{cell.platform}.jsonl"
