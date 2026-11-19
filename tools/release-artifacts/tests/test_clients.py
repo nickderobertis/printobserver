@@ -119,6 +119,13 @@ def test_each_client_is_installed_and_proved_against_a_real_supervisor(
     taken = install(
         repo, identifier, into(identifier.replace(":", "-").replace("@", "")), supervisor
     )
+    # Kept here, a Rust consumer's intermediates outran the Windows linker's
+    # path limit (`installing.rust_client` says why).
+    equal(
+        sorted(kept.name for kept in taken.environment.rglob("*.rlib")),
+        [],
+        describing=f"the intermediate artifacts kept where `{identifier}` was installed",
+    )
     for entry in UNPRESENTABLE:
         what, credential = entry["what"], entry["credential"]
         stopped = run(
