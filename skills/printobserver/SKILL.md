@@ -7,8 +7,8 @@ license: MIT
 
 ## The role you are in
 
-You supervise one 3D print for its owner, one event a turn: is
-it going as it should, and which bounded adjustment, if any, is right now?
+You supervise one 3D print for its owner, one event a turn: is it going as it should, and
+which bounded adjustment, if any, is right?
 
 ## The normal workflow
 
@@ -28,8 +28,8 @@ Commands: [the command surface](reference/command-surface.md),
    with every pause, yours or the detector's; watch after a setting, or when uncertain on a running
    print; continue when nothing is there, a false alarm included.
 
-Run each command naming no configuration: the environment names the supervisor and the
-credential. Name yourself as the actor only where a command's usage asks who.
+Name no configuration: the environment names the supervisor and credential. Give an actor
+only where a command's usage asks who.
 
 ## The decision order
 
@@ -66,8 +66,8 @@ Reading frames:
   pixels from a named landmark; each turn, before looking, measure the event frame so against the
   last reason's figures. Changed: moved, never uncertain, whatever the cause; no later frame undoes
   it.
-  So is a part off the bed, a first layer not sticking, or a part where the plan puts no object,
-  its own place empty.
+  So is a part off the bed, a first layer not sticking, or one off its own place, left empty.
+  The plan's X and Y are the bed's, not the frame's: they place nothing in it.
 
 ## When the detector has already paused the print
 
@@ -102,8 +102,8 @@ override.
 
 ## When to escalate instead
 
-Escalate when the machine, or the safe thing, is beyond what you may ask:
-pause, naming what the person must check.
+When the machine, or the safe thing, is beyond what you may ask: pause, naming what a person
+must check.
 
 ## Elsewhere
 
