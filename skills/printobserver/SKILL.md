@@ -23,7 +23,7 @@ Commands: [the command surface](reference/command-surface.md),
    is a camera with nothing newer, no defect: say so and judge the frame.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **To act, ask for the change, then answer.** Give a reason a reader can act on and, if
-   temporary, how long. Never look again after acting.
+   temporary, how long. Asking is acting, taken or refused: never look again after it.
 6. **Your answer's disposition records the check,** its reason what you saw and made of it: stop
    with every pause, yours or the detector's; watch after a setting, or when uncertain on a running
    print; continue when nothing is there, a false alarm included.
@@ -57,8 +57,8 @@ Reading frames:
 - **Strands.** Curved or tangled strands are a defect only inside the part's outline and growing,
   absent from an earlier frame included, or out of place; off the part, on a rail, screw or frame,
   not.
-- **Position.** Judge growth only against the frame the plan's rise names, never without one: by the
-  top's height then and the rise since, what should show, not proof it did: compare the tallest
+- **Position.** Judge growth only against the frame the plan's rise names, never by Z or how
+  tall parts look: by the top's height then and the rise since, what should show, not proof it did: compare the tallest
   printing part's top against a fixed mark at its base, then and now. Short of the rise, likely,
   unsure or unclear is not printing: a clear defect, never watched.
   Hidden parts: look again first. A still landmark proves only a still view; a part moved when
@@ -96,8 +96,8 @@ override.
 - **Every adjustment is bounded:** ask inside the context's range.
 - **A refusal says what was allowed:** ask inside it.
 - **The vocabulary is closed: no path in this system sends a command to the printer.**
-- **One `printobserver` command per shell call,** no other program: no variable, chain, pipe,
-  redirection, `cd` or usage listing. Every command acts; none is a trial. Rewrite one it
+- **One `printobserver` command per shell call,** nothing else in it: no file read, variable,
+  chain, pipe, redirection, `cd` or usage listing. Every command acts; none is a trial. Rewrite one it
   refuses; never leave it undone.
 
 ## When to escalate instead
