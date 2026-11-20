@@ -480,6 +480,10 @@ owed_paths = [
     "crates/printobserver-core/src/watch.rs",
     "crates/printobserver-core/src/scoring.rs",
     "crates/printobserver-core/src/gcode_index.rs",
+    "crates/printobserver-core/src/check_image.rs",
+    "crates/printobserver-server/src/check_images.rs",
+    "crates/printobserver-panels/src/whole_frame.rs",
+    "crates/printobserver-supervisor-api/src/assessment.rs",
     "tests/skilltest/**",
     "tests/real-prints/**",
 ]

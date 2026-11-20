@@ -41,7 +41,7 @@ from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
-from shell_lines import is_compound
+from shell_lines import is_compound, subcommands
 
 INSTALLER = REPO / "scripts" / "install.sh"
 SKILL = REPO / "skills" / "printobserver"
@@ -77,6 +77,28 @@ FAILED_SITE = "supervision_turn"
 CAMERA_LOOK = "camera_look"
 #: The event kinds a replay entry is delivered under.
 TRIGGERS = {"periodic_observation", "obico_failure_alert"}
+#: The requests that make a check an acting one rather than a quiet one: those that
+#: change what the machine is doing. Every `set-*` request is one as well.
+ACTING = {"pause", "cancel", "resume"}
+#: The command a check takes a fresh look with, which it never runs after acting.
+LOOK = "look"
+
+
+def acts(operation: str) -> bool:
+    """Whether a request or a command by this name changes what the machine is doing."""
+    return operation in ACTING or operation.startswith("set-")
+
+
+def looked_after_acting(commands: list[str]) -> str | None:
+    """The first `look` a command trace runs after a command that acts, as `<action>: <look>`."""
+    acted = None
+    for command in commands:
+        for subcommand in subcommands(command):
+            if acted is not None and subcommand == LOOK:
+                return f"{acted}: {command}"
+            if acts(subcommand):
+                acted = subcommand
+    return None
 
 
 class ReplayError(Exception):
@@ -323,6 +345,7 @@ def is_assessment(assessment: object) -> bool:
         isinstance(assessment, dict)
         and Assessment.__annotations__.keys() <= assessment.keys()
         and assessment["confidence"] in get_args(Confidence)
+        and assessment["disposition"] in get_args(Disposition)
         and all(isinstance(assessment[name], str) for name in ("summary", "did", "why"))
         and all(isinstance(assessment[name], bool) for name in ("should_continue", "escalating"))
     )
@@ -365,6 +388,18 @@ def delivered(status: int) -> bool:
 
 
 Confidence = Literal["low", "medium", "high"]
+Disposition = Literal["continue", "watch", "stop"]
+#: Whether a check acted, which is what its cost is held to.
+CheckClass = Literal["quiet", "acting"]
+
+
+class CallUsage(TypedDict, total=False):
+    """What one model call of a check read and wrote, as the supervisor port recorded it."""
+
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
 
 
 class Assessment(TypedDict):
@@ -376,6 +411,7 @@ class Assessment(TypedDict):
     did: str
     why: str
     escalating: bool
+    disposition: Disposition
 
 
 class DecisionRecord(TypedDict):
@@ -394,6 +430,9 @@ class DecisionRecord(TypedDict):
     usage: dict[str, Any] | None
     models: list[str]
     compacted: bool
+    #: Each model call the check made, in order, from the supervisor port's record.
+    calls: list[CallUsage]
+    check_class: CheckClass
 
 
 class TestRecord(TypedDict):
@@ -419,6 +458,7 @@ class LedgerTurn(TypedDict):
     """One turn of a print, as the supervisor port's ledger holds it."""
 
     session_name: str
+    calls: NotRequired[list[CallUsage]]
 
 
 class Ledger(TypedDict):
@@ -460,13 +500,23 @@ class DecisionPoint:
     event_kind: str | None
     image_sha256: str | None
     looks: int
+    calls: list[CallUsage] = field(default_factory=list)
+
+    @property
+    def check_class(self) -> CheckClass:
+        """Acting when the check asked for a pause, a cancel, a resume or any setting."""
+        return "acting" if any(acts(request.operation) for request in self.requests) else "quiet"
 
     @property
     def why_not(self) -> str | None:
         """Why this decision point failed, or nothing when it passed."""
         if self.failure:
             return f"the turn failed: {self.failure}"
-        return self.moment.verdict(self.requests)
+        reasons = [self.moment.verdict(self.requests)]
+        looked = looked_after_acting(self.commands)
+        if looked is not None:
+            reasons.append(f"it looked again after acting ({looked})")
+        return "; ".join(reason for reason in reasons if reason) or None
 
     def as_record(self) -> DecisionRecord:
         """The decision point as `results/latest.json` carries it."""
@@ -484,6 +534,8 @@ class DecisionPoint:
             "usage": self.usage,
             "models": self.models,
             "compacted": self.compacted,
+            "calls": self.calls,
+            "check_class": self.check_class,
         }
 
 
@@ -1020,10 +1072,15 @@ class Replay:
                 self._post_alert(first)
             self._wait_for_every_turn()
             events = self._events()
+            points = self._judged(events)
+            ledger = self._ledger()
+            if len(ledger["turns"]) == len(points):
+                for point, turn in zip(points, ledger["turns"], strict=True):
+                    point.calls = list(turn.get("calls", []))
             return Replayed(
                 case=self.case,
-                points=self._judged(events),
-                ledger=self._ledger(),
+                points=points,
+                ledger=ledger,
                 fetches=list(self.timeline.fetches),
                 state=self.state,
                 transcript=[line for harness_run in self.runs for line in _lines_of(harness_run)],
@@ -1076,8 +1133,15 @@ class Replay:
     ) -> DecisionPoint:
         begun, ended = runs[0].started_at, runs[-1].ended_at or runs[-1].started_at
         during = [event for event in events if begun <= _received(event) <= ended]
+        # A turn that acknowledged nothing by command is acknowledged from its
+        # answer once its harness has exited, before the next turn can start.
+        answered = [
+            event
+            for event in events
+            if begun <= _received(event) and (until is None or _received(event) < until)
+        ]
         requests = []
-        for event in during:
+        for event in answered:
             if event["kind"] not in REQUESTED:
                 continue
             action = event["payload"].get("action", {})
@@ -1136,3 +1200,94 @@ class Replay:
     def clean_up(self) -> None:
         """Remove the install, once what a test reads from it has been read."""
         shutil.rmtree(self.root, ignore_errors=True)
+
+
+#: What the probe of the shipped supervisor configuration is prompted with.
+PROBE_PROMPT = "Answer with the assessment for a print that is printing normally."
+PROBE_DEADLINE_S = 600
+#: The file a run's probe record is kept in, beside its tests' own.
+PROBE_RECORD = "probe.json"
+
+
+class ProbeRecord(TypedDict):
+    """One probe turn as `results/latest.json` carries it."""
+
+    prompt: str
+    #: Each model call the probe made, in order, as the engine reported them.
+    calls: list[CallUsage]
+    #: The bytes of the skill's prose, which every call carries as its system prompt.
+    skill_bytes: int
+
+
+def skill_prose_bytes() -> int:
+    """The bytes of the committed skill after its frontmatter: what a turn's system prompt is."""
+    text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+    _, _, rest = text.removeprefix("---\n").partition("\n---\n")
+    return len(rest.encode("utf-8"))
+
+
+def _call_usage(usage: object) -> CallUsage:
+    """One call's usage as the engine reports it, its token counts alone."""
+    if not isinstance(usage, dict):
+        msg = f"the probe reported a call that is no usage: {usage!r}"
+        raise ReplayError(msg)
+    counted: CallUsage = {}
+    for name in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
+        value = usage.get(name)
+        if type(value) is int:
+            counted[name] = value
+    return counted
+
+
+def probe(harness: str) -> ProbeRecord:
+    """One turn through the shipped supervisor configuration alone, in a fresh session.
+
+    The installer's configuration, the installed skill and the shipped harness, as a
+    replay lays them out, and the server's own composition of its supervisor port,
+    prompted with [`PROBE_PROMPT`] and no image: what every call of a check costs
+    before the check adds to it.
+    """
+    root = Path(tempfile.mkdtemp())
+    try:
+        state, home, bin_directory = root / "state", root / "home", root / "bin"
+        for directory in (state, home, bin_directory):
+            directory.mkdir()
+        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        shutil.copy2(harness, bin_directory / f"claude{suffix}")
+        shutil.copytree(SKILL, state / "skills" / "printobserver")
+        unused = "http://127.0.0.1:1"
+        config = root / "config.toml"
+        config.write_text(
+            service_config(state, "127.0.0.1:0", unused, unused, unused, Secrets()),
+            encoding="utf-8",
+        )
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        done = run(
+            [
+                str(program("printobserver-server-probe")),
+                "--config",
+                str(config),
+                "--session",
+                secrets.token_hex(8),
+                "--prompt",
+                PROBE_PROMPT,
+            ],
+            cwd=state,
+            env=neutral_environment(bin_directory, home),
+            timeout=PROBE_DEADLINE_S,
+        )
+        if done.returncode != 0:
+            msg = f"the probe answered {done.returncode}: {done.stderr}"
+            raise ReplayError(msg)
+        result = json.loads(done.stdout)
+        calls = result.get("calls") if isinstance(result, dict) else None
+        if not isinstance(calls, list) or not calls:
+            msg = f"the probe reported no calls: {done.stdout[:PRINTS_SAID_CHARS]}"
+            raise ReplayError(msg)
+        return {
+            "prompt": PROBE_PROMPT,
+            "calls": [_call_usage(call) for call in calls],
+            "skill_bytes": skill_prose_bytes(),
+        }
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

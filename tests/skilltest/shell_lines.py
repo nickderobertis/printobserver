@@ -278,3 +278,18 @@ def is_compound(line: str) -> bool:
     if _filtered(line):
         return False
     return len(run) > 1 or _grouped(line)
+
+
+def subcommands(line: str) -> list[str]:
+    """The `printobserver` subcommand each command a line runs names, in order.
+
+    Its first word after the program that is no option; a command naming none, and a
+    command of another program, names nothing here.
+    """
+    found = []
+    for words in commands(line):
+        if not runs_the_program(words):
+            continue
+        named = _named(words)
+        found.extend(next(([word] for word in named[1:] if not word.startswith("-")), []))
+    return found

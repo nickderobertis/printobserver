@@ -49,8 +49,10 @@ from cases import (
 )
 from mock_turn import ScriptedRun, Seen
 from replay import (
+    PROBE_RECORD,
     Assessment,
     Confidence,
+    DecisionPoint,
     Replay,
     Replayed,
     ReplayError,
@@ -72,7 +74,7 @@ from repo_checks.checks_real_prints import Trigger as RepoCheckTrigger
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
-from turns_per_run import UnreadableCaseError, turns_per_test
+from turns_per_run import PROBE_TURNS, UnreadableCaseError, turns_per_test
 
 HERE = Path(__file__).resolve().parent
 MOCK_TURN = HERE / "mock_turn.py"
@@ -707,7 +709,8 @@ def test_a_recorded_alert_reaches_the_agent_at_its_time(scratch: Path) -> None:
 def test_a_pause_at_a_carry_on_point_fails_it_and_its_test(scratch: Path) -> None:
     """What the server recorded the agent asking for is what is judged."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
-    done = mock_replay(case, [{"commands": [PAUSE]}], scratch)
+    # A turn that pauses answers that the print should stop, as the skill asks.
+    done = mock_replay(case, [{"commands": [PAUSE], "disposition": "stop"}], scratch)
     carry_on, fault = done.replayed.points
     contains(carry_on.why_not or "", "it must never pause")
     equal(fault.why_not, None)
@@ -717,7 +720,9 @@ def test_a_pause_at_a_carry_on_point_fails_it_and_its_test(scratch: Path) -> Non
 def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
     """Carrying on at the carry-on point and pausing at the fault is the whole test passing."""
     case = read_case("jar-top-wrong-material-first-layer-detach")
-    done = mock_replay(case, [{"commands": [CONTEXT]}, {"commands": [PAUSE]}], scratch)
+    done = mock_replay(
+        case, [{"commands": [CONTEXT]}, {"commands": [PAUSE], "disposition": "stop"}], scratch
+    )
     truth(done.replayed.passed, describing=f"every decision point: {done.replayed.failures()}")
 
 
@@ -842,7 +847,7 @@ def test_an_outcome_is_met_only_by_its_values_in_its_order() -> None:
 
 
 def test_a_plain_pytest_collects_no_live_test_and_an_opted_in_one_does() -> None:
-    """Nothing fires by accident, and the opt-in reaches every case."""
+    """Nothing fires by accident, and the opt-in reaches every case and the probe."""
     command = ["uv", "run", "-q", "pytest", "--collect-only", "-q", "tests/skilltest"]
     environment = {k: v for k, v in os.environ.items() if k != "SKILLTEST_E2E"}
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
@@ -850,7 +855,7 @@ def test_a_plain_pytest_collects_no_live_test_and_an_opted_in_one_does() -> None
     truth("test_replay" not in plain.stdout, describing=f"no live test in {plain.stdout}")
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     opted = run(command, cwd=REPO, env={**environment, "SKILLTEST_E2E": "1"}, check=True)
-    contains(opted.stdout, f"test_replay.py: {len(replayed_case_names())}")
+    contains(opted.stdout, f"test_replay.py: {len(replayed_case_names()) + PROBE_TURNS}")
 
 
 def test_a_turns_assessment_is_attributed_to_its_own_decision_point(scratch: Path) -> None:
@@ -1302,9 +1307,9 @@ def test_the_budgets_command_reports_the_turns_the_cases_count(scratch: Path) ->
     equal(done.returncode, 0, describing=done.stderr)
     counted = turns_per_test()
     reported = json.loads(result.read_text(encoding="utf-8"))
-    equal(reported["value"], sum(counted.values()))
-    equal(json.loads(reported["detail"]), {"turns_per_test": counted})
-    contains(done.stderr, f"turns per full run: {sum(counted.values())}")
+    equal(reported["value"], sum(counted.values()) + PROBE_TURNS)
+    equal(json.loads(reported["detail"]), {"turns_per_test": counted, "probe_turns": PROBE_TURNS})
+    contains(done.stderr, f"turns per full run: {sum(counted.values()) + PROBE_TURNS}")
 
 
 def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
@@ -1617,6 +1622,8 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "usage": None,
         "models": [],
         "compacted": False,
+        "calls": [{"input_tokens": 3, "output_tokens": 80, "cache_write_tokens": 5_000}],
+        "check_class": "quiet",
     }
     carry_on, bridge = REPLAYS["jar-top-wrong-material-first-layer-detach"]
     points = [{**point, "scenario": carry_on}, {**point, "scenario": bridge}]
@@ -1763,7 +1770,11 @@ def test_the_record_command_runs_the_suite_and_folds_what_that_run_wrote(
         describing="what the recipe was asked",
     )
     folded = json.loads(written.read_text("utf-8"))
-    equal(folded["figures"], {"turns": 2}, describing="the turns the run wrote")
+    equal(
+        folded["figures"],
+        {"turns": 2, "quiet_check_model_calls": 1.0},
+        describing="the figures of the run it wrote, which kept no probe",
+    )
     equal(folded["detail"]["passed"], True, describing="the run's verdict")
     equal(
         [test["test"] for test in folded["detail"]["tests"]],
@@ -1792,7 +1803,11 @@ def test_the_harness_credential_is_the_variable_then_the_hosts_sign_in(
 def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
     scratch: Path, tmp_path: Path
 ) -> None:
-    """`record` over a mock run writes each usage as the mock reported it."""
+    """`record` over a mock run writes each usage as the mock reported it.
+
+    And each check's calls as the supervisor port recorded them from the stream
+    the harness wrote, with its class: quiet for the read, acting for the pause.
+    """
     case = read_case("jar-top-wrong-material-first-layer-detach")
     usages = [
         {"input_tokens": 101, "output_tokens": 11, "cache_read_input_tokens": 7},
@@ -1802,7 +1817,7 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
         case,
         [
             {"commands": [CONTEXT], "usage": usages[0]},
-            {"commands": [PAUSE], "usage": usages[1], "compact": True},
+            {"commands": [PAUSE], "usage": usages[1], "compact": True, "disposition": "stop"},
         ],
         scratch,
     )
@@ -1812,7 +1827,10 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
         json.dumps(done.replayed.as_record()), encoding="utf-8"
     )
     written = record.folded(run_directory, "a-commit")
-    equal(written["figures"], {"turns": 2})
+    equal(
+        written["figures"],
+        {"turns": 2, "quiet_check_model_calls": 1.0, "acting_check_model_calls": 1.0},
+    )
     detail = written["detail"]
     equal(detail["commit"], "a-commit")
     equal(detail["harness"], "claude-code")
@@ -1822,6 +1840,15 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
     points = detail["tests"][0]["decision_points"]
     equal([point["usage"] for point in points], usages)
     equal([point["compacted"] for point in points], [False, True])
+    equal(
+        [point["calls"] for point in points],
+        [
+            [{"input_tokens": 101, "output_tokens": 11, "cache_read_tokens": 7}],
+            [{"input_tokens": 202, "output_tokens": 22, "cache_read_tokens": 9}],
+        ],
+        describing="each check's calls, as the port recorded them",
+    )
+    equal([point["check_class"] for point in points], ["quiet", "acting"])
     contains(points[1]["commands"][0], "printobserver pause")
 
 
@@ -1978,3 +2005,144 @@ def test_the_claude_code_release_owes_it(clone: Clone) -> None:
 def test_a_diff_it_cannot_read_owes_the_suite(clone: Clone) -> None:
     """Unknown is never omission."""
     truth(classify.classify(clone.root, "no-such-ref", "HEAD").owed, describing="an unknown base")
+
+
+def _a_check(commands: list[str], requests: list[Request]) -> DecisionPoint:
+    """A decision point whose outcome any requests meet, so only how it acted can fail it."""
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    moment = dataclasses.replace(case.moments[0], accept_any_of=((),), never=())
+    return DecisionPoint(
+        moment=moment,
+        requests=requests,
+        commands=commands,
+        opened=[],
+        assessment=None,
+        usage=None,
+        models=[],
+        compacted=False,
+        failure=None,
+        event_kind="periodic_observation",
+        image_sha256=None,
+        looks=0,
+    )
+
+
+@pytest.mark.parametrize(
+    "acting",
+    [
+        "printobserver pause --print-id P --actor A --reason r",
+        "printobserver cancel --print-id P --actor A --reason r",
+        "printobserver resume --print-id P --actor A --reason r",
+        "printobserver set-fan-percent --print-id P --percent 80 --actor A --reason r",
+        "printobserver set-flowrate-factor --print-id P --factor 1.0 --actor A --reason r",
+        "printobserver set-feedrate-factor --print-id P --factor 0.9 --actor A --reason r",
+        "printobserver set-tool-target-c --print-id P --tool 0 --target 200 --actor A --reason r",
+        "printobserver set-bed-target-c --print-id P --target 60 --actor A --reason r",
+    ],
+)
+def test_a_check_that_looks_again_after_acting_fails_its_decision_point(acting: str) -> None:
+    """A `look` anywhere after a command that acts fails the check, naming both."""
+    looked = _a_check(
+        [acting, "printobserver context --print-id P", "printobserver look --print-id P 2>&1"],
+        [Request(acting.split()[1], {})],
+    )
+    reason = looked.why_not
+    truth(reason is not None, describing=f"a look after `{acting}` to fail its check")
+    contains(str(reason), "it looked again after acting")
+    contains(str(reason), acting.split()[1])
+    equal(looked.as_record()["passed"], False)
+
+
+def test_a_check_that_looks_before_acting_passes_its_decision_point() -> None:
+    """A look before the action, and an action with no look after it, pass."""
+    for commands in (
+        ["printobserver look --print-id P", "printobserver pause --print-id P --reason r"],
+        ["printobserver set-fan-percent --print-id P --percent 80 --reason r"],
+        ["printobserver look --print-id P", "printobserver look --print-id P"],
+    ):
+        equal(_a_check(commands, []).why_not, None, describing=f"{commands}")
+
+
+def _point_with(scenario: str, check_class: str, calls: list[dict[str, int]]) -> dict[str, Any]:
+    point, _ = _a_finished_test()
+    return {**point[0], "scenario": scenario, "check_class": check_class, "calls": calls}
+
+
+def test_the_record_works_out_each_figure_the_budgets_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every figure is the value worked out by hand from known calls, history-free inputs included.
+
+    One test of three checks — quiet, acting, quiet — and a probe whose first call reads
+    4,000. Each call's input is its input, cache reads and cache writes.
+    """
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    finished = tmp_path / "finished"
+    finished.mkdir()
+    first, second = REPLAYS["jar-top-wrong-material-first-layer-detach"]
+    # The first check: one call reading 6,000, the probe's base plus its own 2,000.
+    quiet = [
+        {
+            "input_tokens": 10,
+            "cache_write_tokens": 2_000,
+            "cache_read_tokens": 3_990,
+            "output_tokens": 100,
+        }
+    ]
+    # The second, acting: two calls, after a check whose last call read 6,000 and wrote 100.
+    acting = [
+        {"input_tokens": 20, "cache_read_tokens": 9_000, "output_tokens": 50},
+        {"input_tokens": 30, "cache_read_tokens": 9_500, "output_tokens": 60},
+    ]
+    points = [_point_with(first, "quiet", quiet), _point_with(second, "acting", acting)]
+    test_record = {
+        "test": "jar-top-wrong-material-first-layer-detach",
+        "passed": True,
+        "turns": 2,
+        "sessions": [],
+        "compound_commands": {},
+        "decision_points": points,
+    }
+    (finished / "jar-top-wrong-material-first-layer-detach.json").write_text(
+        json.dumps(test_record), encoding="utf-8"
+    )
+    probe = {
+        "prompt": "Answer with the assessment for a print that is printing normally.",
+        "calls": [{"input_tokens": 4, "cache_write_tokens": 3_996, "output_tokens": 70}],
+        "skill_bytes": 5_983,
+    }
+    (finished / PROBE_RECORD).write_text(json.dumps(probe), encoding="utf-8")
+
+    folded = record.folded(finished, "a-commit")
+    base = 4_000
+    quiet_input = 10 + 2_000 + 3_990
+    history = quiet_input + 100
+    acting_raw = (20 + 9_000) + (30 + 9_500)
+    equal(
+        folded["figures"],
+        {
+            "turns": 2,
+            "quiet_check_model_calls": 1.0,
+            "acting_check_model_calls": 2.0,
+            # The first check carries nothing: its history is the base.
+            "quiet_check_input_tokens": float(quiet_input),
+            "acting_check_input_tokens": float(acting_raw - 2 * (history - base)),
+            "base_context_tokens": float(base),
+        },
+    )
+    equal(folded["figures"]["acting_check_input_tokens"], 14_350.0, describing="by hand")
+    detail = folded["detail"]["figures"]
+    equal(detail["base_context_tokens"]["cache_write_tokens"], 3_996)
+    equal(detail["base_context_tokens"]["skill_bytes"], 5_983)
+    equal(detail["acting_check_input_tokens"]["each"][0]["history"], history)
+    equal(detail["acting_check_model_calls"]["max"], 2)
+    equal(detail["quiet_check_model_calls"]["above_one_call"], [])
+    equal(folded["detail"]["probe"], probe)
+
+    # With no probe, no input figure can be worked out, and none is written.
+    (finished / PROBE_RECORD).unlink()
+    without = record.folded(finished, "a-commit")["figures"]
+    equal(
+        without,
+        {"turns": 2, "quiet_check_model_calls": 1.0, "acting_check_model_calls": 2.0},
+    )

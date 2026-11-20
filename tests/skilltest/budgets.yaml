@@ -30,3 +30,155 @@ budgets:
     direction: max
     threshold: 135
     timeout_seconds: 60
+  - id: quiet-check-model-calls
+    description: >-
+      Model calls per quiet check. Model calls per quiet check (requesting no
+      pause, cancel, resume or `set-*`), from oneharness's per-call usage: the
+      run's median. Detail: the maximum, and each quiet check above one call.
+      Inner measure: the per-check part of `supervisor-tokens-per-print`, whose
+      total hides one check growing. Basis: design — facts and image arrive in
+      the prompt and the acknowledgement comes from the answer, so a quiet
+      check is one call; the recorded C1 turn made 9. Workload: last full suite
+      run, ~89 checks, 9 replays, one check image each, 2 probe turns,
+      claude-code, claude-sonnet-5-5; typical print 76 checks, ~4 acting. Read
+      from the record `just skilltest-record` writes; the command changes to
+      the repository root first, because onebudgetspec runs it in this file's
+      directory. Check runtime approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - quiet_check_model_calls
+    unit: calls
+    direction: max
+    threshold: 1
+    timeout_seconds: 60
+  - id: acting-check-model-calls
+    description: >-
+      Model calls per acting check. Model calls per acting check (one
+      requesting a pause, cancel, resume or any `set-*`): the median over the
+      run. Detail: the maximum, each acting check's calls and commands, and
+      those that looked again. Inner measure: the per-check part of
+      `supervisor-tokens-per-print`, whose total hides one check growing.
+      Basis: design — one call runs the action, one answers, with no look
+      after acting; the recorded C1 turn took 9 calls. Workload: last full
+      suite run, ~89 checks, 9 replays, one check image each, 2 probe turns,
+      claude-code, claude-sonnet-5-5; typical print 76 checks, ~4 acting. Check
+      runtime approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - acting_check_model_calls
+    unit: calls
+    direction: max
+    threshold: 2
+    timeout_seconds: 60
+  - id: quiet-check-input-tokens
+    description: >-
+      Input tokens of one quiet check. Input tokens, cache included, of one
+      quiet check less its carried history: its calls' input less calls x
+      (history carried in - base context), history being the previous check's
+      last-call input plus output. Median over quiet checks. Detail: figure
+      and history per check, median raw input. Inner measure: the per-check
+      part of `supervisor-tokens-per-print`, whose total hides one check
+      growing. Basis: arithmetic — a lean quiet check is one call: base about
+      3.7k (`supervisor-base-context-tokens`), facts about 1.0k, the composite
+      image about 2,442, about 7.15k, so 7,500 leaves about 5%. This node
+      attaches the whole 1280x720 frame (about 1,196 tokens), so its quiet
+      checks read about 5.9k until the composite lands; 7,500 is set for the
+      composite. Workload: last full suite run, ~89 checks, 9 replays, one
+      check image each, 2 probe turns, claude-code, claude-sonnet-5-5; typical
+      print 76 checks, ~4 acting. Check runtime approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - quiet_check_input_tokens
+    unit: tokens
+    direction: max
+    threshold: 7500
+    timeout_seconds: 60
+  - id: acting-check-input-tokens
+    description: >-
+      Input tokens of one acting check. The history-free input figure
+      `quiet-check-input-tokens` defines, over the run's acting checks: the
+      median. Detail: the figure, calls and history per acting check. Inner
+      measure: the per-check part of `supervisor-tokens-per-print`, whose total
+      hides one check growing. Basis: arithmetic from the recorded C1 turn's
+      growth of about 2.5k tokens per call — the first call reads about 7.15k,
+      as a quiet check does, the second that plus the action's call and
+      result, about 0.5k: about 14.8k, so 15,000 leaves about 1%. With the
+      1280x720 frame this node attaches, an acting check reads about 12.3k;
+      15,000 is set for the composite. Workload: last full suite run, ~89
+      checks, 9 replays, one check image each, 2 probe turns, claude-code,
+      claude-sonnet-5-5; typical print 76 checks, ~4 acting. Check runtime
+      approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - acting_check_input_tokens
+    unit: tokens
+    direction: max
+    threshold: 15000
+    timeout_seconds: 60
+  - id: supervisor-base-context-tokens
+    description: >-
+      Base context per call of the lean supervisor harness. First-call input
+      tokens of the suite's text-only probe: a fresh session through the
+      shipped supervisor configuration, prompted `Answer with the assessment
+      for a print that is printing normally.`, no image. Detail: cache
+      creation and read, the skill's bytes. Inner measure: every call re-reads
+      this base, so it is measured alone to show what the lean harness reaches;
+      `supervisor-tokens-per-print` holds the whole. Basis: arithmetic — the
+      recorded C1 turn's first call read about 9.8k with the skills list
+      (about 5.6k), Grep and Glob (0.3k) and its prompt (0.7k); without them
+      about 3.2k, plus about 0.5k of new principles: about 3.7k. Workload: last
+      full suite run, ~89 checks, 9 replays, one check image each, 2 probe
+      turns, claude-code, claude-sonnet-5-5; typical print 76 checks, ~4
+      acting. Check runtime approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - base_context_tokens
+    unit: tokens
+    direction: max
+    threshold: 5000
+    timeout_seconds: 60
