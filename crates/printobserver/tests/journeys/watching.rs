@@ -1547,3 +1547,66 @@ fn an_agent_asking_to_close_its_print_is_refused_by_the_default_grants() {
         "{status}"
     );
 }
+
+/// A turn of the real `printobserver server` is handed, in its prompt, the
+/// usage line of the two reads a check uses and of each action the
+/// installer's envelope grants the agent, exactly as `printobserver --help`
+/// prints them and in its order, and no other command's — so a check that acts
+/// needs no call to learn how.
+#[test]
+fn a_turn_is_handed_the_usage_of_each_command_its_role_may_run() {
+    let grants = installed_agent_grants();
+    let granted: Vec<String> = grants
+        .as_array()
+        .expect("the agent's grants are a list")
+        .iter()
+        .filter_map(Value::as_str)
+        .map(|name| name.replace('_', "-"))
+        .collect();
+    let watching = Watching::start(":", move |document| {
+        document["safety"]["actions"]["agent"] = grants;
+    });
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Printing);
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    let prompt = watching.prompt(&print, 1);
+
+    let help = std::process::Command::new(env!("CARGO_BIN_EXE_printobserver"))
+        .arg("--help")
+        .output()
+        .expect("the program prints its help");
+    let handed: Vec<String> = ["context".to_owned(), "look".to_owned()]
+        .into_iter()
+        .chain(granted)
+        .collect();
+    let expected: Vec<String> = String::from_utf8_lossy(&help.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            handed.iter().any(|command| {
+                line.strip_prefix("printobserver ")
+                    .is_some_and(|rest| rest == command || rest.starts_with(&format!("{command} ")))
+            })
+        })
+        .map(str::to_owned)
+        .collect();
+    assert!(
+        expected
+            .iter()
+            .any(|line| line.starts_with("printobserver set-fan-percent ")),
+        "the installer grants no adjustment, so this proves nothing: {expected:?}"
+    );
+    let (_, section) = prompt
+        .split_once("## The commands you may run")
+        .unwrap_or_else(|| panic!("the prompt carries no commands: {prompt}"));
+    let (_, block) = section
+        .split_once("```console\n")
+        .expect("the commands are a block");
+    let (lines, _) = block.split_once("\n```").expect("the block closes");
+    assert_eq!(lines.lines().collect::<Vec<_>>(), expected, "{prompt}");
+    assert!(
+        !lines.contains("register-spool") && !lines.contains("printobserver server"),
+        "a command the agent may not ask for was handed over: {lines}"
+    );
+}

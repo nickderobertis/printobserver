@@ -82,6 +82,8 @@ TRIGGERS = {"periodic_observation", "obico_failure_alert"}
 ACTING = {"pause", "cancel", "resume"}
 #: The command a check takes a fresh look with, which it never runs after acting.
 LOOK = "look"
+#: The heading the turn prompt carries the print's facts under.
+FACTS_HEADING = "## The print's facts"
 
 
 def acts(operation: str) -> bool:
@@ -433,6 +435,8 @@ class DecisionRecord(TypedDict):
     #: Each model call the check made, in order, from the supervisor port's record.
     calls: list[CallUsage]
     check_class: CheckClass
+    #: The bytes of the facts its prompt carried, when the transcript showed its prompt.
+    facts_bytes: NotRequired[int | None]
 
 
 class TestRecord(TypedDict):
@@ -501,6 +505,7 @@ class DecisionPoint:
     image_sha256: str | None
     looks: int
     calls: list[CallUsage] = field(default_factory=list)
+    facts_bytes: int | None = None
 
     @property
     def check_class(self) -> CheckClass:
@@ -536,6 +541,7 @@ class DecisionPoint:
             "compacted": self.compacted,
             "calls": self.calls,
             "check_class": self.check_class,
+            "facts_bytes": self.facts_bytes,
         }
 
 
@@ -675,6 +681,8 @@ class RunReport:
     usage: dict[str, Any] | None = None
     models: list[str] = field(default_factory=list)
     compacted: bool = False
+    #: The bytes of the facts the turn's prompt carried, read off the prompt itself.
+    facts_bytes: int | None = None
 
     def take(self, lines: list[dict[str, Any]]) -> None:
         """Read one run's output and transcript into this turn's report."""
@@ -696,6 +704,10 @@ class RunReport:
                     self._saw(model)
                     for block in content:
                         self._used(block)
+                # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
+                case {"type": "user", "message": {"content": list(content)}}:
+                    for block in content:
+                        self._prompted(block)
                 case _:
                     pass
 
@@ -718,6 +730,18 @@ class RunReport:
                         self.opened.append(f"skill:{skill}")
                     case _:
                         pass
+            case _:
+                pass
+
+    def _prompted(self, block: object) -> None:
+        """The facts one prompt block carries, the first time a turn's prompt is seen."""
+        match block:
+            case {"type": "text", "text": str(text)} if self.facts_bytes is None:
+                _, heading, after = text.partition(FACTS_HEADING)
+                _, fence, rest = after.partition("```json\n")
+                facts, closed, _ = rest.partition("\n```")
+                if heading and fence and closed:
+                    self.facts_bytes = len(facts.encode("utf-8"))
             case _:
                 pass
 
@@ -1180,6 +1204,7 @@ class Replay:
             event_kind=trigger["kind"],
             image_sha256=image.get("sha256"),
             looks=sum(1 for event in during if event["kind"] == CAMERA_LOOK),
+            facts_bytes=report.facts_bytes,
         )
 
     def stop(self) -> None:
@@ -1243,9 +1268,10 @@ def probe(harness: str) -> ProbeRecord:
     """One turn through the shipped supervisor configuration alone, in a fresh session.
 
     The installer's configuration, the installed skill and the shipped harness, as a
-    replay lays them out, and the server's own composition of its supervisor port,
-    prompted with [`PROBE_PROMPT`] and no image: what every call of a check costs
-    before the check adds to it.
+    replay lays them out, and the server's own composition of its supervisor port —
+    handed the program's usage lines as `printobserver server` hands them — prompted
+    with [`PROBE_PROMPT`] and no image: what every call of a check costs before the
+    check adds to it.
     """
     root = Path(tempfile.mkdtemp())
     try:
@@ -1255,6 +1281,17 @@ def probe(harness: str) -> ProbeRecord:
         suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
         shutil.copy2(harness, bin_directory / f"claude{suffix}")
         shutil.copytree(SKILL, state / "skills" / "printobserver")
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        done = run([str(program("printobserver")), "--help"], timeout=CLIENT_DEADLINE_S)
+        usage = root / "usage.txt"
+        usage.write_text(
+            "".join(
+                f"{line.strip()}\n"
+                for line in done.stdout.splitlines()
+                if line.strip().startswith("printobserver ")
+            ),
+            encoding="utf-8",
+        )
         unused = "http://127.0.0.1:1"
         config = root / "config.toml"
         config.write_text(
@@ -1271,6 +1308,8 @@ def probe(harness: str) -> ProbeRecord:
                 secrets.token_hex(8),
                 "--prompt",
                 PROBE_PROMPT,
+                "--usage",
+                str(usage),
             ],
             cwd=state,
             env=neutral_environment(bin_directory, home),

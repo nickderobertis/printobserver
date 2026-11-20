@@ -33,7 +33,8 @@
 //! from the configured path when the port is built. The prompt for a turn is the committed template at
 //! [`SupervisorConfig::prompt_template_path`] with its five slots filled — the
 //! triggering event, the situation the turn began in, the print's facts, the
-//! context command and the agent's own actor — and nothing else. The check's
+//! context command, the agent's own actor and the usage of the commands it may
+//! run — and nothing else. The check's
 //! image is attached to the prompt as an image rather than named in it. This
 //! port composes no sentence of its own, so what a prompt may say is one small
 //! file a person reads.
@@ -74,7 +75,7 @@ pub use config::{
 };
 pub use ledger::{CallUsage, LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, SessionName};
 pub use prompt::{
-    ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT, NO_FACTS, PromptTemplate,
+    ACTOR_SLOT, COMMANDS_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT, PromptTemplate,
     SITUATION_SLOT, SLOTS, TemplateError,
 };
 pub use sign_in::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};

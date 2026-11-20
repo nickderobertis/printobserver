@@ -84,7 +84,7 @@ impl OneharnessSupervisor {
     ///
     /// Returns [`SupervisorError::Unavailable`] when either file cannot be read,
     /// when the skill opens a frontmatter block it never closes, or when the
-    /// template does not declare the five slots a turn fills.
+    /// template does not declare the six slots a turn fills.
     pub fn open(config: SupervisorConfig) -> Result<Self, SupervisorError> {
         Self::observed(config, TurnSeam::default())
     }
@@ -191,7 +191,7 @@ impl OneharnessSupervisor {
     }
 
     /// The prompt for one turn in one session: the committed template with its
-    /// five slots filled, and nothing else.
+    /// six slots filled, and nothing else.
     ///
     /// Built for the session the turn runs in, because the actor the agent
     /// names itself by is that session's: an agent left to guess the shape of
@@ -223,7 +223,25 @@ impl OneharnessSupervisor {
             &facts,
             &request.context_command,
             &actor.to_string(),
+            &self.commands_a_turn_runs(),
         ))
+    }
+
+    /// The usage line of each command a turn may run, one per line, in the
+    /// order the program prints them.
+    fn commands_a_turn_runs(&self) -> String {
+        self.config
+            .command_usage
+            .iter()
+            .filter(|line| {
+                self.config.agent_commands.iter().any(|command| {
+                    let prefix = command.as_str();
+                    line.as_str() == prefix || line.starts_with(&format!("{prefix} "))
+                })
+            })
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// Whether the configured harness is Claude Code.

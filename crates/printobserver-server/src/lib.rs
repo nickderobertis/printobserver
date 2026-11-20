@@ -82,7 +82,7 @@ pub use reconcile::{
 pub use server::{
     API_CREDENTIAL_FILE, API_CREDENTIAL_VERIFIER_FILE, CLIENT_CONFIG_FILE, CONTEXT_PROGRAM,
     CREDENTIAL_ISSUE, CREDENTIAL_VERIFIER, OperatorCredential, PROMPT_FILE, Ports, Running,
-    SCHEMA_FILE, Server, StartError, TURN_PROMPT, agent_config, context_command,
+    SCHEMA_FILE, Server, StartError, TURN_PROMPT, agent_config, agent_config_with, context_command,
     operator_credential, plaintext_credential_warning,
 };
 pub use turns::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};

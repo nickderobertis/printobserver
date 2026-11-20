@@ -259,6 +259,7 @@ pub fn config<Mode>(
         harness_bin: Some(responder()),
         harness_env: env,
         agent_commands: Vec::new(),
+        command_usage: Vec::new(),
     }
 }
 

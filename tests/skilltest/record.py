@@ -42,6 +42,8 @@ def commit() -> str:
 
 #: The decision points of a supervision check carry these beside a start request's.
 CHECK_FIELDS = {"calls", "check_class"}
+#: The fields a decision point may leave out: what a record kept before they existed lacks.
+OPTIONAL_FIELDS = {"facts_bytes"}
 #: The trigger a start request's decision point is recorded under, which is no check.
 START_REQUEST = "start_request"
 
@@ -96,7 +98,8 @@ def _decision_point_is_readable(point: object) -> bool:
     """Whether a decision point has every field of `DecisionRecord`, with those read here typed."""
     return (
         isinstance(point, dict)
-        and DecisionRecord.__annotations__.keys() - CHECK_FIELDS <= point.keys()
+        and DecisionRecord.__annotations__.keys() - CHECK_FIELDS - OPTIONAL_FIELDS <= point.keys()
+        and (point.get("facts_bytes") is None or type(point["facts_bytes"]) is int)
         and _check_is_readable(point)
         and isinstance(point["scenario"], str)
         and isinstance(point["at"], str)

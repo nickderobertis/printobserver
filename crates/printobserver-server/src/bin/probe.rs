@@ -1,10 +1,14 @@
 //! One probe of the shipped supervisor configuration, for the real-print suite.
 //!
-//! `printobserver-server-probe --config <path> --session <name> --prompt <text>`
+//! `printobserver-server-probe --config <path> --session <name> --prompt <text>
+//! [--usage <path>]`
 //! loads a server configuration exactly as `printobserver server` does, composes
 //! its supervisor port exactly as the server does, and runs one prompt through
 //! it in a fresh session of its own with no image and no print: the run request
-//! a turn is built as, less everything a check adds. It prints the engine's
+//! a turn is built as, less everything a check adds. `--usage` names a file of
+//! the program's usage lines, one per line, as `printobserver --help` prints
+//! them, which the composed port is handed as the server running under
+//! `printobserver server` is. It prints the engine's
 //! result for that run as JSON on standard output, its per-call usage among
 //! it, which is what the suite's base-context figure is read from.
 //!
@@ -16,7 +20,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use printobserver_oneharness::OneharnessSupervisor;
-use printobserver_server::{ServerConfig, agent_config};
+use printobserver_server::{ServerConfig, agent_config_with};
 
 /// What the probe was asked to run.
 struct Asked {
@@ -26,16 +30,19 @@ struct Asked {
     session: String,
     /// The prompt.
     prompt: String,
+    /// The file of the program's usage lines, when one was named.
+    usage: Option<PathBuf>,
 }
 
 /// The three options, each once and none empty.
 fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
-    let (mut config, mut session, mut prompt) = (None, None, None);
+    let (mut config, mut session, mut prompt, mut usage) = (None, None, None, None);
     while let Some(flag) = arguments.next() {
         let slot = match flag.as_str() {
             "--config" => &mut config,
             "--session" => &mut session,
             "--prompt" => &mut prompt,
+            "--usage" => &mut usage,
             other => return Err(format!("`{other}` is no option of this probe")),
         };
         let value = arguments
@@ -50,6 +57,7 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
         config: PathBuf::from(config.ok_or("--config is required")?),
         session: session.ok_or("--session is required")?,
         prompt: prompt.ok_or("--prompt is required")?,
+        usage: usage.map(PathBuf::from),
     })
 }
 
@@ -61,9 +69,27 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    let usage: Vec<String> = match &asked.usage {
+        Some(path) => match std::fs::read_to_string(path) {
+            Ok(text) => text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            Err(error) => {
+                eprintln!(
+                    "printobserver-server-probe: {} is unreadable: {error}",
+                    path.display()
+                );
+                return ExitCode::FAILURE;
+            }
+        },
+        None => Vec::new(),
+    };
     let probed = ServerConfig::load(&asked.config)
         .map_err(|error| error.to_string())
-        .and_then(|config| agent_config(&config).map_err(|error| error.to_string()))
+        .and_then(|config| agent_config_with(&config, &usage).map_err(|error| error.to_string()))
         .and_then(|composed| {
             OneharnessSupervisor::open(composed).map_err(|error| error.to_string())
         })

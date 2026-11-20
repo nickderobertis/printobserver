@@ -38,6 +38,14 @@ The command that reads the print's whole context, events included:
 {{context_command}}
 ```
 
+## The commands you may run
+
+Each as the program prints its usage:
+
+```console
+{{commands}}
+```
+
 ## Your actor
 
 The value every command whose usage lists `--actor` takes in this turn, quoted

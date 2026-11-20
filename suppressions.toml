@@ -4558,6 +4558,12 @@ reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest/replay.py"
+site = "case {\"type\": \"user\", \"message\": {\"content\": list(content)}}:"
+reason = "The user message of Claude Code's session transcript, where the replay reads the prompt a turn was handed to measure the facts it carried. The transcript has no published schema to derive from or check against; a move of its shape leaves `facts_bytes` absent in the record, which the dispatch reads, rather than passing a figure off as measured."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
 site = "case {\"type\": \"tool_use\", \"id\": str(called), \"name\": str(name), \"input\": dict(given)}:"
 reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
 

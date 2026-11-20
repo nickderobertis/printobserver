@@ -10,8 +10,8 @@ use std::sync::Arc;
 use oneharness_core::domain::structured::{self, Schema};
 
 use printobserver_oneharness::{
-    ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT, OneharnessSupervisor, SITUATION_SLOT,
-    SLOTS, UnclosedFrontmatter, skill_prose,
+    ACTOR_SLOT, AgentCommand, COMMANDS_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT,
+    OneharnessSupervisor, SITUATION_SLOT, SLOTS, UnclosedFrontmatter, skill_prose,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
 use printobserver_types::{PrintId, PrinterState, serde_json};
@@ -196,6 +196,8 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
                 FACTS_SLOT => assert_eq!(filling, &expected_facts),
                 CONTEXT_COMMAND_SLOT => assert_eq!(filling, &expected_command),
                 ACTOR_SLOT => assert_eq!(filling, &expected_actor),
+                // This port is configured with no command a turn may run.
+                COMMANDS_SLOT => assert_eq!(filling, ""),
                 other => panic!("the template declares an unknown slot {other}"),
             }
         }
@@ -349,6 +351,7 @@ fn the_filled_prompt_holds_only_its_slots_and_their_framing() {
         "## The print's facts",
         "## The whole context",
         "## Your actor",
+        "## The commands you may run",
     ] {
         assert!(
             prompt.contains(heading),
@@ -569,4 +572,53 @@ fn the_prose_is_everything_after_the_line_closing_the_frontmatter() {
         let expected = case["prose"].as_str().ok_or(UnclosedFrontmatter);
         assert_eq!(skill_prose(text), expected, "the case `{named}`");
     }
+}
+
+/// A turn is handed the usage line of each command it may run, as the program
+/// prints them and in its order, and no line of any other command — however
+/// alike its name begins.
+#[test]
+fn a_turn_is_handed_the_usage_of_the_commands_it_may_run_and_no_other() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("prompting-commands");
+    let watch = Arc::new(Watch::default());
+    let mut configured = config(
+        &schemas,
+        &fixture,
+        HARNESS,
+        &generated_assessment_schema(),
+        always("SID-COMMANDS", &assessment("the print is fine", "high")),
+    );
+    configured.agent_commands = ["printobserver context", "printobserver set-fan-percent"]
+        .map(|command| AgentCommand::new(command).expect("a command prefix"))
+        .to_vec();
+    configured.command_usage = [
+        "printobserver server",
+        "printobserver context --print-id <value> [--since <value>]",
+        "printobserver contexts --print-id <value>",
+        "printobserver register-spool --actor <json> --name <value> --reason <value>",
+        "printobserver set-fan-percent --print-id <value> --actor <json> --percent <value> --reason <value>",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let supervisor = port(configured, &watch);
+    let print_id = PrintId::new();
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, failure_alert(7, None)), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
+    let prompt = attached_once(&watch, None);
+    let template = fs::read_to_string(template_path()).expect("the committed template is readable");
+    let (literals, order) = segments(&template);
+    let found = fillings(&literals, &prompt).expect("the prompt is the template filled");
+    let at = order
+        .iter()
+        .position(|slot| *slot == COMMANDS_SLOT)
+        .expect("the template declares the commands");
+    assert_eq!(
+        found[at],
+        "printobserver context --print-id <value> [--since <value>]\n\
+         printobserver set-fan-percent --print-id <value> --actor <json> --percent <value> --reason <value>"
+    );
 }

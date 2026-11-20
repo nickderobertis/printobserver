@@ -436,6 +436,10 @@ pub struct SupervisorConfig {
     /// The command prefixes the agent may run during a turn. Empty keeps the
     /// turn read-only, with no shell at all.
     pub agent_commands: Vec<AgentCommand>,
+    /// The usage line of every command the program serving the turn has, as
+    /// it prints them: a turn is handed those of its [`Self::agent_commands`],
+    /// so it can act without first reading how. Empty hands it none.
+    pub command_usage: Vec<String>,
 }
 
 /// Receives every run request this port builds.
