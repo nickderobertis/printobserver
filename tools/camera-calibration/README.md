@@ -84,7 +84,7 @@ is this tool's fit of `core-one-2026-09-27.marks.json` beside it: 50 marks on 7
 frames of four prints, at heights from 0.2 to 141.6 mm. Its tests refit those
 marks from plain copies of the frames and slices and hold the result to:
 
-- an RMS reprojection error of at most **4.0 px** (the committed fit: 3.41 px);
+- an RMS reprojection error of at most **4 px** (the committed fit: 3.41 px);
 - every point of every marked outline projected within **5 px** of where the
   committed file projects it;
 - the committed file, number by number, within **80 px** for `fx` and `fy`,

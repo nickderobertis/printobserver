@@ -88,6 +88,9 @@ def _number(value: object, where: str) -> float:
     return number
 
 
+# `Any` is the type `json.loads` gives an object's members and a list's items:
+# these helpers sit at that boundary, checking each value before it is used,
+# so a narrower annotation would claim what has not yet been checked.
 def _list(entry: dict[str, Any], key: str, where: str) -> list[Any]:
     value = entry.get(key, [])
     if not isinstance(value, list):
@@ -103,7 +106,7 @@ def _point(value: object, where: str) -> tuple[float, float]:
     return (_number(value[0], where), _number(value[1], where))
 
 
-def _text(entry: dict[str, Any], key: str, where: str) -> str:
+def _text(entry: dict[str, Any], key: str, where: str) -> str:  # `Any`: as `_list` above
     value = entry.get(key)
     if not isinstance(value, str) or not value:
         msg = f"{where} names no `{key}`"
@@ -120,6 +123,9 @@ def load(path: Path) -> Marks:
     """
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError as error:
+        msg = f"{path} is not UTF-8 text: {error.reason} at byte {error.start}"
+        raise MarksError(msg) from error
     except (OSError, json.JSONDecodeError) as error:
         msg = f"{path}: {error}"
         raise MarksError(msg) from error

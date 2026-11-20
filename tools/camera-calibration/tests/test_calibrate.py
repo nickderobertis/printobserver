@@ -235,6 +235,22 @@ def _camera_of(calibration: dict[str, Any]) -> Camera:
     )
 
 
+def test_the_readme_states_the_bounds_these_tests_hold() -> None:
+    """Each bound held above is the one the README states, so neither copy drifts alone."""
+    readme = (TOOL / "README.md").read_text(encoding="utf-8")
+    stated = [
+        f"**{RMS_BOUND_PX:g} px**",
+        f"**{PROJECTION_PX:g} px**",
+        f"**{TOLERANCE['focal_px']:g} px** for `fx` and `fy`",
+        f"**{TOLERANCE['centre_px']:g} px** for `cx` and `cy`",
+        f"**{TOLERANCE['k1']:g}** for `k1`",
+        f"**{TOLERANCE['rotation']:g} rad**",
+        f"**{TOLERANCE['translation_mm']:g} mm**",
+    ]
+    for bound in stated:
+        expect.contains(readme, bound, describing="the README's statement of the fit's bounds")
+
+
 def test_the_marks_reproject_within_the_rms_bound(tmp_path: Path) -> None:
     """The committed calibration puts the marks within the RMS bound of their outlines."""
     camera = _camera_of(json.loads(COMMITTED.read_text(encoding="utf-8")))
@@ -251,6 +267,18 @@ def test_marks_naming_no_part_edge_are_refused(tmp_path: Path) -> None:
     run = _run(_fixture_marks(tmp_path, without_edges=True), tmp_path)
     expect.equal(run.returncode, 2, describing="the exit status")
     expect.contains(run.stderr, "marks no part edge", describing="the refusal")
+    expect.truth(
+        not (tmp_path / "calibration.json").exists(), describing="no calibration is written"
+    )
+
+
+def test_marks_that_are_not_utf8_are_refused(tmp_path: Path) -> None:
+    """A marks file that is not UTF-8 text is refused with exit 2, naming it."""
+    marks = tmp_path / "marks.json"
+    marks.write_bytes(b'\xff\xfe{"frames": []}')
+    run = _run(marks, tmp_path)
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, f"{marks} is not UTF-8 text", describing="the refusal")
     expect.truth(
         not (tmp_path / "calibration.json").exists(), describing="no calibration is written"
     )
