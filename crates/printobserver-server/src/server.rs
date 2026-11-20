@@ -912,6 +912,8 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
         harness_env,
         agent_commands: agent_commands()?,
         command_usage: Vec::new(),
+        auto_compact_tokens: config.auto_compact_tokens,
+        idle_compact_tokens: config.idle_compact_tokens,
     })
 }
 

@@ -514,7 +514,7 @@ fn a_ledger_written_under_another_shape_is_refused() {
         &fixture,
         &print_id,
         &serde_json::json!({
-            "schema_version": "3",
+            "schema_version": "4",
             "print_id": print_id,
             "sessions": [],
             "turns": [],
@@ -528,7 +528,7 @@ fn a_ledger_written_under_another_shape_is_refused() {
         .expect_err("a ledger of another shape was read as this build's");
     let said = detail(&refused);
     assert!(
-        said.contains("not a ledger this build reads") && said.contains("V2"),
+        said.contains("not a ledger this build reads") && said.contains("V3"),
         "the refusal does not say which shape this build writes: {said}"
     );
 }

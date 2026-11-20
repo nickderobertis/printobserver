@@ -62,6 +62,15 @@
 //! recorded — from 60 to 86400 seconds, an hour when left out. A value outside
 //! either range is refused naming its key.
 //!
+//! # Compaction
+//!
+//! `supervisor.idle_compact_tokens` is the conversation size, in tokens, at or
+//! above which a print's session is compacted while no turn of it runs, and
+//! `supervisor.auto_compact_tokens` the size at which the harness compacts a
+//! session on its own during a turn, set through `OneHarness`'s
+//! harness-agnostic setting of that name. Each is a whole number from 1, and
+//! each left out does nothing.
+//!
 //! # The camera and `Obico`'s own API
 //!
 //! Both are optional. `camera.snapshot_url` is where a look fetches a fresh
@@ -116,6 +125,7 @@
 //! sheet, or two materials differing only in case is refused naming
 //! `sheets.allowed`.
 
+use core::num::NonZeroU64;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
@@ -223,6 +233,12 @@ pub enum ConfigField {
     /// How long after an unfinished ending the printer acting on its own is
     /// recorded, in seconds.
     UnattendedWindowS,
+    /// The conversation size at which the harness compacts a session during a
+    /// turn, in tokens.
+    AutoCompactTokens,
+    /// The conversation size at or above which a session is compacted while
+    /// idle, in tokens.
+    IdleCompactTokens,
     /// How long the ingress may take to answer, in milliseconds.
     IngressAnswerBoundMs,
     /// The shared secret the ingress requires of every post.
@@ -281,7 +297,7 @@ pub enum ConfigField {
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 39] = [
+    pub const ALL: [Self; 41] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -295,6 +311,8 @@ impl ConfigField {
         Self::ObservationIntervalS,
         Self::PrinterPollS,
         Self::UnattendedWindowS,
+        Self::AutoCompactTokens,
+        Self::IdleCompactTokens,
         Self::IngressAnswerBoundMs,
         Self::IngressSharedSecret,
         Self::ApiCredential,
@@ -340,6 +358,8 @@ impl ConfigField {
             Self::ObservationIntervalS => "supervisor.observation_interval_s",
             Self::PrinterPollS => "supervisor.printer_poll_s",
             Self::UnattendedWindowS => "supervisor.unattended_window_s",
+            Self::AutoCompactTokens => "supervisor.auto_compact_tokens",
+            Self::IdleCompactTokens => "supervisor.idle_compact_tokens",
             Self::IngressAnswerBoundMs => "ingress.answer_bound_ms",
             Self::IngressSharedSecret => "ingress.shared_secret",
             Self::ApiCredential => "api.credential",
@@ -527,6 +547,14 @@ pub struct SupervisorSection {
     /// 86400. Left out, an hour.
     #[serde(default = "default_unattended_window_s")]
     pub unattended_window_s: u64,
+    /// The conversation size, in tokens, at which the harness compacts a
+    /// session on its own during a turn. Left out, nothing is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_compact_tokens: Option<i64>,
+    /// The conversation size, in tokens, at or above which a print's session
+    /// is compacted while no turn of it runs. Left out, never.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle_compact_tokens: Option<i64>,
 }
 
 /// The printer poll a configuration naming none takes.
@@ -554,6 +582,8 @@ impl Default for SupervisorSection {
             observation_interval_s: DEFAULT_OBSERVATION_INTERVAL_S,
             printer_poll_s: DEFAULT_PRINTER_POLL_S,
             unattended_window_s: DEFAULT_UNATTENDED_WINDOW_S,
+            auto_compact_tokens: None,
+            idle_compact_tokens: None,
         }
     }
 }
@@ -1190,6 +1220,12 @@ pub struct ServerConfig {
     /// How long after an unfinished ending the printer acting on its own is
     /// recorded.
     pub unattended_window: core::time::Duration,
+    /// The conversation size at which the harness compacts a session during a
+    /// turn, when one is set.
+    pub auto_compact_tokens: Option<NonZeroU64>,
+    /// The conversation size at or above which a session is compacted while
+    /// idle, when one is set.
+    pub idle_compact_tokens: Option<NonZeroU64>,
     /// The grey-level spread at or below which a camera frame is blank.
     pub blank_frame_max_stddev: BlankFrameBound,
     /// Where the failure detector's own service answers its health check,
@@ -1293,6 +1329,10 @@ impl ServerConfig {
             file.supervisor.unattended_window_s,
             UNATTENDED_WINDOW_RANGE_S,
         )?;
+        let (auto_compact_tokens, idle_compact_tokens) = compaction(
+            file.supervisor.auto_compact_tokens,
+            file.supervisor.idle_compact_tokens,
+        )?;
         let blank_frame_max_stddev = blank_frame_bound(file.vision.blank_frame_max_stddev)?;
         let (obico_ml_api_url, obico_printer_id) = detector_reads(&file.obico)?;
         let ingress_answer_bound = answer_bound(file.ingress.answer_bound_ms)?;
@@ -1340,6 +1380,8 @@ impl ServerConfig {
             observation_interval,
             printer_poll,
             unattended_window,
+            auto_compact_tokens,
+            idle_compact_tokens,
             blank_frame_max_stddev,
             obico_ml_api_url,
             obico_printer_id,
@@ -1937,6 +1979,39 @@ fn observation_interval(seconds: u64) -> Result<core::time::Duration, ConfigErro
         ));
     }
     Ok(core::time::Duration::from_secs(seconds))
+}
+
+/// The harness's own compaction size and the idle compaction's, each when
+/// written down.
+fn compaction(
+    auto: Option<i64>,
+    idle: Option<i64>,
+) -> Result<(Option<NonZeroU64>, Option<NonZeroU64>), ConfigError> {
+    Ok((
+        tokens(ConfigField::AutoCompactTokens, auto)?,
+        tokens(ConfigField::IdleCompactTokens, idle)?,
+    ))
+}
+
+/// A count of tokens, when one is written down: refused naming its field
+/// unless it is a whole number from 1, because a conversation of no tokens is
+/// one every turn has already passed.
+fn tokens(field: ConfigField, count: Option<i64>) -> Result<Option<NonZeroU64>, ConfigError> {
+    count
+        .map(|count| {
+            u64::try_from(count)
+                .ok()
+                .and_then(NonZeroU64::new)
+                .ok_or_else(|| {
+                    ConfigError::about(
+                        field,
+                        format!(
+                            "{count} tokens is no conversation size: it is a whole number from 1"
+                        ),
+                    )
+                })
+        })
+        .transpose()
 }
 
 /// A number of seconds, refused outside the range its field admits.

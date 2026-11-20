@@ -116,12 +116,9 @@ fn unacceptable(
             "supervisor.prompt_template_path",
             toml::Value::String(unreadable(root).display().to_string()),
         ),
-        // An interval of nothing, which would observe a print without pause.
-        ConfigField::ObservationIntervalS => set(
-            &mut document,
-            "supervisor.observation_interval_s",
-            toml::Value::Integer(0),
-        ),
+        ConfigField::ObservationIntervalS
+        | ConfigField::AutoCompactTokens
+        | ConfigField::IdleCompactTokens => unacceptable_count(field, &mut document),
         ConfigField::ObicoUrl
         | ConfigField::ObicoAccessToken
         | ConfigField::PrinterPollS
@@ -177,6 +174,19 @@ fn unacceptable(
         grants => unacceptable_grants(grants, &mut document),
     }
     document
+}
+
+/// The supervisor's counts, each made unacceptable: an interval of nothing,
+/// which would observe a print without pause; a compaction at a conversation
+/// of no tokens, which every turn has already passed; and one at a size below
+/// nothing.
+fn unacceptable_count(field: ConfigField, document: &mut toml::Value) {
+    let (key, count) = match field {
+        ConfigField::ObservationIntervalS => ("supervisor.observation_interval_s", 0),
+        ConfigField::AutoCompactTokens => ("supervisor.auto_compact_tokens", 0),
+        _ => ("supervisor.idle_compact_tokens", -150_000),
+    };
+    set(document, key, toml::Value::Integer(count));
 }
 
 /// `Obico`'s and the printer watch's fields, each made unacceptable: an

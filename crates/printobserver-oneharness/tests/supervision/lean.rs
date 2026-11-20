@@ -340,7 +340,7 @@ fn a_ledger_of_the_earlier_shape_is_read_and_written_back_as_this_one() {
     let written: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&ledger).expect("the ledger reads"))
             .expect("the ledger is JSON");
-    assert_eq!(written["schema_version"], "2");
+    assert_eq!(written["schema_version"], "3");
     assert_eq!(written["sessions"][0]["session_name"], session);
     let turns = written["turns"].as_array().expect("the turns");
     assert_eq!(turns.len(), 2, "the earlier turn was not kept: {written}");
