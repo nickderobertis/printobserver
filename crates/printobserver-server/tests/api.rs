@@ -21,6 +21,8 @@ mod held_events;
 mod http_host;
 #[path = "support/minted.rs"]
 mod minted;
+#[path = "support/obico_api.rs"]
+mod obico_api;
 #[path = "support/printer.rs"]
 mod printer;
 #[path = "support/probes.rs"]
@@ -34,6 +36,8 @@ mod world;
 mod aligning;
 #[path = "journeys/authenticating.rs"]
 mod authenticating;
+#[path = "journeys/bed_clear.rs"]
+mod bed_clear;
 #[path = "journeys/binding.rs"]
 mod binding;
 #[path = "journeys/coherent_ledger.rs"]
@@ -56,6 +60,8 @@ mod images;
 mod indexing;
 #[path = "journeys/ingress.rs"]
 mod ingress;
+#[path = "journeys/installed_detector.rs"]
+mod installed_detector;
 #[path = "journeys/ledger_restarts.rs"]
 mod ledger_restarts;
 #[path = "journeys/looking.rs"]
@@ -74,6 +80,8 @@ mod reconciling;
 mod recovering;
 #[path = "journeys/refusing.rs"]
 mod refusing;
+#[path = "journeys/scoring.rs"]
+mod scoring;
 // The responder binary this journey runs is built only under the feature this
 // crate's own test target is run with.
 #[cfg(feature = "test-responder")]

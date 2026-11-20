@@ -16,6 +16,7 @@ import os
 import shutil
 import sys
 import time
+import tomllib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -723,22 +724,37 @@ def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
 def test_a_supervision_turns_compound_command_is_reported_under_its_conversation(
     scratch: Path,
 ) -> None:
-    """A piped read is written down under the session it ran in, and the record carries it.
+    """A chained read is written down under the session it ran in, and the record carries it.
 
     With no ledger turn to read a decision point's session from, it is the print's last.
     """
     case = read_case("jar-top-wrong-material-first-layer-detach")
-    piped = "printobserver context --print-id {print} --json | head -5"
-    done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
+    chained = "printobserver context --print-id {print} --json; echo read"
+    done = mock_replay(case, [{"commands": [chained]}, {"commands": [CONTEXT]}], scratch)
     replayed = done.replayed
     sessions = [session["session_name"] for session in replayed.ledger["sessions"]]
     equal(len(sessions), 1)
-    ran = [line for line in replayed.points[0].commands if "| head" in line]
+    ran = [line for line in replayed.points[0].commands if "; echo read" in line]
     equal(len(ran), 1)
     equal(replayed.compound_commands(), {sessions[0]: ran})
     equal(replayed.as_record()["compound_commands"], {sessions[0]: ran})
     unattributed = dataclasses.replace(replayed, ledger={**replayed.ledger, "turns": []})
     equal(unattributed.compound_commands(), {sessions[0]: ran})
+
+
+def test_a_read_piped_only_through_a_filter_is_no_compound_command(scratch: Path) -> None:
+    """Production runs a read piped into `grep`, so the run's record reports nothing of it."""
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    piped = 'printobserver context --print-id {print} --json | grep -E "detector|slicer"'
+    done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
+    replayed = done.replayed
+    ran = [line for line in replayed.points[0].commands if "| grep" in line]
+    equal(len(ran), 1)
+    equal(replayed.compound_commands(), {session: [] for session in replayed.compound_commands()})
+    truth(
+        all(not lines for lines in replayed.as_record()["compound_commands"].values()),
+        describing="the record to carry no compound command",
+    )
 
 
 def test_a_printer_that_cannot_be_read_still_gets_its_scheduled_check(scratch: Path) -> None:
@@ -1013,6 +1029,89 @@ def test_the_obico_double_serves_only_the_images_its_alerts_name(scratch: Path) 
         server.server_close()
 
 
+def _detectors_read(done: Scripted) -> list[str]:
+    """The detector's status each turn's context read answered, in turn order."""
+    return [
+        json.loads(entry["out"])["context"]["detector"]
+        for seen in done.turns
+        for entry in seen["ran"]
+        if entry["words"][1] == "context"
+    ]
+
+
+def test_the_real_supervisor_reads_the_replays_detector_through_obicos_record(
+    scratch: Path,
+) -> None:
+    """The real server reads the double's printer record over HTTP into every turn's context.
+
+    A case recording the detector is one Obico watched, so once two of the server's
+    reads apart have seen its snapshot move, a turn reads it scoring with nothing
+    flagged; the same case with no detector recorded never reads scoring.
+    """
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    truth(len(case.moments) >= 2, describing="two turns, so two reads lie between them")
+    for directory in ("watched", "unwatched"):
+        (scratch / directory).mkdir()
+    watched = _detectors_read(mock_replay(case, [{"commands": [CONTEXT]}], scratch / "watched"))
+    equal(len(watched), len(case.moments))
+    equal(watched[-1], "scoring_nothing_flagged")
+
+    unrecorded = dataclasses.replace(case, detector_recorded=False)
+    unwatched = _detectors_read(
+        mock_replay(unrecorded, [{"commands": [CONTEXT]}], scratch / "unwatched")
+    )
+    equal(len(unwatched), len(case.moments))
+    truth(
+        not any(status.startswith("scoring") for status in unwatched),
+        describing=f"no scoring read for a case recording no detector: {unwatched}",
+    )
+
+
+def test_the_obico_doubles_printer_record_is_the_cases_recorded_detector(scratch: Path) -> None:
+    """A case recording the detector names its print and a snapshot that moves; none, no print.
+
+    The print is named by the identifier the case's first recorded alert names, its
+    file and its start, which is what the server matches it to its own print by.
+    """
+    case = read_case("petg-clip-detach-and-stringing-web")
+    truth(case.detector_recorded, describing="the case records what the detector did")
+    timeline = doubles.Timeline(case=case, picture=stamped, clock=scratch / "clock")
+    first = timeline.obico_printer()
+    named = case.obico_print_id()
+    truth(named is not None, describing="the case's recorded alert names Obico's print")
+    current = first["current_print"]
+    truth(current is not None, describing="the record names the print Obico watched")
+    if current is not None:
+        equal(current["id"], named)
+        equal(current["filename"], case.gcode.name)
+        equal(datetime.fromisoformat(current["started_at"]), case.job_started())
+    truth("auth_token" not in first, describing="the double carries no printer credential")
+    # The replay's clock is read from its file, so a read later in real time is
+    # a read later on the replay's clock; a snapshot is named to the second.
+    time.sleep(1.1)
+    later = timeline.obico_printer()
+    truth(
+        later["pic"] != first["pic"], describing="a watching Obico's snapshot moved between reads"
+    )
+
+    unrecorded = dataclasses.replace(case, detector_recorded=False)
+    quiet = doubles.Timeline(case=unrecorded, picture=stamped, clock=scratch / "quiet-clock")
+    equal(quiet.obico_printer()["current_print"], None)
+
+    minted = Minted()
+    config = tomllib.loads(
+        service_config(
+            scratch / "state",
+            "127.0.0.1:1",
+            "http://127.0.0.1:2",
+            "http://127.0.0.1:3",
+            "http://127.0.0.1:4",
+            minted,
+        )
+    )
+    equal(config["obico"]["printer_id"], doubles.OBICO_PRINTER)
+
+
 @pytest.mark.parametrize(
     "event",
     [
@@ -1137,6 +1236,28 @@ def test_a_false_image_is_refused_rather_than_read_as_none() -> None:
     equal(is_event({**event, "image": None}), True)
     equal(is_event({**event, "image": {"sha256": "ab"}}), True)
     equal(is_event({**event, "image": False}), False)
+
+
+def test_the_suites_build_leaves_the_ordinary_program_alone() -> None:
+    """The replay build never replaces the program every other target builds and digests.
+
+    This target runs after `build-programs`. Had that build written its replay-clock
+    `printobserver` over the dev profile's, a concurrent test would find a program other
+    than the one it had already packaged.
+    """
+    metadata = run(
+        ["cargo", "metadata", "--format-version", "1", "--no-deps", "--offline"], cwd=REPO
+    )
+    equal(metadata.returncode, 0, describing=f"cargo metadata: {metadata.stderr}")
+    built = program("printobserver")
+    ordinary = Path(json.loads(metadata.stdout)["target_directory"]) / "debug" / built.name
+    replay_clock = b"PRINTOBSERVER_REPLAY_REAL_WAITS"
+    contains(built.read_bytes(), replay_clock, describing="the suite's own build")
+    if ordinary.is_file():
+        truth(
+            replay_clock not in ordinary.read_bytes(),
+            describing=f"{ordinary} to be the ordinary build, not the suite's",
+        )
 
 
 def test_the_kept_harness_is_a_copy_that_starts_and_outlives_its_install(

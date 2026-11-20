@@ -38,4 +38,7 @@ The rules the real-print suite is held to, and why.
   `[sheets.allowed]` table, and the bed is the only thing that stops it.
 - **Every conversation's compound `printobserver` commands are in the record**,
   under `compound_commands`, and a live test fails on any: production permissions
-  refuse one, which costs the action it carried.
+  refuse a line chaining another command no rule allows, which costs the action it
+  carried. A pipe only into read-only filters, such as `printobserver context | grep
+  x`, is not one: the Claude Code release the suite runs runs it under the rule
+  allowing the command before it, and `shell_lines.READ_ONLY_FILTERS` names them.

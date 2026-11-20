@@ -102,6 +102,7 @@ OPERATION_NAMES: tuple[str, ...] = (
     "recover_park",
     "recover_home_xy",
     "recover_home_z",
+    "bed_clear",
 )
 
 
@@ -338,7 +339,9 @@ class AgentContext(TypedDict):
     progress, time
     and position (the plan states where the print is); the manifest (its
     limits
-    are the bounds); and the detector's health.
+    are the bounds); and the detector's health beyond its status — since
+    when,
+    and why — which only the status read carries.
 
     The printer and the job are stated here and nowhere in the events;
     each
@@ -353,6 +356,9 @@ class AgentContext(TypedDict):
 
     # The limits in force, so that the agent can see them before it asks.
     bounds: EffectiveBounds
+    # What the failure detector's status is for this print: whether it is
+    # scoring the print and has flagged it, or what it is otherwise.
+    detector: DetectorHealthStatus
     # The interventions still active.
     interventions: list[Intervention]
     # The error the job stopped on, when it stopped on one.
@@ -432,6 +438,56 @@ class AgentPrinter(TypedDict):
     bed: NotRequired[AgentHeater | None]
     # Each tool's heater, in order.
     tools: NotRequired[list[AgentHeater]]
+
+
+# Who may say the bed is clear: the operator, and no other actor.
+#
+# Its own type rather than `Actor`, so that a record of the agent's or the
+# system's word that the bed is clear is one no value can spell. On the wire
+# it is `"operator"`, as `Actor::Operator` is.
+BedClearActor: TypeAlias = Literal["operator"]
+
+
+class BedClearAnswer(TypedDict):
+    """`BedClearAnswer`, as the contracts declare it.
+
+    What recording the operator's word that the bed is clear answers: the
+    event
+    it was recorded as, which every recovery decided on it names.
+    """
+
+    # What it means from now on, in a sentence for a person.
+    detail: str
+    # The `bed_clear_asserted` event.
+    event: EventRecord
+
+
+class BedClearAssertedPayload(TypedDict):
+    """`BedClearAssertedPayload`, as the contracts declare it.
+
+    The operator's word that the bed is clear: nothing is on it that
+    homing Z
+    could crush or a move over the part could strike.
+
+    The printer's rather than any print's, so it is written with no print.
+    It
+    stands until the next `print_started`, whichever way that print
+    started,
+    and while it stands a recovery that needs the bed or the nozzle clear
+    is
+    decided as though it carried the operator's assertion — read back out
+    of
+    the event log, so a server started again holds it as the one before
+    did.
+    Only the operator records one: an assertion is a person's word for
+    what
+    they can see.
+    """
+
+    # Who said so: the operator, the one actor whose word this records.
+    actor: BedClearActor
+    # Why they say so.
+    reason: str
 
 
 class BedTemperature(TypedDict):
@@ -660,25 +716,48 @@ class ContextAnswer(TypedDict):
     image_path: NotRequired[str | None]
 
 
-class DetectorHealthUnchecked(TypedDict):
-    """The `unchecked` arm of `DetectorHealth`.
+class DetectorHealthScoringNothingFlagged(TypedDict):
+    """The `scoring_nothing_flagged` arm of `DetectorHealth`.
 
-    Nothing checks it: no detector health address is configured, or no
-    check has been made yet.
+    The detector is scoring the print, from `since` on, and no failure
+    alert of its own has arrived for it.
     """
 
-    status: Literal["unchecked"]
-    # Nothing: an unchecked detector has no instant it became so.
-    since: None
+    status: Literal["scoring_nothing_flagged"]
+    # What the detector's health check answered, when it is failing while
+    # the detector scores the print.
+    probe_failure: NotRequired[str]
+    # One shape of the contracts, which say nothing more about it.
+    since: Timestamp
+
+
+class DetectorHealthScoringFlagged(TypedDict):
+    """The `scoring_flagged` arm of `DetectorHealth`.
+
+    The detector is scoring the print, from `since` on, and a failure
+    alert of its own has arrived for it.
+    """
+
+    status: Literal["scoring_flagged"]
+    # What the detector's health check answered, when it is failing while
+    # the detector scores the print.
+    probe_failure: NotRequired[str]
+    # One shape of the contracts, which say nothing more about it.
+    since: Timestamp
 
 
 class DetectorHealthAvailable(TypedDict):
     """The `available` arm of `DetectorHealth`.
 
-    It answered its health check, from `since` on.
+    No evidence that the detector is scoring the print, and it answered
+    its health check, from `since` on: available, with no scores yet.
     """
 
     status: Literal["available"]
+    # Why the detector's scoring of the print is not being read, when it is
+    # not: no Obico API is configured, no Obico printer is known yet, or the
+    # last read failed.
+    scoring_unread: NotRequired[str]
     # One shape of the contracts, which say nothing more about it.
     since: Timestamp
 
@@ -686,18 +765,44 @@ class DetectorHealthAvailable(TypedDict):
 class DetectorHealthUnavailable(TypedDict):
     """The `unavailable` arm of `DetectorHealth`.
 
-    It did not answer its health check, from `since` on.
+    No evidence that the detector is scoring the print, and it did not
+    answer its health check, from `since` on.
     """
 
     status: Literal["unavailable"]
+    # Why the detector's scoring of the print is not being read, when it is
+    # not: no Obico API is configured, no Obico printer is known yet, or the
+    # last read failed.
+    scoring_unread: NotRequired[str]
     # One shape of the contracts, which say nothing more about it.
     since: Timestamp
 
 
-# The failure detector's health, and since when it has been so: `since` is
-# `null` exactly while the status is `unchecked`.
+class DetectorHealthUnchecked(TypedDict):
+    """The `unchecked` arm of `DetectorHealth`.
+
+    No evidence of any kind: no detector health address is configured, or
+    no check has been made yet, and nothing shows the detector scoring.
+    """
+
+    status: Literal["unchecked"]
+    # Why the detector's scoring of the print is not being read, when it is
+    # not: no Obico API is configured, no Obico printer is known yet, or the
+    # last read failed.
+    scoring_unread: NotRequired[str]
+    # Nothing: an unchecked detector has no instant it became so.
+    since: None
+
+
+# The failure detector's status, and since when it has been so: `since` is
+# `null` exactly while the status is `unchecked`. Evidence that the detector
+# is scoring the print comes before its health check.
 DetectorHealth: TypeAlias = (
-    DetectorHealthUnchecked | DetectorHealthAvailable | DetectorHealthUnavailable
+    DetectorHealthScoringNothingFlagged
+    | DetectorHealthScoringFlagged
+    | DetectorHealthAvailable
+    | DetectorHealthUnavailable
+    | DetectorHealthUnchecked
 )
 
 
@@ -713,6 +818,12 @@ class DetectorHealthChangedPayload(TypedDict):
     detail: str
     # What the check found.
     status: DetectorStatus
+
+
+# The failure detector's status, as the status and context reads answer it.
+DetectorHealthStatus: TypeAlias = Literal[
+    "scoring_nothing_flagged", "scoring_flagged", "available", "unavailable", "unchecked"
+]
 
 
 # What a check of the failure detector's own health found.
@@ -1735,6 +1846,8 @@ PortFailureSite: TypeAlias = Literal[
     "supervision_turn",
     "camera_look",
     "detector_acknowledgement",
+    "detector_health_check",
+    "detector_scoring_read",
 ]
 
 
@@ -2620,6 +2733,10 @@ class RecoveryExecutedPayload(TypedDict):
     action: RecoveryAction
     # Who asked.
     actor: Actor
+    # The operator's standing word that the bed is clear this action was
+    # carried out on in place of an assertion of its own, when it was: the
+    # `bed_clear_asserted` event recording it. Absent otherwise.
+    bed_clear: NotRequired[EventId | None]
     # What the printer made of it.
     outcome: ExecutionOutcome
     # Why.
@@ -2817,6 +2934,10 @@ class RecoveryRequestedPayload(TypedDict):
     action: RecoveryAction
     # Who asked.
     actor: Actor
+    # The operator's standing word that the bed is clear this request is
+    # decided on in place of an assertion of its own, when it is: the
+    # `bed_clear_asserted` event recording it. Absent otherwise.
+    bed_clear: NotRequired[EventId | None]
     # Why.
     reason: str
 
@@ -4314,6 +4435,7 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "action_rejected": ActionRejectedPayload,
     "action_requested": ActionRequestedPayload,
     "agent_assessment": AgentAssessmentPayload,
+    "bed_clear_asserted": BedClearAssertedPayload,
     "camera_degraded": CameraDegradedPayload,
     "camera_look": CameraLookPayload,
     "camera_retry": CameraRetryPayload,
@@ -4376,6 +4498,12 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["agent_assessment"]
 ) -> AgentAssessmentPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["bed_clear_asserted"]
+) -> BedClearAssertedPayload | None: ...
 
 
 @overload
@@ -4997,6 +5125,13 @@ SHAPES: dict[str, object] = json.loads(
       "ref": "EffectiveBounds"
      }
     },
+    "detector": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "DetectorHealthStatus"
+     }
+    },
     "interventions": {
      "paired_with": "",
      "required": true,
@@ -5187,6 +5322,55 @@ SHAPES: dict[str, object] = json.loads(
        "ref": "AgentHeater"
       },
       "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearActor": {
+  "enum": [
+   "operator"
+  ]
+ },
+ "BedClearAnswer": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearAssertedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "BedClearActor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
      }
     }
    },
@@ -5533,6 +5717,53 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {
     "available": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_nothing_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -5546,6 +5777,13 @@ SHAPES: dict[str, object] = json.loads(
     },
     "unavailable": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -5559,6 +5797,13 @@ SHAPES: dict[str, object] = json.loads(
     },
     "unchecked": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -5594,6 +5839,15 @@ SHAPES: dict[str, object] = json.loads(
    "tag_field": "",
    "variants": {}
   }
+ },
+ "DetectorHealthStatus": {
+  "enum": [
+   "scoring_nothing_flagged",
+   "scoring_flagged",
+   "available",
+   "unavailable",
+   "unchecked"
+  ]
  },
  "DetectorStatus": {
   "enum": [
@@ -7394,7 +7648,9 @@ SHAPES: dict[str, object] = json.loads(
    "image_write",
    "supervision_turn",
    "camera_look",
-   "detector_acknowledgement"
+   "detector_acknowledgement",
+   "detector_health_check",
+   "detector_scoring_read"
   ]
  },
  "PositionFreshness": {
@@ -8898,6 +9154,15 @@ SHAPES: dict[str, object] = json.loads(
       "ref": "Actor"
      }
     },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
     "outcome": {
      "paired_with": "",
      "required": true,
@@ -9142,6 +9407,15 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "ref": "Actor"
+     }
+    },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
      }
     },
     "reason": {
@@ -12566,3 +12840,29 @@ class GeneratedClient(GeneratedSurface):
         # `call` has held the answer to the type `operations.json` declares
         # for it, so this cast names that type.
         return cast(RecoveryAnswer, answered)
+
+    def bed_clear(self, reason: str) -> BedClearAnswer:
+        """Call `bed_clear` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = "/v1/printer/bed_clear"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "BedClearAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(BedClearAnswer, answered)

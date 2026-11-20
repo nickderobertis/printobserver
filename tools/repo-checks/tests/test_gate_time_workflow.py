@@ -71,13 +71,13 @@ MOVED = {
 #: The work each macOS context runs that it did not at `BASELINE`, every
 #: project and target of it, so the exact comparison holds across every project:
 #: the clients' live suites' own checks, the scheduled-check delay budget's
-#: project, `real-prints-lfs`, a Python tooling project the gate's tiers
-#: reach and no lane of the integration tier does, and `repo-checks-host`, the
-#: repository checks' host-dependent suites split out of `repo-checks`, and
-#: `release-artifacts-independent`, the release tooling's host-independent
-#: suites split out of `release-artifacts`, and the camera panels: the
-#: `printobserver-panels` crate, its recorded-frame suite and the
-#: `camera-calibration` tool.
+#: project, the server's own Obico-read budget, `real-prints-lfs`, a Python
+#: tooling project the gate's tiers reach and no lane of the integration tier
+#: does, and `repo-checks-host`, the repository checks' host-dependent suites
+#: split out of `repo-checks`, and `release-artifacts-independent`, the release
+#: tooling's host-independent suites split out of `release-artifacts`, and the
+#: camera panels: the `printobserver-panels` crate, its recorded-frame suite and
+#: the `camera-calibration` tool.
 ADDED = {
     "gate (macos-aarch64)": {
         ("skilltest", "budgets"),
@@ -87,6 +87,7 @@ ADDED = {
         ("printobserver-sdk-python-integration", "format-check"),
         ("printobserver-sdk-python-integration", "lint"),
         ("printobserver-sdk-python-integration", "typecheck"),
+        ("printobserver-server", "budgets"),
         ("printobserver-core-index-budget", "budgets"),
         ("printobserver-core-index-budget", "test"),
         ("printobserver-server-check-delay-budget", "budgets"),

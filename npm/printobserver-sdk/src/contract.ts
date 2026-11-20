@@ -106,6 +106,7 @@ export const OPERATION_NAMES = [
   "recover_park",
   "recover_home_xy",
   "recover_home_z",
+  "bed_clear",
 ] as const;
 
 /** What an operator's acknowledgement of a failure event asks for next. */
@@ -283,7 +284,8 @@ export interface AgentAssessmentPayload {
  * time
  * and position (the plan states where the print is); the manifest (its
  * limits
- * are the bounds); and the detector's health.
+ * are the bounds); and the detector's health beyond its status — since when,
+ * and why — which only the status read carries.
  *
  * The printer and the job are stated here and nowhere in the events; each
  * event is what happened, when, and what it changed; and asked `since` an
@@ -294,6 +296,11 @@ export interface AgentAssessmentPayload {
 export interface AgentContext {
   /** The limits in force, so that the agent can see them before it asks. */
   bounds: EffectiveBounds;
+  /**
+   * What the failure detector's status is for this print: whether it is
+   * scoring the print and has flagged it, or what it is otherwise.
+   */
+  detector: DetectorHealthStatus;
   /** The interventions still active. */
   interventions: Array<Intervention>;
   /** The error the job stopped on, when it stopped on one. */
@@ -367,6 +374,46 @@ export interface AgentPrinter {
   bed?: AgentHeater | null;
   /** Each tool's heater, in order. */
   tools?: Array<AgentHeater>;
+}
+
+/**
+ * Who may say the bed is clear: the operator, and no other actor.
+ *
+ * Its own type rather than `Actor`, so that a record of the agent's or the
+ * system's word that the bed is clear is one no value can spell. On the wire
+ * it is `"operator"`, as `Actor::Operator` is.
+ */
+export type BedClearActor = "operator";
+
+/**
+ * What recording the operator's word that the bed is clear answers: the
+ * event
+ * it was recorded as, which every recovery decided on it names.
+ */
+export interface BedClearAnswer {
+  /** What it means from now on, in a sentence for a person. */
+  detail: string;
+  /** The `bed_clear_asserted` event. */
+  event: EventRecord;
+}
+
+/**
+ * The operator's word that the bed is clear: nothing is on it that homing Z
+ * could crush or a move over the part could strike.
+ *
+ * The printer's rather than any print's, so it is written with no print. It
+ * stands until the next `print_started`, whichever way that print started,
+ * and while it stands a recovery that needs the bed or the nozzle clear is
+ * decided as though it carried the operator's assertion — read back out of
+ * the event log, so a server started again holds it as the one before did.
+ * Only the operator records one: an assertion is a person's word for what
+ * they can see.
+ */
+export interface BedClearAssertedPayload {
+  /** Who said so: the operator, the one actor whose word this records. */
+  actor: BedClearActor;
+  /** Why they say so. */
+  reason: string;
 }
 
 /** The bed heater, as a recovery read reports it. */
@@ -543,13 +590,16 @@ export interface ContextAnswer {
 }
 
 /**
- * The failure detector's health, and since when it has been so: `since` is
- * `null` exactly while the status is `unchecked`.
+ * The failure detector's status, and since when it has been so: `since` is
+ * `null` exactly while the status is `unchecked`. Evidence that the detector
+ * is scoring the print comes before its health check.
  */
 export type DetectorHealth =
-  | { status: "unchecked"; since: null }
-  | { status: "available"; since: Timestamp }
-  | { status: "unavailable"; since: Timestamp };
+  | { status: "scoring_nothing_flagged"; probe_failure?: string; since: Timestamp }
+  | { status: "scoring_flagged"; probe_failure?: string; since: Timestamp }
+  | { status: "available"; scoring_unread?: string; since: Timestamp }
+  | { status: "unavailable"; scoring_unread?: string; since: Timestamp }
+  | { status: "unchecked"; scoring_unread?: string; since: null };
 
 /**
  * The failure detector's own health changed.
@@ -562,6 +612,14 @@ export interface DetectorHealthChangedPayload {
   /** What the check found. */
   status: DetectorStatus;
 }
+
+/** The failure detector's status, as the status and context reads answer it. */
+export type DetectorHealthStatus =
+  | "scoring_nothing_flagged"
+  | "scoring_flagged"
+  | "available"
+  | "unavailable"
+  | "unchecked";
 
 /** What a check of the failure detector's own health found. */
 export type DetectorStatus = "available" | "unavailable";
@@ -1354,7 +1412,9 @@ export type PortFailureSite =
   | "image_write"
   | "supervision_turn"
   | "camera_look"
-  | "detector_acknowledgement";
+  | "detector_acknowledgement"
+  | "detector_health_check"
+  | "detector_scoring_read";
 
 /** How fresh the position a filament change charged up to is. */
 export type PositionFreshness = "read_at_signal" | "last_recorded";
@@ -1832,6 +1892,12 @@ export interface RecoveryExecutedPayload {
   action: RecoveryAction;
   /** Who asked. */
   actor: Actor;
+  /**
+   * The operator's standing word that the bed is clear this action was
+   * carried out on in place of an assertion of its own, when it was: the
+   * `bed_clear_asserted` event recording it. Absent otherwise.
+   */
+  bed_clear?: EventId | null;
   /** What the printer made of it. */
   outcome: ExecutionOutcome;
   /** Why. */
@@ -1894,6 +1960,12 @@ export interface RecoveryRequestedPayload {
   action: RecoveryAction;
   /** Who asked. */
   actor: Actor;
+  /**
+   * The operator's standing word that the bed is clear this request is
+   * decided on in place of an assertion of its own, when it is: the
+   * `bed_clear_asserted` event recording it. Absent otherwise.
+   */
+  bed_clear?: EventId | null;
   /** Why. */
   reason: string;
 }
@@ -2571,6 +2643,7 @@ export interface EventPayloads {
   action_rejected: ActionRejectedPayload;
   action_requested: ActionRequestedPayload;
   agent_assessment: AgentAssessmentPayload;
+  bed_clear_asserted: BedClearAssertedPayload;
   camera_degraded: CameraDegradedPayload;
   camera_look: CameraLookPayload;
   camera_retry: CameraRetryPayload;
@@ -2616,6 +2689,7 @@ export const EVENT_KINDS = [
   "action_rejected",
   "action_requested",
   "agent_assessment",
+  "bed_clear_asserted",
   "camera_degraded",
   "camera_look",
   "camera_retry",
@@ -3063,6 +3137,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "ref": "EffectiveBounds"
      }
     },
+    "detector": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "DetectorHealthStatus"
+     }
+    },
     "interventions": {
      "paired_with": "",
      "required": true,
@@ -3253,6 +3334,55 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "ref": "AgentHeater"
       },
       "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearActor": {
+  "enum": [
+   "operator"
+  ]
+ },
+ "BedClearAnswer": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearAssertedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "BedClearActor"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
      }
     }
    },
@@ -3599,6 +3729,53 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {
     "available": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_nothing_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -3612,6 +3789,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     },
     "unavailable": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -3625,6 +3809,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     },
     "unchecked": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -3660,6 +3851,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "tag_field": "",
    "variants": {}
   }
+ },
+ "DetectorHealthStatus": {
+  "enum": [
+   "scoring_nothing_flagged",
+   "scoring_flagged",
+   "available",
+   "unavailable",
+   "unchecked"
+  ]
  },
  "DetectorStatus": {
   "enum": [
@@ -5460,7 +5660,9 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "image_write",
    "supervision_turn",
    "camera_look",
-   "detector_acknowledgement"
+   "detector_acknowledgement",
+   "detector_health_check",
+   "detector_scoring_read"
   ]
  },
  "PositionFreshness": {
@@ -6964,6 +7166,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "ref": "Actor"
      }
     },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
     "outcome": {
      "paired_with": "",
      "required": true,
@@ -7208,6 +7419,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "Actor"
+     }
+    },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
      }
     },
     "reason": {
@@ -10471,5 +10691,24 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.reason = reason;
     return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `bed_clear` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async bedClear(reason: string): Promise<BedClearAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/bed_clear`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    return await this.call<BedClearAnswer>("POST", target, asked, sending, "BedClearAnswer");
   }
 }

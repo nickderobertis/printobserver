@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-202 types. The set is every type any crate declares under
+206 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -7609,6 +7609,36 @@ Declared by `printobserver-core`.
       },
       "type": "object"
     },
+    "DetectorHealthStatus": {
+      "description": "The failure detector's status, as the status and context reads answer it.",
+      "oneOf": [
+        {
+          "const": "scoring_nothing_flagged",
+          "description": "The detector is scoring the print, and no failure alert of its own has\narrived for it.",
+          "type": "string"
+        },
+        {
+          "const": "scoring_flagged",
+          "description": "The detector is scoring the print, and a failure alert of its own has\narrived for it.",
+          "type": "string"
+        },
+        {
+          "const": "available",
+          "description": "No evidence that it is scoring the print, and it answered its health\ncheck: available, with no scores yet.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "No evidence that it is scoring the print, and it did not answer its\nhealth check.",
+          "type": "string"
+        },
+        {
+          "const": "unchecked",
+          "description": "No evidence of any kind: no detector health address is configured, or\nno check has been made yet, and nothing shows it scoring.",
+          "type": "string"
+        }
+      ]
+    },
     "EffectiveBounds": {
       "additionalProperties": false,
       "description": "The envelope intersected with the print's manifest.\n\nThis is what context reports, so that the agent can see its own limits\nbefore it asks. Computing one is the supervision core's; this crate declares\nthe shape and nothing that produces it.",
@@ -8153,11 +8183,15 @@ Declared by `printobserver-core`.
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nLeft out of it, each because no step of the skill, no check and no recorded\ncase decides anything by it: the print's file, provider and times; the\nprinter's and the job's own states (the print states it once); every heater's\noffset, the chamber and the time they were read; the printer's reported\nfeedrate, flowrate and fan (the slicer's plan states the flow and fan in\nforce, and no step reads the feedrate); the job's file, size, progress, time\nand position (the plan states where the print is); the manifest (its limits\nare the bounds); and the detector's health.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what happened, when, and what it changed; and asked `since` an\nevent, only the events newer than it are carried, so a turn that has read\nthe rest is not handed them again. `newest_event` is what the next read\nasks `since`.",
+  "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nLeft out of it, each because no step of the skill, no check and no recorded\ncase decides anything by it: the print's file, provider and times; the\nprinter's and the job's own states (the print states it once); every heater's\noffset, the chamber and the time they were read; the printer's reported\nfeedrate, flowrate and fan (the slicer's plan states the flow and fan in\nforce, and no step reads the feedrate); the job's file, size, progress, time\nand position (the plan states where the print is); the manifest (its limits\nare the bounds); and the detector's health beyond its status \u2014 since when,\nand why \u2014 which only the status read carries.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what happened, when, and what it changed; and asked `since` an\nevent, only the events newer than it are carried, so a turn that has read\nthe rest is not handed them again. `newest_event` is what the next read\nasks `since`.",
   "properties": {
     "bounds": {
       "$ref": "#/$defs/EffectiveBounds",
       "description": "The limits in force, so that the agent can see them before it asks."
+    },
+    "detector": {
+      "$ref": "#/$defs/DetectorHealthStatus",
+      "description": "What the failure detector's status is for this print: whether it is\nscoring the print and has flagged it, or what it is otherwise."
     },
     "interventions": {
       "description": "The interventions still active.",
@@ -8237,6 +8271,7 @@ Declared by `printobserver-core`.
     "print",
     "bounds",
     "interventions",
+    "detector",
     "recent_events"
   ],
   "title": "AgentContext",
@@ -8481,6 +8516,223 @@ Declared by `printobserver-core`.
   },
   "title": "AgentPrinter",
   "type": "object"
+}
+```
+
+### BedClearActor
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Who may say the bed is clear: the operator, and no other actor.\n\nIts own type rather than [`Actor`], so that a record of the agent's or the\nsystem's word that the bed is clear is one no value can spell. On the wire\nit is `\"operator\"`, as [`Actor::Operator`] is.",
+  "oneOf": [
+    {
+      "const": "operator",
+      "description": "A person: the operator.",
+      "type": "string"
+    }
+  ],
+  "title": "BedClearActor"
+}
+```
+
+### BedClearAnswer
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
+    "EventKind": {
+      "description": "The name one kind of event is written down under: lowercase `snake_case`, declared by the domain that owns the event.",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "EventKind",
+      "type": "string"
+    },
+    "EventRecord": {
+      "description": "One event, as the store holds it and the server serves it.\n\n`raw` holds the bytes exactly as received for an externally sourced event\nand is absent for an internally raised one \u2014 it is what makes the history\nauditable when a normalization turns out to be wrong. `print_id` is\noptional, because an externally sourced event may name no print this system\nknows.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/EventId",
+          "description": "This event's identifier, minted by the store."
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The image it arrived with, when it arrived with one."
+        },
+        "kind": {
+          "$ref": "#/$defs/EventKind",
+          "description": "Which event this is."
+        },
+        "payload": {
+          "description": "What it carries, in the form its kind declares."
+        },
+        "print_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrintId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The print it belongs to, when it belongs to one."
+        },
+        "raw": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RawBytes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The bytes exactly as received, for an externally sourced event."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When it was received."
+        },
+        "source": {
+          "$ref": "#/$defs/EventSource",
+          "description": "Where it came from."
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "received_at",
+        "kind",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EventSource": {
+      "description": "Where an event came from, as the bare string the domain that raised it declares for itself.",
+      "title": "EventSource",
+      "type": "string"
+    },
+    "ImageId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one image.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "ImageId",
+      "type": "string"
+    },
+    "ImageRef": {
+      "additionalProperties": false,
+      "description": "The handle an image travels in context under.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ImageId",
+          "description": "The image's identifier."
+        },
+        "sha256": {
+          "description": "The SHA-256 of its bytes, lowercase hexadecimal.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "PrintId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one print.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "PrintId",
+      "type": "string"
+    },
+    "RawBytes": {
+      "contentEncoding": "base64",
+      "description": "Bytes exactly as received, base64-encoded.",
+      "title": "RawBytes",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What recording the operator's word that the bed is clear answers: the event\nit was recorded as, which every recovery decided on it names.",
+  "properties": {
+    "detail": {
+      "description": "What it means from now on, in a sentence for a person.",
+      "type": "string"
+    },
+    "event": {
+      "$ref": "#/$defs/EventRecord",
+      "description": "The `bed_clear_asserted` event."
+    }
+  },
+  "required": [
+    "event",
+    "detail"
+  ],
+  "title": "BedClearAnswer",
+  "type": "object"
+}
+```
+
+### BedClearAssertedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "BedClearActor": {
+      "description": "Who may say the bed is clear: the operator, and no other actor.\n\nIts own type rather than [`Actor`], so that a record of the agent's or the\nsystem's word that the bed is clear is one no value can spell. On the wire\nit is `\"operator\"`, as [`Actor::Operator`] is.",
+      "oneOf": [
+        {
+          "const": "operator",
+          "description": "A person: the operator.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The operator's word that the bed is clear: nothing is on it that homing Z\ncould crush or a move over the part could strike.\n\nThe printer's rather than any print's, so it is written with no print. It\nstands until the next `print_started`, whichever way that print started,\nand while it stands a recovery that needs the bed or the nozzle clear is\ndecided as though it carried the operator's assertion \u2014 read back out of\nthe event log, so a server started again holds it as the one before did.\nOnly the operator records one: an assertion is a person's word for what\nthey can see.",
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/BedClearActor",
+      "description": "Who said so: the operator, the one actor whose word this records."
+    },
+    "reason": {
+      "description": "Why they say so.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "actor",
+    "reason"
+  ],
+  "title": "BedClearAssertedPayload",
+  "type": "object",
+  "x-event-kind": "bed_clear_asserted"
 }
 ```
 
@@ -9266,11 +9518,15 @@ Declared by `printobserver-server`.
     },
     "AgentContext": {
       "additionalProperties": false,
-      "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nLeft out of it, each because no step of the skill, no check and no recorded\ncase decides anything by it: the print's file, provider and times; the\nprinter's and the job's own states (the print states it once); every heater's\noffset, the chamber and the time they were read; the printer's reported\nfeedrate, flowrate and fan (the slicer's plan states the flow and fan in\nforce, and no step reads the feedrate); the job's file, size, progress, time\nand position (the plan states where the print is); the manifest (its limits\nare the bounds); and the detector's health.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what happened, when, and what it changed; and asked `since` an\nevent, only the events newer than it are carried, so a turn that has read\nthe rest is not handed them again. `newest_event` is what the next read\nasks `since`.",
+      "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nLeft out of it, each because no step of the skill, no check and no recorded\ncase decides anything by it: the print's file, provider and times; the\nprinter's and the job's own states (the print states it once); every heater's\noffset, the chamber and the time they were read; the printer's reported\nfeedrate, flowrate and fan (the slicer's plan states the flow and fan in\nforce, and no step reads the feedrate); the job's file, size, progress, time\nand position (the plan states where the print is); the manifest (its limits\nare the bounds); and the detector's health beyond its status \u2014 since when,\nand why \u2014 which only the status read carries.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what happened, when, and what it changed; and asked `since` an\nevent, only the events newer than it are carried, so a turn that has read\nthe rest is not handed them again. `newest_event` is what the next read\nasks `since`.",
       "properties": {
         "bounds": {
           "$ref": "#/$defs/EffectiveBounds",
           "description": "The limits in force, so that the agent can see them before it asks."
+        },
+        "detector": {
+          "$ref": "#/$defs/DetectorHealthStatus",
+          "description": "What the failure detector's status is for this print: whether it is\nscoring the print and has flagged it, or what it is otherwise."
         },
         "interventions": {
           "description": "The interventions still active.",
@@ -9350,6 +9606,7 @@ Declared by `printobserver-server`.
         "print",
         "bounds",
         "interventions",
+        "detector",
         "recent_events"
       ],
       "type": "object"
@@ -9454,6 +9711,36 @@ Declared by `printobserver-server`.
         }
       },
       "type": "object"
+    },
+    "DetectorHealthStatus": {
+      "description": "The failure detector's status, as the status and context reads answer it.",
+      "oneOf": [
+        {
+          "const": "scoring_nothing_flagged",
+          "description": "The detector is scoring the print, and no failure alert of its own has\narrived for it.",
+          "type": "string"
+        },
+        {
+          "const": "scoring_flagged",
+          "description": "The detector is scoring the print, and a failure alert of its own has\narrived for it.",
+          "type": "string"
+        },
+        {
+          "const": "available",
+          "description": "No evidence that it is scoring the print, and it answered its health\ncheck: available, with no scores yet.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "No evidence that it is scoring the print, and it did not answer its\nhealth check.",
+          "type": "string"
+        },
+        {
+          "const": "unchecked",
+          "description": "No evidence of any kind: no detector health address is configured, or\nno check has been made yet, and nothing shows it scoring.",
+          "type": "string"
+        }
+      ]
     },
     "EffectiveBounds": {
       "additionalProperties": false,
@@ -10069,18 +10356,21 @@ Declared by `printobserver-core`.
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+  "description": "The failure detector's status, and since when it has been so: `since` is `null` exactly while the status is `unchecked`. Evidence that the detector is scoring the print comes before its health check.",
   "oneOf": [
     {
       "additionalProperties": false,
-      "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+      "description": "The detector is scoring the print, from `since` on, and no failure alert of its own has arrived for it.",
       "properties": {
+        "probe_failure": {
+          "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+          "type": "string"
+        },
         "since": {
-          "description": "Nothing: an unchecked detector has no instant it became so.",
-          "type": "null"
+          "$ref": "#/$defs/Timestamp"
         },
         "status": {
-          "const": "unchecked",
+          "const": "scoring_nothing_flagged",
           "type": "string"
         }
       },
@@ -10092,8 +10382,34 @@ Declared by `printobserver-core`.
     },
     {
       "additionalProperties": false,
-      "description": "It answered its health check, from `since` on.",
+      "description": "The detector is scoring the print, from `since` on, and a failure alert of its own has arrived for it.",
       "properties": {
+        "probe_failure": {
+          "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+          "type": "string"
+        },
+        "since": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "status": {
+          "const": "scoring_flagged",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No evidence that the detector is scoring the print, and it answered its health check, from `since` on: available, with no scores yet.",
+      "properties": {
+        "scoring_unread": {
+          "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+          "type": "string"
+        },
         "since": {
           "$ref": "#/$defs/Timestamp"
         },
@@ -10110,13 +10426,40 @@ Declared by `printobserver-core`.
     },
     {
       "additionalProperties": false,
-      "description": "It did not answer its health check, from `since` on.",
+      "description": "No evidence that the detector is scoring the print, and it did not answer its health check, from `since` on.",
       "properties": {
+        "scoring_unread": {
+          "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+          "type": "string"
+        },
         "since": {
           "$ref": "#/$defs/Timestamp"
         },
         "status": {
           "const": "unavailable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "No evidence of any kind: no detector health address is configured, or no check has been made yet, and nothing shows the detector scoring.",
+      "properties": {
+        "scoring_unread": {
+          "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+          "type": "string"
+        },
+        "since": {
+          "description": "Nothing: an unchecked detector has no instant it became so.",
+          "type": "null"
+        },
+        "status": {
+          "const": "unchecked",
           "type": "string"
         }
       },
@@ -10174,6 +10517,45 @@ Declared by `printobserver-core`.
   "title": "DetectorHealthChangedPayload",
   "type": "object",
   "x-event-kind": "detector_health_changed"
+}
+```
+
+### DetectorHealthStatus
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The failure detector's status, as the status and context reads answer it.",
+  "oneOf": [
+    {
+      "const": "scoring_nothing_flagged",
+      "description": "The detector is scoring the print, and no failure alert of its own has\narrived for it.",
+      "type": "string"
+    },
+    {
+      "const": "scoring_flagged",
+      "description": "The detector is scoring the print, and a failure alert of its own has\narrived for it.",
+      "type": "string"
+    },
+    {
+      "const": "available",
+      "description": "No evidence that it is scoring the print, and it answered its health\ncheck: available, with no scores yet.",
+      "type": "string"
+    },
+    {
+      "const": "unavailable",
+      "description": "No evidence that it is scoring the print, and it did not answer its\nhealth check.",
+      "type": "string"
+    },
+    {
+      "const": "unchecked",
+      "description": "No evidence of any kind: no detector health address is configured, or\nno check has been made yet, and nothing shows it scoring.",
+      "type": "string"
+    }
+  ],
+  "title": "DetectorHealthStatus"
 }
 ```
 
@@ -18109,6 +18491,16 @@ Declared by `printobserver-core`.
           "const": "detector_acknowledgement",
           "description": "Telling the detector that paused the print its detection was handled.",
           "type": "string"
+        },
+        {
+          "const": "detector_health_check",
+          "description": "Asking the failure detector whether it is answering, while it was\nscoring the print all the same.",
+          "type": "string"
+        },
+        {
+          "const": "detector_scoring_read",
+          "description": "Reading the failure detector's own record of the print's live\nprediction.",
+          "type": "string"
         }
       ]
     }
@@ -18178,6 +18570,16 @@ Declared by `printobserver-core`.
     {
       "const": "detector_acknowledgement",
       "description": "Telling the detector that paused the print its detection was handled.",
+      "type": "string"
+    },
+    {
+      "const": "detector_health_check",
+      "description": "Asking the failure detector whether it is answering, while it was\nscoring the print all the same.",
+      "type": "string"
+    },
+    {
+      "const": "detector_scoring_read",
+      "description": "Reading the failure detector's own record of the print's live\nprediction.",
       "type": "string"
     }
   ],
@@ -23564,18 +23966,21 @@ Declared by `printobserver-core`.
       "type": "string"
     },
     "DetectorHealth": {
-      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "description": "The failure detector's status, and since when it has been so: `since` is `null` exactly while the status is `unchecked`. Evidence that the detector is scoring the print comes before its health check.",
       "oneOf": [
         {
           "additionalProperties": false,
-          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "description": "The detector is scoring the print, from `since` on, and no failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
             "since": {
-              "description": "Nothing: an unchecked detector has no instant it became so.",
-              "type": "null"
+              "$ref": "#/$defs/Timestamp"
             },
             "status": {
-              "const": "unchecked",
+              "const": "scoring_nothing_flagged",
               "type": "string"
             }
           },
@@ -23587,8 +23992,34 @@ Declared by `printobserver-core`.
         },
         {
           "additionalProperties": false,
-          "description": "It answered its health check, from `since` on.",
+          "description": "The detector is scoring the print, from `since` on, and a failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "scoring_flagged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence that the detector is scoring the print, and it answered its health check, from `since` on: available, with no scores yet.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
@@ -23605,13 +24036,40 @@ Declared by `printobserver-core`.
         },
         {
           "additionalProperties": false,
-          "description": "It did not answer its health check, from `since` on.",
+          "description": "No evidence that the detector is scoring the print, and it did not answer its health check, from `since` on.",
           "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
             "status": {
               "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence of any kind: no detector health address is configured, or no check has been made yet, and nothing shows the detector scoring.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
               "type": "string"
             }
           },
@@ -28686,6 +29144,13 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
     "ExecutionOutcome": {
       "description": "What happened when an accepted action reached the printer.",
       "oneOf": [
@@ -28882,6 +29347,17 @@ Declared by `printobserver-core`.
     "actor": {
       "$ref": "#/$defs/Actor",
       "description": "Who asked."
+    },
+    "bed_clear": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The operator's standing word that the bed is clear this action was\ncarried out on in place of an assertion of its own, when it was: the\n`bed_clear_asserted` event recording it. Absent otherwise."
     },
     "outcome": {
       "$ref": "#/$defs/ExecutionOutcome",
@@ -29932,6 +30408,13 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    },
     "RecoveryAction": {
       "description": "The whole recovery vocabulary, and there is no other.\n\nThe two assertions are the operator's word for what printobserver cannot\nsee: `clearance_asserted` that the nozzle is clear of the part, and\n`bed_clear_asserted` that homing Z will meet nothing on the bed. Each is\nfalse when left out.",
       "oneOf": [
@@ -30095,6 +30578,17 @@ Declared by `printobserver-core`.
     "actor": {
       "$ref": "#/$defs/Actor",
       "description": "Who asked."
+    },
+    "bed_clear": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The operator's standing word that the bed is clear this request is\ndecided on in place of an assertion of its own, when it is: the\n`bed_clear_asserted` event recording it. Absent otherwise."
     },
     "reason": {
       "description": "Why.",
@@ -40803,18 +41297,21 @@ Declared by `printobserver-server`.
       "type": "string"
     },
     "DetectorHealth": {
-      "description": "The failure detector's health, and since when it has been so: `since` is `null` exactly while the status is `unchecked`.",
+      "description": "The failure detector's status, and since when it has been so: `since` is `null` exactly while the status is `unchecked`. Evidence that the detector is scoring the print comes before its health check.",
       "oneOf": [
         {
           "additionalProperties": false,
-          "description": "Nothing checks it: no detector health address is configured, or no check has been made yet.",
+          "description": "The detector is scoring the print, from `since` on, and no failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
             "since": {
-              "description": "Nothing: an unchecked detector has no instant it became so.",
-              "type": "null"
+              "$ref": "#/$defs/Timestamp"
             },
             "status": {
-              "const": "unchecked",
+              "const": "scoring_nothing_flagged",
               "type": "string"
             }
           },
@@ -40826,8 +41323,34 @@ Declared by `printobserver-server`.
         },
         {
           "additionalProperties": false,
-          "description": "It answered its health check, from `since` on.",
+          "description": "The detector is scoring the print, from `since` on, and a failure alert of its own has arrived for it.",
           "properties": {
+            "probe_failure": {
+              "description": "What the detector's health check answered, when it is failing while the detector scores the print.",
+              "type": "string"
+            },
+            "since": {
+              "$ref": "#/$defs/Timestamp"
+            },
+            "status": {
+              "const": "scoring_flagged",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence that the detector is scoring the print, and it answered its health check, from `since` on: available, with no scores yet.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
@@ -40844,13 +41367,40 @@ Declared by `printobserver-server`.
         },
         {
           "additionalProperties": false,
-          "description": "It did not answer its health check, from `since` on.",
+          "description": "No evidence that the detector is scoring the print, and it did not answer its health check, from `since` on.",
           "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
             "since": {
               "$ref": "#/$defs/Timestamp"
             },
             "status": {
               "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "since"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "No evidence of any kind: no detector health address is configured, or no check has been made yet, and nothing shows the detector scoring.",
+          "properties": {
+            "scoring_unread": {
+              "description": "Why the detector's scoring of the print is not being read, when it is not: no Obico API is configured, no Obico printer is known yet, or the last read failed.",
+              "type": "string"
+            },
+            "since": {
+              "description": "Nothing: an unchecked detector has no instant it became so.",
+              "type": "null"
+            },
+            "status": {
+              "const": "unchecked",
               "type": "string"
             }
           },
@@ -45785,6 +46335,43 @@ Declared by `printobserver-server`.
         {
           "answer": "rejected",
           "type": "RecoveryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "write",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "bed_clear",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/printer/bed_clear",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "BedClearAnswer"
         }
       ]
     }

@@ -208,6 +208,54 @@ reason = "Obico's alert acknowledgement — `POST /api/v1/printers/<id>/acknowle
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "format!(\"/api/v1/printers/{id}/\")"
+reason = "Obico's printer record — `GET /api/v1/printers/<id>/` under the configured bearer token, carrying `current_print`, `pic` and `normalized_p` — is a third-party REST route Obico publishes no machine-readable source for. Its answer was recorded from a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins, which answered this read `200` under a minted bearer access token and refused it `403` with no credential and with the printer's own token, and the server's journeys drive this read against a loopback double serving that recording. `tools/obico-env/obico_record.py` reads this route from the stack `tools/obico-env` brings up under a minted bearer token and rewrites that recording, so re-running it is the comparison with the real Obico; it is run by hand rather than on the scheduled tier."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "struct PrinterAnswer {"
+reason = "Obico's printer record — the `id`, `current_print` (its `id`, `filename` and `started_at`), `pic` (its `img_url`) and `normalized_p` that `GET /api/v1/printers/<id>/` answers — is a third-party REST shape Obico publishes no machine-readable schema for. The fields are those of an answer recorded from a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins under a bearer access token, and the shape is held strictly: a field missing, a printer other than the one asked for, or a start that is not an instant refuses the read rather than defaulting. `tools/obico-env/obico_record.py` re-reads this record from the stack `tools/obico-env` brings up under a minted bearer token and rewrites the recording the server journeys serve, so re-running it is the comparison with the real Obico; it is run by hand rather than on the scheduled tier."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "struct Snapshot {"
+reason = "One of the shapes inside Obico's printer record — the snapshot, `pic`, and its `img_url` — which `GET /api/v1/printers/<id>/` answers and Obico publishes no machine-readable schema for. Its fields were read off a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins by the check-costs spike, and every one is required, so an answer of another shape refuses the read. `tools/obico-env/obico_record.py` re-reads this record from the stack `tools/obico-env` brings up under a minted bearer token and rewrites the recording the server journeys serve, so re-running it is the comparison with the real Obico; it is run by hand rather than on the scheduled tier."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "struct CurrentPrint {"
+reason = "One of the shapes inside Obico's printer record — the print it watches, `current_print`, with its `id`, `filename` and `started_at` — which `GET /api/v1/printers/<id>/` answers and Obico publishes no machine-readable schema for. Its fields were read off a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins by the check-costs spike, and every one is required, so an answer of another shape refuses the read. `tools/obico-env/obico_record.py` re-reads this record from the stack `tools/obico-env` brings up under a minted bearer token and rewrites the recording the server journeys serve, so re-running it is the comparison with the real Obico; it is run by hand rather than on the scheduled tier."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "PRINTER_RECORD = re.compile(r\"/api/v1/printers/\\d+/\")"
+reason = "The real-print suite's Obico double restates the route of Obico's printer record, `GET /api/v1/printers/<id>/`, which Obico publishes no machine-readable schema for, so it can answer the server's scoring read from each case's recorded detector state. It is held to the same shape the server's own reader requires — every field present, the printer the one asked for — by the replay wiring suite driving the real server against it, and the fields were read off a real self-hosted Obico by the check-costs spike. Reconciling the record against the live stack is the scheduled Obico tier's, drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class ObicoSnapshot(TypedDict):"
+reason = "The real-print suite's Obico double restates the snapshot shape, `pic`, of Obico's printer record, `GET /api/v1/printers/<id>/`, which Obico publishes no machine-readable schema for, so it can answer the server's scoring read from each case's recorded detector state. It is held to the same shape the server's own reader requires — every field present, the printer the one asked for — by the replay wiring suite driving the real server against it, and the fields were read off a real self-hosted Obico by the check-costs spike. Reconciling the record against the live stack is the scheduled Obico tier's, drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class ObicoPrint(TypedDict):"
+reason = "The real-print suite's Obico double restates the current print's shape, `current_print`, of Obico's printer record, `GET /api/v1/printers/<id>/`, which Obico publishes no machine-readable schema for, so it can answer the server's scoring read from each case's recorded detector state. It is held to the same shape the server's own reader requires — every field present, the printer the one asked for — by the replay wiring suite driving the real server against it, and the fields were read off a real self-hosted Obico by the check-costs spike. Reconciling the record against the live stack is the scheduled Obico tier's, drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class ObicoPrinterRecord(TypedDict):"
+reason = "The real-print suite's Obico double restates the whole shape of Obico's printer record, `GET /api/v1/printers/<id>/`, which Obico publishes no machine-readable schema for, so it can answer the server's scoring read from each case's recorded detector state. It is held to the same shape the server's own reader requires — every field present, the printer the one asked for — by the replay wiring suite driving the real server against it, and the fields were read off a real self-hosted Obico by the check-costs spike. Reconciling the record against the live stack is the scheduled Obico tier's, drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-obico/src/health.rs"
 site = "pub const HEALTH_PATH: &str = \"hc/\";"
 reason = "Obico's detector service (`ml_api`) answers its own unauthenticated health route `GET /hc/`, which Obico publishes no machine-readable source for. The route was measured against the self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins, by the observability spike that settled this check: `ok` while the detector is up and refused once it is stopped, while the credentialed web API stays up. The server's journeys drive it against a stand-in on a real socket; the scheduled Obico tier (`tools/obico-env/obico_tier.py`) reconciles the webhook payload only, and extending it to ask the live stack's `ml_api` for this route is drafted as a follow-up."
@@ -4788,6 +4836,24 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/obico_record.py"
+site = "status, body, _ = http("
+reason = "One read, once, by a command a person runs by hand to re-record a fixture: there is nothing for an async client to overlap, and the answer is kept as Obico's raw bytes on purpose, because the recording is the whole body as served rather than a typed model of the fields this repository reads. It goes through the Obico tier's one `http` helper, so the tooling carries one HTTP client rather than two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/obico_record.py"
+site = "posted = post_snapshot(instance.url, instance.printer_token)"
+reason = "The Obico tier's own snapshot post, reused unchanged so the recorder puts a snapshot on the stack exactly as the tier does; it runs once, before the one read, in a strictly ordered command with nothing to overlap."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/shell_lines.py"
+site = "READ_ONLY_FILTERS = {"
+reason = "Which pipes Claude Code runs under a rule allowing the command before them is its own permission evaluator's, at the release `repo-policy.toml`'s `[skilltest] claude_code` pins, and that evaluator publishes no machine-readable list to derive this set from. The set is the text filters that cannot write a file whatever their arguments, read off a replay at that release whose turn piped `printobserver context` into `grep` and was answered grep's output. The real-print suite runs that same release on every change it is owed, so a release that stopped running such a pipe would show it refused in the suite's own transcripts."
 
 [[suppression]]
 rule = "invalid_states_unrepresentable"

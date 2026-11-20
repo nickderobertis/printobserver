@@ -1,0 +1,89 @@
+{
+  "provenance": {
+    "obico_revision": "49c0bc7001a3fd8d56297fc3032ba287bfe1d50b",
+    "request": "GET /api/v1/printers/1/",
+    "authentication": "Authorization: Bearer <[obico] access_token>",
+    "status": 200,
+    "sentinel": "SENTINEL-obico-printer-auth-token-0b6f3c",
+    "credentials_replaced": [
+      "auth_token",
+      "current_print.printer.auth_token"
+    ],
+    "recorded_by": "uv run python tools/obico-env/obico_record.py --state-dir <state-dir>"
+  },
+  "answer": {
+    "id": 1,
+    "name": "printobserver",
+    "created_at": "2026-11-19T11:49:46.740699Z",
+    "action_on_failure": "PAUSE",
+    "watching_enabled": true,
+    "not_watching_reason": "Printer is not actively printing",
+    "tools_off_on_pause": true,
+    "bed_off_on_pause": false,
+    "retract_on_pause": 6.5,
+    "lift_z_on_pause": 2.5,
+    "detective_sensitivity": 1.0,
+    "min_timelapse_secs_on_finish": 600,
+    "min_timelapse_secs_on_cancel": 300,
+    "auth_token": "SENTINEL-obico-printer-auth-token-0b6f3c",
+    "archived_at": null,
+    "agent_name": null,
+    "agent_version": null,
+    "pic": {
+      "img_url": "http://localhost:39447/media/tsd-pics/snapshots/1/latest_unrotated.jpg?digest=YidceGIyXHhjOVx4ZGZcclx4MTZceGNhXHhiN1x4ZjFceGM4XHhhOFx4Y2NceGVlXHgxOWp4XHhjY1x4ZWFceDkyXHg5Y1MjXHgxNHpceDlmXHgxNVx4YzhceGQ5V1x4ZmVceGFkXHhhYUkn"
+    },
+    "status": null,
+    "settings": {
+      "webcam_flipV": false,
+      "webcam_flipH": false,
+      "webcam_rotate90": false,
+      "webcam_rotation": 0,
+      "webcam_streamRatio": "16:9",
+      "ratio169": true
+    },
+    "current_print": {
+      "id": 1,
+      "printer": {
+        "id": 1,
+        "name": "printobserver",
+        "created_at": "2026-11-19T11:49:46.740699Z",
+        "action_on_failure": "PAUSE",
+        "watching_enabled": true,
+        "not_watching_reason": "Printer is not actively printing",
+        "tools_off_on_pause": true,
+        "bed_off_on_pause": false,
+        "retract_on_pause": 6.5,
+        "lift_z_on_pause": 2.5,
+        "detective_sensitivity": 1.0,
+        "min_timelapse_secs_on_finish": 600,
+        "min_timelapse_secs_on_cancel": 300,
+        "auth_token": "SENTINEL-obico-printer-auth-token-0b6f3c",
+        "archived_at": null,
+        "agent_name": null,
+        "agent_version": null
+      },
+      "g_code_file": null,
+      "filename": "benchy.gcode",
+      "started_at": "2026-11-19T11:49:46.748108Z",
+      "ended_at": null,
+      "finished_at": null,
+      "cancelled_at": null,
+      "uploaded_at": null,
+      "alerted_at": null,
+      "alert_acknowledged_at": null,
+      "alert_muted_at": null,
+      "paused_at": null,
+      "video_url": null,
+      "tagged_video_url": null,
+      "poster_url": null,
+      "alert_overwrite": null,
+      "filament_used": null,
+      "print_time": null,
+      "access_consented_at": null,
+      "video_archived_at": null,
+      "need_alert_overwrite": false,
+      "need_print_shot_feedback": false
+    },
+    "normalized_p": 0.0
+  }
+}

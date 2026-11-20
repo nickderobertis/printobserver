@@ -71,6 +71,7 @@ pub mod observation;
 pub mod preflight;
 pub mod records;
 pub mod recovery;
+pub mod scoring;
 pub mod spools;
 pub mod store;
 pub mod supervisor;
@@ -109,18 +110,18 @@ pub use gcode_index::{
 pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, ChargePendedPayload,
-    DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, GcodeIndexedPayload,
-    HeatedTool, InterventionExpiredPayload, OperatorAcknowledgementPayload,
-    PeriodicObservationPayload, PortFailurePayload, PortFailureSite, PositionFreshness,
-    PreflightCheckedPayload, PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload,
-    PrinterConnectionChangedPayload, PrinterResetPayload, RebaselineDisposition,
-    RecoveryExecutedPayload, RecoveryRejectedPayload, RecoveryRequestedPayload, SignalPosition,
-    SpoolAdjustedPayload, SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload,
-    SpoolRetiredPayload, SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS,
-    UnaccountedPrintPayload, UnattendedPrinterActivityPayload, agent_source, operator_source,
-    system_source,
+    BedClearActor, BedClearAssertedPayload, CameraDegradedPayload, CameraLookPayload,
+    CameraRetryPayload, ChargePendedPayload, DetectorHealthChangedPayload, DetectorStatus,
+    FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
+    FrameCause, GcodeIndexedPayload, HeatedTool, InterventionExpiredPayload,
+    OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
+    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintEndedPayload,
+    PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
+    PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
+    RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
+    SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
+    SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 pub use look::{CameraRetry, DEFAULT_CAMERA_RETRIES, DEFAULT_CAMERA_RETRY_BACKOFF, Look};
 pub use observation::Observed;
@@ -144,6 +145,7 @@ pub use records::{
     RecoveryField, RecoveryGrants, RecoveryPosition, RecoveryRejection, RecoveryStatus,
     RecoveryTemperatures, ToolTemperature, ZHome, ZTrust,
 };
+pub use scoring::{EVIDENCE_INTERVALS, ScoringProbe, ScoringRead, ScoringReading};
 pub use spools::SpoolCommandOutcome;
 pub use store::{
     ActionStore, AuditPage, Charge, ChargeIdentity, ChargeRecord, DEFAULT_HISTORY_WINDOW,
@@ -161,5 +163,5 @@ pub use turn_lock::{TurnGuard, TurnLocks};
 pub use watch::{
     ActiveJob, DEFAULT_PRINTER_POLL, DEFAULT_UNATTENDED_WINDOW, DetectorHealth,
     DetectorHealthStatus, DetectorProbe, HeadPosition, PRINTER_WATCH_KINDS, PUSH_CHANNEL_DOWN,
-    PositionProbe, Watched,
+    PositionProbe, ScoringVerdict, Watched,
 };

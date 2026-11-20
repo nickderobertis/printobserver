@@ -18,8 +18,9 @@ const REASON: &str = "a turn adjusting between two context reads";
 
 /// The context answer's own fields: the print once, as it is now, and the
 /// events. Nothing beside them is a field the agent decides anything by.
-const CONTEXT_FIELDS: [&str; 9] = [
+const CONTEXT_FIELDS: [&str; 10] = [
     "bounds",
+    "detector",
     "interventions",
     "latest_image",
     "newest_event",
@@ -33,10 +34,10 @@ const CONTEXT_FIELDS: [&str; 9] = [
 /// Every field the agent's context once carried and no decision used, which a
 /// read must never carry again: the job's file, progress and position, the
 /// printer's own state, offsets, factors and observation time, the manifest,
-/// and the detector's health.
+/// and the detector's health beyond its status: since when, and why.
 const REMOVED_FIELDS: [&str; 21] = [
     "/manifest",
-    "/detector",
+    "/detector/since",
     "/job",
     "/print/file_name",
     "/print/provider_print_id",
@@ -129,6 +130,7 @@ fn states_the_print_once(context: &Value, print_id: &str) {
     }
     assert_eq!(context["print"]["id"], json!(print_id), "{context}");
     assert!(context["print"]["state"].is_string(), "{context}");
+    assert!(context["detector"].is_string(), "{context}");
     assert!(
         context["printer"]["tools"][0]["actual_c"].is_number(),
         "the current state is not stated in full: {context}"

@@ -17,8 +17,10 @@
 //!   running: it sends [`PrinterCommand::ReportPosition`] and reads the reply
 //!   off the push channel's terminal lines, waiting up to [`POSITION_WAIT`].
 //!   With the channel down it sends nothing and answers no position.
-//! * **The detector check**, once per observation interval, when
-//!   `obico.ml_api_url` is configured.
+//! * **The detector check**, as the server starts and then once per
+//!   observation interval, when `obico.ml_api_url` is configured: the
+//!   detector's status is one a status read made the moment the server is up
+//!   answers from a check, rather than `unchecked` for a whole interval.
 //! * **The first-layer alignment check**, after each read that found a
 //!   print running, until that print has a verdict ([`crate::alignment`]).
 //!
@@ -288,10 +290,11 @@ fn pushing(
     })
 }
 
-/// Check the detector once per observation interval, and run the turn going
-/// unavailable claimed.
+/// Check the detector as the server starts and once per observation interval
+/// after, and run the turn going unavailable claimed.
 fn checking(weak: Weak<Supervisor>, detector: Arc<dyn DetectorProbe>) -> JoinHandle<()> {
     tokio::spawn(async move {
+        let mut first = true;
         loop {
             let Some(interval) = weak
                 .upgrade()
@@ -299,7 +302,10 @@ fn checking(weak: Weak<Supervisor>, detector: Arc<dyn DetectorProbe>) -> JoinHan
             else {
                 return;
             };
-            tokio::time::sleep(interval).await;
+            if !first {
+                tokio::time::sleep(interval).await;
+            }
+            first = false;
             let Some(supervisor) = weak.upgrade() else {
                 return;
             };

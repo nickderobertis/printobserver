@@ -750,3 +750,93 @@ async fn a_turn_credential_is_refused_what_belongs_to_no_print() {
     world.agent.release_turns();
     world.server.stop().await;
 }
+
+/// A turn's acknowledgement before its look is refused, naming the look to run,
+/// and recorded nowhere; a look its camera fails to give a frame for is still a
+/// look the turn took, after which the same acknowledgement is taken.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_acknowledges_only_after_a_look_even_one_its_camera_failed() {
+    let camera = crate::http_host::Host::answering(
+        "500 Internal Server Error",
+        "text/plain",
+        b"no".to_vec(),
+    )
+    .await;
+    let world = World::configured(
+        RecordingPrinter::printing(),
+        crate::agent::StandInAgent::new(),
+        |document| {
+            let mut table = toml::Table::new();
+            table.insert("snapshot_url".to_owned(), toml::Value::String(camera.url()));
+            set(document, "camera", toml::Value::Table(table));
+            set(
+                document,
+                "safety.actions.agent",
+                toml::Value::Array(vec![toml::Value::String("acknowledge_failure".to_owned())]),
+            );
+        },
+    )
+    .await;
+    let (print_id, pass) = held_turn(&world).await;
+    let turn = presenting(&pass.credential);
+    let alerted = world
+        .stores
+        .events
+        .history(printobserver_core::store::HistoryQuery {
+            print_id,
+            kinds: Vec::new(),
+            since: None,
+            until: None,
+            limit: Some(50),
+        })
+        .await
+        .expect("the history reads")
+        .into_iter()
+        .find(|event| event.body.kind.as_str() == "obico_failure_alert")
+        .expect("the alert is in the history");
+    let acknowledgement = claiming(
+        &agent(&pass.session_name),
+        &[
+            ("event_id", json!(alerted.id.to_string())),
+            ("disposition", json!("stop")),
+        ],
+    );
+
+    let before = record_of(&world.stores, print_id).await;
+    let early = sent(
+        turn.post(action_url(&world, print_id, "acknowledge_failure"))
+            .json(&acknowledgement),
+    )
+    .await;
+    assert_forbidden(
+        &early,
+        "an acknowledgement before the turn's look",
+        &[
+            "before the turn has taken a look",
+            &format!("printobserver look --print-id {print_id}"),
+        ],
+    );
+    assert_eq!(
+        record_of(&world.stores, print_id).await,
+        before,
+        "a refused acknowledgement was recorded"
+    );
+
+    let (status, look) =
+        sent(turn.get(world.url(&format!("/prints/{print_id}/look?wait_s=0")))).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{look}");
+    assert!(
+        look.get("frame").is_none(),
+        "the failing camera gave a frame: {look}"
+    );
+
+    let (status, body) = sent(
+        turn.post(action_url(&world, print_id, "acknowledge_failure"))
+            .json(&acknowledgement),
+    )
+    .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    assert_eq!(body["record"]["decision"], "accepted", "{body}");
+    world.agent.release_turns();
+    world.server.stop().await;
+}

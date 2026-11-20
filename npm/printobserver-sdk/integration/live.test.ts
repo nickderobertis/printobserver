@@ -220,6 +220,22 @@ async function stepRecoverStatus(client: Client, proxy: Recording) {
   same("recover_status", answered, seen.answer);
 }
 
+/** `bed_clear`, answered by a real supervisor. */
+async function stepBedClear(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "operational");
+
+  const answered = await client.bedClear(REASON);
+
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/printer/bed_clear`);
+  expect(seen.status).toBe(200);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.reason).toEqual(REASON);
+  same("bed_clear", answered, seen.answer);
+}
+
 /** `recover_lift`, answered by a real supervisor. */
 async function stepRecoverLift(client: Client, proxy: Recording) {
   await ready(client, world.print_id, "operational");
@@ -740,6 +756,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepPrinterLook(client, proxy);
   await stepCancel(client, proxy);
   await stepRecoverStatus(client, proxy);
+  await stepBedClear(client, proxy);
   await stepRecoverLift(client, proxy);
   await stepRecoverFan(client, proxy);
   await stepRecoverHomeZ(client, proxy);
@@ -768,7 +785,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepRetireSpool(client, proxy);
   await stepPrints(client, proxy);
 
-  expect(proxy.calls()).toBeGreaterThanOrEqual(38);
+  expect(proxy.calls()).toBeGreaterThanOrEqual(39);
 }, 900_000);
 
 /** `cancel`, refused by a real supervisor's own policy. */

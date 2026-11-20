@@ -39,17 +39,18 @@ use printobserver_server::{
 };
 use printobserver_types::serde_json::Value;
 
-/// The reads this program has beside the two vocabularies, as its own tasks
-/// name them: the prints listing, status, context, the image read and
+/// The operations this program has beside the vocabularies, as its own tasks
+/// name them, every one a read but two writes: the prints listing, status, context, the image read and
 /// materialization, history, the event log after a cursor, a fresh look at a
-/// print and one at the printer, the manifest's read and write, and the spool
+/// print and one at the printer, the manifest's read and write, the spool
 /// ledger's four reads — the spools, one spool, the printer's own history and
-/// a filament check.
+/// a filament check — and the one write beside the manifest's, the operator's
+/// word that the bed is clear.
 ///
 /// Written out here rather than read from the server, and then held against
 /// what the server declares — so a server that grew another read would fail
 /// this rather than quietly grow this program's surface.
-const READS: [&str; 14] = [
+const BESIDE_THE_VOCABULARIES: [&str; 15] = [
     "prints",
     "status",
     "context",
@@ -64,6 +65,7 @@ const READS: [&str; 14] = [
     "spool",
     "printer_history",
     "preflight",
+    "bed_clear",
 ];
 
 /// Every option `watch` takes of its own, as its task fixes them: the print
@@ -383,7 +385,7 @@ fn wanted_commands() -> BTreeSet<String> {
     // A read the server declares as another's printer-wide form is reached
     // through that one's command, and has none of its own.
     wanted.extend(
-        READS
+        BESIDE_THE_VOCABULARIES
             .iter()
             .filter(|read| printobserver_server::printer_wide_of(read).is_none())
             .map(|read| command_for(read)),
@@ -525,13 +527,20 @@ fn the_surface_this_program_ships_is_the_one_the_contracts_and_the_server_declar
 fn the_server_declares_exactly_the_reads_this_task_names() {
     assert_eq!(
         BESIDE_THE_ACTIONS.iter().copied().collect::<BTreeSet<_>>(),
-        READS.iter().copied().collect::<BTreeSet<_>>(),
+        BESIDE_THE_VOCABULARIES
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
         "the reads the server serves beside the action vocabulary are not the reads this \
          program's own task names"
     );
     assert_eq!(
         OPERATIONS.len(),
-        action_tags().len() + command_tags().len() + recovery_tags().len() + 1 + READS.len(),
+        action_tags().len()
+            + command_tags().len()
+            + recovery_tags().len()
+            + 1
+            + BESIDE_THE_VOCABULARIES.len(),
         "the server serves an operation that is neither an action of the vocabulary nor one \
          of the reads this program's own task names"
     );

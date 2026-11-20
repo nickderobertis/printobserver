@@ -17,7 +17,7 @@
 
 use crate::gcode_index::SlicerPlan;
 use crate::records::{EffectiveBounds, Intervention, JobManifest, PrintRecord};
-use crate::watch::DetectorHealth;
+use crate::watch::{DetectorHealth, DetectorHealthStatus};
 use printobserver_printer_api::{
     HeaterSnapshot, JobError, JobSnapshot, PrinterSnapshot, PrinterState,
 };
@@ -121,7 +121,8 @@ const UNREAD_PAYLOAD_FIELDS: [&str; 8] = [
 /// feedrate, flowrate and fan (the slicer's plan states the flow and fan in
 /// force, and no step reads the feedrate); the job's file, size, progress, time
 /// and position (the plan states where the print is); the manifest (its limits
-/// are the bounds); and the detector's health.
+/// are the bounds); and the detector's health beyond its status — since when,
+/// and why — which only the status read carries.
 ///
 /// The printer and the job are stated here and nowhere in the events; each
 /// event is what happened, when, and what it changed; and asked `since` an
@@ -144,6 +145,9 @@ pub struct AgentContext {
     pub bounds: EffectiveBounds,
     /// The interventions still active.
     pub interventions: Vec<Intervention>,
+    /// What the failure detector's status is for this print: whether it is
+    /// scoring the print and has flagged it, or what it is otherwise.
+    pub detector: DetectorHealthStatus,
     /// This print's events newer than the one asked `since`, or its recent
     /// ones when none was named, newest first.
     pub recent_events: Vec<AgentEvent>,
@@ -270,6 +274,7 @@ impl PrintContext {
             job_error: self.job.as_ref().and_then(|job| job.error.clone()),
             bounds: self.bounds.clone(),
             interventions: self.interventions.clone(),
+            detector: self.detector.status(),
             recent_events: events.iter().map(agent_event).collect(),
             latest_image: self.latest_image.clone(),
             newest_event,

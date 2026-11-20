@@ -86,7 +86,8 @@ class ReplayError(Exception):
 def program(name: str) -> Path:
     """A built program of this workspace."""
     suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
-    return REPO / "target" / "skilltest" / f"{name}{suffix}"
+    target = Path(os.environ.get("CARGO_TARGET_DIR") or REPO / "target")
+    return target / "skilltest" / f"{name}{suffix}"
 
 
 def _installer_template() -> str:
@@ -147,7 +148,7 @@ def service_config(
     text += (
         f'\n[camera]\nsnapshot_url = "{camera}/api/frame.jpeg"\n'
         f'\n[obico]\nurl = "{obico}"\naccess_token = "{minted.obico_token}"\n'
-        f'ml_api_url = "{obico}/ml/"\n'
+        f'ml_api_url = "{obico}/ml/"\nprinter_id = {doubles.OBICO_PRINTER}\n'
     )
     tomllib.loads(text)
     return text
