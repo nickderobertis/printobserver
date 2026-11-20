@@ -158,13 +158,18 @@ fn turn_from_the_prompt(stdin: &str) -> Option<Turn> {
 
 /// Everything a run handed this responder on its standard input, read once and
 /// only for a run naming an `--input-format`: a run that names none writes no
-/// prompt there, and reading it would wait on input nobody sends.
+/// prompt there, and reading it would wait on input nobody sends. Input that
+/// cannot be read whole, or is no text, stops this responder saying so rather
+/// than acting on part of a prompt.
 fn standard_input() -> String {
     if !std::env::args().any(|argument| argument == "--input-format") {
         return String::new();
     }
     let mut read = String::new();
-    let _ = std::io::stdin().read_to_string(&mut read);
+    if let Err(error) = std::io::stdin().read_to_string(&mut read) {
+        eprintln!("printobserver-server-responder: its standard input could not be read: {error}");
+        std::process::exit(1);
+    }
     read
 }
 

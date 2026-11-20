@@ -1223,6 +1223,36 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
     );
 }
 
+/// A responder handed standard input it cannot read whole stops saying so,
+/// rather than acting on part of a prompt.
+#[test]
+fn the_responder_refuses_input_it_cannot_read() {
+    use std::io::Write as _;
+
+    let mut responder =
+        std::process::Command::new(env!("CARGO_BIN_EXE_printobserver-server-responder"))
+            .args(["--input-format", "stream-json"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the responder starts");
+    responder
+        .stdin
+        .take()
+        .expect("its standard input is piped")
+        .write_all(&[0xff, 0xfe, 0x00])
+        .expect("the input is written");
+    let done = responder.wait_with_output().expect("the responder ends");
+    assert_eq!(done.status.code(), Some(1));
+    assert!(done.stdout.is_empty(), "it answered");
+    let stderr = String::from_utf8_lossy(&done.stderr);
+    assert!(
+        stderr.contains("its standard input could not be read"),
+        "{stderr}"
+    );
+}
+
 /// A check image that cannot be written into its directory is refused naming
 /// why, and leaves no partial image behind.
 #[cfg(unix)]
