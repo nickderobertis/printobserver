@@ -281,6 +281,15 @@ class FrameDue(NamedTuple):
     captured: datetime
 
 
+class Passing(NamedTuple):
+    """Where the job stands as it passes its first layer between two events, and its frame."""
+
+    position: int
+    #: The index of the recorded frame captured then, among the case's frames.
+    frame: int
+    at: datetime
+
+
 class CameraFrame(NamedTuple):
     """The bytes a camera answers a fetch with."""
 
@@ -347,6 +356,8 @@ class Timeline:
     heaters: Heaters = field(default_factory=Heaters)
     #: Every read of the job, in order.
     job_reads: list[JobRead] = field(default_factory=list)
+    #: Where the job stands as it passes its first layer, between two events.
+    passing: Passing | None = None
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -390,8 +401,19 @@ class Timeline:
         written.write_text(f"{int(self.offset.total_seconds() * 1000)}{ceiling}\n", "ascii")
         written.replace(self.clock)
 
+    def pass_at(self, passing: Passing) -> None:
+        """Stand where the job passed its first layer, between this event and the next.
+
+        Its recorded frame is what every fetch answers until the next event, and its
+        position what every job read does: what the printer watch saw as the layer
+        went down, which a replay jumping from one event to the next would skip.
+        """
+        self.passing = passing
+        self._set_clock(passing.at)
+
     def stand_at(self, index: int) -> None:
         """Stand at one event: its recorded time, and its frame next for a fetch to answer."""
+        self.passing = None
         self.index = index
         self.looked = False
         moment = self.case.moments[index]
@@ -454,6 +476,10 @@ class Timeline:
         with self.lock:
             if self.finished:
                 return None
+            if self.passing is not None:
+                name = self.case.frames[self.passing.frame].file
+                self.fetches.append(name)
+                return FrameDue(name, self.frame_times[self.passing.frame])
             if self.owed_event_frame:
                 self.cursor = max(self.cursor, self.at_event_frame)
                 self.owed_event_frame = False
@@ -514,8 +540,11 @@ class Timeline:
     def position(self, at: datetime | None = None) -> int:
         """The job's file position at an instant, by default the replay's current time.
 
-        The event's own until a look has been taken, and short of the next event's.
+        The event's own until a look has been taken, and short of the next event's;
+        where the job passed its first layer while it stands there.
         """
+        if self.passing is not None:
+            return self.passing.position
         low = self.moment.file_position_bytes
         if not self.looked:
             return low

@@ -192,3 +192,37 @@ budgets:
     direction: max
     threshold: 9000
     timeout_seconds: 60
+  - id: agent-frame-image-tokens
+    description: >-
+      Image tokens per check image. Input tokens the check's image adds to a
+      call: the image probe's first-call input (the probe prompt plus one
+      case's composite) less the text-only probe's. Detail: pixels, bytes,
+      Anthropic's-rule tokens, and the figure for a 1280x720 frame. Inner
+      measure: every later call re-reads a check's image, so its size is
+      budgeted where it is set; `supervisor-tokens-per-print` holds the whole.
+      Basis: arithmetic — Anthropic's rule of about one token per 28x28 px:
+      1024x1848 gives 37 x 66 = 2,442, within the model's 2576 px and 3.75 MP
+      limits, so 2,600 leaves about 6%; 1280x720 is 1,196.
+      `spike-frame-panels`' direct Claude Code proxy measured 2,443 (first-call
+      input 5,137 with the composite against 3,890 with a 1280x720 frame); the
+      shipped path is unmeasured until this budget's probe. Workload: one check
+      image per check, 76 per typical print: the 1024x1848 composite in print,
+      a 1280x720 frame otherwise; the suite's image probe, claude-code,
+      claude-sonnet-5-5. Measurement source: telemetry, read from the record
+      `just skilltest-record` writes. Check runtime approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - frame_image_tokens
+    unit: tokens
+    direction: max
+    threshold: 2600
+    timeout_seconds: 60

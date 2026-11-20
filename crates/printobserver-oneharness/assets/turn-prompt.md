@@ -1,7 +1,8 @@
 # One supervision turn
 
-A print you are watching has produced an event. The camera's frame of it, when
-there is one, is attached to this message.
+A print you are watching has produced an event. The camera's image of it, when
+there is one, is attached to this message, and the situation's `image` line says
+which image it is and why.
 
 ## The event
 

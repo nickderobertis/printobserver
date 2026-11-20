@@ -1772,6 +1772,14 @@ impl FakeVision {
         *self.clearing_failure.lock().expect("the vision port holds") = Some(error);
     }
 
+    /// Serve its image saying it was captured at this moment, or saying not.
+    pub fn serves_captured_at(&self, captured_at: Option<printobserver_types::Timestamp>) {
+        self.image
+            .lock()
+            .expect("the vision port holds")
+            .captured_at = captured_at;
+    }
+
     /// The image it serves.
     #[must_use]
     pub fn served(&self) -> FetchedImage {

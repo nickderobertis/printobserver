@@ -244,6 +244,8 @@ impl Supervisor {
         issued: &Issued,
         preflight: Option<&Preflight>,
     ) -> Result<(), CoreError> {
+        // Every request is written down here, taken or refused.
+        self.note_stop_asked(print_id, action);
         self.append_action_event(
             print_id,
             source.clone(),

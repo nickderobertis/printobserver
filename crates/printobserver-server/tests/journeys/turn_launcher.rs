@@ -63,6 +63,27 @@ fn installed(directory: &Path, control: &str, program: &Path) -> PathBuf {
     launcher
 }
 
+/// Run `start` until the kernel no longer reports the program it starts busy.
+///
+/// A program copied a moment ago can still be held open for writing by a
+/// child another test forked while the copy was being written, until that
+/// child execs; the kernel refuses to run it meanwhile. That refusal is the
+/// race, not the launcher, so it is waited out, for two seconds at most.
+fn when_not_busy<T>(mut start: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match start() {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            done => return done,
+        }
+    }
+}
+
 /// Run the launcher with one argument, the published responder scripted by `env`.
 fn launched(launcher: &Path, env: &[(&str, &str)]) -> Output {
     let mut command = Command::new(launcher);
@@ -70,7 +91,7 @@ fn launched(launcher: &Path, env: &[(&str, &str)]) -> Output {
     for (name, value) in env {
         command.env(name, value);
     }
-    command.output().expect("the launcher starts")
+    when_not_busy(|| command.output()).expect("the launcher starts")
 }
 
 fn responder() -> PathBuf {
@@ -114,13 +135,15 @@ fn the_harness_has_the_callers_streams_and_its_bytes_arrive_unchanged() {
     let record = scratch.path().join("record");
     let (address, _heard) = control(&record);
     let launcher = installed(scratch.path(), &address, &responder());
-    let mut child = Command::new(&launcher)
-        .env("MOCK_ECHO_STDIN", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("the launcher starts");
+    let mut child = when_not_busy(|| {
+        Command::new(&launcher)
+            .env("MOCK_ECHO_STDIN", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    })
+    .expect("the launcher starts");
     let fed = "caf\u{e9} \u{2603}\n\tno trailing line";
     child
         .stdin

@@ -51,12 +51,12 @@ const MARK: u32 = 150;
 /// A camera frame: a checkerboard of two greys, which no blank-frame bound
 /// reads as a camera showing nothing, with a pure red mark in each corner, so a
 /// crop loses a mark and a frame scaled whole keeps all four.
-fn marked_frame() -> Vec<u8> {
+pub(crate) fn marked_frame() -> Vec<u8> {
     marked_frame_of(CAMERA)
 }
 
 /// A marked frame of one size.
-fn marked_frame_of((width, height): (u32, u32)) -> Vec<u8> {
+pub(crate) fn marked_frame_of((width, height): (u32, u32)) -> Vec<u8> {
     let frame = image::RgbImage::from_fn(width, height, |x, y| {
         let left_or_right = x < MARK || x >= width - MARK;
         let top_or_bottom = y < MARK || y >= height - MARK;
@@ -83,7 +83,7 @@ fn red(pixel: image::Rgb<u8>) -> bool {
 
 /// Hold a check's image to the whole frame scaled: 1280x720, a mark in every
 /// corner, and the middle of every edge grey.
-fn is_the_whole_frame_scaled(bytes: &[u8], what: &str) {
+pub(crate) fn is_the_whole_frame_scaled(bytes: &[u8], what: &str) {
     let decoded = image::load_from_memory(bytes)
         .unwrap_or_else(|error| panic!("{what} is no image: {error}"))
         .to_rgb8();
@@ -115,7 +115,7 @@ fn is_the_whole_frame_scaled(bytes: &[u8], what: &str) {
 
 /// Every run request the port built, in order.
 #[derive(Default)]
-struct Requests(Mutex<Vec<RunRequest>>);
+pub(crate) struct Requests(Mutex<Vec<RunRequest>>);
 
 impl RunRequestObserver for Requests {
     fn built(&self, request: &RunRequest) {
@@ -127,7 +127,7 @@ impl RunRequestObserver for Requests {
 }
 
 impl Requests {
-    fn all(&self) -> Vec<RunRequest> {
+    pub(crate) fn all(&self) -> Vec<RunRequest> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -137,7 +137,7 @@ impl Requests {
 
 /// An assessment the scripted agent answers, as Claude Code streams one: one
 /// model call, then the result.
-fn streamed(answer: &Value) -> String {
+pub(crate) fn streamed(answer: &Value) -> String {
     [
         json!({
             "type": "assistant",
@@ -167,7 +167,7 @@ fn streamed(answer: &Value) -> String {
 }
 
 /// An assessment answering with a disposition and a reason.
-fn answering(disposition: &str, why: &str) -> Value {
+pub(crate) fn answering(disposition: &str, why: &str) -> Value {
     json!({
         "summary": "the walls are going down clean",
         "confidence": "high",
@@ -180,7 +180,7 @@ fn answering(disposition: &str, why: &str) -> Value {
 }
 
 /// Copy one directory tree into another.
-fn copy_tree(from: &Path, to: &Path) {
+pub(crate) fn copy_tree(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).expect("the copy's directory is writable");
     for entry in std::fs::read_dir(from).expect("the directory is readable") {
         let path = entry.expect("an entry").path();
@@ -195,11 +195,11 @@ fn copy_tree(from: &Path, to: &Path) {
 
 /// The configuration `installer`'s template writes, its `[camera]` example
 /// taken up and what an operator fills in filled in, written under `root`.
-fn configured(
+pub(crate) fn configured(
     installer: &str,
     root: &TempDir,
     octoprint: &ScriptedOctoPrint,
-    camera: &crate::http_host::Host,
+    camera_url: &str,
     interval_s: i64,
 ) -> PathBuf {
     let state = root.path().join("state");
@@ -226,7 +226,10 @@ fn configured(
         "ingress.shared_secret",
         toml::Value::String(SECRET.to_owned()),
     );
-    fill("camera.snapshot_url", toml::Value::String(camera.url()));
+    fill(
+        "camera.snapshot_url",
+        toml::Value::String(camera_url.to_owned()),
+    );
     fill(
         "supervisor.observation_interval_s",
         toml::Value::Integer(interval_s),
@@ -250,7 +253,7 @@ fn configured(
 /// The agent composed from `config` as the server composes it, its harness the
 /// responder scripted to answer `answers` in turn after issuing `actions`, and
 /// what watches the run requests it builds.
-fn scripted_agent(
+pub(crate) fn scripted_agent(
     config: &ServerConfig,
     root: &Path,
     answers: &[Value],
@@ -339,7 +342,7 @@ impl Lean {
         octoprint.reports("Printing", JobScript::printing(FILE, size, size / 2, 600));
         let camera = crate::http_host::image_host(frame).await;
 
-        let path = configured(installer, &root, &octoprint, &camera, interval_s);
+        let path = configured(installer, &root, &octoprint, &camera.url(), interval_s);
         let config = ServerConfig::load(&path)
             .unwrap_or_else(|error| panic!("{installer}'s configuration reads: {error}"));
 
@@ -473,7 +476,7 @@ impl Lean {
 
 /// The prompt and the image the harness process was handed on its standard
 /// input, as `OneHarness`'s stream-json user frame carries them.
-fn handed(seen: &Value) -> (String, Vec<u8>) {
+pub(crate) fn handed(seen: &Value) -> (String, Vec<u8>) {
     use base64::Engine as _;
 
     let stdin = seen["stdin"]
@@ -1352,4 +1355,90 @@ fn a_check_image_refused_its_place_leaves_no_partial_image() {
         [format!("01-digest-{}x{}.jpg", CHECK.0, CHECK.1)],
         "{left:?}"
     );
+}
+
+/// What one run of the harness was handed on its standard input, as text.
+fn stdin_of(seen: &Value) -> String {
+    seen["stdin"].as_str().unwrap_or_default().to_owned()
+}
+
+/// An answer of `stop` on a printing print, from a turn that asked for no
+/// pause, is refused once in the same session, naming the command that stops a
+/// print; when the answer to that is `stop` again, the print's history says
+/// the agent judged it should stop and stopped nothing. A turn that paused
+/// and answers `stop` is neither refused nor written down so.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stop_that_stopped_nothing_is_refused_once_then_written_down() {
+    let unacted = Lean::open(
+        INSTALLERS[0],
+        3_600,
+        &[
+            answering("stop", "the part moved"),
+            answering("stop", "the part moved"),
+        ],
+        &json!([]),
+    )
+    .await;
+    let print_id = unacted.active().await;
+    unacted.alert().await;
+    unacted.turns_ended(&print_id, 1).await;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    let written = loop {
+        let written = unacted.history(&print_id, "agent_stop_unacted").await;
+        if !written.is_empty() {
+            break written;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the unacted stop was never written down"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    let alerted = unacted.history(&print_id, "obico_failure_alert").await;
+    assert_eq!(written.len(), 1);
+    assert_eq!(written[0]["payload"]["event_id"], alerted[0]["id"]);
+    assert_eq!(
+        written[0]["payload"]["summary"],
+        "the walls are going down clean"
+    );
+    let seen = unacted.seen();
+    assert_eq!(seen.len(), 2, "the stop was refused once, in the same turn");
+    let refused = stdin_of(&seen[1]);
+    assert!(
+        refused.contains("an answer stops nothing") && refused.contains("printobserver pause"),
+        "{refused}"
+    );
+    assert!(
+        !stdin_of(&seen[0]).contains("an answer stops nothing"),
+        "the first run was refused before it answered"
+    );
+    unacted.server.stop().await;
+
+    let paused = Lean::open(
+        INSTALLERS[0],
+        3_600,
+        &[answering("stop", "the part moved")],
+        &json!([{ "operation": "pause", "body": { "reason": "the part moved" } }]),
+    )
+    .await;
+    let print_id = paused.active().await;
+    paused.alert().await;
+    paused.turns_ended(&print_id, 1).await;
+    let requested = paused.history(&print_id, "action_requested").await;
+    assert!(
+        requested
+            .iter()
+            .any(|event| event["payload"]["action"]["action"] == "pause"),
+        "the turn asked for its pause: {requested:?}"
+    );
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(paused.seen().len(), 1, "a turn that paused was not refused");
+    assert!(
+        paused
+            .history(&print_id, "agent_stop_unacted")
+            .await
+            .is_empty(),
+        "a stop that paused was written down as stopping nothing"
+    );
+    paused.server.stop().await;
 }

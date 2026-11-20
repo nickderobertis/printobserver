@@ -382,6 +382,24 @@ export interface AgentPrinter {
 }
 
 /**
+ * The agent answered that a running print should stop, and asked for no
+ * pause or cancel — not even when asked again — so nothing stopped it.
+ *
+ * An answer records a judgement and does not act: acting is a request that
+ * policy rules on. Written to the print's history, where a refused pause is,
+ * so the person reading it is told the print the agent judged should stop is
+ * still running.
+ */
+export interface AgentStopUnactedPayload {
+  /** The event the turn was about. */
+  event_id: EventId;
+  /** The session the turn ran in. */
+  session_name: string;
+  /** What the agent said it saw, as its answer's summary put it. */
+  summary: string;
+}
+
+/**
  * Who may say the bed is clear: the operator, and no other actor.
  *
  * Its own type rather than `Actor`, so that a record of the agent's or the
@@ -1126,6 +1144,11 @@ export interface Look {
    * gave none — which the history records as a port failure.
    */
   frame?: ImageRef | null;
+  /**
+   * What the image at `image_path` is, and why it is that one, in one line;
+   * absent with no image, or when what made it says nothing.
+   */
+  image_note?: string | null;
   /** The absolute path the frame's bytes are at, on the supervisor's host. */
   image_path?: string | null;
   /** The job the printer reports now, absent when it could not be read. */
@@ -2658,6 +2681,7 @@ export interface EventPayloads {
   action_rejected: ActionRejectedPayload;
   action_requested: ActionRequestedPayload;
   agent_assessment: AgentAssessmentPayload;
+  agent_stop_unacted: AgentStopUnactedPayload;
   bed_clear_asserted: BedClearAssertedPayload;
   camera_degraded: CameraDegradedPayload;
   camera_look: CameraLookPayload;
@@ -2704,6 +2728,7 @@ export const EVENT_KINDS = [
   "action_rejected",
   "action_requested",
   "agent_assessment",
+  "agent_stop_unacted",
   "bed_clear_asserted",
   "camera_degraded",
   "camera_look",
@@ -3356,6 +3381,35 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "ref": "AgentHeater"
       },
       "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentStopUnactedPayload": {
+  "struct": {
+   "fields": {
+    "event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "summary": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
      }
     }
    },
@@ -5012,6 +5066,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "shape": {
       "nullable": {
        "ref": "ImageRef"
+      }
+     }
+    },
+    "image_note": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
       }
      }
     },

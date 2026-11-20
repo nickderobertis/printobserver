@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, Literal, NewType, NotRequired, TextIO, TypedDict, cast, get_args
 
 import doubles
-from cases import REPO, Case, Moment, Request
+from cases import REPO, Case, Moment, Request, instant, read_case
 from jsonschema import Draft202012Validator
 from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
@@ -81,10 +81,14 @@ TRIGGERS = {"periodic_observation", "obico_failure_alert"}
 #: The requests that make a check an acting one rather than a quiet one: those that
 #: change what the machine is doing. Every `set-*` request is one as well.
 ACTING = {"pause", "cancel", "resume"}
+#: What the server writes down when an answer of `stop` stopped nothing.
+STOP_UNACTED = "agent_stop_unacted"
 #: The command a check takes a fresh look with, which it never runs after acting.
 LOOK = "look"
 #: The heading the turn prompt carries the print's facts under.
 FACTS_HEADING = "## The print's facts"
+#: The heading the turn prompt writes its situation under.
+SITUATION_HEADING = "## The situation when this turn began"
 
 
 def acts(operation: str) -> bool:
@@ -157,8 +161,13 @@ def service_config(
     minted: Secrets,
     *,
     interval_s: int = OBSERVATION_INTERVAL_S,
+    calibration: Path | None = None,
 ) -> str:
-    """The installer's configuration, with what an operator fills in filled in."""
+    """The installer's configuration, with what an operator fills in filled in.
+
+    `calibration` names the camera calibration `[camera] calibration` takes, when
+    the case names one; with none the line is left out, as the installer leaves it.
+    """
     verifier = hashlib.sha256(minted.operator.encode()).hexdigest()
     text = (
         _installer_template()
@@ -171,12 +180,83 @@ def service_config(
     )
     text = f'api.credential_verifier = "sha256:{verifier}"\n{text}'
     text += (
-        f'\n[camera]\nsnapshot_url = "{camera}/api/frame.jpeg"\n'
-        f'\n[obico]\nurl = "{obico}"\naccess_token = "{minted.obico_token}"\n'
+        f'\n[camera]\nsnapshot_url = "{camera}{SNAPSHOT_PATH}"\n'
+        + (f"calibration = {json.dumps(calibration.as_posix())}\n" if calibration else "")
+        + f'\n[obico]\nurl = "{obico}"\naccess_token = "{minted.obico_token}"\n'
         f'ml_api_url = "{obico}/ml/"\nprinter_id = {doubles.OBICO_PRINTER}\n'
     )
     tomllib.loads(text)
     return text
+
+
+#: The extrusion types the G-code index counts as supports, which lay no part.
+SUPPORT_TYPES = (b"Support material", b"Support material interface")
+#: The checking interval of the server started only to decide a print's alignment
+#: before the first event, so that no check is due while it runs.
+DECIDING_INTERVAL_S = 3600
+#: How long the replay stands where the job passed its first layer for the printer
+#: watch to decide the print's alignment there: past one of its reads, the installer's
+#: fifteen-second poll, and the frame the decision fetches.
+PASSING_WAIT_S = 25
+
+
+def first_layer_end(gcode: bytes) -> int | None:
+    """Where a slice's first layer laying the part ends: the next `;LAYER_CHANGE`.
+
+    The rule the server's G-code index decides the first object layer by: the first
+    layer extruding under a declared `;TYPE:` other than supports, its skirt and brim
+    included. Nothing for a slice that lays no such layer, or none after it.
+    """
+    offset = 0
+    kind = b""
+    relative = True
+    last_e = 0.0
+    in_layer = False
+    laid = False
+    for line in gcode.splitlines(keepends=True):
+        text = line.split(b";", 1)[0].strip()
+        if line.startswith(b";LAYER_CHANGE"):
+            if laid:
+                return offset
+            in_layer = True
+        elif line.startswith(b";TYPE:"):
+            kind = line[len(b";TYPE:") :].strip()
+        elif text in {b"M83", b"M82"}:
+            relative = text == b"M83"
+        elif text.startswith(b"G92"):
+            found = re.search(rb"\bE(-?[\d.]+)", text)
+            last_e = float(found.group(1)) if found else last_e
+        elif text[:3] in {b"G1 ", b"G2 ", b"G3 "}:
+            found = re.search(rb"\bE(-?[\d.]+)", text)
+            if found:
+                value = float(found.group(1))
+                extruded = value if relative else value - last_e
+                last_e = last_e if relative else value
+                if in_layer and extruded > 0 and kind and kind not in SUPPORT_TYPES:
+                    laid = True
+        offset += len(line)
+    return None
+
+
+#: Where on the camera double's address its frames are fetched from.
+SNAPSHOT_PATH = "/api/frame.jpeg"
+
+
+def calibration_copy(calibration: Path, camera: str, into: Path) -> Path:
+    """A case's camera calibration, its stream the camera double's: where its frames come from.
+
+    The calibration was fitted on the recording's own camera, which the double stands
+    in for at an address of its own, so the copy names the stream the server's frames
+    arrive on and is otherwise the committed file.
+    """
+    document = json.loads(calibration.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or "camera_snapshot_url" not in document:
+        msg = f"{calibration} is no camera calibration"
+        raise ReplayError(msg)
+    document["camera_snapshot_url"] = f"{camera}{SNAPSHOT_PATH}"
+    copied = into / "camera-calibration.json"
+    copied.write_text(json.dumps(document), encoding="utf-8")
+    return copied
 
 
 def _free_port() -> int:
@@ -438,6 +518,70 @@ class DecisionRecord(TypedDict):
     check_class: CheckClass
     #: The bytes of the facts its prompt carried, when the transcript showed its prompt.
     facts_bytes: NotRequired[int | None]
+    #: The image its prompt carried, when the transcript showed its prompt.
+    image: NotRequired[CheckImage | None]
+
+
+#: Which image a check was shown.
+ImageKind = Literal["composite", "whole_frame", "stored_frame"]
+
+#: What the server's line names the three-panel check image by, and the whole frame by.
+COMPOSITE_NOTE = "the three-panel check image"
+WHOLE_FRAME_NOTE = "the whole camera frame"
+
+
+class CheckImage(TypedDict):
+    """Which image one check was shown, and why, as its prompt's situation said."""
+
+    kind: ImageKind
+    #: Why the whole frame rather than the three-panel image; none for the composite.
+    why: str | None
+    note: str
+
+
+def check_image(note: str) -> CheckImage:
+    """The image a prompt's situation line names: the composite, the whole frame and why."""
+    if note.startswith(COMPOSITE_NOTE):
+        return {"kind": "composite", "why": None, "note": note}
+    if note.startswith(WHOLE_FRAME_NOTE):
+        _, because, why = note.partition(", because ")
+        return {"kind": "whole_frame", "why": why if because else None, "note": note}
+    return {"kind": "stored_frame", "why": note, "note": note}
+
+
+class Alignment(TypedDict):
+    """One case's first-layer alignment verdict, as the server kept it."""
+
+    verdict: str
+    #: How far the printed first layer lay from its projection, when the verdict says.
+    offset_px: float | None
+    #: Why it failed, when it did for a reason other than its offset.
+    failure: str | None
+
+
+#: The schema the server keeps each print's alignment verdict to.
+ALIGNMENT_SCHEMA = REPO / "schemas" / "printobserver-server" / "PrintAlignment.json"
+
+
+def alignment_of(document: object) -> Alignment | None:
+    """A verdict file's verdict, or nothing for a file that is no verdict.
+
+    Held to the schema the server's own type writes, which its contract test keeps
+    in step with the type, so a verdict the server writes differently is refused here
+    rather than read as something it is not.
+    """
+    schema = json.loads(ALIGNMENT_SCHEMA.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not Draft202012Validator(schema).is_valid(document):
+        return None
+    reason = document.get("reason")
+    offset = document.get("offset_px")
+    if isinstance(reason, dict):
+        offset = reason.get("offset_px", offset)
+    return {
+        "verdict": document["verdict"],
+        "offset_px": float(offset) if isinstance(offset, int | float) else None,
+        "failure": str(reason.get("failure")) if isinstance(reason, dict) else None,
+    }
 
 
 class TestRecord(TypedDict):
@@ -450,6 +594,8 @@ class TestRecord(TypedDict):
     #: Each `printobserver` command a conversation ran beside another, by conversation.
     compound_commands: dict[str, list[str]]
     decision_points: list[DecisionRecord]
+    #: Its print's first-layer alignment verdict, when the server decided one.
+    alignment: NotRequired[Alignment | None]
 
 
 class LedgerSession(TypedDict):
@@ -507,6 +653,9 @@ class DecisionPoint:
     looks: int
     calls: list[CallUsage] = field(default_factory=list)
     facts_bytes: int | None = None
+    image_note: str | None = None
+    #: Whether the server wrote down that the turn answered `stop` and stopped nothing.
+    stopped_nothing: bool = False
 
     @property
     def check_class(self) -> CheckClass:
@@ -519,6 +668,8 @@ class DecisionPoint:
         if self.failure:
             return f"the turn failed: {self.failure}"
         reasons = [self.moment.verdict(self.requests)]
+        if self.stopped_nothing:
+            reasons.append("it answered stop and asked for no pause, so nothing stopped the print")
         looked = looked_after_acting(self.commands)
         if looked is not None:
             reasons.append(f"it looked again after acting ({looked})")
@@ -543,6 +694,7 @@ class DecisionPoint:
             "calls": self.calls,
             "check_class": self.check_class,
             "facts_bytes": self.facts_bytes,
+            "image": check_image(self.image_note) if self.image_note is not None else None,
         }
 
 
@@ -556,6 +708,7 @@ class Replayed:
     fetches: list[str]
     state: Path
     transcript: list[dict[str, Any]] = field(default_factory=list)
+    alignment: Alignment | None = None
 
     @property
     def passed(self) -> bool:
@@ -599,6 +752,7 @@ class Replayed:
             "sessions": [session["session_name"] for session in self.ledger["sessions"]],
             "compound_commands": self.compound_commands(),
             "decision_points": [point.as_record() for point in self.points],
+            "alignment": self.alignment,
         }
 
 
@@ -682,6 +836,26 @@ def _lines_of(harness_run: Run) -> list[dict[str, Any]]:
     return [*harness_run.transcript, *answered]
 
 
+def _block_under(text: str, heading: str) -> str | None:
+    """The JSON block a prompt carries under one heading, as written."""
+    _, found, after = text.partition(heading)
+    _, fence, rest = after.partition("```json\n")
+    block, closed, _ = rest.partition("\n```")
+    return block if found and fence and closed else None
+
+
+def _image_line(situation: str | None) -> str | None:
+    """The situation's line saying which image its prompt carried, when it says one."""
+    if situation is None:
+        return None
+    try:
+        document = json.loads(situation)
+    except json.JSONDecodeError:
+        return None
+    line = document.get("image") if isinstance(document, dict) else None
+    return line if isinstance(line, str) else None
+
+
 @dataclass
 class RunReport:
     """What the runs of one turn said of themselves.
@@ -700,6 +874,8 @@ class RunReport:
     compacted: bool = False
     #: The bytes of the facts the turn's prompt carried, read off the prompt itself.
     facts_bytes: int | None = None
+    #: The situation's line saying which image the turn's prompt carried.
+    image_note: str | None = None
 
     def take(self, lines: list[dict[str, Any]]) -> None:
         """Read one run's output and transcript into this turn's report."""
@@ -751,14 +927,14 @@ class RunReport:
                 pass
 
     def _prompted(self, block: object) -> None:
-        """The facts one prompt block carries, the first time a turn's prompt is seen."""
+        """The facts and the image line one prompt carries, the first time it is seen."""
         match block:
             case {"type": "text", "text": str(text)} if self.facts_bytes is None:
-                _, heading, after = text.partition(FACTS_HEADING)
-                _, fence, rest = after.partition("```json\n")
-                facts, closed, _ = rest.partition("\n```")
-                if heading and fence and closed:
+                facts = _block_under(text, FACTS_HEADING)
+                if facts is not None:
                     self.facts_bytes = len(facts.encode("utf-8"))
+                    situation = _block_under(text, SITUATION_HEADING)
+                    self.image_note = _image_line(situation)
             case _:
                 pass
 
@@ -826,6 +1002,13 @@ class Replay:
         self.port = _free_port()
         self.server: subprocess.Popen[str] | None = None
         self.print_id: PrintId | None = None
+        #: The print's alignment verdict as last read, which the server deletes once
+        #: the print closes.
+        self.alignment: Alignment | None = None
+        #: Where the slice's first layer laying the part ends, when it has one.
+        self.first_layer_end = first_layer_end(gcode) if gcode is not None else None
+        #: The case's calibration as the server is configured with it, once laid out.
+        self.calibration: Path | None = None
 
     def _install(self) -> Path:
         """Put the programs, the skill and the configuration where the installer puts them."""
@@ -843,19 +1026,29 @@ class Replay:
             encoding="utf-8",
         )
         shutil.copytree(SKILL, self.state / "skills" / "printobserver")
-        config = self.root / "config.toml"
-        config.write_text(
-            service_config(
-                self.state,
-                f"127.0.0.1:{self.port}",
-                doubles.address(self.servers[0]),
-                doubles.address(self.servers[1]),
-                doubles.address(self.servers[2]),
-                self.minted,
-            ),
-            encoding="utf-8",
+        camera = doubles.address(self.servers[1])
+        calibration = (
+            calibration_copy(self.case.camera_calibration, camera, self.root)
+            if self.case.camera_calibration is not None
+            else None
         )
+        self.calibration = calibration
+        config = self.root / "config.toml"
+        config.write_text(self._config_text(OBSERVATION_INTERVAL_S), encoding="utf-8")
         return config
+
+    def _config_text(self, interval_s: int) -> str:
+        """The server's configuration for this replay, checking every `interval_s` seconds."""
+        return service_config(
+            self.state,
+            f"127.0.0.1:{self.port}",
+            doubles.address(self.servers[0]),
+            doubles.address(self.servers[1]),
+            doubles.address(self.servers[2]),
+            self.minted,
+            interval_s=interval_s,
+            calibration=self.calibration,
+        )
 
     def _harness_started(self) -> str:
         """Note one harness run, and say where its output is to be kept."""
@@ -880,6 +1073,7 @@ class Replay:
         """Stand at the next event before the server can let its scheduled check fire."""
         run = self.runs[-1]
         run.ended_at = self.timeline.now()
+        self._read_alignment()
         for path in self._transcripts():
             with path.open("rb") as transcript:
                 transcript.seek(run.transcript_sizes.get(path, 0))
@@ -889,6 +1083,108 @@ class Replay:
         except (ReplayError, OSError, subprocess.SubprocessError) as error:
             self.errors.append(str(error))
 
+    def _first_layer_frame(self) -> doubles.Passing | None:
+        """The frame the printer watch decided the print's alignment on, live.
+
+        A live watch reads the job every poll and decides once the first layer laying
+        the part is down, on the frame it takes then: the first frame the recording's
+        supervisor took on its own schedule — one carrying the progress the printer
+        reported — whose progress puts the job past that layer. Nothing for a case
+        naming no calibration, or a slice laying no such layer.
+        """
+        ends = self.first_layer_end
+        if self.case.camera_calibration is None or ends is None:
+            return None
+        for index, (frame, when) in enumerate(
+            zip(self.case.frames, self.timeline.frame_times, strict=True)
+        ):
+            if frame.progress_pct is None:
+                continue
+            position = int(frame.progress_pct / 100 * self.case.gcode_size)
+            if position > ends:
+                return doubles.Passing(position, index, when)
+        return None
+
+    def _stand_passing(self, passing: doubles.Passing, short_of: Moment) -> None:
+        """Stand at the passing frame, short of an event's position, until the server decides.
+
+        The job stands no further than the event it comes before, and past the first
+        layer, as it did: the server decides on its next read, or [`PASSING_WAIT_S`]
+        passes.
+        """
+        ends = self.first_layer_end or 0
+        position = min(passing.position, short_of.file_position_bytes)
+        with self.timeline.lock:
+            self.timeline.pass_at(passing._replace(position=max(position, ends + 1)))
+        deadline = time.monotonic() + PASSING_WAIT_S
+        while time.monotonic() < deadline and not any((self.state / "alignment").glob("*.json")):
+            time.sleep(0.25)
+        self._read_alignment()
+
+    def _pass_the_first_layer(self, upcoming: Moment) -> None:
+        """Let the printer watch see the job pass its first layer between two events.
+
+        The replay moves the job from one event to the next; when the frame the live
+        watch decided on falls after the event that ended and no later than the next,
+        the replay first stands there — while the finished turn still holds the print,
+        so no scheduled check can fire — and the next event then stands as it always
+        does.
+        """
+        passing = self._first_layer_frame()
+        if passing is None or self.alignment is not None:
+            return
+        if instant(self.timeline.moment.at) < passing.at <= instant(upcoming.at):
+            self._stand_passing(passing, upcoming)
+
+    def _decide_before_the_first_event(self) -> None:
+        """Decide the alignment first when the first layer went down before the first event.
+
+        The recording's watch decided it before the replay's first event, which no
+        replayed turn stands at, so the server is started once with no check due, at
+        the passing frame, until it decides; then stopped, its state kept, to start
+        again at the first event. A print stays open, and its verdict with it, through
+        a restart.
+        """
+        first = self.case.moments[0]
+        passing = self._first_layer_frame()
+        if passing is None or passing.at > instant(first.at):
+            return
+        config = self.root / "deciding.toml"
+        config.write_text(self._config_text(DECIDING_INTERVAL_S), encoding="utf-8")
+        self.server = self._started(config)
+        try:
+            self._wait_for_server()
+            self._stand_passing(passing, first)
+        finally:
+            self.stop_server()
+        with self.timeline.lock:
+            self.timeline.stand_at(0)
+
+    def _started(self, config: Path) -> subprocess.Popen[str]:
+        """The server, started on one configuration, its output kept."""
+        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        server = start(
+            [str(self.bin / f"printobserver{suffix}"), "server", "--config", str(config)],
+            cwd=self.state,
+            env={
+                **neutral_environment(self.bin, self.home),
+                **({REAL_WAITS: "1"} if self.real_waits else {}),
+            },
+        )
+        self._keep_the_log(server)
+        return server
+
+    def _read_alignment(self) -> None:
+        """Keep the print's alignment verdict while the server keeps it."""
+        for path in sorted((self.state / "alignment").glob("*.json")):
+            try:
+                found = alignment_of(json.loads(path.read_text(encoding="utf-8")))
+            except OSError, json.JSONDecodeError:
+                continue
+            if found is not None:
+                self.alignment = found
+
     def _next_event(self) -> None:
         timeline = self.timeline
         following = timeline.index + 1
@@ -897,6 +1193,7 @@ class Replay:
                 timeline.finished = True
             return
         upcoming = self.case.moments[following]
+        self._pass_the_first_layer(upcoming)
         if timeline.paused and upcoming.printer_state == "printing":
             self._operator_resumes()
         with timeline.lock:
@@ -1095,23 +1392,15 @@ class Replay:
     def run(self) -> Replayed:
         """Feed every event in order, and judge each decision point from the server's record."""
         config = self._install()
-        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        self.server = start(
-            [str(self.bin / f"printobserver{suffix}"), "server", "--config", str(config)],
-            cwd=self.state,
-            env={
-                **neutral_environment(self.bin, self.home),
-                **({REAL_WAITS: "1"} if self.real_waits else {}),
-            },
-        )
-        self._keep_the_log(self.server)
+        self._decide_before_the_first_event()
+        self.server = self._started(config)
         try:
             self._wait_for_server()
             first = self.case.moments[0]
             if first.is_alert:
                 self._post_alert(first)
             self._wait_for_every_turn()
+            self._read_alignment()
             events = self._events()
             points = self._judged(events)
             ledger = self._ledger()
@@ -1125,6 +1414,7 @@ class Replay:
                 fetches=list(self.timeline.fetches),
                 state=self.state,
                 transcript=[line for harness_run in self.runs for line in _lines_of(harness_run)],
+                alignment=self.alignment,
             )
         finally:
             self.stop()
@@ -1222,11 +1512,20 @@ class Replay:
             image_sha256=image.get("sha256"),
             looks=sum(1 for event in during if event["kind"] == CAMERA_LOOK),
             facts_bytes=report.facts_bytes,
+            image_note=report.image_note,
+            stopped_nothing=any(event["kind"] == STOP_UNACTED for event in answered),
         )
 
     def stop(self) -> None:
         """Stop the server and every double."""
         self.timeline.stopped.set()
+        self.stop_server()
+        for server in self.servers:
+            server.shutdown()
+            server.server_close()
+
+    def stop_server(self) -> None:
+        """Stop the server, leaving the doubles and the state as they are."""
         if self.server is not None and self.server.poll() is None:
             self.server.terminate()
             try:
@@ -1235,9 +1534,6 @@ class Replay:
                 # llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
                 self.server.kill()
                 self.server.wait()
-        for server in self.servers:
-            server.shutdown()
-            server.server_close()
 
     def clean_up(self) -> None:
         """Remove the install, once what a test reads from it has been read."""
@@ -1297,69 +1593,202 @@ def _call_usage(usage: object) -> CallUsage:
     return counted
 
 
-def probe(harness: str) -> ProbeRecord:
-    """One turn through the shipped supervisor configuration alone, in a fresh session.
+def _probe_turn(harness: str, root: Path, image: Path | None) -> list[CallUsage]:
+    """One probe turn through the shipped configuration laid out under `root`.
 
     The installer's configuration, the installed skill and the shipped harness, as a
     replay lays them out, and the server's own composition of its supervisor port —
     handed the program's usage lines as `printobserver server` hands them — prompted
-    with [`PROBE_PROMPT`] and no image: what every call of a check costs before the
-    check adds to it.
+    with [`PROBE_PROMPT`], with `image` attached as a check's image is, or none.
+    """
+    state, home, bin_directory = root / "state", root / "home", root / "bin"
+    for directory in (state, home, bin_directory):
+        directory.mkdir(exist_ok=True)
+    suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+    shutil.copy2(harness, bin_directory / f"claude{suffix}")
+    shutil.copytree(SKILL, state / "skills" / "printobserver", dirs_exist_ok=True)
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    done = run([str(program("printobserver")), "--help"], timeout=CLIENT_DEADLINE_S)
+    usage = root / "usage.txt"
+    usage.write_text(
+        "".join(
+            f"{line.strip()}\n"
+            for line in done.stdout.splitlines()
+            if line.strip().startswith("printobserver ")
+        ),
+        encoding="utf-8",
+    )
+    config = root / "config.toml"
+    config.write_text(
+        service_config(state, "127.0.0.1:0", UNUSED, UNUSED, UNUSED, Secrets()),
+        encoding="utf-8",
+    )
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    done = run(
+        [
+            str(program("printobserver-server-probe")),
+            "--config",
+            str(config),
+            "--session",
+            secrets.token_hex(8),
+            "--prompt",
+            PROBE_PROMPT,
+            "--usage",
+            str(usage),
+            *(["--image", str(image)] if image is not None else []),
+        ],
+        cwd=state,
+        env=neutral_environment(bin_directory, home),
+        timeout=PROBE_DEADLINE_S,
+    )
+    if done.returncode != 0:
+        msg = f"the probe answered {done.returncode}: {done.stderr}"
+        raise ReplayError(msg)
+    result = json.loads(done.stdout)
+    calls = result.get("calls") if isinstance(result, dict) else None
+    if not isinstance(calls, list) or not calls:
+        msg = f"the probe reported no calls: {done.stdout[:PRINTS_SAID_CHARS]}"
+        raise ReplayError(msg)
+    return [_call_usage(call) for call in calls]
+
+
+#: An address no double answers, for a probe that reaches no printer, camera or Obico.
+UNUSED = "http://127.0.0.1:1"
+
+
+def probe(harness: str) -> ProbeRecord:
+    """One turn through the shipped supervisor configuration alone, in a fresh session.
+
+    Prompted with [`PROBE_PROMPT`] and no image: what every call of a check costs
+    before the check adds to it.
     """
     root = Path(tempfile.mkdtemp())
     try:
-        state, home, bin_directory = root / "state", root / "home", root / "bin"
-        for directory in (state, home, bin_directory):
-            directory.mkdir()
-        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
-        shutil.copy2(harness, bin_directory / f"claude{suffix}")
-        shutil.copytree(SKILL, state / "skills" / "printobserver")
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        done = run([str(program("printobserver")), "--help"], timeout=CLIENT_DEADLINE_S)
-        usage = root / "usage.txt"
-        usage.write_text(
-            "".join(
-                f"{line.strip()}\n"
-                for line in done.stdout.splitlines()
-                if line.strip().startswith("printobserver ")
-            ),
-            encoding="utf-8",
-        )
-        unused = "http://127.0.0.1:1"
-        config = root / "config.toml"
-        config.write_text(
-            service_config(state, "127.0.0.1:0", unused, unused, unused, Secrets()),
-            encoding="utf-8",
-        )
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        done = run(
-            [
-                str(program("printobserver-server-probe")),
-                "--config",
-                str(config),
-                "--session",
-                secrets.token_hex(8),
-                "--prompt",
-                PROBE_PROMPT,
-                "--usage",
-                str(usage),
-            ],
-            cwd=state,
-            env=neutral_environment(bin_directory, home),
-            timeout=PROBE_DEADLINE_S,
-        )
-        if done.returncode != 0:
-            msg = f"the probe answered {done.returncode}: {done.stderr}"
-            raise ReplayError(msg)
-        result = json.loads(done.stdout)
-        calls = result.get("calls") if isinstance(result, dict) else None
-        if not isinstance(calls, list) or not calls:
-            msg = f"the probe reported no calls: {done.stdout[:PRINTS_SAID_CHARS]}"
-            raise ReplayError(msg)
         return {
             "prompt": PROBE_PROMPT,
-            "calls": [_call_usage(call) for call in calls],
+            "calls": _probe_turn(harness, root, None),
             "skill_bytes": skill_prose_bytes(),
+        }
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+#: The file a run's image probe record is kept in, beside its tests' own.
+IMAGE_PROBE_RECORD = "image-probe.json"
+#: The case and decision point whose frame the image probe composes its check image of.
+IMAGE_PROBE_CASE = "jar-top-petg-healthy"
+IMAGE_PROBE_SCENARIO = "carry-on-031-other"
+
+
+class ImageProbeRecord(TypedDict):
+    """The image probe as `results/latest.json` carries it."""
+
+    prompt: str
+    calls: list[CallUsage]
+    case: str
+    scenario: str
+    #: The check image it attached: its size and its bytes.
+    width: int
+    height: int
+    bytes: int
+
+
+class Composed(TypedDict):
+    """What `printobserver-server-compose` said of the check image it wrote."""
+
+    width: int
+    height: int
+    bytes: int
+    #: The line a check shown it carries in its situation.
+    note: str
+
+
+def composed_check_image(
+    gcode: bytes, frame: Path, position: int, calibration: Path, out: Path
+) -> Composed:
+    """The check image a print's first check at `position` is shown, written to `out`.
+
+    Composed by `printobserver-server-compose` — the server's own composition — of
+    `frame` at that file position in `gcode`, through `calibration`, configured as the
+    installer configures the server.
+    """
+    root = out.parent / f"{out.stem}-compose"
+    root.mkdir()
+    printed = root / "print.gcode"
+    printed.write_bytes(gcode)
+    copied = calibration_copy(calibration, UNUSED, root)
+    # The configuration is loaded as the server loads it, which reads the skill.
+    state = root / "state"
+    shutil.copytree(SKILL, state / "skills" / "printobserver")
+    config = root / "compose.toml"
+    config.write_text(
+        service_config(state, "127.0.0.1:0", UNUSED, UNUSED, UNUSED, Secrets(), calibration=copied),
+        encoding="utf-8",
+    )
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    done = run(
+        [
+            str(program("printobserver-server-compose")),
+            "--config",
+            str(config),
+            "--gcode",
+            str(printed),
+            "--frame",
+            str(frame),
+            "--position",
+            str(position),
+            "--out",
+            str(out),
+        ],
+        timeout=CLIENT_DEADLINE_S,
+    )
+    shutil.rmtree(root, ignore_errors=True)
+    if done.returncode != 0:
+        msg = f"the check image could not be composed: {done.stderr}"
+        raise ReplayError(msg)
+    said = json.loads(done.stdout)
+    if (
+        not isinstance(said, dict)
+        or not all(type(said.get(name)) is int for name in ("width", "height", "bytes"))
+        or not isinstance(said.get("note"), str)
+    ):
+        msg = f"the composer said no size: {done.stdout[:PRINTS_SAID_CHARS]}"
+        raise ReplayError(msg)
+    return said
+
+
+def image_probe(harness: str) -> ImageProbeRecord:
+    """The text-only probe's turn with one case's three-panel check image attached.
+
+    The image is composed by `printobserver-server-compose` — the server's own
+    composition — of [`IMAGE_PROBE_CASE`]'s frame at [`IMAGE_PROBE_SCENARIO`], at its
+    file position in the case's G-code, through the case's camera calibration, at the
+    size every check is shown it. What one check image adds to a call is this probe's
+    first-call input less the text-only probe's.
+    """
+    case = read_case(IMAGE_PROBE_CASE)
+    moment = next(moment for moment in case.moments if moment.id == IMAGE_PROBE_SCENARIO)
+    if case.camera_calibration is None:
+        msg = f"{case.name} names no camera calibration to compose its check image through"
+        raise ReplayError(msg)
+    root = Path(tempfile.mkdtemp())
+    try:
+        composite = root / "check-image.jpg"
+        size = composed_check_image(
+            refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name),
+            case.directory / moment.event_image,
+            moment.file_position_bytes,
+            case.camera_calibration,
+            composite,
+        )
+        return {
+            "prompt": PROBE_PROMPT,
+            "calls": _probe_turn(harness, root, composite),
+            "case": case.name,
+            "scenario": moment.id,
+            "width": size["width"],
+            "height": size["height"],
+            "bytes": size["bytes"],
         }
     finally:
         shutil.rmtree(root, ignore_errors=True)

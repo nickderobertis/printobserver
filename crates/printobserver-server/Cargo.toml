@@ -101,6 +101,13 @@ name = "printobserver-server-probe"
 path = "src/bin/probe.rs"
 required-features = ["test-responder"]
 
+# One check image of a recorded frame, which the real-print suite's image probe
+# attaches; see its source.
+[[bin]]
+name = "printobserver-server-compose"
+path = "src/bin/compose.rs"
+required-features = ["test-responder"]
+
 # The real-print replay's pass-through in front of the harness; see its source.
 [[bin]]
 name = "printobserver-server-turn-launcher"

@@ -1,11 +1,13 @@
 //! One probe of the shipped supervisor configuration, for the real-print suite.
 //!
 //! `printobserver-server-probe --config <path> --session <name> --prompt <text>
-//! [--usage <path>]`
+//! [--usage <path>] [--image <path>]`
 //! loads a server configuration exactly as `printobserver server` does, composes
 //! its supervisor port exactly as the server does, and runs one prompt through
-//! it in a fresh session of its own with no image and no print: the run request
-//! a turn is built as, less everything a check adds. `--usage` names a file of
+//! it in a fresh session of its own with no print: the run request a turn is
+//! built as, less everything a check adds — or, with `--image`, less everything
+//! but the one check image a turn attaches, which is how what that image adds
+//! to a call is measured. `--usage` names a file of
 //! the program's usage lines, one per line, as `printobserver --help` prints
 //! them, which the composed port is handed as the server running under
 //! `printobserver server` is. It prints the engine's
@@ -32,17 +34,22 @@ struct Asked {
     prompt: String,
     /// The file of the program's usage lines, when one was named.
     usage: Option<PathBuf>,
+    /// The image to attach, when one was named.
+    image: Option<PathBuf>,
 }
 
-/// The four options, each once and none empty, and `--usage` alone optional.
+/// The five options, each once and none empty, and `--usage` and `--image`
+/// alone optional.
 fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
-    let (mut config, mut session, mut prompt, mut usage) = (None, None, None, None);
+    let (mut config, mut session, mut prompt, mut usage, mut image) =
+        (None, None, None, None, None);
     while let Some(flag) = arguments.next() {
         let slot = match flag.as_str() {
             "--config" => &mut config,
             "--session" => &mut session,
             "--prompt" => &mut prompt,
             "--usage" => &mut usage,
+            "--image" => &mut image,
             other => return Err(format!("`{other}` is no option of this probe")),
         };
         let value = arguments
@@ -58,6 +65,7 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
         session: session.ok_or("--session is required")?,
         prompt: prompt.ok_or("--prompt is required")?,
         usage: usage.map(PathBuf::from),
+        image: image.map(PathBuf::from),
     })
 }
 
@@ -69,6 +77,24 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // An image named is held to a JPEG that decodes whole here — every check
+    // image is one — so a probe never runs a paid turn on an image the engine
+    // would refuse or the model could not read.
+    if let Some(image) = &asked.image
+        && let Err(error) = std::fs::read(image)
+            .map_err(|error| error.to_string())
+            .and_then(|bytes| {
+                printobserver_panels::whole_frame(&bytes)
+                    .map(|_| ())
+                    .map_err(|error| format!("it is no JPEG image: {error}"))
+            })
+    {
+        eprintln!(
+            "printobserver-server-probe: {} is unreadable: {error}",
+            image.display()
+        );
+        return ExitCode::FAILURE;
+    }
     let usage: Vec<String> = match &asked.usage {
         Some(path) => match std::fs::read_to_string(path) {
             Ok(text) => text
@@ -94,7 +120,7 @@ fn main() -> ExitCode {
             OneharnessSupervisor::open(composed).map_err(|error| error.to_string())
         })
         .and_then(|port| {
-            port.probe(&asked.session, &asked.prompt)
+            port.probe_with_image(&asked.session, &asked.prompt, asked.image.clone())
                 .map_err(|error| error.to_string())
         })
         .and_then(|result| serde_json::to_string(&result).map_err(|error| error.to_string()));

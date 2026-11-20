@@ -226,10 +226,37 @@ fn event_schemas() -> Vec<(String, Value)> {
     ]
 }
 
+/// What this crate keeps under its state directory that another reads: each
+/// print's first-layer alignment verdict, which the real-print suite records.
+fn state_schemas() -> Vec<(String, Value)> {
+    vec![(
+        "PrintAlignment.json".to_owned(),
+        schema_of::<printobserver_server::PrintAlignment>(),
+    )]
+}
+
+/// Every alignment verdict the server keeps reads back as itself.
+#[test]
+fn every_alignment_verdict_round_trips() {
+    use printobserver_server::PrintAlignment;
+    let mut verdicts = vec![
+        PrintAlignment::sample_full(),
+        PrintAlignment::sample_minimal(),
+    ];
+    verdicts.extend(PrintAlignment::sample_alternates());
+    for verdict in verdicts {
+        let written = printobserver_types::serde_json::to_value(&verdict).expect("it serializes");
+        let read: PrintAlignment =
+            printobserver_types::serde_json::from_value(written.clone()).expect("it reads back");
+        assert_eq!(read, verdict, "{written}");
+    }
+}
+
 /// Everything this crate writes into its own schema directory.
 fn generated() -> Vec<(String, Value)> {
     let mut entries = answer_schemas();
     entries.extend(event_schemas());
+    entries.extend(state_schemas());
     entries.push((OPERATIONS_FILE.to_owned(), operations_document()));
     entries.sort_by(|left, right| left.0.cmp(&right.0));
     entries

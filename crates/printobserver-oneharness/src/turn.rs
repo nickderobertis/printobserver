@@ -51,6 +51,13 @@ const CLAUDE_READ_TOOL: &str = "Read";
 /// which it does not export, held to it by a test driving that loop.
 pub const SCHEMA_RETRIES: usize = 2;
 
+/// What an answer of `stop` that stopped nothing is refused with: the answer
+/// acts on nothing, and the command that stops a print is named.
+pub const UNACTED_STOP: &str = "Refused: your answer's disposition is stop, but an answer stops \
+nothing, and this print is still printing: this turn has asked for no pause. Run `printobserver \
+pause` for it now, as its usage above shows, and answer again; or answer with the disposition \
+you meant.";
+
 /// How many characters of an answer that failed validation are kept with the
 /// failure: enough to read what the agent said, bounded so a runaway answer
 /// cannot swell the record it lands in.
@@ -128,12 +135,28 @@ impl OneharnessSupervisor {
     /// answers anything other than one result, or answers one the harness did
     /// not complete.
     pub fn probe(&self, session: &str, prompt: &str) -> Result<RunResult, SupervisorError> {
+        self.probe_with_image(session, prompt, None)
+    }
+
+    /// [`probe`](Self::probe), with `image` attached to the prompt as a turn's
+    /// check image is: what one check image adds to a call is this run's first
+    /// call less a text-only probe's.
+    ///
+    /// # Errors
+    ///
+    /// As [`probe`](Self::probe)'s.
+    pub fn probe_with_image(
+        &self,
+        session: &str,
+        prompt: &str,
+        image: Option<PathBuf>,
+    ) -> Result<RunResult, SupervisorError> {
         let name = SessionName::probe(session)?;
         let by_prompt = self.held_by_prompt()?;
         let request = self.build_request(
             &name,
             &instructed(prompt.to_owned(), by_prompt.as_ref()),
-            Vec::new(),
+            image.into_iter().collect(),
             None,
             by_prompt.as_ref(),
         );
@@ -474,6 +497,7 @@ impl OneharnessSupervisor {
         let mut reported = TurnReport::of(outcome.report, &session, &self.config.harness)?;
         if let Some(schema) = &by_prompt {
             self.held_to_the_schema(schema, &mut reported, access);
+            self.held_to_its_stop(request, schema, &mut reported, access);
         }
         self.record(&mut ledger, print_id, &reported)
     }
@@ -519,6 +543,49 @@ impl OneharnessSupervisor {
             }
         }
         reported.result.calls = Some(calls);
+    }
+
+    /// Hold an answer of `stop` to a stop asked for: an answer records a
+    /// judgement and acts on nothing, so `stop` on a print that was printing,
+    /// from a turn that asked for no pause or cancel, is refused once in the
+    /// same session — naming the command that stops a print — and the answer
+    /// to that refusal, held to the schema as the first was, is the turn's.
+    /// Whatever it then answers stands; the supervisor writes down a stop that
+    /// still stopped nothing.
+    fn held_to_its_stop(
+        &self,
+        request: &TurnRequest,
+        schema: &Schema,
+        reported: &mut TurnReport,
+        access: &dyn TurnAccess,
+    ) {
+        let says_stop = reported
+            .result
+            .structured
+            .as_ref()
+            .and_then(|answer| answer.get("disposition"))
+            .and_then(Value::as_str)
+            == Some("stop");
+        let printing =
+            request.situation.printer_state == Some(printobserver_types::PrinterState::Printing);
+        if !says_stop || !printing || access.asked_to_stop() || reported.result.status != Status::Ok
+        {
+            return;
+        }
+        let earlier = reported.result.calls.take().unwrap_or_default();
+        let refused = instructed(UNACTED_STOP.to_owned(), Some(schema));
+        match self.asked_again(&reported.name, &refused, schema, access) {
+            Ok(answered) => {
+                reported.result = answered;
+                self.held_to_the_schema(schema, reported, access);
+                let mut calls = earlier;
+                calls.extend(reported.result.calls.take().into_iter().flatten());
+                reported.result.calls = Some(calls);
+            }
+            // A run that could not ask again leaves the answer it had, which
+            // the supervisor records as a stop that stopped nothing.
+            Err(_) => reported.result.calls = Some(earlier),
+        }
     }
 
     /// One run asking again in the turn's session, and the result it answered.

@@ -240,6 +240,8 @@ class Case:
     #: Whether the case records what Obico's detector did during the print, which
     #: is a detector that was watching it.
     detector_recorded: bool = False
+    #: The camera calibration its frames are projected through, when it names one.
+    camera_calibration: Path | None = None
 
     @property
     def test_id(self) -> str:
@@ -438,6 +440,9 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
         history=tuple(history),
         anchors=tuple(anchors),
         detector_recorded=document.get("detector") is not None,
+        camera_calibration=(directory / document["camera_calibration"]).resolve()
+        if "camera_calibration" in document
+        else None,
     )
 
 

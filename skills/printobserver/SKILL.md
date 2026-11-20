@@ -48,26 +48,27 @@ A person's resume settles what they resumed over: after it, judge only what is n
 
 Reading frames:
 
-- **The plan.** The slicer's features plan this layer's shape and place, and the frame shows
-  layers below too: a support, bridge or overhang listed is designed; supports, bridges and infill
-  look open, in straight regular lines. Planned proves no quality: rough, porous or strung
-  material is a defect even where planned.
+- **The check image.** In print, three panels: 1 the frame, this layer's planned toolpath
+  drawn on it, coloured by kind; 2 a close-up of where the part should be; 3 the last check's
+  view. Drawn lines are the plan, never plastic; grey ones, the part layer under a support-only
+  one. A part off its drawn walls, bare sheet inside them, or a part moved since 3: it shifted or
+  came loose.
+- **The plan.** Features and toolpath plan shape and place, never surface quality; the frame
+  shows layers below too: a support, bridge or overhang listed is designed; supports, bridges and
+  infill look open and straight. Rough, porous or strung material is a defect even where
+  planned: judge the surface in the close-up.
 - **Walls** are under-extruded when visibly thinner, gappy or see-through where the part's shape
   would make them solid; texture its shape explains, ribs or lattice, is not.
 - **Strands.** Curved or tangled strands are a defect only inside the part's outline and growing,
   absent from an earlier frame included, or out of place; off the part, on a rail, screw or frame,
   not.
 - **Position.** Judge growth only against the frame the plan's rise names, never by Z or how
-  tall parts look: by the top's height then and the rise since, what should show, not proof it did: compare the tallest
-  printing part's top against a fixed mark at its base, then and now. Short of the rise, likely,
-  unsure or unclear is not printing: a clear defect, never watched.
-  Hidden parts: look again first. A still landmark proves only a still view; a part moved when
-  its base's distance to a fixed sheet hole, edge or mark changed. Each reason gives each part's base
-  pixels from a named landmark; each turn, before looking, measure the event frame so against the
-  last reason's figures. Changed: moved, never uncertain, whatever the cause; no later frame undoes
-  it.
-  So is a part off the bed, a first layer not sticking, or one off its own place, left empty.
-  The plan's X and Y are the bed's, not the frame's: they place nothing in it.
+  tall parts look: by the top's height then and the rise since, what should show, not proof it
+  did: compare the tallest printing part's top then and now. Short of the rise, likely, unsure or
+  unclear is not printing: a clear defect, never watched.
+  A part off the bed, a first layer not sticking, or one off its own place, left empty, has
+  moved: run pause now, before any look; no later frame undoes it. The facts' X and Y are the
+  bed's, placing nothing in a frame.
 
 ## When the detector has already paused the print
 

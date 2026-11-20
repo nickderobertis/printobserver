@@ -30,6 +30,6 @@ pub use alignment::{AlignmentInputs, AlignmentVerdict, verify_first_layer_alignm
 pub use calibration::{
     BedPose, CalibrationError, CameraCalibration, Fit, Intrinsics, Landmark, Motion, SCHEMA_VERSION,
 };
-pub use compose::{CheckImage, CheckImageInputs, compose_check_image};
+pub use compose::{CheckImage, CheckImageInputs, compose_check_image, is_drawn};
 pub use error::{ComposeError, FrameField};
 pub use whole_frame::{WHOLE_FRAME_HEIGHT, WHOLE_FRAME_WIDTH, WholeFrame, whole_frame};

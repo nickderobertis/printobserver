@@ -926,14 +926,32 @@ def _await_recorded(state: Path) -> Recorded:
     return found[-1]
 
 
-def _eventually(what: str, ready: Callable[[], bool]) -> None:
+def _eventually(
+    what: str, ready: Callable[[], bool], explain: Callable[[], str] | None = None
+) -> None:
+    """Wait for `ready`, failing on the deadline with what `explain` reads then."""
     deadline = time.monotonic() + WITHIN_SECONDS
     while time.monotonic() < deadline:
         if ready():
             return
         time.sleep(0.5)
     message = f"{what} within {WITHIN_SECONDS}s"
+    if explain is not None:
+        message += f"\n{explain()}"
     raise AssertionError(message)
+
+
+def _task_state(task: str, program: Path) -> str:
+    """Task Scheduler's own account of one task, and the servers running, as a failure reads it."""
+    told = _powershell_answer(
+        f"$t = Get-ScheduledTask -TaskName {_quoted(task)} -TaskPath '\\'; "
+        "$i = $t | Get-ScheduledTaskInfo; "
+        "'state ' + $t.State; 'last run ' + $i.LastRunTime; "
+        "'last result ' + $i.LastTaskResult; 'missed runs ' + $i.NumberOfMissedRuns; "
+        "'next run ' + $i.NextRunTime",
+        check=False,
+    )
+    return f"Task Scheduler says:\n{told}\nservers running: {_servers(program)}"
 
 
 @pytest.fixture
@@ -1445,6 +1463,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
                 bool((now := _servers(home.program)) and now[0] != killed[0])
                 and _serves(home.program, port)
             ),
+            lambda: _task_state(task, home.program),
         )
 
         # An image and the turn records, read as the user.

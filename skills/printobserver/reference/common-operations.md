@@ -594,6 +594,7 @@ event.received_at: TIMESTAMP
 event.source: system
 frame.id: ID
 frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no camera calibration is configured
 image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 job.completion.out_of_range: false
 job.completion.value: 0.42
@@ -639,6 +640,7 @@ event.received_at: TIMESTAMP
 event.source: system
 frame.id: ID
 frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no print is named, so there is no planned toolpath to draw on it
 image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 job.completion.out_of_range: false
 job.completion.value: 0.42

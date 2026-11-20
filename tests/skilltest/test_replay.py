@@ -17,7 +17,16 @@ from pathlib import Path
 
 import pytest
 from cases import is_start_case, read_case, read_start_case, replayed_case_names
-from replay import PROBE_RECORD, Replay, harness_token, kept_harness, probe, refuse_a_pointer
+from replay import (
+    IMAGE_PROBE_RECORD,
+    PROBE_RECORD,
+    Replay,
+    harness_token,
+    image_probe,
+    kept_harness,
+    probe,
+    refuse_a_pointer,
+)
 from repo_checks import expect
 from starts import StartsReplay
 
@@ -79,6 +88,24 @@ def test_the_supervisor_configuration_alone() -> None:
         directory = Path(RUN_DIR)
         directory.mkdir(parents=True, exist_ok=True)
         (directory / PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+
+def test_the_supervisor_configuration_with_one_check_image() -> None:
+    """The probe turn with one case's check image attached reports what each call read."""
+    program = kept_harness()
+    if program is None:
+        pytest.fail("the shipped harness is not installed: no `claude` is on PATH")
+    if harness_token() is None:
+        pytest.fail("no credential for the harness: set CLAUDE_CODE_OAUTH_TOKEN, or sign in")
+    record = image_probe(program)
+    expect.truth(record["calls"], describing="the image probe to report its calls")
+    expect.equal(
+        (record["width"], record["height"]), (1024, 1848), describing="the check image's size"
+    )
+    if RUN_DIR:
+        directory = Path(RUN_DIR)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / IMAGE_PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
 
 
 def _keep(name: str, record: object, transcript: list[dict[str, object]]) -> None:

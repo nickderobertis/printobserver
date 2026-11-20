@@ -24,13 +24,14 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    BedClearActor, BedClearAssertedPayload, CameraDegradedPayload, CameraLookPayload,
-    CameraRetryPayload, ChargePendedPayload, DetectorHealth, DetectorHealthChangedPayload,
-    DetectorHealthStatus, DetectorStatus, FilamentChangeSignalledPayload, FilamentConsumedPayload,
-    FileTallyRebaselinedPayload, FrameCause, GcodeIndexedPayload, HeatedTool,
-    InterventionExpiredPayload, Look, OperatorAcknowledgementPayload, PeriodicObservationPayload,
-    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
-    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
+    AgentStopUnactedPayload, BedClearActor, BedClearAssertedPayload, CameraDegradedPayload,
+    CameraLookPayload, CameraRetryPayload, ChargePendedPayload, DetectorHealth,
+    DetectorHealthChangedPayload, DetectorHealthStatus, DetectorStatus,
+    FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
+    FrameCause, GcodeIndexedPayload, HeatedTool, InterventionExpiredPayload, Look,
+    OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
+    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext, PrintEndedPayload,
+    PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
     PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
     RecoveryRequestedPayload, ScoringVerdict, SignalPosition, SpoolAdjustedPayload,
     SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
@@ -112,6 +113,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<ActionRejectedPayload>("ActionRejectedPayload"),
         kind_of::<InterventionExpiredPayload>("InterventionExpiredPayload"),
         kind_of::<AgentAssessmentPayload>("AgentAssessmentPayload"),
+        kind_of::<AgentStopUnactedPayload>("AgentStopUnactedPayload"),
         kind_of::<OperatorAcknowledgementPayload>("OperatorAcknowledgementPayload"),
         kind_of::<PortFailurePayload>("PortFailurePayload"),
         kind_of::<CameraLookPayload>("CameraLookPayload"),
@@ -237,6 +239,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("ActionRejectedPayload", "action_rejected"),
             ("InterventionExpiredPayload", "intervention_expired"),
             ("AgentAssessmentPayload", "agent_assessment"),
+            ("AgentStopUnactedPayload", "agent_stop_unacted"),
             ("OperatorAcknowledgementPayload", "operator_acknowledgement"),
             ("PortFailurePayload", "port_failure"),
             ("CameraLookPayload", "camera_look"),
@@ -431,6 +434,7 @@ fn a_look_carries_exactly_the_stated_fields() {
             field("detector_paused", "boolean", true),
             field("event", "EventRecord", true),
             field("frame", "ImageRef", false),
+            field("image_note", "string", false),
             field("image_path", "string", false),
             field("job", "JobSnapshot", false),
             field("printer", "PrinterSnapshot", false),
@@ -444,7 +448,14 @@ fn a_look_carries_exactly_the_stated_fields() {
     }
     let minimal = look.minimal();
     let object = minimal.as_object().expect("an object");
-    for name in ["arrived", "frame", "image_path", "printer", "job"] {
+    for name in [
+        "arrived",
+        "frame",
+        "image_path",
+        "image_note",
+        "printer",
+        "job",
+    ] {
         assert!(
             !object.contains_key(name),
             "the minimal look carries {name}"

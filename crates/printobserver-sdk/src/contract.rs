@@ -476,6 +476,23 @@ pub struct AgentPrinter {
     pub tools: Option<Vec<AgentHeater>>,
 }
 
+/// The agent answered that a running print should stop, and asked for no
+/// pause or cancel — not even when asked again — so nothing stopped it.
+///
+/// An answer records a judgement and does not act: acting is a request that
+/// policy rules on. Written to the print's history, where a refused pause is,
+/// so the person reading it is told the print the agent judged should stop is
+/// still running.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentStopUnactedPayload {
+    /// The event the turn was about.
+    pub event_id: EventId,
+    /// The session the turn ran in.
+    pub session_name: String,
+    /// What the agent said it saw, as its answer's summary put it.
+    pub summary: String,
+}
+
 /// Who may say the bed is clear: the operator, and no other actor.
 ///
 /// Its own type rather than `Actor`, so that a record of the agent's or the
@@ -1393,6 +1410,11 @@ pub struct Look {
     /// gave none — which the history records as a port failure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame: Option<ImageRef>,
+    /// What the image at `image_path` is, and why it is that one, in one
+    /// line;
+    /// absent with no image, or when what made it says nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_note: Option<String>,
     /// The absolute path the frame's bytes are at, on the supervisor's host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_path: Option<String>,
@@ -3834,6 +3856,10 @@ impl EventPayloadKind for AgentAssessmentPayload {
     const KIND: &'static str = "agent_assessment";
 }
 
+impl EventPayloadKind for AgentStopUnactedPayload {
+    const KIND: &'static str = "agent_stop_unacted";
+}
+
 impl EventPayloadKind for BedClearAssertedPayload {
     const KIND: &'static str = "bed_clear_asserted";
 }
@@ -3987,11 +4013,12 @@ impl EventPayloadKind for UnattendedPrinterActivityPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 42] = [
+pub const EVENT_KINDS: [&str; 43] = [
     "action_executed",
     "action_rejected",
     "action_requested",
     "agent_assessment",
+    "agent_stop_unacted",
     "bed_clear_asserted",
     "camera_degraded",
     "camera_look",
