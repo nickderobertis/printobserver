@@ -2112,7 +2112,7 @@ def test_the_record_works_out_each_figure_the_budgets_read(
 ) -> None:
     """Every figure is the value worked out by hand from known calls, history-free inputs included.
 
-    One test of three checks — quiet, acting, quiet — and a probe whose first call reads
+    One test of two checks — quiet, then acting — and a probe whose first call reads
     4,000. Each call's input is its input, cache reads and cache writes.
     """
     monkeypatch.setattr(record, "commit", lambda: "a-commit")

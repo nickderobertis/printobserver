@@ -68,7 +68,7 @@ class Detail(TypedDict):
     tests: list[TestRecord]
     probe: ProbeRecord | None
     #: What each figure was worked out from, by the figure's name.
-    figures: dict[str, Any]
+    figures: FiguresDetail
 
 
 class RunRecord(TypedDict):
@@ -259,12 +259,112 @@ def _median(values: list[int]) -> float:
     return float(statistics.median(values))
 
 
+class CheckCalls(TypedDict):
+    """One check and how many model calls it made."""
+
+    test: str
+    scenario: str
+    calls: int
+
+
+class QuietCalls(TypedDict):
+    """What the quiet checks' calls figure was worked out from."""
+
+    checks: int
+    max: int
+    above_one_call: list[CheckCalls]
+
+
+class ActingCheck(TypedDict):
+    """One acting check, its calls and the commands it ran."""
+
+    test: str
+    scenario: str
+    calls: int
+    commands: list[str]
+
+
+class CheckLooks(TypedDict):
+    """One check and how many looks it took."""
+
+    test: str
+    scenario: str
+    looks: int
+
+
+class ActingCalls(TypedDict):
+    """What the acting checks' calls figure was worked out from."""
+
+    checks: int
+    max: int
+    each: list[ActingCheck]
+    looked_again: list[CheckLooks]
+
+
+class CheckInput(TypedDict):
+    """One check's history-free input, its calls and the history it carried in."""
+
+    test: str
+    scenario: str
+    input: int
+    calls: int
+    history: int | None
+
+
+class ClassInput(TypedDict):
+    """What one class's input figure was worked out from."""
+
+    median_raw_input: float
+    each: list[CheckInput]
+
+
+class BaseContext(TypedDict):
+    """What the base-context figure was worked out from: the probe's first call."""
+
+    cache_write_tokens: int
+    cache_read_tokens: int
+    input_tokens: int
+    skill_bytes: int
+
+
+class FiguresDetail(TypedDict, total=False):
+    """What each figure the run could work out was worked out from, by its name."""
+
+    quiet_check_model_calls: QuietCalls
+    acting_check_model_calls: ActingCalls
+    quiet_check_input_tokens: ClassInput
+    acting_check_input_tokens: ClassInput
+    base_context_tokens: BaseContext
+
+
+def _class_input(checks: list[Check]) -> tuple[float, ClassInput] | None:
+    """One class's median history-free input and its detail, when any check has one."""
+    each: list[CheckInput] = [
+        {
+            "test": check["test"],
+            "scenario": check["scenario"],
+            "input": check["input"],
+            "calls": check["calls"],
+            "history": check["history"],
+        }
+        for check in checks
+        if check["input"] is not None
+    ]
+    if not each:
+        return None
+    raw = [check["raw_input"] for check in checks if check["input"] is not None]
+    return _median([entry["input"] for entry in each]), {
+        "median_raw_input": _median(raw),
+        "each": each,
+    }
+
+
 def figures_of(
     checks: list[Check], probe: ProbeRecord | None
-) -> tuple[dict[str, float], dict[str, Any]]:
+) -> tuple[dict[str, float], FiguresDetail]:
     """The figures this run's budgets read, and what each was worked out from."""
     figures: dict[str, float] = {}
-    detail: dict[str, Any] = {}
+    detail: FiguresDetail = {}
     quiet = [check for check in checks if check["check_class"] == "quiet"]
     acting = [check for check in checks if check["check_class"] == "acting"]
     if quiet:
@@ -298,26 +398,12 @@ def figures_of(
                 if check["looks"]
             ],
         }
-    for name, of_class in (("quiet", quiet), ("acting", acting)):
-        figured = [check for check in of_class if check["input"] is not None]
-        if not figured:
-            continue
-        figures[f"{name}_check_input_tokens"] = _median(
-            [check["input"] for check in figured if check["input"] is not None]
-        )
-        detail[f"{name}_check_input_tokens"] = {
-            "median_raw_input": _median([check["raw_input"] for check in figured]),
-            "each": [
-                {
-                    "test": check["test"],
-                    "scenario": check["scenario"],
-                    "input": check["input"],
-                    "calls": check["calls"],
-                    "history": check["history"],
-                }
-                for check in figured
-            ],
-        }
+    quiet_input = _class_input(quiet)
+    if quiet_input is not None:
+        figures["quiet_check_input_tokens"], detail["quiet_check_input_tokens"] = quiet_input
+    acting_input = _class_input(acting)
+    if acting_input is not None:
+        figures["acting_check_input_tokens"], detail["acting_check_input_tokens"] = acting_input
     if probe is not None:
         first = probe["calls"][0]
         figures["base_context_tokens"] = float(call_input(first))
