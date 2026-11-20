@@ -241,6 +241,20 @@ impl CameraCalibration {
         if !is_date(&calibration.fit.calibrated_at) {
             return Err(invalid("fit.calibrated_at", "is not a YYYY-MM-DD date"));
         }
+        // The drift check rules only on two visible landmarks; a file naming
+        // fewer, or one landmark twice, could never rule or would count one
+        // feature as two.
+        let names: std::collections::BTreeSet<&str> = calibration
+            .landmarks
+            .iter()
+            .map(|landmark| landmark.name.as_str())
+            .collect();
+        if names.len() < 2 || names.len() != calibration.landmarks.len() {
+            return Err(invalid(
+                "landmarks",
+                "must name at least two chassis landmarks, each once",
+            ));
+        }
         let mut patches = Vec::with_capacity(calibration.landmarks.len());
         for landmark in &calibration.landmarks {
             finite("landmarks.center_px", &landmark.center_px, false)?;

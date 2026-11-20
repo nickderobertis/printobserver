@@ -113,6 +113,16 @@ fn an_invalid_calibration_is_refused_naming_its_key() {
     edit("landmarks.patch_png_base64", |v| {
         v["landmarks"][0]["patch_png_base64"] = "%%".into();
     });
+    edit("landmarks", |v| {
+        v["landmarks"]
+            .as_array_mut()
+            .expect("landmarks")
+            .truncate(1);
+    });
+    edit("landmarks", |v| {
+        let first = v["landmarks"][0]["name"].clone();
+        v["landmarks"][1]["name"] = first;
+    });
     for (field, value) in &cases {
         assert_eq!(refused_field(value), *field);
     }
