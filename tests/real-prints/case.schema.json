@@ -10,6 +10,11 @@
       "description": "The case's name, which is its directory's name.",
       "type": "string"
     },
+    "camera_calibration": {
+      "description": "The camera calibration this case's frames are projected through, relative to the case: a file under `../cameras/`. Only a case on which that calibration's projection was verified names one; a case naming none keeps the whole frame in its checks.",
+      "type": "string",
+      "pattern": "^\\.\\./cameras/[a-z0-9-]+\\.json$"
+    },
     "frames": {
       "description": "Every frame of the case, each with a label.",
       "type": "array",

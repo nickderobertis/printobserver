@@ -1,0 +1,28 @@
+{
+  "name": "printobserver-panels-fixtures",
+  "root": "crates/printobserver-panels/tests/fixtures_suite",
+  "projectType": "library",
+  "tags": [
+    "type:fixtures"
+  ],
+  "implicitDependencies": [
+    "printobserver-panels",
+    "printobserver-core"
+  ],
+  "targets": {
+    "test": {
+      "command": "bash -c 'if [ \"${OS:-}\" = Windows_NT ]; then export LLVM_PROFILE_FILE_NAME=printobserver-panels-fixtures-%p-%m.profraw; fi; exec cargo llvm-cov nextest -p printobserver-panels --no-report --test fixtures'",
+      "inputs": [
+        "{projectRoot}/**/*",
+        "{workspaceRoot}/crates/printobserver-panels/src/**/*",
+        "{workspaceRoot}/crates/printobserver-panels/assets/**/*",
+        "{workspaceRoot}/crates/printobserver-panels/tests/fixtures/**/*",
+        "{workspaceRoot}/crates/printobserver-core/src/**/*",
+        "{workspaceRoot}/crates/printobserver-core/tests/fixtures/real-prints/**/*",
+        "{workspaceRoot}/crates/printobserver-server/tests/fixtures/real-prints/**/*",
+        "{workspaceRoot}/tests/real-prints/cameras/**/*",
+        "sharedGlobals"
+      ]
+    }
+  }
+}

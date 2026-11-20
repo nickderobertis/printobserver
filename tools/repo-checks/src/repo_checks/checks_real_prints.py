@@ -45,6 +45,8 @@ from repo_checks.shell import discovered_no_higher_than, run
 ROOT = "tests/real-prints"
 SCHEMA = f"{ROOT}/case.schema.json"
 CASE_FILE = "case.json"
+# Beside the cases and no case itself: the camera calibrations cases name.
+CAMERAS = "cameras"
 HISTORY = "printobserver-history.json"
 HISTORY_SCHEMA = "schemas/printobserver-server/HistoryAnswer.json"
 SERVICE_CONFIG = f"{ROOT}/service-config.toml"
@@ -440,10 +442,13 @@ class Case:
         """Every file the case.json refers to and so must carry.
 
         Each `file` field, each scenario image, and every file named in
-        `sources` and `obico_scores`. Every other field's prose may mention a
+        `sources` and `obico_scores`, and the camera calibration it names.
+        Every other field's prose may mention a
         file — `see its make_plate.py` — without that being a reference.
         """
         yield from _file_fields({k: v for k, v in self.document.items() if k != "assertions"})
+        if isinstance(calibration := self.document.get("camera_calibration"), str):
+            yield calibration
         for scenario in self.scenarios:
             yield from scenario.images
         texts = [*self.document.get("sources", {}).values(), self.document.get("obico_scores", "")]
@@ -538,7 +543,9 @@ def _cases(repo: Repo) -> Iterator[tuple[str, Case | list[str]]]:
     """Every case directory by name, read, or the problems that stopped it."""
     case_schema = _validator(repo, SCHEMA)
     history_schema = _validator(repo, HISTORY_SCHEMA)
-    for directory in sorted(p for p in repo.path(ROOT).iterdir() if p.is_dir()):
+    for directory in sorted(
+        p for p in repo.path(ROOT).iterdir() if p.is_dir() and p.name != CAMERAS
+    ):
         yield directory.name, _read_case(directory, case_schema, history_schema)
 
 

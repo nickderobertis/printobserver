@@ -1,0 +1,230 @@
+{
+ "about": "Plain copies of recorded real-print frames, outside the Git LFS paths: each entry names the case frame it was copied from, when it was captured, and the print height (z_mm) and file position the case records for it.",
+ "frames": [
+  {
+   "case": "jar-top-wrong-material-first-layer-detach",
+   "file": "agent-001-obs-181445-p00.0.jpg",
+   "source": "tests/real-prints/jar-top-wrong-material-first-layer-detach/agent-001-obs-181445-p00.0.jpg",
+   "captured_at": "2026-10-29 18:14:45",
+   "z_mm": null,
+   "progress_pct": 0.0,
+   "file_position_bytes": null
+  },
+  {
+   "case": "jar-top-wrong-material-first-layer-detach",
+   "file": "agent-007-obs-182248-p00.3.jpg",
+   "source": "tests/real-prints/jar-top-wrong-material-first-layer-detach/agent-007-obs-182248-p00.3.jpg",
+   "captured_at": "2026-10-29 18:22:48",
+   "z_mm": 0.4,
+   "progress_pct": 0.3,
+   "file_position_bytes": 13018
+  },
+  {
+   "case": "jar-top-wrong-material-first-layer-detach",
+   "file": "agent-008-look-182419.jpg",
+   "source": "tests/real-prints/jar-top-wrong-material-first-layer-detach/agent-008-look-182419.jpg",
+   "captured_at": "2026-10-29 18:24:19",
+   "z_mm": 0.4,
+   "progress_pct": 0.3,
+   "file_position_bytes": null
+  },
+  {
+   "case": "jar-top-wrong-material-first-layer-detach",
+   "file": "agent-009-obs-182450-p03.1.jpg",
+   "source": "tests/real-prints/jar-top-wrong-material-first-layer-detach/agent-009-obs-182450-p03.1.jpg",
+   "captured_at": "2026-10-29 18:24:50",
+   "z_mm": 1.6,
+   "progress_pct": 3.1,
+   "file_position_bytes": 143566
+  },
+  {
+   "case": "jar-top-wrong-material-detach-spaghetti",
+   "file": "agent-001-obs-190853-p00.0.jpg",
+   "source": "tests/real-prints/jar-top-wrong-material-detach-spaghetti/agent-001-obs-190853-p00.0.jpg",
+   "captured_at": "2026-10-29 19:08:53",
+   "z_mm": null,
+   "progress_pct": 0.0,
+   "file_position_bytes": null
+  },
+  {
+   "case": "jar-top-wrong-material-detach-spaghetti",
+   "file": "agent-006-obs-191658-p04.3.jpg",
+   "source": "tests/real-prints/jar-top-wrong-material-detach-spaghetti/agent-006-obs-191658-p04.3.jpg",
+   "captured_at": "2026-10-29 19:16:58",
+   "z_mm": 1.8,
+   "progress_pct": 4.3,
+   "file_position_bytes": null
+  },
+  {
+   "case": "jar-top-wrong-material-detach-spaghetti",
+   "file": "agent-020-obs-193110-p34.3.jpg",
+   "source": "tests/real-prints/jar-top-wrong-material-detach-spaghetti/agent-020-obs-193110-p34.3.jpg",
+   "captured_at": "2026-10-29 19:31:10",
+   "z_mm": 8.4,
+   "progress_pct": 34.3,
+   "file_position_bytes": 1609341
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-001-obs-120024-p00.0.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-001-obs-120024-p00.0.jpg",
+   "captured_at": "2026-10-30 12:00:24",
+   "z_mm": null,
+   "progress_pct": 0.0,
+   "file_position_bytes": null
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-007-obs-121230-p01.3.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-007-obs-121230-p01.3.jpg",
+   "captured_at": "2026-10-30 12:12:30",
+   "z_mm": 0.6,
+   "progress_pct": 1.3,
+   "file_position_bytes": null
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-018-obs-123246-p24.5.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-018-obs-123246-p24.5.jpg",
+   "captured_at": "2026-10-30 12:32:46",
+   "z_mm": 5.4,
+   "progress_pct": 24.5,
+   "file_position_bytes": 1385571
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-027-obs-124858-p38.9.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-027-obs-124858-p38.9.jpg",
+   "captured_at": "2026-10-30 12:48:58",
+   "z_mm": 9.58,
+   "progress_pct": 38.9,
+   "file_position_bytes": 2198070
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-028-obs-125100-p39.7.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-028-obs-125100-p39.7.jpg",
+   "captured_at": "2026-10-30 12:51:00",
+   "z_mm": 9.8,
+   "progress_pct": 39.7,
+   "file_position_bytes": 2244987
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-031-obs-125703-p43.2.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-031-obs-125703-p43.2.jpg",
+   "captured_at": "2026-10-30 12:57:03",
+   "z_mm": 10.6,
+   "progress_pct": 43.2,
+   "file_position_bytes": 2439105
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-049-obs-133131-p59.0.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-049-obs-133131-p59.0.jpg",
+   "captured_at": "2026-10-30 13:31:31",
+   "z_mm": 23.4,
+   "progress_pct": 59.0,
+   "file_position_bytes": 3330051
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-059-obs-135146-p74.2.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-059-obs-135146-p74.2.jpg",
+   "captured_at": "2026-10-30 13:51:46",
+   "z_mm": 33.4467,
+   "progress_pct": 74.2,
+   "file_position_bytes": 4189291
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-069-obs-141200-p88.4.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-069-obs-141200-p88.4.jpg",
+   "captured_at": "2026-10-30 14:12:00",
+   "z_mm": 42.0,
+   "progress_pct": 88.4,
+   "file_position_bytes": 4995731
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-074-obs-142205-p97.0.jpg",
+   "source": "tests/real-prints/jar-top-petg-healthy/agent-074-obs-142205-p97.0.jpg",
+   "captured_at": "2026-10-30 14:22:05",
+   "z_mm": 44.0,
+   "progress_pct": 97.0,
+   "file_position_bytes": null
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-001-obs-164721-p00.0.jpg",
+   "source": "tests/real-prints/bubbler-guard-and-pad-pla-healthy/agent-001-obs-164721-p00.0.jpg",
+   "captured_at": "2026-10-31 16:47:21",
+   "z_mm": null,
+   "progress_pct": 0.0,
+   "file_position_bytes": null
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-003-obs-165123-p00.1.jpg",
+   "source": "tests/real-prints/bubbler-guard-and-pad-pla-healthy/agent-003-obs-165123-p00.1.jpg",
+   "captured_at": "2026-10-31 16:51:23",
+   "z_mm": 0.2,
+   "progress_pct": 0.1,
+   "file_position_bytes": 6639
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-005-obs-165325-p01.7.jpg",
+   "source": "tests/real-prints/bubbler-guard-and-pad-pla-healthy/agent-005-obs-165325-p01.7.jpg",
+   "captured_at": "2026-10-31 16:53:25",
+   "z_mm": 1.0,
+   "progress_pct": 1.7,
+   "file_position_bytes": 81152
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-016-obs-170731-p13.8.jpg",
+   "source": "tests/real-prints/bubbler-guard-and-pad-pla-healthy/agent-016-obs-170731-p13.8.jpg",
+   "captured_at": "2026-10-31 17:07:31",
+   "z_mm": 10.8,
+   "progress_pct": 13.8,
+   "file_position_bytes": 663077
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-048-obs-180412-p65.7.jpg",
+   "source": "tests/real-prints/bubbler-guard-and-pad-pla-healthy/agent-048-obs-180412-p65.7.jpg",
+   "captured_at": "2026-10-31 18:04:12",
+   "z_mm": 58.8,
+   "progress_pct": 65.7,
+   "file_position_bytes": 3165482
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-067-obs-184042-p89.2.jpg",
+   "source": "tests/real-prints/bubbler-guard-and-pad-pla-healthy/agent-067-obs-184042-p89.2.jpg",
+   "captured_at": "2026-10-31 18:40:42",
+   "z_mm": 103.4,
+   "progress_pct": 89.2,
+   "file_position_bytes": 4295514
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-086-obs-191910-p98.6.jpg",
+   "source": "tests/real-prints/bubbler-guard-and-pad-pla-healthy/agent-086-obs-191910-p98.6.jpg",
+   "captured_at": "2026-10-31 19:19:10",
+   "z_mm": 141.6,
+   "progress_pct": 98.6,
+   "file_position_bytes": 4748846
+  },
+  {
+   "case": "fan-cut-bridge",
+   "file": "01-healthy-before-fault-p41.jpg",
+   "source": "tests/real-prints/fan-cut-bridge/01-healthy-before-fault-p41.jpg",
+   "captured_at": null,
+   "z_mm": null,
+   "progress_pct": 41.0,
+   "file_position_bytes": 184716
+  }
+ ]
+}

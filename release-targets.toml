@@ -92,6 +92,14 @@ what = "Obico adapter for printobserver."
 published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-obico/Cargo.toml's [package] name and the workspace Cargo.toml's version."
 manifest = "crates/printobserver-obico/Cargo.toml"
 
+# The camera calibration, drift and alignment checks and the check image.
+[[target]]
+id = "crate:printobserver-panels"
+name = "crate-panels"
+what = "Camera calibration, drift and alignment checks, and the check image's panels, for printobserver."
+published_by = ".github/workflows/release-plz.yml — the release job's `release-plz release`, under crates/printobserver-panels/Cargo.toml's [package] name and the workspace Cargo.toml's version."
+manifest = "crates/printobserver-panels/Cargo.toml"
+
 # The oneharness adapter behind the supervisor port.
 [[target]]
 id = "crate:printobserver-oneharness"

@@ -741,6 +741,7 @@ impl Supervisor {
             )
             .await?;
         self.close_session_of(print_id, reason).await?;
+        self.drop_gcode_spool(print_id);
         self.follow_up_end(print_id).await;
         Ok(true)
     }

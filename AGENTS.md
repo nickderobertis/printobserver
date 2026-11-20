@@ -1422,7 +1422,7 @@ that step *answered* it released, never on its exit status. `just check-repo`'s
 `tests/repo-e2e-independent/tests/test_release_workflow_journey.py` runs the committed
 workflow under the forge's scheduling rules to prove them.
 
-**Every release is a release of all twelve crates, at one version.** They
+**Every release is a release of all thirteen crates, at one version.** They
 inherit one `[workspace.package] version`, so `release-plz.toml` puts every
 crate in one `version_group`, and every requirement one crate makes of another
 is inherited from its `[workspace.dependencies]` entry rather than written in
@@ -1502,7 +1502,7 @@ version, which is the state to fix instead.
 workspace version, both named `v<version>`, and both created by the
 `printobserver` package after its own `cargo publish` — which release ordering
 places after every other publishable crate's, because that crate depends on all
-of them. One package rather than twelve because release-plz tags and releases
+of them. One package rather than thirteen because release-plz tags and releases
 *per package*, in release order, and under the one name every package renders
 the second to publish dies creating a ref the first already created, leaving the
 rest unpublished. So `release-plz.toml` turns creation off under `[workspace]`

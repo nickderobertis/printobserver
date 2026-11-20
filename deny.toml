@@ -36,6 +36,9 @@ allow = [
     "ISC",
     "MIT",
     "MIT-0",
+    # The label font `printobserver-panels` bundles, Liberation Mono, with its
+    # licence file beside it; the crate declares `MIT AND OFL-1.1`.
+    "OFL-1.1",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
