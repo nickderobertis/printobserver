@@ -724,22 +724,37 @@ def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
 def test_a_supervision_turns_compound_command_is_reported_under_its_conversation(
     scratch: Path,
 ) -> None:
-    """A piped read is written down under the session it ran in, and the record carries it.
+    """A chained read is written down under the session it ran in, and the record carries it.
 
     With no ledger turn to read a decision point's session from, it is the print's last.
     """
     case = read_case("jar-top-wrong-material-first-layer-detach")
-    piped = "printobserver context --print-id {print} --json | head -5"
-    done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
+    chained = "printobserver context --print-id {print} --json; echo read"
+    done = mock_replay(case, [{"commands": [chained]}, {"commands": [CONTEXT]}], scratch)
     replayed = done.replayed
     sessions = [session["session_name"] for session in replayed.ledger["sessions"]]
     equal(len(sessions), 1)
-    ran = [line for line in replayed.points[0].commands if "| head" in line]
+    ran = [line for line in replayed.points[0].commands if "; echo read" in line]
     equal(len(ran), 1)
     equal(replayed.compound_commands(), {sessions[0]: ran})
     equal(replayed.as_record()["compound_commands"], {sessions[0]: ran})
     unattributed = dataclasses.replace(replayed, ledger={**replayed.ledger, "turns": []})
     equal(unattributed.compound_commands(), {sessions[0]: ran})
+
+
+def test_a_read_piped_only_through_a_filter_is_no_compound_command(scratch: Path) -> None:
+    """Production runs a read piped into `grep`, so the run's record reports nothing of it."""
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    piped = 'printobserver context --print-id {print} --json | grep -E "detector|slicer"'
+    done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
+    replayed = done.replayed
+    ran = [line for line in replayed.points[0].commands if "| grep" in line]
+    equal(len(ran), 1)
+    equal(replayed.compound_commands(), {session: [] for session in replayed.compound_commands()})
+    truth(
+        all(not lines for lines in replayed.as_record()["compound_commands"].values()),
+        describing="the record to carry no compound command",
+    )
 
 
 def test_a_printer_that_cannot_be_read_still_gets_its_scheduled_check(scratch: Path) -> None:

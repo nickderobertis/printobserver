@@ -227,14 +227,53 @@ def runs_the_program(words: list[str]) -> bool:
     return bool(named) and _program(named[0]) == "printobserver"
 
 
+#: The operator a pipe is written in.
+PIPE = "|"
+#: The text filters a `printobserver` command's output may be piped through. Each only
+#: reads what it is handed, and Claude Code runs a pipe into one under a rule allowing
+#: the command before it, so such a line costs nothing a production turn would refuse.
+READ_ONLY_FILTERS = {"grep", "egrep", "fgrep", "head", "tail", "wc", "sort", "uniq", "cut"}
+
+
+def _filtered(line: str) -> bool:
+    """Whether a line is one `printobserver` command piped only through read-only filters.
+
+    No other operator, redirection, substitution, group or wrapper is in it.
+    """
+    outer, read = substitutions(line)
+    tokens = _tokens(outer)
+    if read or tokens is None or PIPE not in tokens:
+        return False
+    found: list[list[str]] = [[]]
+    for token in tokens:
+        if token == PIPE:
+            found.append([])
+        elif _separates(token) or set(token) & set(REDIRECTION):
+            return False
+        else:
+            found[-1].append(token)
+    first, *filters = found
+    return (
+        bool(first)
+        and _named(first) == first
+        and _program(first[0]) == "printobserver"
+        and bool(filters)
+        and all(words and _program(words[0]) in READ_ONLY_FILTERS for words in filters)
+    )
+
+
 def is_compound(line: str) -> bool:
-    """Whether a line runs a `printobserver` command beside or inside another command.
+    """Whether a line runs a `printobserver` command beside or inside another action.
 
     Chained to another in one line, run after `cd`, run in a group or a substitution,
     or run through a wrapper or a shell's `-c`. The harness's permission rules allow a
-    command by how it begins, so the skill asks for one command per call.
+    command by how it begins and refuse such a line, so the skill asks for one command
+    per call. A pipe only into read-only filters, `printobserver context | grep x`, is
+    not one: production runs it, and the filter acts on nothing.
     """
     run = commands(line)
     if not any(runs_the_program(words) for words in run):
+        return False
+    if _filtered(line):
         return False
     return len(run) > 1 or _grouped(line)
