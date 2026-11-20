@@ -535,7 +535,8 @@ def test_the_held_cli_is_the_one_the_sdk_brings() -> None:
     """`repo-policy.toml`'s onebudgetspec, the dev group's SDK pin and the lock name one release."""
     held = next(t for t in toolchain_tools(Repo(REPO_ROOT)) if t.command == "onebudgetspec")
     lock = tomllib.loads((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
-    locked = {p["name"]: p["version"] for p in lock["package"]}
+    # A virtual workspace member, the calibration tool, is locked with no version.
+    locked = {p["name"]: p["version"] for p in lock["package"] if "version" in p}
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     equal(locked["onebudgetspec-cli"], held.version)

@@ -32,6 +32,7 @@ REQUIRED_CRATES = (
     "printobserver-core",
     "printobserver-server",
     "printobserver-sdk",
+    "printobserver-panels",
     "printobserver",
 )
 
@@ -374,7 +375,8 @@ def test_the_table_equals_the_graph_the_design_states(committed: Repo) -> None:
     supervision domain on the type crate and the three ports and on no adapter
     or store; and every adapter and the store are admitted by the server's row
     and by no other. The command reaches them through the server, and its tests
-    alone take the store and the domain directly.
+    take the store and the domain directly; the panels crate's tests alone take
+    the printer port, whose double serves the G-code they index.
     """
     table = committed.policy["crates"]["may_depend_on"]
     equal(table["printobserver-types"], [])
@@ -399,7 +401,12 @@ def test_the_table_equals_the_graph_the_design_states(committed: Repo) -> None:
         admitting = sorted(name for name, admitted in table.items() if implementation in admitted)
         equal(admitting, ["printobserver-server"], describing=implementation)
     in_tests = committed.policy["crates"]["may_depend_on_in_tests"]
-    equal(sorted(in_tests), ["printobserver"], describing="the crates with test-only edges")
+    equal(
+        sorted(in_tests),
+        ["printobserver", "printobserver-panels"],
+        describing="the crates with test-only edges",
+    )
+    equal(in_tests["printobserver-panels"], ["printobserver-printer-api"])
 
 
 def test_the_server_is_the_only_crate_that_names_an_implementation(

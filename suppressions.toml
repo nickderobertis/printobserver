@@ -208,6 +208,54 @@ reason = "Obico's alert acknowledgement — `POST /api/v1/printers/<id>/acknowle
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "format!(\"/api/v1/printers/{id}/\")"
+reason = "Obico's printer record — `GET /api/v1/printers/<id>/` under the configured bearer token, carrying `current_print`, `pic` and `normalized_p` — is a third-party REST route Obico publishes no machine-readable source for. Its answer was recorded from a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins, which answered this read `200` under a minted bearer access token and refused it `403` with no credential and with the printer's own token, and the server's journeys drive this read against a loopback double serving that recording. `tools/obico-env/obico_record.py` reads this route from the stack `tools/obico-env` brings up under a minted bearer token and rewrites that recording, so re-running it is the comparison with the real Obico; it is run by hand rather than on the scheduled tier."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "struct PrinterAnswer {"
+reason = "Obico's printer record — the `id`, `current_print` (its `id`, `filename` and `started_at`), `pic` (its `img_url`) and `normalized_p` that `GET /api/v1/printers/<id>/` answers — is a third-party REST shape Obico publishes no machine-readable schema for. The fields are those of an answer recorded from a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins under a bearer access token, and the shape is held strictly: a field missing, a printer other than the one asked for, or a start that is not an instant refuses the read rather than defaulting. `tools/obico-env/obico_record.py` re-reads this record from the stack `tools/obico-env` brings up under a minted bearer token and rewrites the recording the server journeys serve, so re-running it is the comparison with the real Obico; it is run by hand rather than on the scheduled tier."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "struct Snapshot {"
+reason = "One of the shapes inside Obico's printer record — the snapshot, `pic`, and its `img_url` — which `GET /api/v1/printers/<id>/` answers and Obico publishes no machine-readable schema for. Its fields were read off a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins by the check-costs spike, and every one is required, so an answer of another shape refuses the read. `tools/obico-env/obico_record.py` re-reads this record from the stack `tools/obico-env` brings up under a minted bearer token and rewrites the recording the server journeys serve, so re-running it is the comparison with the real Obico; it is run by hand rather than on the scheduled tier."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "crates/printobserver-obico/src/scoring.rs"
+site = "struct CurrentPrint {"
+reason = "One of the shapes inside Obico's printer record — the print it watches, `current_print`, with its `id`, `filename` and `started_at` — which `GET /api/v1/printers/<id>/` answers and Obico publishes no machine-readable schema for. Its fields were read off a real self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins by the check-costs spike, and every one is required, so an answer of another shape refuses the read. `tools/obico-env/obico_record.py` re-reads this record from the stack `tools/obico-env` brings up under a minted bearer token and rewrites the recording the server journeys serve, so re-running it is the comparison with the real Obico; it is run by hand rather than on the scheduled tier."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "PRINTER_RECORD = re.compile(r\"/api/v1/printers/\\d+/\")"
+reason = "The real-print suite's Obico double restates the route of Obico's printer record, `GET /api/v1/printers/<id>/`, which Obico publishes no machine-readable schema for, so it can answer the server's scoring read from each case's recorded detector state. It is held to the same shape the server's own reader requires — every field present, the printer the one asked for — by the replay wiring suite driving the real server against it, and the fields were read off a real self-hosted Obico by the check-costs spike. Reconciling the record against the live stack is the scheduled Obico tier's, drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class ObicoSnapshot(TypedDict):"
+reason = "The real-print suite's Obico double restates the snapshot shape, `pic`, of Obico's printer record, `GET /api/v1/printers/<id>/`, which Obico publishes no machine-readable schema for, so it can answer the server's scoring read from each case's recorded detector state. It is held to the same shape the server's own reader requires — every field present, the printer the one asked for — by the replay wiring suite driving the real server against it, and the fields were read off a real self-hosted Obico by the check-costs spike. Reconciling the record against the live stack is the scheduled Obico tier's, drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class ObicoPrint(TypedDict):"
+reason = "The real-print suite's Obico double restates the current print's shape, `current_print`, of Obico's printer record, `GET /api/v1/printers/<id>/`, which Obico publishes no machine-readable schema for, so it can answer the server's scoring read from each case's recorded detector state. It is held to the same shape the server's own reader requires — every field present, the printer the one asked for — by the replay wiring suite driving the real server against it, and the fields were read off a real self-hosted Obico by the check-costs spike. Reconciling the record against the live stack is the scheduled Obico tier's, drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class ObicoPrinterRecord(TypedDict):"
+reason = "The real-print suite's Obico double restates the whole shape of Obico's printer record, `GET /api/v1/printers/<id>/`, which Obico publishes no machine-readable schema for, so it can answer the server's scoring read from each case's recorded detector state. It is held to the same shape the server's own reader requires — every field present, the printer the one asked for — by the replay wiring suite driving the real server against it, and the fields were read off a real self-hosted Obico by the check-costs spike. Reconciling the record against the live stack is the scheduled Obico tier's, drafted as a follow-up."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
 file = "crates/printobserver-obico/src/health.rs"
 site = "pub const HEALTH_PATH: &str = \"hc/\";"
 reason = "Obico's detector service (`ml_api`) answers its own unauthenticated health route `GET /hc/`, which Obico publishes no machine-readable source for. The route was measured against the self-hosted Obico at the revision `tools/obico-env/obico_env.py` pins, by the observability spike that settled this check: `ok` while the detector is up and refused once it is stopped, while the credentialed web API stays up. The server's journeys drive it against a stand-in on a real socket; the scheduled Obico tier (`tools/obico-env/obico_tier.py`) reconciles the webhook payload only, and extending it to ask the live stack's `ml_api` for this route is drafted as a follow-up."
@@ -4642,7 +4690,7 @@ reason = "A one-shot local program run through `repo_checks.shell.run`, the repo
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest-wiring/mock_turn.py"
-site = "done = run(words, timeout=TIMEOUT_S)"
+site = "done = run(argv, timeout=TIMEOUT_S)"
 reason = "A one-shot local program run through `repo_checks.shell.run`, the repository's one subprocess site, by a command-line tool with nothing else to do meanwhile: there is no service client to type and no concurrency an async form would serve."
 
 [[suppression]]
@@ -4680,6 +4728,60 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/repo-checks/src/repo_checks/checks_real_prints.py"
 site = "listing = run("
 reason = "One blocking `git ls-files` a synchronous repository check reads its answer from before it goes on, through `repo_checks.shell.run`, the one subprocess path this repository allows. There is nothing to overlap it with, and git's command line is the interface, so no typed client applies."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
+site = "case \"Skill\", {\"skill\": str(skill)}:"
+reason = "Claude Code publishes no schema for its transcript's tool calls. A moved skill call only drops a `skill:` entry from what a turn opened, which the record shows rather than any assertion relying on it."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/starts.py"
+site = "return sorted(self.config_dir.glob(\"projects/*/*.jsonl\"))"
+reason = "Where Claude Code keeps its transcripts has no published contract. `test_replay.py` is the drift gate: it fails any start request whose conversation reports no commands, which is what a moved directory reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/starts.py"
+site = "\"CLAUDE_CONFIG_DIR\": str(self.config_dir),"
+reason = "The variable Claude Code reads its configuration directory from has no published contract; it is the same one the supervisor port's sign-in table names. A move of it puts the skill and the transcripts where the harness does not look, which `test_replay.py` fails on as commands and usage reported empty."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
+site = "def _allowed(line: str, prefixes: list[str] | None) -> bool:"
+reason = "This stands in for Claude Code's permission enforcement, which publishes no contract to reconcile with: the mock only has to refuse what a rule plainly does not allow, splitting a line with the suite's own `shell_lines`. The drift gate is the live suite, which runs the real harness under the same arguments and fails any conversation that ran a compound command, refused or not."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/starts.py"
+site = "done = run("
+reason = "Both sites run one local program to completion through `repo_checks.shell.run`, the repository's one subprocess site: the operator's `printobserver` command, whose answer each caller holds to the shape it reads before reading it, and `oneharness run`, whose report `is_harness_report` holds to its shape. The replay waits on each by design, one request at a time, so an async client would add a runtime for nothing."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tests/skilltest/starts.py"
+site = "self.server = start("
+reason = "The server under test, started once per replay through `repo_checks.shell.start` as `replay.py` starts it; nothing is exchanged with the process itself, which the replay reaches over its real HTTP API through the program a person runs."
+
+[[suppression]]
+rule = "least_privilege_grants"
+file = "tests/skilltest/starts.py"
+site = "return ["
+reason = "The task this replay was written for requires the operator's conversation to run under the permissions the server's supervision turns run with: the read tools, and one shell rule per command the server's operations make, which is exactly this list. Narrowing it to a start's reads would test the agent under permissions production never hands it; the wiring tests hold this list equal to the one a supervision turn's harness is started with."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "class IdleJobFile(TypedDict):"
+reason = "The idle printer's and a held file's answers, typed as the stand-in sends them, are copies of OctoPrint's read by the real adapter, as this file's other answers are: `printobserver-octoprint` parses them as it parses a real instance's, its integration tier holds that parser to a real OctoPrint on every change, and the start wiring tests run the real server's start through the adapter against this stand-in, so a shape the adapter cannot read fails them."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/doubles.py"
+site = "def bench_octoprint(bench: Bench, api_key: str) -> ThreadingHTTPServer:"
+reason = "The paths and commands of an idle printer's start, as OctoPrint serves them, held the same way as this file's other stand-in: the real adapter is the one source of what it sends, `printobserver-octoprint`'s integration tier holds that adapter to a real OctoPrint, and a request this stand-in does not answer as OctoPrint does fails the start wiring tests, which drive a real start through it."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
@@ -4740,3 +4842,71 @@ rule = "no_second_broader_sweep_over_an_already_gated_commit"
 file = ".github/workflows/warm.yml"
 site = "- run: just ci-warm"
 reason = "This is no gate: `warm.yml` reports no required context and its verdict is read by nothing. Running the test, build and lint targets on `main` is how the caches the next pull requests restore are filled with exactly what their `test` and `lint` jobs compile, because `cargo llvm-cov` has no compile-only mode that writes the instrumented artifacts its test run reads (its `--no-run` reports without running). It replaces the affected-tier gate the previous workflow ran on every push to `main`, so the work a merge starts did not grow."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/obico_record.py"
+site = "status, body, _ = http("
+reason = "One read, once, by a command a person runs by hand to re-record a fixture: there is nothing for an async client to overlap, and the answer is kept as Obico's raw bytes on purpose, because the recording is the whole body as served rather than a typed model of the fields this repository reads. It goes through the Obico tier's one `http` helper, so the tooling carries one HTTP client rather than two."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/obico-env/obico_record.py"
+site = "posted = post_snapshot(instance.url, instance.printer_token)"
+reason = "The Obico tier's own snapshot post, reused unchanged so the recorder puts a snapshot on the stack exactly as the tier does; it runs once, before the one read, in a strictly ordered command with nothing to overlap."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/shell_lines.py"
+site = "READ_ONLY_FILTERS = {"
+reason = "Which pipes Claude Code runs under a rule allowing the command before them is its own permission evaluator's, at the release `repo-policy.toml`'s `[skilltest] claude_code` pins, and that evaluator publishes no machine-readable list to derive this set from. The set is the text filters that cannot write a file whatever their arguments, read off a replay at that release whose turn piped `printobserver context` into `grep` and was answered grep's output. The real-print suite runs that same release on every change it is owed, so a release that stopped running such a pipe would show it refused in the suite's own transcripts."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-panels/src/calibration.rs"
+site = "pub calibrated_at: String,"
+reason = "The calibration file's contract declares `fit.calibrated_at` a string and the schema is generated from this type, so the field stays a `String` on the wire; `CameraCalibration::from_json`, the one way the service reads a file, refuses a value that is not a `YYYY-MM-DD` date naming `fit.calibrated_at`, and `an_invalid_calibration_is_refused_naming_its_key` proves it."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-panels/src/calibration.rs"
+site = "pub camera_snapshot_url: String,"
+reason = "The calibration file's contract declares `camera_snapshot_url` a string and the schema is generated from this type; the repository's validated `WebAddress` has no serde or schema form to put on the wire. `CameraCalibration::from_json` holds the value to `WebAddress::new` and refuses one naming `camera_snapshot_url`, and `an_invalid_calibration_is_refused_naming_its_key` proves it, a host-less `http://` included."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-panels/src/error.rs"
+site = "FrameMismatch {"
+reason = "The task's contract fixes this variant as `FrameMismatch { field, expected, got }`, with `field` one of resolution or stream, and the server and the tests match on that shape; splitting it into two typed variants is a change to that agreed surface rather than this node's to make."
+
+
+
+[[suppression]]
+rule = "S603"
+file = "tools/camera-calibration/tests/test_calibrate.py"
+site = "return subprocess.run("
+reason = "The tests run this tool's own command, as an operator does, with this interpreter and an argument list rather than a shell. The repository's `repo_checks.shell.run` would remove this site, but importing it would make every change to `repo-checks` select this suite, whose refit takes over a minute."
+
+[[suppression]]
+rule = "S603"
+file = "tools/camera-calibration/tests/test_calibrate.py"
+site = "run = subprocess.run("
+reason = "As the other `subprocess.run` of this file: this interpreter running this tool, with an argument list and no shell, in a suite kept apart from `repo-checks` so its changes do not select it."
+
+[[suppression]]
+rule = "N801"
+file = "tools/camera-calibration/tests/test_calibrate.py"
+site = "class expect:"
+reason = "A namespace of assertions read as `expect.equal(...)`, matching the vocabulary of this repository's own suites (`repo_checks.expect`), which this suite does not import so that changes to `repo-checks` do not select it."
+
+[[suppression]]
+rule = "invalid_states_unrepresentable"
+file = "crates/printobserver-panels/src/alignment.rs"
+site = "pub struct AlignmentVerdict {"
+reason = "The task's contract fixes this type as `AlignmentVerdict { offset_px: f64, passed: bool }`, which the server reads. Only `verify_first_layer_alignment` builds one, setting `passed` from `offset_px` and the calibration's threshold, so no verdict this crate answers is contradictory."
+
+[[suppression]]
+rule = "S603"
+file = "tools/camera-calibration/tests/test_calibrate.py"
+site = "run = subprocess.run(  # noqa: S603 - uv, by its resolved path"
+reason = "The lock-freshness gate runs uv, resolved to an absolute path by `shutil.which`, with an argument list and no shell; the suite does not import `repo_checks.shell` so that changes to `repo-checks` do not select it."

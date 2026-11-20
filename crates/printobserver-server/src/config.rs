@@ -73,7 +73,12 @@
 //! it, so no refusal or log line this program writes can carry it.
 //! `obico.ml_api_url` is the failure detector's own service, whose
 //! unauthenticated health check is asked during every print; without it the
-//! detector's health reads `unchecked`. `vision.blank_frame_max_stddev` is the
+//! detector's health check is never asked. With `obico.url` and
+//! `obico.access_token`, `Obico`'s own record of the printer's live prediction
+//! is read once per observation interval, from the printer `obico.printer_id`
+//! names — a whole number from 1 — or, left out, the one the last body `Obico`
+//! posted named; that is what says the detector is scoring a print.
+//! `vision.blank_frame_max_stddev` is the
 //! grey-level spread at or below which a frame is blank — from 1 to 128, 36.5
 //! when left out.
 //!
@@ -121,6 +126,7 @@ use printobserver_core::{
 };
 use printobserver_obico::{
     AccessToken, BlankFrameBound, MAX_BLANK_FRAME_MAX_STDDEV, MIN_BLANK_FRAME_MAX_STDDEV, ObicoApi,
+    ObicoPrinterId,
 };
 use printobserver_octoprint::{FanSupport, OctoPrintConfig};
 use printobserver_oneharness::{HarnessIdentity, ModelName};
@@ -229,12 +235,16 @@ pub enum ConfigField {
     /// Where a fresh frame of the print is fetched from, when a camera is
     /// configured.
     CameraSnapshotUrl,
+    /// The camera's calibration file, when one is configured.
+    CameraCalibration,
     /// Where `Obico`'s own API answers, when it is configured.
     ObicoUrl,
     /// The bearer token `Obico`'s API is reached with.
     ObicoAccessToken,
     /// Where the failure detector's own service answers its health check.
     ObicoMlApiUrl,
+    /// Which of `Obico`'s printers its record of the print is read from.
+    ObicoPrinterId,
     /// The grey-level spread at or below which a camera frame is blank.
     VisionBlankFrameMaxStddev,
     /// What a start does when the spool check finds a problem.
@@ -271,7 +281,7 @@ pub enum ConfigField {
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 37] = [
+    pub const ALL: [Self; 39] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -290,9 +300,11 @@ impl ConfigField {
         Self::ApiCredential,
         Self::ApiCredentialVerifier,
         Self::CameraSnapshotUrl,
+        Self::CameraCalibration,
         Self::ObicoUrl,
         Self::ObicoAccessToken,
         Self::ObicoMlApiUrl,
+        Self::ObicoPrinterId,
         Self::VisionBlankFrameMaxStddev,
         Self::SpoolsPreflight,
         Self::SpoolsBufferPercent,
@@ -333,9 +345,11 @@ impl ConfigField {
             Self::ApiCredential => "api.credential",
             Self::ApiCredentialVerifier => "api.credential_verifier",
             Self::CameraSnapshotUrl => "camera.snapshot_url",
+            Self::CameraCalibration => "camera.calibration",
             Self::ObicoUrl => "obico.url",
             Self::ObicoAccessToken => "obico.access_token",
             Self::ObicoMlApiUrl => "obico.ml_api_url",
+            Self::ObicoPrinterId => "obico.printer_id",
             Self::VisionBlankFrameMaxStddev => "vision.blank_frame_max_stddev",
             Self::SpoolsPreflight => "spools.preflight",
             Self::SpoolsBufferPercent => "spools.buffer_percent",
@@ -611,6 +625,13 @@ pub struct CameraSection {
     /// as a `go2rtc` `frame.jpeg` address. Left out, a look carries no frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_url: Option<String>,
+    /// The path of this camera's calibration file, which
+    /// `tools/camera-calibration` writes: it lets a check draw the planned
+    /// toolpath where it sits in this camera's view. Read and validated at
+    /// start, and an unreadable or invalid file is refused. Left out, nothing
+    /// is drawn and no print's first-layer alignment is checked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calibration: Option<PathBuf>,
 }
 
 /// Where `Obico`'s own API answers, as written down.
@@ -639,6 +660,13 @@ pub struct ObicoSection {
     /// health reads `unchecked`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ml_api_url: Option<String>,
+    /// `Obico`'s own identifier for the printer — the number in its printer
+    /// page's address — whose record of the print is read once per
+    /// observation interval for the detector's status. Left out, the printer
+    /// the last body `Obico` posted named is read, and nothing until it has
+    /// posted one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer_id: Option<i64>,
 }
 
 /// How a camera frame is judged, as written down.
@@ -666,6 +694,7 @@ impl core::fmt::Debug for ObicoSection {
                 &self.access_token.as_ref().map(|_| REDACTED),
             )
             .field("ml_api_url", &self.ml_api_url)
+            .field("printer_id", &self.printer_id)
             .finish()
     }
 }
@@ -1166,6 +1195,9 @@ pub struct ServerConfig {
     /// Where the failure detector's own service answers its health check,
     /// when configured.
     pub obico_ml_api_url: Option<WebAddress>,
+    /// Which of `Obico`'s printers its record of the print is read from, when
+    /// configured.
+    pub obico_printer_id: Option<ObicoPrinterId>,
     /// How long the ingress may take to answer.
     pub ingress_answer_bound: core::time::Duration,
     /// The shared secret every post to the ingress must carry.
@@ -1180,6 +1212,9 @@ pub struct ServerConfig {
     pub api_credential_verifier: Option<CredentialVerifier>,
     /// Where a fresh frame of the print is fetched from, when configured.
     pub camera_snapshot_url: Option<WebAddress>,
+    /// The camera's calibration, read and validated at start, when one is
+    /// configured.
+    pub camera_calibration: Option<std::sync::Arc<printobserver_panels::CameraCalibration>>,
     /// `Obico`'s own API, when configured; its debug form omits the token.
     pub obico_api: Option<ObicoApi>,
     /// How spools are checked before a print, and the margin asked for.
@@ -1259,12 +1294,7 @@ impl ServerConfig {
             UNATTENDED_WINDOW_RANGE_S,
         )?;
         let blank_frame_max_stddev = blank_frame_bound(file.vision.blank_frame_max_stddev)?;
-        let obico_ml_api_url = file
-            .obico
-            .ml_api_url
-            .as_deref()
-            .map(|url| web_address(ConfigField::ObicoMlApiUrl, url))
-            .transpose()?;
+        let (obico_ml_api_url, obico_printer_id) = detector_reads(&file.obico)?;
         let ingress_answer_bound = answer_bound(file.ingress.answer_bound_ms)?;
         let ingress_shared_secret = SharedSecret::new(&required(
             ConfigField::IngressSharedSecret,
@@ -1288,11 +1318,7 @@ impl ServerConfig {
                     .map_err(|why| ConfigError::about(ConfigField::ApiCredentialVerifier, why))
             })
             .transpose()?;
-        let camera_snapshot_url = file
-            .camera
-            .snapshot_url
-            .map(|url| web_address(ConfigField::CameraSnapshotUrl, &url))
-            .transpose()?;
+        let (camera_snapshot_url, camera_calibration) = camera(file.camera)?;
         let obico_api = obico_api(file.obico)?;
         let spools = spool_policy(&file.spools)?;
         let sheets = match file.sheets.allowed {
@@ -1316,11 +1342,13 @@ impl ServerConfig {
             unattended_window,
             blank_frame_max_stddev,
             obico_ml_api_url,
+            obico_printer_id,
             ingress_answer_bound,
             ingress_shared_secret,
             api_credential,
             api_credential_verifier,
             camera_snapshot_url,
+            camera_calibration,
             obico_api,
             spools,
             sheets,
@@ -1342,6 +1370,27 @@ impl ServerConfig {
 /// naming a host, by the field's own key and without quoting the value.
 fn web_address(field: ConfigField, url: &str) -> Result<WebAddress, ConfigError> {
     WebAddress::new(url).map_err(|why| ConfigError::about(field, why))
+}
+
+/// Where the failure detector's health check is asked, and which of `Obico`'s
+/// printers its record of the print is read from — its own identifier, a whole
+/// number from 1 — when each is written down.
+fn detector_reads(
+    section: &ObicoSection,
+) -> Result<(Option<WebAddress>, Option<ObicoPrinterId>), ConfigError> {
+    let ml_api_url = section
+        .ml_api_url
+        .as_deref()
+        .map(|url| web_address(ConfigField::ObicoMlApiUrl, url))
+        .transpose()?;
+    let printer_id = section
+        .printer_id
+        .map(|id| {
+            ObicoPrinterId::new(id)
+                .map_err(|why| ConfigError::about(ConfigField::ObicoPrinterId, why))
+        })
+        .transpose()?;
+    Ok((ml_api_url, printer_id))
 }
 
 /// `Obico`'s API, when both its address and its token are written down.
@@ -1608,6 +1657,46 @@ fn readable(field: ConfigField, named: Option<&Path>) -> Result<Option<PathBuf>,
         .map_err(|error| {
             ConfigError::about(field, format!("{} cannot be read: {error}", path.display()))
         })
+}
+
+/// The camera's snapshot address and calibration, each when configured.
+fn camera(
+    section: CameraSection,
+) -> Result<
+    (
+        Option<WebAddress>,
+        Option<std::sync::Arc<printobserver_panels::CameraCalibration>>,
+    ),
+    ConfigError,
+> {
+    let snapshot_url = section
+        .snapshot_url
+        .map(|url| web_address(ConfigField::CameraSnapshotUrl, &url))
+        .transpose()?;
+    let calibration = section
+        .calibration
+        .as_deref()
+        .map(calibration)
+        .transpose()?
+        .map(std::sync::Arc::new);
+    Ok((snapshot_url, calibration))
+}
+
+/// The camera's calibration file, read and validated where it was named, and
+/// refused naming `camera.calibration` when it cannot be read or is not one.
+fn calibration(path: &Path) -> Result<printobserver_panels::CameraCalibration, ConfigError> {
+    let bytes = std::fs::read(path).map_err(|error| {
+        ConfigError::about(
+            ConfigField::CameraCalibration,
+            format!("{} cannot be read: {error}", path.display()),
+        )
+    })?;
+    printobserver_panels::CameraCalibration::from_json(&bytes).map_err(|error| {
+        ConfigError::about(
+            ConfigField::CameraCalibration,
+            format!("{} is not a camera calibration: {error}", path.display()),
+        )
+    })
 }
 
 /// The installed skill, refused naming how to install one when it is absent or

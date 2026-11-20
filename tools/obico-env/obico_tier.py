@@ -388,6 +388,9 @@ REPOINTED = "OBICO_TIER_REPOINTED "
 #: as `Authorization: Token <token>`. A credential, so it is never reported.
 PrinterToken = NewType("PrinterToken", str)
 
+#: A printer, by Obico's identifier for it: a positive integer.
+PrinterId = NewType("PrinterId", int)
+
 
 @dataclass(frozen=True)
 class Instance:
@@ -396,6 +399,9 @@ class Instance:
     stack: Stack
     url: str
     printer_token: PrinterToken
+    #: The printer the bring-up provisioned, or `None` when the record names
+    #: none that is a positive integer — which only a reader of it needs.
+    printer_id: PrinterId | None = None
 
 
 INSTANCE_FIELDS = ("state_dir", "project", "url", "printer_token")
@@ -428,20 +434,29 @@ def stack_under(state_dir: Path) -> Instance:
         message = f"{record_path} has no usable {', '.join(unusable)}; run `just obico-up` again"
         raise TierError(message)
     url = record["url"]
-    if not _is_service_address(url):
+    if not is_service_address(url):
         message = (
             f"{record_path} names {url!r} as the stack's address, which is no "
             "http(s) address with a host and port; run `just obico-up` again"
         )
         raise TierError(message)
+    printer_id = record.get("printer_id")
     return Instance(
         stack=Stack(Path(record["state_dir"]), record["project"]),
         url=url,
         printer_token=PrinterToken(record["printer_token"]),
+        printer_id=positive_printer(printer_id),
     )
 
 
-def _is_service_address(url: str) -> bool:
+def positive_printer(value: object) -> PrinterId | None:
+    """`value` as a printer identifier, or `None` when it is not a positive integer."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return PrinterId(value)
+    return None
+
+
+def is_service_address(url: str) -> bool:
     """Whether `url` is an http(s) address naming a host, with a port that parses."""
     try:
         parts = urllib.parse.urlsplit(url)

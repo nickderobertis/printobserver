@@ -1,0 +1,34 @@
+{
+  "$defs": {
+    "BedClearActor": {
+      "description": "Who may say the bed is clear: the operator, and no other actor.\n\nIts own type rather than [`Actor`], so that a record of the agent's or the\nsystem's word that the bed is clear is one no value can spell. On the wire\nit is `\"operator\"`, as [`Actor::Operator`] is.",
+      "oneOf": [
+        {
+          "const": "operator",
+          "description": "A person: the operator.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The operator's word that the bed is clear: nothing is on it that homing Z\ncould crush or a move over the part could strike.\n\nThe printer's rather than any print's, so it is written with no print. It\nstands until the next `print_started`, whichever way that print started,\nand while it stands a recovery that needs the bed or the nozzle clear is\ndecided as though it carried the operator's assertion — read back out of\nthe event log, so a server started again holds it as the one before did.\nOnly the operator records one: an assertion is a person's word for what\nthey can see.",
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/BedClearActor",
+      "description": "Who said so: the operator, the one actor whose word this records."
+    },
+    "reason": {
+      "description": "Why they say so.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "actor",
+    "reason"
+  ],
+  "title": "BedClearAssertedPayload",
+  "type": "object",
+  "x-event-kind": "bed_clear_asserted"
+}

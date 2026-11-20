@@ -89,6 +89,16 @@ an operator installs with `gh skill install`, whose `SKILL.md` the server is
 pointed at, and the agent runs from that skill's directory so the reference
 documents the skill links to resolve beside it.
 
+### printobserver-panels
+
+What lets a print check show the agent the current layer's planned toolpath
+where it sits in the camera's own view: one printer's camera calibration and its
+fisheye projection, the check that the camera has not moved since it was
+calibrated, the per-print check that the projection lands on the printed first
+layer, and the three-panel check image. It draws the planned geometry the
+supervision domain answers — outlines and toolpaths in bed millimetres — and
+never reads G-code itself.
+
 ### printobserver-store-sqlite
 
 The SQLite store — the one durable implementation of the store traits the
@@ -181,21 +191,22 @@ schema with an `x-event-kind` marker through `event_schema_of`, and the
 generated clients' kind-to-payload tables are produced from the marker — with
 `just check-repo`'s `generated-clients` check red when a generated copy parts
 from what the schema set writes, and the codegen refusing two schemas under one
-kind name. Forty-one kinds are
+kind name. Forty-two kinds are
 declared today, each by its owner: `printobserver-core` writes
 `action_requested`, `action_executed`, `action_rejected`,
 `intervention_expired`, `agent_assessment`, `operator_acknowledgement`,
 `port_failure`, `camera_look`, `periodic_observation`, `camera_degraded`,
 `camera_retry` and `gcode_indexed`,
-and the twenty-three of the printer timeline — `print_started`, `print_ended`,
+and the twenty-four of the printer timeline — `print_started`, `print_ended`,
 `filament_consumed`, `spool_registered`, `spool_loaded`, `spool_unloaded`,
 `spool_adjusted`, `spool_retired`, `spool_command_rejected`,
 `spool_unverified`, `filament_change_signalled`, `unaccounted_print`,
 `preflight_checked`, `charge_pended`, `print_untracked`,
 `file_tally_rebaselined`, and the printer watch's own
 `printer_connection_changed`, `printer_reset`, `unattended_printer_activity`
-and `detector_health_changed`, and recovery's own `recovery_requested`,
-`recovery_executed` and `recovery_rejected`, which carry no print;
+and `detector_health_changed`, recovery's own `recovery_requested`,
+`recovery_executed` and `recovery_rejected`, and the operator's word that the
+bed is clear, `bed_clear_asserted`, which carry no print;
 `printobserver-obico` writes `obico_failure_alert` and
 `obico_printer_notification`; `printobserver-vision-api` declares
 `malformed_external_event`; `printobserver-supervisor-api` declares
@@ -250,8 +261,9 @@ a crate the workspace lacks, and a crate the table omits.
 | `printobserver-octoprint` | `printobserver-printer-api`, `printobserver-types` |
 | `printobserver-obico` | `printobserver-vision-api`, `printobserver-core`, `printobserver-types` |
 | `printobserver-oneharness` | `printobserver-supervisor-api`, `printobserver-types` |
+| `printobserver-panels` | `printobserver-types`, `printobserver-core`, `printobserver-vision-api` |
 | `printobserver-store-sqlite` | `printobserver-core`, `printobserver-supervisor-api`, `printobserver-printer-api`, `printobserver-types` |
-| `printobserver-server` | `printobserver-types`, `printobserver-printer-api`, `printobserver-vision-api`, `printobserver-supervisor-api`, `printobserver-core`, `printobserver-octoprint`, `printobserver-obico`, `printobserver-oneharness`, `printobserver-store-sqlite` |
+| `printobserver-server` | `printobserver-types`, `printobserver-printer-api`, `printobserver-vision-api`, `printobserver-supervisor-api`, `printobserver-core`, `printobserver-octoprint`, `printobserver-obico`, `printobserver-oneharness`, `printobserver-panels`, `printobserver-store-sqlite` |
 | `printobserver-sdk` | — |
 | `printobserver` | `printobserver-server`, `printobserver-sdk`, `printobserver-types` |
 

@@ -99,8 +99,8 @@ from when you want one line about where things stand.
 
 ```console
 $ printobserver status --print-id PRINT_ID
-detector.since: null
-detector.status: unchecked
+detector.since: TIMESTAMP
+detector.status: available
 interventions: []
 job.completion.out_of_range: false
 job.completion.value: 0.42
@@ -149,6 +149,7 @@ context.bounds.allowed.flowrate.max: 1.1
 context.bounds.allowed.flowrate.min: 0.9
 context.bounds.allowed.tool_target:0.max: 260.0
 context.bounds.allowed.tool_target:0.min: 0.0
+context.detector: available
 context.interventions: []
 context.latest_image.id: IMAGE_ID
 context.latest_image.sha256: 106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
@@ -486,12 +487,19 @@ Start a print of a named file, bounded by a manifest. Valid only while the
 printer is operational. A start opens a print of its own when no print is open,
 so `record.print_id` names the print the job runs under and its manifest is
 attached to: act on that print afterwards. The examples below this one do.
+With no print open the start opens its own whichever print it names, so any
+identifier `prints` lists serves as `--print-id`, and with none listed, a UUID
+version 7 of your own.
 The manifest's `sheet` names the build sheet that is down; a start naming none
 is refused. `--override-material-check true` and `--override-sheet-check true`
 start one the material or sheet check refused, as the operator alone.
 
+Before a start, take the printer's look and open its frame: the start below is
+the one made when that frame shows a clear bed and the smooth PEI sheet, and the
+spool loaded is PLA, which that sheet suits.
+
 ```console
-$ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "re-running the job after clearing the bed"
+$ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "the camera's frame shows a clear bed and the smooth PEI sheet, which suits the loaded PLA"
 record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID
@@ -507,7 +515,7 @@ record.request.action.manifest.metadata: {}
 record.request.action.manifest.nozzle_diameter_mm: 0.4
 record.request.action.manifest.sheet: smooth-pei
 record.request.action.manifest.slicer_profile: draft
-record.request.action.reason: re-running the job after clearing the bed
+record.request.action.reason: the camera's frame shows a clear bed and the smooth PEI sheet, which suits the loaded PLA
 record.request.actor: operator
 record.request.requested_at: TIMESTAMP
 ```
@@ -1269,4 +1277,23 @@ events.1.payload.rejection.print_running.state: printing
 events.1.received_at: TIMESTAMP
 events.1.source: operator
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
+```
+
+### bed_clear
+
+Say once that the bed is clear, as the operator, after taking a part off it.
+Until the next print starts, a Z home is decided as though it carried
+`--bed-clear-asserted true` and a heat, a park and an XY home as though they
+carried `--clearance-asserted true`, each naming the word in its events; the
+agent's word is refused.
+
+```console
+$ printobserver bed-clear --actor operator --reason "the cancelled print is off the bed"
+detail: recorded: until the next print starts, a Z home is decided as though it asserted the bed clear, and a heat, a park and an XY home as though they asserted the nozzle clear of the part, wherever the operator's word counts
+event.id: ID
+event.kind: bed_clear_asserted
+event.payload.actor: operator
+event.payload.reason: the cancelled print is off the bed
+event.received_at: TIMESTAMP
+event.source: operator
 ```

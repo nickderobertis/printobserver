@@ -87,10 +87,10 @@ use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::server::{CREDENTIAL_ISSUE, OperatorCredential};
 use crate::turns::{TurnBinding, TurnCredentials};
 use crate::wire::{
-    ActionAnswer, ActionBody, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer, RecoveryAnswer, SpoolAnswer,
-    SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer, claimed_actor, recovery_of,
-    spool_command_of,
+    ActionAnswer, ActionBody, BedClearAnswer, BedClearBody, ContextAnswer, ErrorAnswer,
+    HistoryAnswer, ImageAnswer, ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer,
+    RecoveryAnswer, SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer,
+    claimed_actor, reason_of, recovery_of, spool_command_of,
 };
 
 /// What every handler is given: the supervisor, and the stores the reads
@@ -224,6 +224,30 @@ fn operator_refused(caller: &Caller, command: &str) -> Option<Response> {
             ),
         )),
         Caller::Operator => None,
+    }
+}
+
+/// Refuse a turn's acknowledgement before the turn has taken a look.
+///
+/// The frames a turn's context names are already old when it reads them, so
+/// what a turn writes down of its event is judged from a look it took; the
+/// operator, who is not a turn, is held to nothing here.
+fn unlooked_refused(
+    turns: &TurnCredentials,
+    caller: &Caller,
+    print_id: PrintId,
+) -> Option<Response> {
+    match caller {
+        Caller::Turn(binding) if !turns.has_looked(binding) => Some(refusal(
+            StatusCode::FORBIDDEN,
+            format!(
+                "this request authenticated as {} and acknowledges an event before the turn \
+                 has taken a look: run `printobserver look --print-id {print_id}`, open the \
+                 frames it names, and acknowledge what they show",
+                caller.named()
+            ),
+        )),
+        _ => None,
     }
 }
 
@@ -483,6 +507,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("printer_history", Method::Get) => get(printer_history),
         ("preflight", Method::Get) => get(preflight),
         (crate::operations::RECOVERY_STATUS, Method::Get) => get(recover_status),
+        (crate::operations::BED_CLEAR, Method::Post) => post(bed_clear),
         (name, method) => panic!(
             "the operation `{name}` is declared as {method} and this router serves no such route"
         ),
@@ -566,6 +591,11 @@ async fn act(
         Err(rejected) => return rejected.into_response(),
     };
     if let Some(refused) = claim_refused(&caller, &body.actor) {
+        return refused;
+    }
+    if kind == ActionKind::AcknowledgeFailure
+        && let Some(refused) = unlooked_refused(&state.turns, &caller, print_id)
+    {
         return refused;
     }
     let action = match body.into_action(kind) {
@@ -711,6 +741,75 @@ async fn recover(
             events: vec![issued.requested, issued.settled],
         },
     )
+}
+
+/// What a recorded bed-clear means from now on, in a sentence for a person.
+pub const BED_CLEAR_DETAIL: &str = "recorded: until the next print starts, a Z home is decided \
+    as though it asserted the bed clear, and a heat, a park and an XY home as though they \
+    asserted the nozzle clear of the part, wherever the operator's word counts";
+
+/// Record the operator's word that the bed is clear.
+///
+/// The claimed actor is held to the caller before anything is written, and
+/// the one actor admitted is the operator: a turn claiming the operator, any
+/// claim to the system, and the agent's own word are each refused `403` and
+/// recorded nowhere. A reason that is absent or blank is refused before
+/// anything is written.
+async fn bed_clear(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    body: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejected) => return rejected.into_response(),
+    };
+    let Some(fields) = body.as_object() else {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "the body is not a document carrying an `actor` and a `reason`",
+        );
+    };
+    let actor = match claimed_actor(fields) {
+        Ok(actor) => actor,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    if let Some(refused) = claim_refused(&caller, &actor) {
+        return refused;
+    }
+    if actor != Actor::Operator {
+        return refusal(
+            StatusCode::FORBIDDEN,
+            format!(
+                "{} may not say the bed is clear: an assertion is a person's word for what \
+                 they can see, and only the operator's is recorded",
+                claimed(&actor)
+            ),
+        );
+    }
+    let body: BedClearBody = match printobserver_types::serde_json::from_value(body) {
+        Ok(body) => body,
+        Err(error) => {
+            return refusal(
+                StatusCode::BAD_REQUEST,
+                format!("the body is not an `actor` and a `reason`: {error}"),
+            );
+        }
+    };
+    let reason = match reason_of(body.reason.as_deref()) {
+        Ok(reason) => reason,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    match state.supervisor.assert_bed_clear(reason).await {
+        Ok(event) => answer(
+            StatusCode::OK,
+            &BedClearAnswer {
+                event,
+                detail: BED_CLEAR_DETAIL.to_owned(),
+            },
+        ),
+        Err(error) => refusal(core_status(&error), error),
+    }
 }
 
 /// Everything a recovery is checked against now, and what each action would
@@ -1052,6 +1151,11 @@ async fn look(
             return refusal(StatusCode::NOT_FOUND, CoreError::NoSuchPrint { print_id });
         }
         Err(error) => return refusal(store_status(&error), error),
+    }
+    // A look that was asked for counts whatever the camera then gives it: a
+    // turn whose camera is down has still looked, and can say so.
+    if let Caller::Turn(binding) = &caller {
+        state.turns.note_look(binding);
     }
     let supervisor = Arc::clone(&state.supervisor);
     let taken = tokio::task::spawn_blocking(move || {

@@ -24,7 +24,7 @@ use axum::Router;
 use axum::routing::post;
 use printobserver_core::store::Stores;
 use printobserver_core::{Clock as _, CoreConfig, Supervisor, SystemClock};
-use printobserver_obico::{DetectorHealthCheck, ObicoVision, ObicoVisionConfig};
+use printobserver_obico::{DetectorHealthCheck, ObicoScoring, ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
 use printobserver_oneharness::{
     AgentCommand, AssessmentSchema, EnvAssignment, HarnessSignIn, OneharnessSupervisor,
@@ -414,6 +414,18 @@ impl From<ConfigError> for StartError {
 #[derive(Debug)]
 pub struct Server;
 
+/// Take the listener a configuration asks for, and the address it bound, which
+/// a configuration asking for any free port learns only here.
+async fn bind(listen: SocketAddr) -> Result<(TcpListener, SocketAddr), StartError> {
+    let failed = |error: std::io::Error| StartError::Listen {
+        address: listen,
+        detail: error.to_string(),
+    };
+    let listener = TcpListener::bind(listen).await.map_err(failed)?;
+    let address = listener.local_addr().map_err(failed)?;
+    Ok((listener, address))
+}
+
 impl Server {
     /// Read one configuration file, compose the four implementations, and serve.
     ///
@@ -474,18 +486,9 @@ impl Server {
         // The listener is taken next, because the command a supervision turn
         // runs to read its context names the address this server is answering
         // on — and a configuration may ask for any free port.
-        let listener =
-            TcpListener::bind(config.listen)
-                .await
-                .map_err(|error| StartError::Listen {
-                    address: config.listen,
-                    detail: error.to_string(),
-                })?;
-        let address = listener.local_addr().map_err(|error| StartError::Listen {
-            address: config.listen,
-            detail: error.to_string(),
-        })?;
+        let (listener, address) = bind(config.listen).await?;
         let clock = Arc::new(SystemClock);
+        let alignments = prepare_state(&config, &ports)?;
         let due = overdue(&ports.stores.actions, clock.now())
             .await
             .map_err(|error| StartError::Reconciliation {
@@ -503,6 +506,9 @@ impl Server {
         // credential minted for them.
         let turns = TurnCredentials::new(Some(address));
         supervisor.install_turn_authority(Arc::new(turns.clone()));
+        if let Some(scoring) = scoring_read(&config, &ports.vision)? {
+            supervisor.install_scoring_probe(scoring);
+        }
         let reconciliation = reconcile(
             &supervisor,
             &ReconcileStores {
@@ -516,6 +522,7 @@ impl Server {
         .map_err(|error| StartError::Reconciliation {
             detail: error.to_string(),
         })?;
+        Box::pin(sweep_left_behind(&supervisor, &alignments)).await?;
 
         let ingress = IngressState::start(
             Arc::clone(&supervisor),
@@ -530,6 +537,7 @@ impl Server {
             &supervisor,
             Arc::clone(&ports.printer),
             detector_check(&config)?,
+            Arc::clone(&alignments),
         );
         // Every events read waits on this, and every write that stores an
         // event raises it once committed — whichever of this server's parts
@@ -572,13 +580,61 @@ impl Server {
             serving,
             observing,
             watching,
+            alignments,
         })
     }
+}
+
+/// The directories this start keeps per-print state in — each open print's
+/// G-code spool, and every print's alignment verdict — made when absent.
+fn prepare_state(
+    config: &ServerConfig,
+    ports: &Ports,
+) -> Result<Arc<crate::alignment::Alignments>, StartError> {
+    let spool_dir = gcode_spool_dir(&config.state_dir);
+    std::fs::create_dir_all(&spool_dir).map_err(|error| StartError::State {
+        detail: format!("{}: {error}", spool_dir.display()),
+    })?;
+    crate::alignment::Alignments::new(
+        &config.state_dir,
+        config.camera_calibration.clone(),
+        Arc::clone(&ports.stores.prints),
+    )
+    .map(Arc::new)
+    .map_err(|error| StartError::State {
+        detail: format!(
+            "{}: {error}",
+            crate::alignment::verdict_dir(&config.state_dir).display()
+        ),
+    })
+}
+
+/// Delete what a print closed while no server ran left behind: its G-code
+/// spool and its alignment verdict.
+async fn sweep_left_behind(
+    supervisor: &Supervisor,
+    alignments: &crate::alignment::Alignments,
+) -> Result<(), StartError> {
+    supervisor
+        .sweep_gcode_spools()
+        .await
+        .map_err(|error| StartError::Reconciliation {
+            detail: error.to_string(),
+        })?;
+    alignments.sweep().await;
+    Ok(())
+}
+
+/// Where each open print's G-code is spooled, under a state directory.
+#[must_use]
+pub fn gcode_spool_dir(state_dir: &Path) -> std::path::PathBuf {
+    state_dir.join("gcode-spool")
 }
 
 /// What supervision is configured with, from the server's own configuration.
 fn core_config_of(config: &ServerConfig) -> CoreConfig {
     let mut core_config = CoreConfig::new(config.safety.clone(), context_command());
+    core_config.gcode_spool_dir = Some(gcode_spool_dir(&config.state_dir));
     core_config
         .camera_snapshot_url
         .clone_from(&config.camera_snapshot_url);
@@ -592,6 +648,26 @@ fn core_config_of(config: &ServerConfig) -> CoreConfig {
         .recovery_grants
         .clone_from(&config.recovery_grants);
     core_config
+}
+
+/// The reader of `Obico`'s own record of the print, when its API is
+/// configured: of the printer `obico.printer_id` names, or the one the last
+/// body `Obico` posted named.
+fn scoring_read(
+    config: &ServerConfig,
+    vision: &ObicoVision,
+) -> Result<Option<Arc<dyn printobserver_core::ScoringProbe>>, StartError> {
+    config
+        .obico_api
+        .clone()
+        .map(|api| {
+            ObicoScoring::new(api, config.obico_printer_id, vision.known_printer())
+                .map(|scoring| Arc::new(scoring) as Arc<dyn printobserver_core::ScoringProbe>)
+                .map_err(|error| StartError::State {
+                    detail: error.to_string(),
+                })
+        })
+        .transpose()
 }
 
 /// The failure detector's health check, when its address is configured.
@@ -876,6 +952,8 @@ pub struct Running {
     /// The printer watch's tasks: its reads, its push reader and its detector
     /// check.
     watching: crate::watch::Watching,
+    /// Every print's first-layer alignment verdict.
+    alignments: Arc<crate::alignment::Alignments>,
 }
 
 impl core::fmt::Debug for Running {
@@ -889,6 +967,16 @@ impl core::fmt::Debug for Running {
 }
 
 impl Running {
+    /// One print's first-layer alignment verdict, which a check reads before
+    /// drawing the planned toolpath on its image.
+    #[must_use]
+    pub fn print_alignment(
+        &self,
+        print_id: printobserver_types::PrintId,
+    ) -> crate::alignment::PrintAlignment {
+        self.alignments.print_alignment(print_id)
+    }
+
     /// Where this server is answering.
     #[must_use]
     pub const fn address(&self) -> SocketAddr {

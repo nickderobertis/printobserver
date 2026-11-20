@@ -510,6 +510,7 @@
     "materials": "each run's material is its G-code's `; filament_type =`"
   },
   "assertions": {
+    "replay": ["clear-smooth-pei-20261007-075606", "not-clear-smooth-pei-20261007-105905", "partial-textured-20261008-140612", "not-clear-textured-20261008-172933", "clear-textured-20261010-061436", "not-clear-textured-20261010-164500", "not-clear-textured-20261010-174900", "clear-textured-20261027-153224", "corrupted-textured-20261027-154933", "partial-textured-20261029-183517", "not-clear-textured-20261029-195324", "not-clear-textured-20261030-142205", "not-clear-textured-20261030-174128", "partial-smooth-pei-20261031-164529", "not-clear-smooth-pei-20261031-191910"],
     "scenarios": [
       {
         "id": "clear-smooth-pei-20261007-132939",

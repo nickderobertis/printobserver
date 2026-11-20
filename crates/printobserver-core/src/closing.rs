@@ -166,6 +166,7 @@ impl Supervisor {
             .prints
             .end_print(print_id, state.clone(), self.clock().now(), closing)
             .await?;
+        self.drop_gcode_spool(print_id);
         Ok(())
     }
 

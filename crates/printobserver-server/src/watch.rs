@@ -17,8 +17,12 @@
 //!   running: it sends [`PrinterCommand::ReportPosition`] and reads the reply
 //!   off the push channel's terminal lines, waiting up to [`POSITION_WAIT`].
 //!   With the channel down it sends nothing and answers no position.
-//! * **The detector check**, once per observation interval, when
-//!   `obico.ml_api_url` is configured.
+//! * **The detector check**, as the server starts and then once per
+//!   observation interval, when `obico.ml_api_url` is configured: the
+//!   detector's status is one a status read made the moment the server is up
+//!   answers from a check, rather than `unchecked` for a whole interval.
+//! * **The first-layer alignment check**, after each read that found a
+//!   print running, until that print has a verdict ([`crate::alignment`]).
 //!
 //! `send_command` is called here and nowhere else in this program: no
 //! operation, agent or client can reach it.
@@ -36,6 +40,8 @@ use printobserver_core::{
     DetectorProbe, HeadPosition, PendingTurn, PositionProbe, Supervisor, block_on,
 };
 use printobserver_printer_api::{BoxFuture, PrinterCommand, PrinterPort, PrinterPush};
+
+use crate::alignment::Alignments;
 use tokio::task::JoinHandle;
 
 /// How long after the push channel drops, or refuses to open, it is opened
@@ -153,6 +159,7 @@ pub fn start(
     supervisor: &Arc<Supervisor>,
     printer: Arc<dyn PrinterPort>,
     detector: Option<Arc<dyn DetectorProbe>>,
+    alignments: Arc<Alignments>,
 ) -> Watching {
     let terminal = Arc::new(Terminal::default());
     let probe = Arc::new(Probe {
@@ -160,7 +167,7 @@ pub fn start(
         terminal: Arc::clone(&terminal),
     });
     let mut tasks = vec![
-        reading(Arc::downgrade(supervisor), probe),
+        reading(Arc::downgrade(supervisor), probe, alignments),
         pushing(Arc::downgrade(supervisor), printer, terminal),
     ];
     if let Some(detector) = detector {
@@ -183,8 +190,13 @@ fn run_turns(supervisor: &Arc<Supervisor>, turns: Vec<PendingTurn>) {
     }
 }
 
-/// Read the machine once per poll, and run what the reads claimed.
-fn reading(weak: Weak<Supervisor>, probe: Arc<Probe>) -> JoinHandle<()> {
+/// Read the machine once per poll, run what the reads claimed, and rule on
+/// the running print's first-layer alignment once it is due.
+fn reading(
+    weak: Weak<Supervisor>,
+    probe: Arc<Probe>,
+    alignments: Arc<Alignments>,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             let Some(poll) = weak.upgrade().map(|held| held.config().printer_poll) else {
@@ -204,6 +216,19 @@ fn reading(weak: Weak<Supervisor>, probe: Arc<Probe>) -> JoinHandle<()> {
             // the machine again.
             if let Ok(Ok(watched)) = watched {
                 run_turns(&supervisor, watched.turns);
+                let checking = Arc::clone(&supervisor);
+                let held = Arc::clone(&alignments);
+                // A check that panicked decided nothing; the next read asks
+                // again.
+                let _ = tokio::task::spawn_blocking(move || {
+                    block_on(async {
+                        if let Some(active) = watched.active {
+                            let _ = held.check(&checking, active).await;
+                        }
+                        held.sweep().await;
+                    });
+                })
+                .await;
             }
         }
     })
@@ -265,10 +290,11 @@ fn pushing(
     })
 }
 
-/// Check the detector once per observation interval, and run the turn going
-/// unavailable claimed.
+/// Check the detector as the server starts and once per observation interval
+/// after, and run the turn going unavailable claimed.
 fn checking(weak: Weak<Supervisor>, detector: Arc<dyn DetectorProbe>) -> JoinHandle<()> {
     tokio::spawn(async move {
+        let mut first = true;
         loop {
             let Some(interval) = weak
                 .upgrade()
@@ -276,7 +302,10 @@ fn checking(weak: Weak<Supervisor>, detector: Arc<dyn DetectorProbe>) -> JoinHan
             else {
                 return;
             };
-            tokio::time::sleep(interval).await;
+            if !first {
+                tokio::time::sleep(interval).await;
+            }
+            first = false;
             let Some(supervisor) = weak.upgrade() else {
                 return;
             };

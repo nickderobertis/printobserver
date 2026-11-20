@@ -15,11 +15,15 @@
     },
     "AgentContext": {
       "additionalProperties": false,
-      "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nLeft out of it, each because no step of the skill, no check and no recorded\ncase decides anything by it: the print's file, provider and times; the\nprinter's and the job's own states (the print states it once); every heater's\noffset, the chamber and the time they were read; the printer's reported\nfeedrate, flowrate and fan (the slicer's plan states the flow and fan in\nforce, and no step reads the feedrate); the job's file, size, progress, time\nand position (the plan states where the print is); the manifest (its limits\nare the bounds); and the detector's health.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what happened, when, and what it changed; and asked `since` an\nevent, only the events newer than it are carried, so a turn that has read\nthe rest is not handed them again. `newest_event` is what the next read\nasks `since`.",
+      "description": "What a supervision turn reads about one print: [`PrintContext`] with each\nfact stated once, as it is now, and nothing no supervision decision reads.\n\nLeft out of it, each because no step of the skill, no check and no recorded\ncase decides anything by it: the print's file, provider and times; the\nprinter's and the job's own states (the print states it once); every heater's\noffset, the chamber and the time they were read; the printer's reported\nfeedrate, flowrate and fan (the slicer's plan states the flow and fan in\nforce, and no step reads the feedrate); the job's file, size, progress, time\nand position (the plan states where the print is); the manifest (its limits\nare the bounds); and the detector's health beyond its status — since when,\nand why — which only the status read carries.\n\nThe printer and the job are stated here and nowhere in the events; each\nevent is what happened, when, and what it changed; and asked `since` an\nevent, only the events newer than it are carried, so a turn that has read\nthe rest is not handed them again. `newest_event` is what the next read\nasks `since`.",
       "properties": {
         "bounds": {
           "$ref": "#/$defs/EffectiveBounds",
           "description": "The limits in force, so that the agent can see them before it asks."
+        },
+        "detector": {
+          "$ref": "#/$defs/DetectorHealthStatus",
+          "description": "What the failure detector's status is for this print: whether it is\nscoring the print and has flagged it, or what it is otherwise."
         },
         "interventions": {
           "description": "The interventions still active.",
@@ -99,6 +103,7 @@
         "print",
         "bounds",
         "interventions",
+        "detector",
         "recent_events"
       ],
       "type": "object"
@@ -203,6 +208,36 @@
         }
       },
       "type": "object"
+    },
+    "DetectorHealthStatus": {
+      "description": "The failure detector's status, as the status and context reads answer it.",
+      "oneOf": [
+        {
+          "const": "scoring_nothing_flagged",
+          "description": "The detector is scoring the print, and no failure alert of its own has\narrived for it.",
+          "type": "string"
+        },
+        {
+          "const": "scoring_flagged",
+          "description": "The detector is scoring the print, and a failure alert of its own has\narrived for it.",
+          "type": "string"
+        },
+        {
+          "const": "available",
+          "description": "No evidence that it is scoring the print, and it answered its health\ncheck: available, with no scores yet.",
+          "type": "string"
+        },
+        {
+          "const": "unavailable",
+          "description": "No evidence that it is scoring the print, and it did not answer its\nhealth check.",
+          "type": "string"
+        },
+        {
+          "const": "unchecked",
+          "description": "No evidence of any kind: no detector health address is configured, or\nno check has been made yet, and nothing shows it scoring.",
+          "type": "string"
+        }
+      ]
     },
     "EffectiveBounds": {
       "additionalProperties": false,
