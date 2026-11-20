@@ -30,7 +30,13 @@ The rules the real-print suite is held to, and why.
   its harness exits. A check that runs `look` after acting fails.
 - **The probe is one turn of the shipped configuration alone,** through
   `printobserver-server-probe`, with no image; its first call's input is the base
-  context every check's input figure is held free of history against.
+  context every check's input figure is held free of history against. The image
+  probe is the same turn with one case's check image attached, composed by
+  `printobserver-server-compose`; what an image adds is its first call less the
+  text probe's.
+- **A case naming a `camera_calibration` is replayed with it** on the camera
+  double's stream; the record carries each check's image, read off its prompt's
+  `image` line, and the alignment verdict the server kept for the print.
 - **A case's position and time are data,** in `case.json`; `checks_real_prints` and
   `tests/skilltest-wiring` hold them. `just skilltest-record` folds a run into
   `results/latest.json`.

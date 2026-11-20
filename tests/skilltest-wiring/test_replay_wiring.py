@@ -51,6 +51,7 @@ from cases import (
 )
 from mock_turn import ScriptedRun, Seen
 from replay import (
+    IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     Assessment,
     Confidence,
@@ -60,6 +61,9 @@ from replay import (
     Replayed,
     ReplayError,
     RunReport,
+    alignment_of,
+    calibration_copy,
+    check_image,
     delivered,
     harness_token,
     is_event,
@@ -90,13 +94,11 @@ REPLAYS = {
     "jar-top-wrong-material-detach-spaghetti": [
         "wall-building-cleanly",
         "wall-top-porous-and-stringing",
-        # part-detached-and-moved waits for the check image that projects the
-        # planned toolpath: a judgement of the part's place, left out until then.
+        "part-detached-and-moved",
     ],
     "jar-top-wrong-material-first-layer-detach": [
         "first-layer-before-the-failure",
-        # ring-dragged-off-its-place waits for the check image that projects
-        # the planned toolpath: a judgement of the part's place, left out until then.
+        "ring-dragged-off-its-place",
     ],
     "petg-spool-jam-air-print": ["first-layers-healthy", "air-print-parts-stopped-growing"],
     "petg-clip-detach-and-stringing-web": [
@@ -409,7 +411,8 @@ def _scenario_named(document: dict[str, Any], scenario: str) -> dict[str, Any]:
     return next(s for s in document["assertions"]["scenarios"] if s["id"] == scenario)
 
 
-TWO_EVENTS = "jar-top-wrong-material-detach-spaghetti"
+#: The real case the repository check is handed a copy of with one thing wrong.
+BROKEN_COPY_CASE = "jar-top-wrong-material-detach-spaghetti"
 #: A case's two periodic observations with one frame between them, and every
 #: scenario of them: the timeline the tests of the replay's own clock read.
 TIMELINE_CASE = "jar-top-wrong-material-first-layer-detach"
@@ -458,7 +461,7 @@ def test_a_real_case_broken_one_way_is_refused_by_name(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The real check, over a copy of a real case with one thing wrong."""
-    root = _case_tree(tmp_path, TWO_EVENTS, edit)
+    root = _case_tree(tmp_path, BROKEN_COPY_CASE, edit)
     equal(repo_check(["real-prints-replay", "--root", str(root)]), 1)
     printed = capsys.readouterr()
     contains(printed.out + printed.err, named)
@@ -523,6 +526,38 @@ def test_the_configuration_is_the_installers_with_only_the_blanks_filled(tmp_pat
         'agent = ["pause", "set_feedrate_factor", "set_flowrate_factor",',
     ):
         contains(written, line)
+
+
+def test_a_case_naming_a_calibration_configures_it_on_the_doubles_stream(tmp_path: Path) -> None:
+    """The case's calibration is configured as it is, its stream the camera double's.
+
+    The calibration was fitted on the recording's camera, which the double stands in
+    for at an address of its own; every other field is the committed file's.
+    """
+    case = read_case("jar-top-petg-healthy")
+    calibration = case.camera_calibration
+    if calibration is None:
+        pytest.fail("jar-top-petg-healthy names its calibration")
+    copied = calibration_copy(calibration, "http://c", tmp_path)
+    committed = json.loads(calibration.read_text(encoding="utf-8"))
+    equal(
+        json.loads(copied.read_text(encoding="utf-8")),
+        {**committed, "camera_snapshot_url": "http://c/api/frame.jpeg"},
+    )
+    written = service_config(
+        tmp_path, "127.0.0.1:1", "http://o", "http://c", "http://b", Minted(), calibration=copied
+    )
+    equal(
+        tomllib.loads(written)["camera"],
+        {"snapshot_url": "http://c/api/frame.jpeg", "calibration": copied.as_posix()},
+    )
+    without = service_config(tmp_path, "127.0.0.1:1", "http://o", "http://c", "http://b", Minted())
+    equal(tomllib.loads(without)["camera"], {"snapshot_url": "http://c/api/frame.jpeg"})
+    equal(read_case("under-extrusion-lace").camera_calibration, None)
+    unreadable = tmp_path / "not-a-calibration.json"
+    unreadable.write_text("[]", encoding="utf-8")
+    with pytest.raises(ReplayError, match="no camera calibration"):
+        calibration_copy(unreadable, "http://c", tmp_path)
 
 
 def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch: Path) -> None:
@@ -732,9 +767,10 @@ def test_a_pause_at_a_carry_on_point_fails_it_and_its_test(scratch: Path) -> Non
     case = read_case("jar-top-wrong-material-detach-spaghetti")
     # A turn that pauses answers that the print should stop, as the skill asks.
     done = mock_replay(case, [{"commands": [PAUSE], "disposition": "stop"}], scratch)
-    carry_on, fault = done.replayed.points
+    carry_on, fault, moved = done.replayed.points
     contains(carry_on.why_not or "", "it must never pause")
     equal(fault.why_not, None)
+    equal(moved.why_not, None)
     truth(not done.replayed.passed, describing="the test to fail on one failed decision point")
 
 
@@ -756,7 +792,7 @@ def test_the_agents_minimum_interval_spans_the_recorded_time_between_checks(
     reached it far past the agent's minimum interval, and the print then would have
     taken a pause; one measured on the host's own clock would refuse it.
     """
-    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    case = read_case(TIMELINE_CASE)
     first, second = case.moments
     truth(
         (instant(second.at) - instant(first.at)).total_seconds() > 30,
@@ -925,7 +961,8 @@ def test_the_printer_reports_the_temperatures_the_gcode_asks_for_at_its_position
     gcode = b"M140 S60\nM104 S220\n" + b";\n" * (before // 2) + b"M104 S240\n"
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
     tools = [json.loads(turn["ran"][0]["out"])["context"]["printer"] for turn in done.turns]
-    equal([printer["tools"][0]["target_c"] for printer in tools], [220.0, 240.0])
+    # The last two checks stand past the change, so each reads its target.
+    equal([printer["tools"][0]["target_c"] for printer in tools], [220.0, 240.0, 240.0])
     equal(tools[0]["bed"]["target_c"], 60.0)
 
 
@@ -1577,7 +1614,7 @@ def test_a_turn_says_how_many_looks_it_took(scratch: Path) -> None:
     """The record counts the server's own looks for that turn, and only those."""
     case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [LOOK, LOOK]}, {"commands": [CONTEXT]}], scratch)
-    equal([point.looks for point in done.replayed.points], [2, 0])
+    equal([point.looks for point in done.replayed.points], [2, 0, 0])
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
@@ -1596,7 +1633,7 @@ def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
 
 def test_a_turn_the_engine_gave_up_on_fails_its_own_decision_point(scratch: Path) -> None:
     """Its failure is that entry's verdict, and the next event still gets its turn."""
-    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    case = read_case(TIMELINE_CASE)
     unreadable: ScriptedRun = {"commands": [CONTEXT], "unreadable": True}
     done = mock_replay(case, [unreadable, unreadable, unreadable, {"commands": [CONTEXT]}], scratch)
     first, second = done.replayed.points
@@ -1619,7 +1656,7 @@ def test_only_the_ingress_accepting_an_alert_counts_as_delivering_it() -> None:
 
 def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: Path) -> None:
     """The engine's second run of one turn neither ends it nor moves the replay on."""
-    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    case = read_case(TIMELINE_CASE)
     done = mock_replay(
         case,
         [
@@ -1670,10 +1707,10 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "calls": [{"input_tokens": 3, "output_tokens": 80, "cache_write_tokens": 5_000}],
         "check_class": "quiet",
     }
-    carry_on, bridge = REPLAYS["jar-top-wrong-material-detach-spaghetti"]
-    points = [{**point, "scenario": carry_on}, {**point, "scenario": bridge}]
+    before, dragged = REPLAYS["jar-top-wrong-material-first-layer-detach"]
+    points = [{**point, "scenario": before}, {**point, "scenario": dragged}]
     test_record = {
-        "test": "jar-top-wrong-material-detach-spaghetti",
+        "test": "jar-top-wrong-material-first-layer-detach",
         "passed": True,
         "turns": 2,
         "sessions": [],
@@ -1756,6 +1793,26 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
         (
             "field",
             {**test_record, "decision_points": [{**points[0], "looks": "many"}, points[1]]},
+        ),
+        (
+            "an image of no kind",
+            {
+                **test_record,
+                "decision_points": [
+                    {**points[0], "image": {"kind": "panels", "why": None, "note": "x"}},
+                    points[1],
+                ],
+            },
+        ),
+        (
+            "an image with no line",
+            {
+                **test_record,
+                "decision_points": [
+                    {**points[0], "image": {"kind": "composite", "why": None}},
+                    points[1],
+                ],
+            },
         ),
         (
             "a passing check reporting no call",
@@ -1841,7 +1898,7 @@ def test_the_record_command_runs_the_suite_and_folds_what_that_run_wrote(
     equal(folded["detail"]["passed"], True, describing="the run's verdict")
     equal(
         [test["test"] for test in folded["detail"]["tests"]],
-        ["jar-top-wrong-material-detach-spaghetti"],
+        ["jar-top-wrong-material-first-layer-detach"],
         describing="the tests the run wrote",
     )
 
@@ -1871,7 +1928,7 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
     And each check's calls as the supervisor port recorded them from the stream
     the harness wrote, with its class: quiet for the read, acting for the pause.
     """
-    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    case = read_case(TIMELINE_CASE)
     usages = [
         {"input_tokens": 101, "output_tokens": 11, "cache_read_input_tokens": 7},
         {"input_tokens": 202, "output_tokens": 22, "cache_read_input_tokens": 9},
@@ -1932,6 +1989,77 @@ def test_the_facts_are_measured_off_the_prompt_a_real_check_is_handed(scratch: P
         report.facts_bytes is not None and report.facts_bytes > 0,
         describing=f"the facts measured off the prompt the check was handed: {handed}",
     )
+
+
+def test_the_image_a_check_was_shown_is_read_off_the_prompt_a_real_check_is_handed(
+    scratch: Path,
+) -> None:
+    """The replay reads which image a check got, and why, off the real server's prompt.
+
+    The case names a calibration, so the server weighs the three-panel image; with
+    no plan to place the check in, it is shown the whole frame, which the server's
+    line says, and the record carries it as the whole frame with that reason.
+    """
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+    mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    handed = (scratch / mock_turn.CONVERSATION_FILE).read_text(encoding="utf-8")
+    report = RunReport()
+
+    report.take([{"type": "user", "message": {"content": [{"type": "text", "text": handed}]}}])
+
+    note = report.image_note
+    if note is None:
+        pytest.fail(f"no image line in the prompt the check was handed: {handed}")
+    shown = check_image(note)
+    equal(shown["kind"], "whole_frame", describing=note)
+    # The gate serves no case's G-code, an LFS object it never reads, so the server
+    # has no plan to place this check in; the live suite serves the real file.
+    contains(shown["why"] or "", "G-code index gives no file position")
+
+
+def test_each_image_line_the_server_writes_is_read_as_its_kind() -> None:
+    """The composite, the whole frame with its reason, and a frame no line names apart."""
+    equal(check_image("the three-panel check image, 1024x1848: panel 1 ...")["kind"], "composite")
+    whole = check_image(
+        "the whole camera frame, scaled to fit 1280x720 and uncropped, because no camera "
+        "calibration is configured"
+    )
+    equal((whole["kind"], whole["why"]), ("whole_frame", "no camera calibration is configured"))
+    stored = check_image("the frame as the camera took it, because its check image could not be")
+    equal(stored["kind"], "stored_frame")
+
+
+@pytest.mark.parametrize(
+    ("kept", "read"),
+    [
+        (
+            {"verdict": "passed", "offset_px": 14.6},
+            {"verdict": "passed", "offset_px": 14.6, "failure": None},
+        ),
+        (
+            {"verdict": "failed", "reason": {"failure": "offset", "offset_px": 48.5}},
+            {"verdict": "failed", "offset_px": 48.5, "failure": "offset"},
+        ),
+        (
+            {
+                "verdict": "failed",
+                "reason": {"failure": "resolution", "expected": [1920, 1080], "got": [1280, 720]},
+            },
+            {"verdict": "failed", "offset_px": None, "failure": "resolution"},
+        ),
+        (
+            {"verdict": "unavailable"},
+            {"verdict": "unavailable", "offset_px": None, "failure": None},
+        ),
+        ({"offset_px": 3}, None),
+        ([], None),
+    ],
+)
+def test_a_cases_alignment_verdict_is_read_as_the_server_keeps_it(
+    kept: object, read: object
+) -> None:
+    """Each verdict the server writes reads as its verdict and offset; anything else as none."""
+    equal(alignment_of(kept), read)
 
 
 @dataclass
@@ -2161,7 +2289,7 @@ def test_the_record_works_out_each_figure_the_budgets_read(
     monkeypatch.setattr(record, "commit", lambda: "a-commit")
     finished = tmp_path / "finished"
     finished.mkdir()
-    first, second = REPLAYS["jar-top-wrong-material-detach-spaghetti"]
+    first, second = REPLAYS["jar-top-wrong-material-first-layer-detach"]
     # The first check: one call reading 6,000, the probe's base plus its own 2,000.
     quiet = [
         {
@@ -2178,7 +2306,7 @@ def test_the_record_works_out_each_figure_the_budgets_read(
     ]
     points = [_point_with(first, "quiet", quiet), _point_with(second, "acting", acting)]
     test_record = {
-        "test": "jar-top-wrong-material-detach-spaghetti",
+        "test": "jar-top-wrong-material-first-layer-detach",
         "passed": True,
         "turns": 2,
         "sessions": [],
@@ -2194,6 +2322,18 @@ def test_the_record_works_out_each_figure_the_budgets_read(
         "skill_bytes": 5_983,
     }
     (finished / PROBE_RECORD).write_text(json.dumps(probe), encoding="utf-8")
+    # The image probe: the same prompt with one 1024x1848 check image, its first call
+    # reading 2,443 more than the text-only probe's.
+    image_probe = {
+        "prompt": probe["prompt"],
+        "calls": [{"input_tokens": 4, "cache_write_tokens": 6_439, "output_tokens": 71}],
+        "case": "jar-top-petg-healthy",
+        "scenario": "carry-on-031-other",
+        "width": 1024,
+        "height": 1848,
+        "bytes": 412_345,
+    }
+    (finished / IMAGE_PROBE_RECORD).write_text(json.dumps(image_probe), encoding="utf-8")
 
     folded = record.folded(finished, "a-commit")
     base = 4_000
@@ -2210,8 +2350,10 @@ def test_the_record_works_out_each_figure_the_budgets_read(
             "quiet_check_input_tokens": float(quiet_input),
             "acting_check_input_tokens": float(acting_raw - 2 * (history - base)),
             "base_context_tokens": float(base),
+            "frame_image_tokens": float((4 + 6_439) - base),
         },
     )
+    equal(folded["figures"]["frame_image_tokens"], 2_443.0, describing="by hand")
     equal(folded["figures"]["acting_check_input_tokens"], 14_350.0, describing="by hand")
     detail = folded["detail"]["figures"]
     equal(detail["base_context_tokens"]["cache_write_tokens"], 3_996)
@@ -2220,6 +2362,32 @@ def test_the_record_works_out_each_figure_the_budgets_read(
     equal(detail["acting_check_model_calls"]["max"], 2)
     equal(detail["quiet_check_model_calls"]["above_one_call"], [])
     equal(folded["detail"]["probe"], probe)
+    equal(folded["detail"]["image_probe"], image_probe)
+    equal(
+        detail["frame_image_tokens"],
+        {
+            "case": "jar-top-petg-healthy",
+            "scenario": "carry-on-031-other",
+            "pixels": 1024 * 1848,
+            "width": 1024,
+            "height": 1848,
+            "bytes": 412_345,
+            "image_probe_first_call_input": 6_443,
+            "text_probe_first_call_input": 4_000,
+            # Anthropic's rule, one token per 28x28 px rounded up: 37 x 66 and 46 x 26.
+            "rule_tokens": 2_442,
+            "whole_frame_rule_tokens": 1_196,
+        },
+    )
+
+    # With no image probe, no image figure; one that is no record is refused.
+    (finished / IMAGE_PROBE_RECORD).unlink()
+    equal("frame_image_tokens" in record.folded(finished, "a-commit")["figures"], False)
+    for unusable in ({**image_probe, "width": 0}, {**image_probe, "calls": []}, []):
+        (finished / IMAGE_PROBE_RECORD).write_text(json.dumps(unusable), encoding="utf-8")
+        with pytest.raises(record.UnreadableRunError, match="no image probe"):
+            record.folded(finished, "a-commit")
+    (finished / IMAGE_PROBE_RECORD).unlink()
 
     # With no probe, no input figure can be worked out, and none is written.
     (finished / PROBE_RECORD).unlink()

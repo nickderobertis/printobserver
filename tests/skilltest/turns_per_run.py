@@ -1,7 +1,8 @@
 """`skilltest-turns-per-run`: the real harness turns one full `just skilltest` run spends.
 
 One turn per event a test feeds, so the figure is the `replay` entries of every
-case on disk, and the probe of the supervisor configuration alone. A re-prompt
+case on disk, and the two probes of the supervisor configuration: alone, and with
+one check image. A re-prompt
 made inside a turn is part of that turn, not another one, and this does not
 count it. It is counted fresh and runs no model. A
 test that runs the replay holds the count here to the turns the harness actually
@@ -17,8 +18,9 @@ from pathlib import Path
 from onebudgetspec_sdk import report
 
 CASES = Path(__file__).resolve().parents[2] / "tests" / "real-prints"
-#: The turns a full run spends on its probe of the supervisor configuration.
-PROBE_TURNS = 1
+#: The turns a full run spends on its probes of the supervisor configuration: the
+#: text-only one and the one carrying a check image.
+PROBE_TURNS = 2
 
 
 class UnreadableCaseError(Exception):

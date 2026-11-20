@@ -10,9 +10,10 @@ them; given none, it runs `just skilltest` to make one, and exits as that did.
 Each check's input figure is held free of the conversation it carries: its calls'
 input, cache included, less `calls x (history - base)`, where `history` is the
 previous check's last-call input plus output in the same test — the base, for a
-test's first check — and `base` is the probe's first-call input. A figure the run
-cannot work out — no probe, or no check of a class — is left out of `figures`,
-which `telemetry_budget` refuses by name.
+test's first check — and `base` is the probe's first-call input. What one check
+image adds to a call is the image probe's first-call input less the text-only
+probe's. A figure the run cannot work out — no probe, or no check of a class — is
+left out of `figures`, which `telemetry_budget` refuses by name.
 """
 
 from __future__ import annotations
@@ -23,13 +24,16 @@ import statistics
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, TypedDict, get_args
 
 from replay import (
+    IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     REPORTED_COUNTS,
     CallUsage,
     DecisionRecord,
+    ImageKind,
+    ImageProbeRecord,
     ProbeRecord,
     TestRecord,
     is_assessment,
@@ -51,7 +55,11 @@ def commit() -> str:
 #: The decision points of a supervision check carry these beside a start request's.
 CHECK_FIELDS = {"calls", "check_class"}
 #: The fields a decision point may leave out: what a record kept before they existed lacks.
-OPTIONAL_FIELDS = {"facts_bytes"}
+OPTIONAL_FIELDS = {"facts_bytes", "image"}
+#: The side of the square Anthropic's rule counts one image token for, in pixels.
+TOKEN_SIDE_PX = 28
+#: The whole camera frame a check is shown when it is not shown the composite.
+WHOLE_FRAME_PX = (1280, 720)
 #: The trigger a start request's decision point is recorded under, which is no check.
 START_REQUEST = "start_request"
 
@@ -67,6 +75,7 @@ class Detail(TypedDict):
     passed: bool
     tests: list[TestRecord]
     probe: ProbeRecord | None
+    image_probe: ImageProbeRecord | None
     #: What each figure was worked out from, by the figure's name.
     figures: FiguresDetail
 
@@ -112,12 +121,23 @@ def _check_is_readable(point: dict[str, Any]) -> bool:
     )
 
 
+def _image_is_readable(image: object) -> bool:
+    """Whether a check's image says which it was and why, or is absent as an older record's is."""
+    return image is None or (
+        isinstance(image, dict)
+        and image.get("kind") in get_args(ImageKind)
+        and isinstance(image.get("note"), str)
+        and (image.get("why") is None or isinstance(image["why"], str))
+    )
+
+
 def _decision_point_is_readable(point: object) -> bool:
     """Whether a decision point has every field of `DecisionRecord`, with those read here typed."""
     return (
         isinstance(point, dict)
         and DecisionRecord.__annotations__.keys() - CHECK_FIELDS - OPTIONAL_FIELDS <= point.keys()
         and (point.get("facts_bytes") is None or type(point["facts_bytes"]) is int)
+        and _image_is_readable(point.get("image"))
         and _check_is_readable(point)
         and isinstance(point["scenario"], str)
         and isinstance(point["at"], str)
@@ -193,6 +213,33 @@ def _probe_record(directory: Path) -> ProbeRecord | None:
         msg = f"{path} is no probe's record"
         raise UnreadableRunError(msg)
     return document
+
+
+def _image_probe_record(directory: Path) -> ImageProbeRecord | None:
+    """The run's image probe, when its test ran."""
+    path = directory / IMAGE_PROBE_RECORD
+    if not path.is_file():
+        return None
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        not isinstance(document, dict)
+        or not isinstance(document.get("prompt"), str)
+        or not all(
+            type(document.get(name)) is int and document[name] > 0
+            for name in ("width", "height", "bytes")
+        )
+        or not isinstance(document.get("calls"), list)
+        or not document["calls"]
+        or not all(_is_usage(usage) for usage in document["calls"])
+    ):
+        msg = f"{path} is no image probe's record"
+        raise UnreadableRunError(msg)
+    return document
+
+
+def rule_tokens(width: int, height: int) -> int:
+    """An image's tokens by Anthropic's rule: one per 28 by 28 pixel square, rounded up."""
+    return -(-width // TOKEN_SIDE_PX) * -(-height // TOKEN_SIDE_PX)
 
 
 def call_input(usage: CallUsage) -> int:
@@ -327,6 +374,22 @@ class BaseContext(TypedDict):
     skill_bytes: int
 
 
+class FrameImage(TypedDict):
+    """What the image-token figure was worked out from: the two probes' first calls."""
+
+    case: str
+    scenario: str
+    pixels: int
+    width: int
+    height: int
+    bytes: int
+    image_probe_first_call_input: int
+    text_probe_first_call_input: int
+    #: Anthropic's rule for the check image, and for a whole 1280x720 frame.
+    rule_tokens: int
+    whole_frame_rule_tokens: int
+
+
 class FiguresDetail(TypedDict, total=False):
     """What each figure the run could work out was worked out from, by its name."""
 
@@ -335,6 +398,7 @@ class FiguresDetail(TypedDict, total=False):
     quiet_check_input_tokens: ClassInput
     acting_check_input_tokens: ClassInput
     base_context_tokens: BaseContext
+    frame_image_tokens: FrameImage
 
 
 def _class_input(checks: list[Check]) -> tuple[float, ClassInput] | None:
@@ -360,7 +424,9 @@ def _class_input(checks: list[Check]) -> tuple[float, ClassInput] | None:
 
 
 def figures_of(
-    checks: list[Check], probe: ProbeRecord | None
+    checks: list[Check],
+    probe: ProbeRecord | None,
+    image_probe: ImageProbeRecord | None = None,
 ) -> tuple[dict[str, float], FiguresDetail]:
     """The figures this run's budgets read, and what each was worked out from."""
     figures: dict[str, float] = {}
@@ -413,15 +479,34 @@ def figures_of(
             "input_tokens": first.get("input_tokens", 0),
             "skill_bytes": probe["skill_bytes"],
         }
+    if probe is not None and image_probe is not None:
+        text, imaged = call_input(probe["calls"][0]), call_input(image_probe["calls"][0])
+        width, height = image_probe["width"], image_probe["height"]
+        figures["frame_image_tokens"] = float(imaged - text)
+        detail["frame_image_tokens"] = {
+            "case": image_probe["case"],
+            "scenario": image_probe["scenario"],
+            "pixels": width * height,
+            "width": width,
+            "height": height,
+            "bytes": image_probe["bytes"],
+            "image_probe_first_call_input": imaged,
+            "text_probe_first_call_input": text,
+            "rule_tokens": rule_tokens(width, height),
+            "whole_frame_rule_tokens": rule_tokens(*WHOLE_FRAME_PX),
+        }
     return figures, detail
 
 
 def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
     """The record of one run, from each test's record in its directory and its probe's."""
     tests = [
-        _test_record(path) for path in sorted(directory.glob("*.json")) if path.name != PROBE_RECORD
+        _test_record(path)
+        for path in sorted(directory.glob("*.json"))
+        if path.name not in {PROBE_RECORD, IMAGE_PROBE_RECORD}
     ]
     probe = _probe_record(directory)
+    image_probe = _image_probe_record(directory)
     named = [test["test"] for test in tests]
     if len(set(named)) != len(named):
         msg = f"{directory} holds one test twice: {sorted(named)}"
@@ -433,7 +518,7 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
             msg = f"{test['test']} is no case with a replay of those decision points"
             raise UnreadableRunError(msg)
     base = call_input(probe["calls"][0]) if probe is not None else None
-    figures, figured = figures_of(checks_of(tests, base), probe)
+    figures, figured = figures_of(checks_of(tests, base), probe, image_probe)
     return {
         "figures": {"turns": len(points), **figures},
         "detail": {
@@ -445,6 +530,7 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
             "passed": all(test["passed"] for test in tests),
             "tests": tests,
             "probe": probe,
+            "image_probe": image_probe,
             "figures": figured,
         },
     }
