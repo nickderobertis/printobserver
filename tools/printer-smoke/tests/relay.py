@@ -39,6 +39,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -74,6 +75,10 @@ MOST_FRAME_BYTES = 64 * 1024 * 1024
 #: Where a state is written before it is moved over the file: beside it, so
 #: that the move is within one directory and the platform does it as one step.
 STAGING_SUFFIX = ".next"
+
+#: The longest a connection is held open after its answer, for the client to
+#: read it and go: a client that is still sending past this is let go.
+LINGER_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -239,14 +244,14 @@ class Relay:
                 argv = _arguments(connection)
                 hanging = self.count_and_hold(argv)
             except ValueError as error:
-                Reply.refusing(error).send(connection)
+                _answer_and_close(connection, Reply.refusing(error))
                 return
             if hanging:
                 # Held open, unanswered, until the caller's own bound stops the
                 # client — or until this relay is stopped.
                 self.stopping.wait()
                 return
-            self.run(argv, connection).send(connection)
+            _answer_and_close(connection, self.run(argv, connection))
 
     def run(self, argv: list[str], connection: socket.socket) -> Reply:
         """Run the program with `argv`, fed what the client forwards, and collect its answer.
@@ -309,6 +314,25 @@ class Relay:
         for process in running:
             process.kill()
             process.wait()
+
+
+def _answer_and_close(connection: socket.socket, reply: Reply) -> None:
+    """Send `reply`, then discard what the client still sends until it closes.
+
+    A command's input may be left unread — the program ended first, or never
+    started. Closing over unread input resets the connection, and a reset may
+    discard an answer the client has not read yet, as Windows does. So the
+    relay ends its own half and waits out the client's, for at most `LINGER_S`.
+    """
+    reply.send(connection)
+    deadline = time.monotonic() + LINGER_S
+    # A client gone already, or one past the bound, leaves nothing to wait for.
+    with contextlib.suppress(OSError):
+        connection.shutdown(socket.SHUT_WR)
+        while (left := deadline - time.monotonic()) > 0:
+            connection.settimeout(left)
+            if not connection.recv(65536):
+                return
 
 
 def _exactly(connection: socket.socket, size: int) -> bytes:
