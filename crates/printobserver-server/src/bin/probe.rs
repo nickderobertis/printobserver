@@ -77,14 +77,14 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    // An image named is held to a readable file here, so a probe never runs a
-    // paid turn on an image the engine would refuse.
+    // An image named is held to a readable JPEG or PNG here, so a probe never
+    // runs a paid turn on an image the engine would refuse.
     if let Some(image) = &asked.image
-        && let Err(error) = std::fs::metadata(image).and_then(|held| {
-            if held.is_file() {
+        && let Err(error) = std::fs::read(image).and_then(|bytes| {
+            if bytes.starts_with(&[0xff, 0xd8, 0xff]) || bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
                 Ok(())
             } else {
-                Err(std::io::Error::other("it is no file"))
+                Err(std::io::Error::other("it is no JPEG or PNG image"))
             }
         })
     {

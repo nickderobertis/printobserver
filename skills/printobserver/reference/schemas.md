@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-207 types. The set is every type any crate declares under
+208 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -24028,6 +24028,159 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "PrintAction"
+}
+```
+
+### PrintAlignment
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "AlignmentFailure": {
+      "description": "Why a print's alignment failed.",
+      "oneOf": [
+        {
+          "description": "The printed first layer lies further from its projection than the\ncalibration allows.",
+          "properties": {
+            "failure": {
+              "const": "offset",
+              "type": "string"
+            },
+            "offset_px": {
+              "description": "How far, in calibration pixels.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "failure",
+            "offset_px"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The camera's frames are not the calibration's resolution.",
+          "properties": {
+            "expected": {
+              "description": "The calibration's, `[width, height]`.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "failure": {
+              "const": "resolution",
+              "type": "string"
+            },
+            "got": {
+              "description": "The frame's.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "required": [
+            "failure",
+            "expected",
+            "got"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The camera configured is not the stream the calibration was fitted on.",
+          "properties": {
+            "failure": {
+              "const": "stream",
+              "type": "string"
+            }
+          },
+          "required": [
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One print's first-layer alignment verdict, as it is kept under the state\ndirectory \u2014 which the real-print suite's record reads.",
+  "oneOf": [
+    {
+      "description": "Nothing can be checked: no calibration is configured, or the print's\nG-code lays no object.",
+      "properties": {
+        "verdict": {
+          "const": "unavailable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "The first object layer is not down yet, or no frame of it has been\njudged.",
+      "properties": {
+        "verdict": {
+          "const": "pending",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "The projected first layer lands on the printed one.",
+      "properties": {
+        "offset_px": {
+          "description": "How far it lies from it, in calibration pixels.",
+          "format": "double",
+          "type": "number"
+        },
+        "verdict": {
+          "const": "passed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "offset_px"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "It does not, or the frames cannot be judged against the calibration.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/AlignmentFailure",
+          "description": "Why."
+        },
+        "verdict": {
+          "const": "failed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "reason"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "PrintAlignment"
 }
 ```
 

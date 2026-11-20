@@ -224,6 +224,8 @@ def _image_probe_record(directory: Path) -> ImageProbeRecord | None:
     if (
         not isinstance(document, dict)
         or not isinstance(document.get("prompt"), str)
+        or not isinstance(document.get("case"), str)
+        or not isinstance(document.get("scenario"), str)
         or not all(
             type(document.get(name)) is int and document[name] > 0
             for name in ("width", "height", "bytes")

@@ -187,11 +187,13 @@ pub fn whole_frame_note(reason: &WholeFrameReason) -> String {
     )
 }
 
-/// The line saying a check was shown the three-panel image.
+/// The line saying a check was shown the three-panel image: panel 3 empty
+/// when no earlier check's frame is at hand — the print's first check, or one
+/// whose earlier frame is gone from the store.
 #[must_use]
-pub fn composite_note(first_check: bool) -> String {
-    let previous = if first_check {
-        "panel 3 is empty, this being the print's first check"
+pub fn composite_note(no_previous: bool) -> String {
+    let previous = if no_previous {
+        "panel 3 empty, no earlier check's frame being at hand"
     } else {
         "panel 3 the previous check's frame"
     };
@@ -334,6 +336,9 @@ impl PanelImages {
             || at.index.object_outlines().is_empty()
         {
             return Ok(Err(WholeFrameReason::NoObject));
+        }
+        if at.index.layer_at(at.file_position_bytes).is_none() {
+            return Ok(Err(WholeFrameReason::NoLayer));
         }
         match self.alignments.print_alignment(print_id) {
             PrintAlignment::Passed { .. } => {}

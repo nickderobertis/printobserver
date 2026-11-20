@@ -508,9 +508,19 @@ class Alignment(TypedDict):
     failure: str | None
 
 
+#: The schema the server keeps each print's alignment verdict to.
+ALIGNMENT_SCHEMA = REPO / "schemas" / "printobserver-server" / "PrintAlignment.json"
+
+
 def alignment_of(document: object) -> Alignment | None:
-    """A verdict file's verdict, or nothing for a file that is no verdict."""
-    if not isinstance(document, dict) or not isinstance(document.get("verdict"), str):
+    """A verdict file's verdict, or nothing for a file that is no verdict.
+
+    Held to the schema the server's own type writes, which its contract test keeps
+    in step with the type, so a verdict the server writes differently is refused here
+    rather than read as something it is not.
+    """
+    schema = json.loads(ALIGNMENT_SCHEMA.read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not Draft202012Validator(schema).is_valid(document):
         return None
     reason = document.get("reason")
     offset = document.get("offset_px")
@@ -1532,6 +1542,70 @@ class ImageProbeRecord(TypedDict):
     bytes: int
 
 
+class Composed(TypedDict):
+    """What `printobserver-server-compose` said of the check image it wrote."""
+
+    width: int
+    height: int
+    bytes: int
+    #: The line a check shown it carries in its situation.
+    note: str
+
+
+def composed_check_image(
+    gcode: bytes, frame: Path, position: int, calibration: Path, out: Path
+) -> Composed:
+    """The check image a print's first check at `position` is shown, written to `out`.
+
+    Composed by `printobserver-server-compose` — the server's own composition — of
+    `frame` at that file position in `gcode`, through `calibration`, configured as the
+    installer configures the server.
+    """
+    root = out.parent / f"{out.stem}-compose"
+    root.mkdir()
+    printed = root / "print.gcode"
+    printed.write_bytes(gcode)
+    copied = calibration_copy(calibration, UNUSED, root)
+    # The configuration is loaded as the server loads it, which reads the skill.
+    state = root / "state"
+    shutil.copytree(SKILL, state / "skills" / "printobserver")
+    config = root / "compose.toml"
+    config.write_text(
+        service_config(state, "127.0.0.1:0", UNUSED, UNUSED, UNUSED, Secrets(), calibration=copied),
+        encoding="utf-8",
+    )
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    done = run(
+        [
+            str(program("printobserver-server-compose")),
+            "--config",
+            str(config),
+            "--gcode",
+            str(printed),
+            "--frame",
+            str(frame),
+            "--position",
+            str(position),
+            "--out",
+            str(out),
+        ],
+        timeout=CLIENT_DEADLINE_S,
+    )
+    shutil.rmtree(root, ignore_errors=True)
+    if done.returncode != 0:
+        msg = f"the check image could not be composed: {done.stderr}"
+        raise ReplayError(msg)
+    said = json.loads(done.stdout)
+    if (
+        not isinstance(said, dict)
+        or not all(type(said.get(name)) is int for name in ("width", "height", "bytes"))
+        or not isinstance(said.get("note"), str)
+    ):
+        msg = f"the composer said no size: {done.stdout[:PRINTS_SAID_CHARS]}"
+        raise ReplayError(msg)
+    return said
+
+
 def image_probe(harness: str) -> ImageProbeRecord:
     """The text-only probe's turn with one case's three-panel check image attached.
 
@@ -1548,52 +1622,14 @@ def image_probe(harness: str) -> ImageProbeRecord:
         raise ReplayError(msg)
     root = Path(tempfile.mkdtemp())
     try:
-        gcode = root / "print.gcode"
-        gcode.write_bytes(refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name))
-        calibration = calibration_copy(case.camera_calibration, UNUSED, root)
-        # The configuration is loaded as the server loads it, which reads the skill.
-        state = root / "state"
-        shutil.copytree(SKILL, state / "skills" / "printobserver")
-        config = root / "compose.toml"
-        config.write_text(
-            service_config(
-                state,
-                "127.0.0.1:0",
-                UNUSED,
-                UNUSED,
-                UNUSED,
-                Secrets(),
-                calibration=calibration,
-            ),
-            encoding="utf-8",
-        )
         composite = root / "check-image.jpg"
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        done = run(
-            [
-                str(program("printobserver-server-compose")),
-                "--config",
-                str(config),
-                "--gcode",
-                str(gcode),
-                "--frame",
-                str(case.directory / moment.event_image),
-                "--position",
-                str(moment.file_position_bytes),
-                "--out",
-                str(composite),
-            ],
-            timeout=CLIENT_DEADLINE_S,
+        size = composed_check_image(
+            refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name),
+            case.directory / moment.event_image,
+            moment.file_position_bytes,
+            case.camera_calibration,
+            composite,
         )
-        if done.returncode != 0:
-            msg = f"the check image could not be composed: {done.stderr}"
-            raise ReplayError(msg)
-        size = json.loads(done.stdout)
-        if not isinstance(size, dict) or not all(
-            type(size.get(name)) is int for name in ("width", "height", "bytes")
-        ):
-            msg = f"the composer said no size: {done.stdout[:PRINTS_SAID_CHARS]}"
-            raise ReplayError(msg)
         return {
             "prompt": PROBE_PROMPT,
             "calls": _probe_turn(harness, root, composite),

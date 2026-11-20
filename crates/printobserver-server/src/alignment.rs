@@ -29,15 +29,18 @@ use printobserver_panels::{
     AlignmentInputs, CameraCalibration, ComposeError, FrameField, verify_first_layer_alignment,
 };
 use printobserver_types::PrintId;
+use printobserver_types::contract::Sample;
+use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 
 /// Why a print's alignment failed.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     crate = "printobserver_types::serde",
     tag = "failure",
     rename_all = "snake_case"
 )]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum AlignmentFailure {
     /// The printed first layer lies further from its projection than the
     /// calibration allows.
@@ -56,13 +59,15 @@ pub enum AlignmentFailure {
     Stream,
 }
 
-/// One print's first-layer alignment verdict.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// One print's first-layer alignment verdict, as it is kept under the state
+/// directory — which the real-print suite's record reads.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(
     crate = "printobserver_types::serde",
     tag = "verdict",
     rename_all = "snake_case"
 )]
+#[schemars(crate = "printobserver_types::schemars")]
 pub enum PrintAlignment {
     /// Nothing can be checked: no calibration is configured, or the print's
     /// G-code lays no object.
@@ -80,6 +85,34 @@ pub enum PrintAlignment {
         /// Why.
         reason: AlignmentFailure,
     },
+}
+
+impl Sample for PrintAlignment {
+    fn sample_full() -> Self {
+        Self::Passed { offset_px: 14.5 }
+    }
+
+    fn sample_minimal() -> Self {
+        Self::Pending
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![
+            Self::Unavailable,
+            Self::Failed {
+                reason: AlignmentFailure::Offset { offset_px: 48.5 },
+            },
+            Self::Failed {
+                reason: AlignmentFailure::Resolution {
+                    expected: [1920, 1080],
+                    got: [1280, 720],
+                },
+            },
+            Self::Failed {
+                reason: AlignmentFailure::Stream,
+            },
+        ]
+    }
 }
 
 /// The frame one print's last check was given, and when it was captured.
@@ -179,7 +212,11 @@ impl Alignments {
     /// Name the frame one print's check was given, which its next check shows
     /// as the previous. A record the filesystem refuses leaves the one before
     /// it standing, so the next check shows an older frame as the previous
-    /// rather than none; no test makes the state directory refuse a write.
+    /// rather than none. No test makes this write fail: that needs the state
+    /// directory made to refuse writes beneath a running server, which refuses
+    /// the store's own writes first. What a check makes of a record it cannot
+    /// use — an empty panel 3 — is proved by
+    /// `a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_print`.
     pub fn record_check(&self, print_id: PrintId, check: &PreviousCheck) {
         let Ok(bytes) = printobserver_types::serde_json::to_vec(check) else {
             return;

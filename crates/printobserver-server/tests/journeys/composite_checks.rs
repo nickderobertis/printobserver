@@ -262,6 +262,9 @@ fn read_handed(seen: &Value) -> Handed {
 struct Camera {
     host: ScriptedHost,
     calibration: Option<Value>,
+    /// Whether `[camera] snapshot_url` names it; an alert's frame is fetched
+    /// from it either way.
+    snapshot: bool,
 }
 
 /// One server over a journey's state, and what watches it.
@@ -327,6 +330,17 @@ impl Journey {
             &camera.host.url(),
             interval_s,
         );
+        if !camera.snapshot {
+            let mut document: toml::Value =
+                toml::from_str(&std::fs::read_to_string(&path).expect("the configuration"))
+                    .expect("a document");
+            document["camera"]
+                .as_table_mut()
+                .expect("a camera table")
+                .remove("snapshot_url");
+            std::fs::write(&path, toml::to_string(&document).expect("it renders"))
+                .expect("the configuration is writable");
+        }
         if let Some(calibration) = &camera.calibration {
             let mut written = calibration.clone();
             written["camera_snapshot_url"] = Value::String(camera.host.url());
@@ -483,6 +497,7 @@ async fn aligned(
     let deciding = Camera {
         host: ScriptedHost::answering(vec![Scripted::frame(first_layer)]).await,
         calibration: Some(calibration.clone()),
+        snapshot: true,
     };
     let started = journey.start(&deciding, 3600, &json!([])).await;
     let print_id = adopted(&started.server).await;
@@ -529,6 +544,7 @@ async fn scheduled_check_and_look(
         ])
         .await,
         calibration: Some(calibration.clone()),
+        snapshot: true,
     };
     let url = checking.host.url();
     let calibrated = calibration_at(calibration, &url);
@@ -565,7 +581,7 @@ async fn scheduled_check_and_look(
     );
     assert!(
         scheduled.note.starts_with("the three-panel check image")
-            && scheduled.note.contains("first check"),
+            && scheduled.note.contains("panel 3 empty"),
         "{installer}: {}",
         scheduled.note
     );
@@ -631,6 +647,7 @@ async fn alert_check_after_a_restart(
     let alerting = Camera {
         host: ScriptedHost::answering(vec![Scripted::frame(frames[2].clone())]).await,
         calibration: Some(calibration.clone()),
+        snapshot: true,
     };
     let url = alerting.host.url();
     let started = journey.start(&alerting, 3600, &json!([])).await;
@@ -740,6 +757,51 @@ struct WholeFrameCase {
     /// The size the frame is shown at, and whether it is the marked frame,
     /// which a check shown it whole keeps a mark in every corner of.
     shown: ((u32, u32), bool),
+    /// What the image line begins with.
+    shown_as: &'static str,
+    /// What is done to the state directory, once the print is known, before
+    /// the check runs.
+    before_check: Option<fn(&Path, PrintId)>,
+    /// Whether the check is an alert's rather than a scheduled one.
+    by_alert: bool,
+    /// Whether `[camera] snapshot_url` is configured.
+    snapshot: bool,
+}
+
+/// The whole frame's line, and every other field a case leaves as it is.
+const WHOLE: WholeFrameCase = WholeFrameCase {
+    name: "",
+    slice: "jar-top-petg.gcode",
+    calibration: Some(as_committed),
+    aligned_over: None,
+    position: laying_walls,
+    frame: marked_frame,
+    says: "",
+    shown: ((1280, 720), true),
+    shown_as: "the whole camera frame, scaled to fit 1280x720",
+    before_check: None,
+    by_alert: false,
+    snapshot: true,
+};
+
+/// A slice labelling one object and no layer.
+const NO_LAYERS: &[u8] = b"G90\nM83\nM486 S0\nG1 X10 Y10\nG1 X60 Y10 E2\nG1 X60 Y60 E2\nM486 S-1\n";
+
+/// Stand a directory where the print's spool is written, so the restarted
+/// server's index of it has no spool to read a layer's toolpath from.
+fn spool_unwritable(state: &Path, print_id: PrintId) {
+    let spool = state.join("gcode-spool").join(format!("{print_id}.gcode"));
+    let _ = std::fs::remove_file(&spool);
+    std::fs::create_dir_all(&spool).expect("a directory where the spool goes");
+}
+
+/// Stand a file where check images are written, so none can be.
+fn check_images_unwritable(state: &Path, _: PrintId) {
+    std::fs::write(
+        state.join(printobserver_server::CHECK_IMAGES_DIRECTORY),
+        b"",
+    )
+    .expect("a file where check images go");
 }
 
 /// What a case's alignment is decided over, and the verdict it must reach.
@@ -803,6 +865,60 @@ const UNLABELLED: &[u8] = b";LAYER_CHANGE\n;Z:0.2\nG90\nM83\nG1 X10 Y10\nG1 X60 
 
 /// Every case of a check of a print shown the whole frame.
 fn whole_frame_cases() -> Vec<WholeFrameCase> {
+    let mut cases = plan_and_storage_cases();
+    cases.extend(configuration_and_frame_cases());
+    cases
+}
+
+/// Every case of a check of a print shown the whole frame for where it stands
+/// in its plan, or for what the state directory will not hold.
+fn plan_and_storage_cases() -> Vec<WholeFrameCase> {
+    vec![
+        WholeFrameCase {
+            name: "before any object is laid",
+            position: |_, _| 200,
+            says: "names no extruded object laid at this point",
+            ..WHOLE
+        },
+        WholeFrameCase {
+            name: "a G-code laying an object on no layer",
+            slice: "no layers",
+            position: at_its_end,
+            says: "names no layer at this point",
+            ..WHOLE
+        },
+        WholeFrameCase {
+            name: "a spool the layer's toolpath cannot be read from",
+            aligned_over: Some(PETG_FIRST_LAYER(passed)),
+            frame: || frame(PETG, FRAMES[0]),
+            says: "the layer's planned toolpath could not be read from the print's spool",
+            shown: ((1280, 720), false),
+            before_check: Some(spool_unwritable),
+            ..WHOLE
+        },
+        WholeFrameCase {
+            name: "no camera snapshot address, an alert's frame",
+            says: "no camera snapshot address is configured",
+            by_alert: true,
+            snapshot: false,
+            ..WHOLE
+        },
+        WholeFrameCase {
+            name: "a check image that cannot be written",
+            aligned_over: Some(PETG_FIRST_LAYER(passed)),
+            frame: marked_frame,
+            says: "check image could not be made",
+            shown: ((1920, 1080), false),
+            shown_as: "the frame as the camera took it",
+            before_check: Some(check_images_unwritable),
+            ..WHOLE
+        },
+    ]
+}
+
+/// Every case of a check of a print shown the whole frame for what its
+/// configuration, its alignment or its frame is.
+fn configuration_and_frame_cases() -> Vec<WholeFrameCase> {
     vec![
         WholeFrameCase {
             name: "no calibration",
@@ -813,6 +929,7 @@ fn whole_frame_cases() -> Vec<WholeFrameCase> {
             frame: marked_frame,
             says: "no camera calibration is configured",
             shown: ((1280, 720), true),
+            ..WHOLE
         },
         WholeFrameCase {
             name: "a G-code labelling no extrusion",
@@ -826,6 +943,7 @@ fn whole_frame_cases() -> Vec<WholeFrameCase> {
             frame: marked_frame,
             says: "lays no object to align",
             shown: ((1280, 720), true),
+            ..WHOLE
         },
         WholeFrameCase {
             name: "alignment pending",
@@ -836,6 +954,7 @@ fn whole_frame_cases() -> Vec<WholeFrameCase> {
             frame: marked_frame,
             says: "first-layer alignment is pending",
             shown: ((1280, 720), true),
+            ..WHOLE
         },
         WholeFrameCase {
             name: "alignment failed on its offset",
@@ -846,6 +965,7 @@ fn whole_frame_cases() -> Vec<WholeFrameCase> {
             frame: || frame(PETG, FRAMES[0]),
             says: "first-layer alignment failed: the printed first layer lies",
             shown: ((1280, 720), false),
+            ..WHOLE
         },
         WholeFrameCase {
             name: "alignment failed on the frame's resolution",
@@ -861,6 +981,7 @@ fn whole_frame_cases() -> Vec<WholeFrameCase> {
             frame: || frame("fan-cut-bridge", "01-healthy-before-fault-p41.jpg"),
             says: "the camera's frames are 1280x720 and the calibration's 1920x1080",
             shown: ((1280, 720), false),
+            ..WHOLE
         },
         WholeFrameCase {
             name: "a camera moved past the drift tolerance",
@@ -871,6 +992,7 @@ fn whole_frame_cases() -> Vec<WholeFrameCase> {
             frame: || shifted(&frame(PETG, FRAMES[0]), 20),
             says: "the camera has moved since it was calibrated",
             shown: ((1280, 720), false),
+            ..WHOLE
         },
         WholeFrameCase {
             name: "too few landmarks visible to verify drift",
@@ -881,6 +1003,7 @@ fn whole_frame_cases() -> Vec<WholeFrameCase> {
             frame: marked_frame,
             says: "fewer than two of the calibration's landmarks are visible",
             shown: ((1280, 720), true),
+            ..WHOLE
         },
     ]
 }
@@ -894,18 +1017,19 @@ async fn every_other_check_is_shown_the_whole_frame_with_the_reason() {
     let calibration = committed();
     for installer in INSTALLERS {
         for case in whole_frame_cases() {
-            let bytes = if case.slice.is_empty() {
-                UNLABELLED.to_vec()
-            } else {
-                slice(case.slice)
+            let bytes = match case.slice {
+                "" => UNLABELLED.to_vec(),
+                "no layers" => NO_LAYERS.to_vec(),
+                named => slice(named),
             };
             let spool = TempDir::new().expect("a spool directory");
             let index = index_of(&bytes, &spool.path().join("index.gcode"));
             let position = (case.position)(&index, bytes.len());
             let configured_calibration = case.calibration.map(|edit| edit(&calibration));
             let journey = Journey::new(installer, &bytes, position);
+            let mut print_id = None;
             if let Some(over) = &case.aligned_over {
-                let (_, verdict) = aligned(
+                let (aligned_print, verdict) = aligned(
                     &journey,
                     configured_calibration.as_ref().expect("a calibration"),
                     frame(over.case, over.frame),
@@ -917,22 +1041,30 @@ async fn every_other_check_is_shown_the_whole_frame_with_the_reason() {
                     "{installer}, {}: the alignment was {verdict:?}",
                     case.name
                 );
+                print_id = Some(aligned_print);
                 journey.at(position);
+            }
+            if let Some(prepare) = case.before_check {
+                prepare(
+                    &journey.root.path().join("state"),
+                    print_id.expect("the print is known once its alignment is"),
+                );
             }
             let camera = Camera {
                 host: ScriptedHost::answering(vec![Scripted::frame((case.frame)())]).await,
                 calibration: configured_calibration,
+                snapshot: case.snapshot,
             };
-            let started = journey.start(&camera, 1, &json!([])).await;
+            let interval = if case.by_alert { 3600 } else { 1 };
+            let started = journey.start(&camera, interval, &json!([])).await;
+            if case.by_alert {
+                adopted(&started.server).await;
+                alert(&started.server, &camera.host.url()).await;
+            }
             let seen = journey.runs(1).await;
             let checked = read_handed(&seen[0]);
             let what = format!("{installer}, {}: {}", case.name, checked.note);
-            assert!(
-                checked
-                    .note
-                    .starts_with("the whole camera frame, scaled to fit 1280x720"),
-                "{what}"
-            );
+            assert!(checked.note.starts_with(case.shown_as), "{what}");
             assert!(checked.note.contains(case.says), "{what}");
             let (size, marked) = case.shown;
             if marked {
@@ -960,6 +1092,7 @@ async fn a_look_at_the_printer_answers_the_whole_frame_saying_no_print_is_named(
             host: ScriptedHost::answering(vec![Scripted::frame(marked_frame_of((1920, 1080)))])
                 .await,
             calibration: Some(committed()),
+            snapshot: true,
         };
         let started = journey.start(&camera, 3600, &json!([])).await;
         let look: Value = presenting(OPERATOR)
@@ -980,5 +1113,358 @@ async fn a_look_at_the_printer_answers_the_whole_frame_saying_no_print_is_named(
             .expect("the look's image is readable");
         is_the_whole_frame_scaled(&shown, installer);
         started.server.stop().await;
+    }
+}
+
+/// Wait until a condition holds.
+async fn until(what: &str, mut condition: impl FnMut() -> bool) {
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    while !condition() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{what} never happened"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// A previous-check record that cannot be read back, or that names a frame
+/// gone from the store, leaves panel 3 empty rather than the check without an
+/// image; and the record goes once the print closes, and is swept at the next
+/// start when one is left behind.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_print() {
+    let bytes = slice("jar-top-petg.gcode");
+    let calibration = committed();
+    let frames = FRAMES.map(|file| frame(PETG, file));
+    let installer = INSTALLERS[0];
+    let spool = TempDir::new().expect("a spool directory");
+    let index = index_of(&bytes, &spool.path().join("index.gcode"));
+    let past_first = position_at(&index, bytes.len(), 0.6);
+    let walls = position_laying(
+        &index,
+        bytes.len(),
+        position_at(&index, bytes.len(), 5.0),
+        true,
+    );
+    let journey = Journey::new(installer, &bytes, past_first);
+    let (print_id, verdict) =
+        aligned(&journey, &calibration, frame(PETG, FIRST_LAYER), past_first).await;
+    assert!(
+        matches!(verdict, PrintAlignment::Passed { .. }),
+        "{verdict:?}"
+    );
+    journey.at(walls);
+    let record = journey
+        .root
+        .path()
+        .join("state")
+        .join("previous-check")
+        .join(format!("{print_id}.json"));
+    std::fs::write(&record, b"not a record").expect("a record is corrupted");
+
+    let camera = Camera {
+        host: ScriptedHost::answering(vec![
+            Scripted::frame(frames[0].clone()),
+            Scripted::frame(frames[1].clone()),
+        ])
+        .await,
+        calibration: Some(calibration.clone()),
+        snapshot: true,
+    };
+    let url = camera.host.url();
+    let calibrated = calibration_at(&calibration, &url);
+    let started = journey.start(&camera, 3600, &json!([])).await;
+    assert_eq!(adopted(&started.server).await, print_id);
+    alert(&started.server, &url).await;
+    let first = read_handed(&journey.runs(1).await[0]);
+    assert_eq!(
+        first.image,
+        expected_composite(&index, walls, &frames[0], None, &url, &calibrated),
+        "a record that cannot be read back leaves panel 3 empty"
+    );
+    assert!(first.note.contains("panel 3 empty"), "{}", first.note);
+
+    // The record now names the first alert's stored frame; take that away.
+    let named: Value =
+        printobserver_types::serde_json::from_slice(&std::fs::read(&record).expect("a record"))
+            .expect("the record is JSON");
+    std::fs::remove_file(named["frame"].as_str().expect("a frame path"))
+        .expect("the stored frame is removable");
+    alert(&started.server, &url).await;
+    let second = read_handed(&journey.runs(2).await[1]);
+    assert_eq!(
+        second.image,
+        expected_composite(&index, walls, &frames[1], None, &url, &calibrated),
+        "a previous frame gone from the store leaves panel 3 empty"
+    );
+    assert!(second.note.contains("panel 3 empty"), "{}", second.note);
+
+    journey.octoprint.reports("Operational", JobScript::idle());
+    until("the closed print's record is swept", || !record.exists()).await;
+    started.server.stop().await;
+
+    std::fs::write(&record, b"{}").expect("a record is left behind");
+    let restarted = journey.start(&camera, 3600, &json!([])).await;
+    until("a closed print's record is swept at start", || {
+        !record.exists()
+    })
+    .await;
+    restarted.server.stop().await;
+}
+
+/// Run `printobserver-server-compose` with these arguments.
+fn compose(arguments: &[&str]) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_printobserver-server-compose"))
+        .args(arguments)
+        .output()
+        .expect("the composer runs")
+}
+
+/// What the composer's journeys hand it: a configuration with and without a
+/// calibration or a camera address, a slice, a frame that composes and one
+/// that cannot, and where the image goes.
+struct Composing {
+    journey: Journey,
+    _host: ScriptedHost,
+    _spool: TempDir,
+    url: String,
+    bare: PathBuf,
+    config: PathBuf,
+    no_stream: PathBuf,
+    gcode: PathBuf,
+    good_frame: PathBuf,
+    blind_frame: PathBuf,
+    out: PathBuf,
+    index: GcodeIndex,
+    position: String,
+}
+
+impl Composing {
+    /// Lay the composer's inputs out under a journey's own root.
+    fn new() -> Self {
+        let runtime = tokio::runtime::Runtime::new().expect("a runtime");
+        let bytes = slice("jar-top-petg.gcode");
+        let journey = Journey::new(INSTALLERS[0], &bytes, 0);
+        let host = runtime.block_on(ScriptedHost::answering(vec![Scripted::frame(Vec::new())]));
+        let url = host.url();
+        let root = journey.root.path().to_path_buf();
+        copy_tree(
+            committed_skill().parent().expect("the skill's directory"),
+            &root.join("state").join("skills").join("printobserver"),
+        );
+        let bare = configured(INSTALLERS[0], &journey.root, &journey.octoprint, &url, 3600);
+        let mut calibrated = committed();
+        calibrated["camera_snapshot_url"] = Value::String(url.clone());
+        let calibration_file = root.join("calibration.json");
+        std::fs::write(
+            &calibration_file,
+            printobserver_types::serde_json::to_vec(&calibrated).expect("JSON"),
+        )
+        .expect("written");
+        let with_calibration = |snapshot: bool| {
+            let mut document: toml::Value =
+                toml::from_str(&std::fs::read_to_string(&bare).expect("the configuration"))
+                    .expect("a document");
+            let camera = document["camera"].as_table_mut().expect("a camera table");
+            camera.insert(
+                "calibration".to_owned(),
+                toml::Value::String(calibration_file.display().to_string()),
+            );
+            if !snapshot {
+                camera.remove("snapshot_url");
+            }
+            let path = root.join(format!("calibrated-{snapshot}.toml"));
+            std::fs::write(&path, toml::to_string(&document).expect("it renders"))
+                .expect("written");
+            path
+        };
+        let config = with_calibration(true);
+        let no_stream = with_calibration(false);
+        let gcode = root.join("print.gcode");
+        std::fs::write(&gcode, &bytes).expect("the slice");
+        let good_frame = root.join("frame.jpg");
+        std::fs::write(&good_frame, frame(PETG, FRAMES[0])).expect("a frame");
+        let blind_frame = root.join("blind.jpg");
+        std::fs::write(&blind_frame, marked_frame()).expect("a frame");
+        let spool = TempDir::new().expect("a spool directory");
+        let index = index_of(&bytes, &spool.path().join("index.gcode"));
+        let position = laying_walls(&index, bytes.len()).to_string();
+        Self {
+            journey,
+            _host: host,
+            _spool: spool,
+            url,
+            bare,
+            config,
+            no_stream,
+            gcode,
+            good_frame,
+            blind_frame,
+            out: root.join("check-image.jpg"),
+            index,
+            position,
+        }
+    }
+
+    /// Run the composer over these inputs, at the walls' position.
+    fn run(&self, config: &Path, gcode: &Path, frame: &Path, out: &Path) -> std::process::Output {
+        let text = |path: &Path| path.to_str().expect("a path").to_owned();
+        compose(&[
+            "--config",
+            &text(config),
+            "--gcode",
+            &text(gcode),
+            "--frame",
+            &text(frame),
+            "--position",
+            &self.position,
+            "--out",
+            &text(out),
+        ])
+    }
+}
+
+/// The composer writes the check image a print's first check at a file
+/// position is shown, and says its size and the image line.
+#[test]
+fn the_composer_writes_the_image_a_first_check_is_shown() {
+    let inputs = Composing::new();
+    let done = inputs.run(
+        &inputs.config,
+        &inputs.gcode,
+        &inputs.good_frame,
+        &inputs.out,
+    );
+    assert_eq!(
+        done.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&done.stderr)
+    );
+    let said: Value = printobserver_types::serde_json::from_slice(&done.stdout).expect("JSON");
+    let written = std::fs::read(&inputs.out).expect("the image is written");
+    assert_eq!(said["width"], 1024);
+    assert_eq!(said["height"], 1848);
+    assert_eq!(said["bytes"], written.len());
+    assert!(
+        said["note"]
+            .as_str()
+            .is_some_and(|note| note.starts_with(printobserver_server::COMPOSITE_NOTE)),
+        "{said}"
+    );
+    assert_eq!(
+        written,
+        expected_composite(
+            &inputs.index,
+            inputs.position.parse().expect("a position"),
+            &frame(PETG, FRAMES[0]),
+            None,
+            &inputs.url,
+            &calibration_at(&committed(), &inputs.url),
+        ),
+        "the composer's image is the one a print's first check at that position is shown"
+    );
+}
+
+/// Arguments the composer cannot read exit 2, and a configuration, file or
+/// frame it cannot use exits 1, each naming why and printing nothing.
+#[test]
+fn the_composer_refuses_what_it_cannot_compose_naming_why() {
+    for (arguments, said) in [
+        (vec![], "--config is required"),
+        (vec!["--colour", "red"], "is no option"),
+        (vec!["--out", "a", "--out", "b"], "is given twice"),
+        (vec!["--out", ""], "takes a value"),
+        (
+            vec![
+                "--config",
+                "c",
+                "--gcode",
+                "g",
+                "--frame",
+                "f",
+                "--position",
+                "x",
+                "--out",
+                "o",
+            ],
+            "is no count of bytes",
+        ),
+    ] {
+        let done = compose(&arguments);
+        assert_eq!(done.status.code(), Some(2), "{arguments:?}");
+        assert!(done.stdout.is_empty(), "{arguments:?} printed an answer");
+        let stderr = String::from_utf8_lossy(&done.stderr);
+        assert!(stderr.contains(said), "{arguments:?}: {stderr}");
+    }
+    let inputs = Composing::new();
+    let root = inputs.journey.root.path();
+    let missing = root.join("absent");
+    let elsewhere = root.join("no-such-directory").join("image.jpg");
+    let (config, gcode, good, out) = (
+        &inputs.config,
+        &inputs.gcode,
+        &inputs.good_frame,
+        &inputs.out,
+    );
+    for ((config, gcode, frame, out), said) in [
+        ((&missing, gcode, good, out), "absent"),
+        (
+            (&inputs.bare, gcode, good, out),
+            "names no camera.calibration",
+        ),
+        (
+            (&inputs.no_stream, gcode, good, out),
+            "names no camera.snapshot_url",
+        ),
+        ((config, &missing, good, out), "is unreadable"),
+        ((config, gcode, &missing, out), "is unreadable"),
+        (
+            (config, gcode, &inputs.blind_frame, out),
+            "no check image: fewer than two",
+        ),
+        ((config, gcode, good, &elsewhere), "cannot be written"),
+    ] {
+        let done = inputs.run(config, gcode, frame, out);
+        assert_eq!(done.status.code(), Some(1), "{said}");
+        assert!(done.stdout.is_empty(), "{said}: it printed an answer");
+        let stderr = String::from_utf8_lossy(&done.stderr);
+        assert!(stderr.contains(said), "{said}: {stderr}");
+    }
+}
+
+/// The probe refuses an image it could not attach — none there, or a file
+/// that is no image — before it reads any configuration or runs a turn.
+#[test]
+fn the_probe_refuses_an_image_it_cannot_attach() {
+    let root = TempDir::new().expect("a journey's own root");
+    let not_an_image = root.path().join("notes.txt");
+    std::fs::write(&not_an_image, b"no picture here").expect("written");
+    let absent = root.path().join("absent.jpg");
+    for (image, said) in [
+        (&absent, "absent.jpg is unreadable"),
+        (&not_an_image, "no JPEG or PNG"),
+    ] {
+        let done = std::process::Command::new(env!("CARGO_BIN_EXE_printobserver-server-probe"))
+            .args([
+                "--config",
+                "missing.toml",
+                "--session",
+                "s",
+                "--prompt",
+                "p",
+                "--image",
+                image.to_str().expect("a path"),
+            ])
+            .output()
+            .expect("the probe runs");
+        assert_eq!(done.status.code(), Some(1), "{image:?}");
+        assert!(done.stdout.is_empty(), "it printed an answer");
+        let stderr = String::from_utf8_lossy(&done.stderr);
+        assert!(
+            stderr.contains(said) && !stderr.contains("missing.toml"),
+            "{stderr}"
+        );
     }
 }

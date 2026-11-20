@@ -7,7 +7,8 @@
 //! print's file — and composes the three-panel check image a print's first
 //! check at that file position is shown ([`compose_at`]), with the
 //! configuration's calibration and camera snapshot address. It writes the
-//! image to `--out` and prints its width, height and bytes as JSON.
+//! image to `--out` and prints as JSON its width, height and bytes, and the
+//! line a check shown it carries in its situation.
 //!
 //! Exit 0 with the image written; 2 for arguments it cannot read; 1 for a
 //! configuration, a file or a frame it cannot use, the reason on standard
@@ -18,7 +19,7 @@ use std::process::ExitCode;
 
 use printobserver_core::IndexBuilder;
 use printobserver_printer_api::GcodeSink as _;
-use printobserver_server::{PlanAt, ServerConfig, compose_at};
+use printobserver_server::{PlanAt, ServerConfig, compose_at, composite_note};
 use printobserver_types::Timestamp;
 
 /// What the composer was asked for.
@@ -55,11 +56,15 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
             return Err(format!("{flag} is given twice"));
         }
     }
+    // Each missing option is named in the order the usage names them.
+    let config = PathBuf::from(config.ok_or("--config is required")?);
+    let gcode = PathBuf::from(gcode.ok_or("--gcode is required")?);
+    let frame = PathBuf::from(frame.ok_or("--frame is required")?);
     let position = position.ok_or("--position is required")?;
     Ok(Asked {
-        config: PathBuf::from(config.ok_or("--config is required")?),
-        gcode: PathBuf::from(gcode.ok_or("--gcode is required")?),
-        frame: PathBuf::from(frame.ok_or("--frame is required")?),
+        config,
+        gcode,
+        frame,
         position: position
             .parse()
             .map_err(|_| format!("--position {position} is no count of bytes"))?,
@@ -106,6 +111,7 @@ fn composed(asked: &Asked) -> Result<String, String> {
         "width": image.width,
         "height": image.height,
         "bytes": image.jpeg.len(),
+        "note": composite_note(true),
     })
     .to_string())
 }

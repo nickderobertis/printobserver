@@ -64,6 +64,7 @@ from replay import (
     alignment_of,
     calibration_copy,
     check_image,
+    composed_check_image,
     delivered,
     harness_token,
     is_event,
@@ -2017,6 +2018,34 @@ def test_the_image_a_check_was_shown_is_read_off_the_prompt_a_real_check_is_hand
     contains(shown["why"] or "", "G-code index gives no file position")
 
 
+def test_the_composers_image_line_reads_as_the_composite(tmp_path: Path) -> None:
+    """The server's own composition says its image's line, which reads as the composite.
+
+    Composed of the plain fixture copies of a calibrated case's frame and slice, so
+    the replay's reading of the line is held to what the server writes rather than
+    to a copy of its words; the whole frame's line is held so by the replay above.
+    """
+    calibration = read_case("jar-top-petg-healthy").camera_calibration
+    if calibration is None:
+        pytest.fail("jar-top-petg-healthy names its calibration")
+    out = tmp_path / "check-image.jpg"
+    said = composed_check_image(
+        (
+            REPO / "crates/printobserver-core/tests/fixtures/real-prints/jar-top-petg.gcode"
+        ).read_bytes(),
+        REPO
+        / "crates/printobserver-panels/tests/fixtures/frames/jar-top-petg-healthy"
+        / "agent-018-obs-123246-p24.5.jpg",
+        1_385_571,
+        calibration,
+        out,
+    )
+    equal((said["width"], said["height"], said["bytes"]), (1024, 1848, out.stat().st_size))
+    equal(check_image(said["note"])["kind"], "composite", describing=said["note"])
+    with pytest.raises(ReplayError, match="could not be composed"):
+        composed_check_image(b"", tmp_path / "absent.jpg", 1, calibration, tmp_path / "x.jpg")
+
+
 def test_each_image_line_the_server_writes_is_read_as_its_kind() -> None:
     """The composite, the whole frame with its reason, and a frame no line names apart."""
     equal(check_image("the three-panel check image, 1024x1848: panel 1 ...")["kind"], "composite")
@@ -2058,7 +2087,11 @@ def test_each_image_line_the_server_writes_is_read_as_its_kind() -> None:
 def test_a_cases_alignment_verdict_is_read_as_the_server_keeps_it(
     kept: object, read: object
 ) -> None:
-    """Each verdict the server writes reads as its verdict and offset; anything else as none."""
+    """Each verdict the server writes reads as its verdict and offset; anything else as none.
+
+    Each is held to the committed `PrintAlignment` schema the server's contract test
+    keeps in step with its type, so these are verdicts the server can write.
+    """
     equal(alignment_of(kept), read)
 
 
