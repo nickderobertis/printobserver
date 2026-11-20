@@ -58,9 +58,9 @@ Reading frames:
   not.
 - **Position.** Judge growth only against the frame the plan's rise names, never without one: by the
   top's height then and the rise since, what should show, not proof it did: measure the tallest
-  printing part's base and top pixel rows, then and now, all four in the reason, never a guess;
-  finished ones don't grow. Short of the rise, unclear or lacking them is not printing: a clear
-  defect, never uncertain.
+  printing part's base and top pixel rows, then and now, all four in the reason; finished ones
+  don't grow. Short of the rise, likely, unsure or lacking them is not printing: a clear defect,
+  never watched.
   Hidden parts: look again first. A still landmark proves only a still view; a part moved when its
   distance to a fixed sheet hole, edge or mark changed. Each reason gives each part's pixels from a
   named landmark; each turn, before looking, measure the event frame so against the last reason's
