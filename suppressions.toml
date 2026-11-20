@@ -4820,6 +4820,12 @@ site = "pub fn pass_replay_time(wait: core::time::Duration) -> bool {"
 reason = "The real-print replay's clock already lives here, before this change: `Timestamp::now` reads it under the `replay-clock` feature, from the private `replay_clock` module's file and offset, because `now` is the one instant every crate of the server reads. Passing time on that clock writes the same file and offset, so it sits with the reader; put anywhere else, one clock has two owners, and the replay suite, which is Python driving the built programs, holds no Rust code the server could call. Every build but the suite's answers `false` and changes nothing, and no domain's entry is added to this crate."
 
 [[suppression]]
+rule = "code_lands_in_the_domain_that_owns_it"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "pub fn on_replay_clock(steady: core::time::Duration) -> core::time::Duration {"
+reason = "It reads the same replay clock file `Timestamp::now` and `pass_replay_time` already read here, under the same `replay-clock` feature: the agent's minimum interval has to jump when that file's offset jumps, or two changes at recorded events hours apart read as the seconds the replay took between them. Put anywhere else, the one replay clock would have two readers of its file format. Every build but the suite's answers its argument unchanged."
+
+[[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
 site = "was required: the context read reports the printer, the print's state and effective bounds"

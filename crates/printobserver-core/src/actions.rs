@@ -188,7 +188,7 @@ impl Supervisor {
         }
         // Only a change to the machine starts the agent's interval again.
         if actor.class() == ActorClass::Agent && changes_the_machine(action.kind()) {
-            self.note_agent_action(print_id, self.clock().elapsed());
+            self.note_agent_action(print_id, self.clock().paced());
         }
         self.follow_an_accepted_action(print_id, &action, snapshot.as_ref());
         if let PrintAction::StartPrint {

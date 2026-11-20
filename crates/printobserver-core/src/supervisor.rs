@@ -579,7 +579,7 @@ impl Supervisor {
         };
         Ok(last.map(|action| {
             self.clock()
-                .elapsed()
+                .paced()
                 .saturating_sub(action.seen_at)
                 .saturating_add(action.already)
         }))

@@ -747,6 +747,30 @@ def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
     truth(done.replayed.passed, describing=f"every decision point: {done.replayed.failures()}")
 
 
+def test_the_agents_minimum_interval_spans_the_recorded_time_between_checks(
+    scratch: Path,
+) -> None:
+    """A pause at one check leaves the next check's pause, recorded much later, unrefused.
+
+    The replay reaches the second check seconds after the first, but the recording
+    reached it far past the agent's minimum interval, and the print then would have
+    taken a pause; one measured on the host's own clock would refuse it.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    first, second = case.moments
+    truth(
+        (instant(second.at) - instant(first.at)).total_seconds() > 30,
+        describing="the two checks recorded further apart than the minimum interval",
+    )
+    pausing: ScriptedRun = {"commands": [PAUSE], "disposition": "stop"}
+    done = mock_replay(case, [pausing, pausing], scratch)
+    equal(
+        [[(entry["status"], entry["err"]) for entry in turn["ran"]] for turn in done.turns],
+        [[(0, "")], [(0, "")]],
+        describing="each check's pause taken",
+    )
+
+
 def test_a_supervision_turns_compound_command_is_reported_under_its_conversation(
     scratch: Path,
 ) -> None:
