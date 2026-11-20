@@ -487,7 +487,7 @@ pub fn turn(print_id: PrintId, event: EventRecord, image: Option<PathBuf>) -> Tu
         event,
         image_path: image,
         context_command: format!("printobserver context --print-id {print_id}"),
-        facts: printobserver_types::serde_json::Value::Null,
+        facts: None,
         situation: printobserver_supervisor_api::TurnSituation::default(),
     }
 }

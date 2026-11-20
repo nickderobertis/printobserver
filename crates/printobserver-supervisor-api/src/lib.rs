@@ -62,10 +62,16 @@ pub struct TurnRequest {
     pub context_command: String,
     /// The print's context as the context command answered it when the turn
     /// began, its events cut to those since the agent last answered: what the
-    /// turn decides from without running a command. `null` when no context
+    /// turn decides from without running a command. Absent when no context
     /// could be read.
-    #[serde(default)]
-    pub facts: printobserver_types::serde_json::Value,
+    ///
+    /// A document rather than the context's own type, because that type is the
+    /// supervision core's, which this port may not depend on: the core builds
+    /// it from its own context answer and nothing else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub facts: Option<
+        printobserver_types::serde_json::Map<String, printobserver_types::serde_json::Value>,
+    >,
     /// What the supervisor knew about the moment the turn began.
     #[serde(default)]
     pub situation: TurnSituation,

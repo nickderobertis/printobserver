@@ -1277,7 +1277,9 @@ def _call_usage(usage: object) -> CallUsage:
     A count it reports must be a whole, non-negative number, and it must report
     [`REPORTED_COUNTS`]: a call that says less is no measurement of what it read.
     """
-    if not isinstance(usage, dict) or not all(name in usage for name in REPORTED_COUNTS):
+    if not isinstance(usage, dict) or not all(
+        type(usage.get(name)) is int for name in REPORTED_COUNTS
+    ):
         msg = f"the probe reported a call with no input and output counts: {usage!r}"
         raise ReplayError(msg)
     counted: CallUsage = {}

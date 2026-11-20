@@ -172,7 +172,9 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
             request.facts = serde_json::json!({
                 "print": { "id": print_id, "state": "printing" },
                 "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
-            });
+            })
+            .as_object()
+            .cloned();
         }
         let expected_event =
             serde_json::to_string_pretty(&request.event).expect("the event is writable");

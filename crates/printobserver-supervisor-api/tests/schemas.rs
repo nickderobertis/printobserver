@@ -130,7 +130,7 @@ fn turn_request_carries_exactly_the_stated_fields() {
     let expected = vec![
         field("context_command", "string", true),
         field("event", "EventRecord", true),
-        field("facts", "unknown", false),
+        field("facts", "object", false),
         field("image_path", "string", false),
         field("print_id", "PrintId", true),
         field("situation", "TurnSituation", false),

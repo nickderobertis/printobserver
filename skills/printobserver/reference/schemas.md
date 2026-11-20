@@ -43091,8 +43091,12 @@ Declared by `printobserver-supervisor-api`.
       "description": "The event that prompted the turn."
     },
     "facts": {
-      "default": null,
-      "description": "The print's context as the context command answered it when the turn\nbegan, its events cut to those since the agent last answered: what the\nturn decides from without running a command. `null` when no context\ncould be read."
+      "additionalProperties": true,
+      "description": "The print's context as the context command answered it when the turn\nbegan, its events cut to those since the agent last answered: what the\nturn decides from without running a command. Absent when no context\ncould be read.\n\nA document rather than the context's own type, because that type is the\nsupervision core's, which this port may not depend on: the core builds\nit from its own context answer and nothing else.",
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "image_path": {
       "description": "The absolute path of the image to look at, when there is one.",

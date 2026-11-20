@@ -291,14 +291,19 @@ impl PrintContext {
 /// own conversation does not hold. A print the agent has not answered on yet
 /// keeps the whole window.
 #[must_use]
-pub fn turn_facts(context: &AgentContext) -> Value {
+pub fn turn_facts(
+    context: &AgentContext,
+) -> Option<printobserver_types::serde_json::Map<String, Value>> {
     let mut facts = context.clone();
     if let Some(answered) = facts.recent_events.iter().position(|event| {
         event.kind.as_str() == <crate::kinds::AgentAssessmentPayload as EventPayload>::KIND
     }) {
         facts.recent_events.truncate(answered);
     }
-    printobserver_types::serde_json::to_value(facts).unwrap_or(Value::Null)
+    match printobserver_types::serde_json::to_value(facts) {
+        Ok(Value::Object(fields)) => Some(fields),
+        _ => None,
+    }
 }
 
 /// The events newer than `since`, newest first, when `events` — newest first —

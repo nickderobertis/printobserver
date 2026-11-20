@@ -459,8 +459,10 @@ fn an_acknowledgement_the_answer_cannot_make_is_recorded_and_supervision_goes_on
 
 /// The event identifiers a turn's facts carry, newest first.
 fn facts_event_ids(turn: &printobserver_supervisor_api::TurnRequest) -> Vec<String> {
-    turn.facts["recent_events"]
-        .as_array()
+    turn.facts
+        .as_ref()
+        .and_then(|facts| facts.get("recent_events"))
+        .and_then(printobserver_types::serde_json::Value::as_array)
         .expect("the facts carry their events")
         .iter()
         .map(|event| {
@@ -519,4 +521,49 @@ fn a_turns_facts_carry_the_events_since_the_agents_last_answer() {
         );
     }
     assert_eq!(after.len(), newer.len(), "{after:?} against {newer:?}");
+}
+
+/// A print that ends while its turn runs is not acknowledged from that turn's
+/// answer: its record is closed, and nothing is left to carry on or stop. The
+/// answer itself is kept.
+#[test]
+fn a_print_that_ended_during_its_turn_is_not_acknowledged_from_the_answer() {
+    let world = World::new();
+    let print = world.open_print(7);
+    let store = std::sync::Arc::clone(&world.store);
+    let ended = print.id;
+    world.agent.before_answering(move || {
+        printobserver_core::block_on(printobserver_core::store::PrintStore::end_print(
+            store.as_ref(),
+            ended,
+            PrinterState::Operational,
+            printobserver_types::Timestamp::now(),
+            "the operator cancelled it".to_owned(),
+        ))
+        .expect("the print ends");
+    });
+    world
+        .handle(failure_alert_with_image(7))
+        .expect("the event is handled");
+
+    let held = world.store.events_of(print.id);
+    assert!(
+        held.iter()
+            .any(|record| record.kind() == &AgentAssessmentPayload::kind()),
+        "the turn's answer was not kept"
+    );
+    let acknowledged: Vec<_> = held
+        .iter()
+        .filter(|record| record.body.payload["action"]["action"] == "acknowledge_failure")
+        .collect();
+    assert!(
+        acknowledged.is_empty(),
+        "an ended print was acknowledged: {acknowledged:?}"
+    );
+    assert!(
+        !held
+            .iter()
+            .any(|record| record.kind().as_str() == "port_failure"),
+        "skipping the acknowledgement was recorded as a failure"
+    );
 }

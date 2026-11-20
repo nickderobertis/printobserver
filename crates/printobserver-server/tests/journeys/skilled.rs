@@ -69,7 +69,7 @@ fn a_turn() -> TurnRequest {
         },
         image_path: None,
         context_command: format!("printobserver context --print-id {print_id}"),
-        facts: printobserver_types::serde_json::Value::Null,
+        facts: None,
         situation: printobserver_supervisor_api::TurnSituation::default(),
     }
 }
