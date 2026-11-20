@@ -586,13 +586,16 @@ impl Lean {
 
 /// The run of the check on an event of one kind.
 fn check_on<'runs>(runs: &'runs [Run], kind: &str) -> &'runs Run {
-    runs.iter()
-        .find(|run| {
-            handed(&run.seen)
-                .0
-                .contains(&format!("\"kind\": \"{kind}\""))
-        })
-        .unwrap_or_else(|| panic!("no check ran on a {kind}"))
+    find_check_on(runs, kind).unwrap_or_else(|| panic!("no check ran on a {kind}"))
+}
+
+/// The run of the check on an event of one kind, if one has run yet.
+fn find_check_on<'runs>(runs: &'runs [Run], kind: &str) -> Option<&'runs Run> {
+    runs.iter().find(|run| {
+        handed(&run.seen)
+            .0
+            .contains(&format!("\"kind\": \"{kind}\""))
+    })
 }
 
 /// One check's run, from what the port built and the harness was handed:
@@ -699,11 +702,13 @@ async fn every_check_is_lean_and_shown_the_whole_frame_scaled() {
         lean.turns_ended(&print_id, 1).await;
         lean.alert().await;
         let deadline = tokio::time::Instant::now() + PATIENCE;
+        // Periodic checks go on every second, so a second run is no sign the
+        // alert's own check has started: wait for the run that was handed it.
         while lean
             .history(&print_id, "obico_failure_alert")
             .await
             .is_empty()
-            || lean.runs().len() < 2
+            || find_check_on(&lean.runs(), "obico_failure_alert").is_none()
         {
             assert!(
                 tokio::time::Instant::now() < deadline,
