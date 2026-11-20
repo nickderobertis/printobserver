@@ -794,6 +794,30 @@ async fn acknowledgements(lean: &Lean, print_id: &str) -> Vec<(String, String, S
         .collect()
 }
 
+/// The acknowledgements of one print once there are at least `count`.
+///
+/// A turn's assessment is written before the acknowledgement its answer
+/// makes, so a turn having ended does not yet say its acknowledgement is there.
+async fn acknowledgements_reaching(
+    lean: &Lean,
+    print_id: &str,
+    count: usize,
+) -> Vec<(String, String, String, Value)> {
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    loop {
+        let acknowledged = acknowledgements(lean, print_id).await;
+        if acknowledged.len() >= count {
+            return acknowledged;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{} of {count} acknowledgements were made: {acknowledged:?}",
+            acknowledged.len()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
 /// The alerts each turn was about, oldest first.
 async fn checked_events(lean: &Lean, print_id: &str) -> Vec<String> {
     lean.history(print_id, "obico_failure_alert")
@@ -822,7 +846,7 @@ async fn a_quiet_turn_is_acknowledged_from_its_answer() {
     }
 
     let events = checked_events(&lean, &print_id).await;
-    let acknowledged = acknowledgements(&lean, &print_id).await;
+    let acknowledged = acknowledgements_reaching(&lean, &print_id, dispositions.len()).await;
     assert_eq!(acknowledged.len(), dispositions.len(), "{acknowledged:?}");
     let session = json!({ "agent": { "session_name": format!("print-{print_id}") } });
     for ((event, disposition), (acked, given, reason, actor)) in
@@ -864,15 +888,23 @@ async fn a_turn_that_acknowledged_by_command_leaves_only_its_own() {
     )
     .await;
     let print_id = lean.active().await;
-    lean.alert().await;
-    lean.turns_ended(&print_id, 1).await;
+    // A print's turns run one at a time, so once a second turn has ended the
+    // first one's record is whole, and an acknowledgement its answer made
+    // late would be there to see.
+    for count in 1..=2 {
+        lean.alert().await;
+        lean.turns_ended(&print_id, count).await;
+    }
 
     let events = checked_events(&lean, &print_id).await;
-    let acknowledged = acknowledgements(&lean, &print_id).await;
-    assert_eq!(acknowledged.len(), 1, "{acknowledged:?}");
-    assert_eq!(acknowledged[0].0, events[0]);
-    assert_eq!(acknowledged[0].1, "watch");
-    assert_eq!(acknowledged[0].2, "acknowledged by command");
+    let first: Vec<_> = acknowledgements(&lean, &print_id)
+        .await
+        .into_iter()
+        .filter(|(event, ..)| *event == events[0])
+        .collect();
+    assert_eq!(first.len(), 1, "{first:?}");
+    assert_eq!(first[0].1, "watch");
+    assert_eq!(first[0].2, "acknowledged by command");
     lean.server.stop().await;
 }
 
