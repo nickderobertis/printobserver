@@ -536,6 +536,17 @@ def test_a_slice_is_read_in_every_positioning_mode_and_past_any_machine_is_refus
     else:
         message = "a slice with an infinite coordinate was read"
         raise AssertionError(message)
+    wide = tmp_path / "wide.gcode"
+    wide.write_text(";LAYER_CHANGE\n;Z:0.2\nG1 X1 Y1\nG2 X2 Y1 I1e308 J0 E1\n", encoding="utf-8")
+    try:
+        gcode.parse(wide)
+    except gcode.GcodeError as error:
+        expect.contains(
+            str(error), "plans an arc of radius", describing="the refusal of a wide arc"
+        )
+    else:
+        message = "a slice planning an arc wider than any machine was read"
+        raise AssertionError(message)
 
 
 def test_the_workspace_lock_holds_this_tools_requirements() -> None:

@@ -23,6 +23,10 @@ OUTER_WALLS = frozenset({"External perimeter", "Overhang perimeter"})
 CHORD_MM = 0.5
 """The longest chord an arc is cut into."""
 
+MAX_ARC_RADIUS_MM = 10_000.0
+"""The widest arc a slice may plan: far beyond any printer's bed, and small
+enough that cutting the arc into chords stays bounded."""
+
 _LETTERS = frozenset("XYZEIJ")
 """The words a move is read by."""
 
@@ -50,10 +54,17 @@ class GcodeError(ValueError):
 
 
 def _arc(
-    start: tuple[float, float], end: tuple[float, float], offset: tuple[float, float], cw: bool
+    start: tuple[float, float],
+    end: tuple[float, float],
+    offset: tuple[float, float],
+    cw: bool,
+    path: Path,
 ) -> list[tuple[float, float]]:
-    cx, cy = start[0] + offset[0], start[1] + offset[1]
     radius = math.hypot(offset[0], offset[1])
+    if radius > MAX_ARC_RADIUS_MM:
+        msg = f"{path} plans an arc of radius {radius:.6g} mm, wider than {MAX_ARC_RADIUS_MM:g} mm"
+        raise GcodeError(msg)
+    cx, cy = start[0] + offset[0], start[1] + offset[1]
     a0 = math.atan2(start[1] - cy, start[0] - cx)
     a1 = math.atan2(end[1] - cy, end[0] - cx)
     sweep = a1 - a0
@@ -158,7 +169,13 @@ def parse(path: Path) -> list[Layer]:
             arc = head in ("G2", "G3")
             if fed > 0 and layers and (arc or (nx, ny) != (x, y)):
                 points = (
-                    _arc((x, y), (nx, ny), (words.get("I", 0.0), words.get("J", 0.0)), head == "G2")
+                    _arc(
+                        (x, y),
+                        (nx, ny),
+                        (words.get("I", 0.0), words.get("J", 0.0)),
+                        head == "G2",
+                        path,
+                    )
                     if arc
                     else [(nx, ny)]
                 )

@@ -9,6 +9,11 @@ use crate::calibration::Projector;
 /// move is a curve in a fisheye view, so a long one is cut before projecting.
 const PIECE_MM: f64 = 2.0;
 
+/// The longest projected piece kept, in pixels: longer than any frame's
+/// diagonal, so a piece this long cannot be drawn or sampled usefully, and
+/// keeping it would make both walk it pixel by pixel.
+const MAX_PIECE_PX: f64 = 32_768.0;
+
 /// One projected piece of a toolpath, in the calibration's pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Projected {
@@ -21,7 +26,8 @@ pub(crate) struct Projected {
 }
 
 /// Every segment of a layer, projected with the print at `print_z_mm`, each
-/// cut into pieces of at most [`PIECE_MM`]; a piece behind the camera is left
+/// cut into pieces of at most [`PIECE_MM`]; a piece behind the camera, or one
+/// projecting to a non-finite point or longer than [`MAX_PIECE_PX`], is left
 /// out.
 pub(crate) fn project_toolpath(
     projector: &Projector,
@@ -45,11 +51,14 @@ pub(crate) fn project_toolpath(
                 z,
             ]);
             if let (Some(a), Some(b)) = (previous, next) {
-                out.push(Projected {
-                    from: a,
-                    to: b,
-                    kind: segment.kind,
-                });
+                let length = (b[0] - a[0]).hypot(b[1] - a[1]);
+                if length.is_finite() && length <= MAX_PIECE_PX {
+                    out.push(Projected {
+                        from: a,
+                        to: b,
+                        kind: segment.kind,
+                    });
+                }
             }
             previous = next;
             k += 1.0;
@@ -149,4 +158,44 @@ pub(crate) fn band_outside(hull: &[[f64; 2]], out: f64, step: f64) -> Vec<[f64; 
         }
     }
     band
+}
+
+#[cfg(test)]
+mod tests {
+    use printobserver_core::{ExtrusionKind, LayerToolpath, ToolpathSegment};
+    use printobserver_types::serde_json::{self, Value};
+
+    use super::{MAX_PIECE_PX, project_toolpath, sample_along};
+    use crate::CameraCalibration;
+
+    /// A projection that sends a 2 mm move across far more than any frame is
+    /// dropped, so neither the drawing nor the sampling walks it.
+    #[test]
+    fn a_piece_projecting_wider_than_any_frame_is_left_out() {
+        let committed =
+            include_bytes!("../../../tests/real-prints/cameras/core-one-2026-09-27.json");
+        let mut value: Value = serde_json::from_slice(committed).expect("JSON");
+        let toolpath = LayerToolpath {
+            z_mm: 0.2,
+            segments: vec![ToolpathSegment {
+                from_mm: [120.0, 100.0],
+                to_mm: [122.0, 100.0],
+                kind: ExtrusionKind::Wall,
+            }],
+        };
+        let read = |value: &Value| {
+            CameraCalibration::from_json(&serde_json::to_vec(value).expect("serialises"))
+                .expect("a finite calibration is accepted")
+        };
+        let ordinary = project_toolpath(&read(&value).projector(), &toolpath, 0.2);
+        assert!(!ordinary.is_empty(), "the committed lens keeps the move");
+        value["intrinsics"]["fx"] = 1e15.into();
+        value["intrinsics"]["fy"] = 1e15.into();
+        let pieces = project_toolpath(&read(&value).projector(), &toolpath, 0.2);
+        assert!(
+            pieces.is_empty(),
+            "pieces longer than {MAX_PIECE_PX} px are left out, not {pieces:?}"
+        );
+        assert!(sample_along(&pieces, 1.0).is_empty());
+    }
 }
