@@ -1393,6 +1393,11 @@ pub struct Look {
     /// gave none — which the history records as a port failure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame: Option<ImageRef>,
+    /// What the image at `image_path` is, and why it is that one, in one
+    /// line;
+    /// absent with no image, or when what made it says nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_note: Option<String>,
     /// The absolute path the frame's bytes are at, on the supervisor's host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_path: Option<String>,

@@ -1443,6 +1443,10 @@ class Look(TypedDict):
     # The frame the camera gave, absent when no camera is configured or it
     # gave none — which the history records as a port failure.
     frame: NotRequired[ImageRef | None]
+    # What the image at `image_path` is, and why it is that one, in one
+    # line;
+    # absent with no image, or when what made it says nothing.
+    image_note: NotRequired[str | None]
     # The absolute path the frame's bytes are at, on the supervisor's host.
     image_path: NotRequired[str | None]
     # The job the printer reports now, absent when it could not be read.
@@ -6997,6 +7001,15 @@ SHAPES: dict[str, object] = json.loads(
      "shape": {
       "nullable": {
        "ref": "ImageRef"
+      }
+     }
+    },
+    "image_note": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
       }
      }
     },

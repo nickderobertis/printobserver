@@ -431,6 +431,7 @@ fn a_look_carries_exactly_the_stated_fields() {
             field("detector_paused", "boolean", true),
             field("event", "EventRecord", true),
             field("frame", "ImageRef", false),
+            field("image_note", "string", false),
             field("image_path", "string", false),
             field("job", "JobSnapshot", false),
             field("printer", "PrinterSnapshot", false),
@@ -444,7 +445,14 @@ fn a_look_carries_exactly_the_stated_fields() {
     }
     let minimal = look.minimal();
     let object = minimal.as_object().expect("an object");
-    for name in ["arrived", "frame", "image_path", "printer", "job"] {
+    for name in [
+        "arrived",
+        "frame",
+        "image_path",
+        "image_note",
+        "printer",
+        "job",
+    ] {
         assert!(
             !object.contains_key(name),
             "the minimal look carries {name}"

@@ -12,6 +12,12 @@
 //!
 //! Which check draws the toolpath on its image reads the verdict through
 //! [`Alignments::print_alignment`] and draws only for a print that `Passed`.
+//!
+//! Beside each verdict is kept the frame the print's last check was given,
+//! which the next check's image shows as the previous one
+//! ([`Alignments::previous_check`]): written under
+//! `<state_dir>/previous-check/<print id>.json`, standing through a restart
+//! while the print is open, and swept with the verdict once it closes.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -76,10 +82,23 @@ pub enum PrintAlignment {
     },
 }
 
-/// The alignment verdicts of every print, and what decides them.
+/// The frame one print's last check was given, and when it was captured.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+pub struct PreviousCheck {
+    /// The stored frame's path.
+    pub frame: PathBuf,
+    /// When it was captured.
+    pub captured_at: printobserver_types::Timestamp,
+}
+
+/// The alignment verdicts of every print, what decides them, and the frame
+/// each print's last check was given.
 pub struct Alignments {
     /// Where each print's verdict is kept.
     directory: PathBuf,
+    /// Where each print's last check's frame is named.
+    previous_directory: PathBuf,
     /// The camera's calibration, when one is configured.
     calibration: Option<Arc<CameraCalibration>>,
     /// The prints, to tell which are open.
@@ -102,6 +121,13 @@ pub fn verdict_dir(state_dir: &Path) -> PathBuf {
     state_dir.join("alignment")
 }
 
+/// The directory each print's last check's frame is named in, under a state
+/// directory.
+#[must_use]
+pub fn previous_check_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("previous-check")
+}
+
 impl Alignments {
     /// The verdicts kept under one state directory.
     ///
@@ -115,8 +141,11 @@ impl Alignments {
     ) -> std::io::Result<Self> {
         let directory = verdict_dir(state_dir);
         std::fs::create_dir_all(&directory)?;
+        let previous_directory = previous_check_dir(state_dir);
+        std::fs::create_dir_all(&previous_directory)?;
         Ok(Self {
             directory,
+            previous_directory,
             calibration,
             prints,
         })
@@ -125,6 +154,41 @@ impl Alignments {
     /// Where one print's verdict is kept.
     fn path_of(&self, print_id: PrintId) -> PathBuf {
         self.directory.join(format!("{print_id}.json"))
+    }
+
+    /// The camera calibration in force, when one is configured.
+    #[must_use]
+    pub fn calibration(&self) -> Option<&CameraCalibration> {
+        self.calibration.as_deref()
+    }
+
+    /// Where one print's last check's frame is named.
+    fn previous_path_of(&self, print_id: PrintId) -> PathBuf {
+        self.previous_directory.join(format!("{print_id}.json"))
+    }
+
+    /// The frame one print's last check was given; nothing before its first
+    /// check, or when the record cannot be read back.
+    #[must_use]
+    pub fn previous_check(&self, print_id: PrintId) -> Option<PreviousCheck> {
+        std::fs::read(self.previous_path_of(print_id))
+            .ok()
+            .and_then(|bytes| printobserver_types::serde_json::from_slice(&bytes).ok())
+    }
+
+    /// Name the frame one print's check was given, which its next check shows
+    /// as the previous. A record the filesystem refuses leaves the one before
+    /// it standing, so the next check shows an older frame as the previous
+    /// rather than none; no test makes the state directory refuse a write.
+    pub fn record_check(&self, print_id: PrintId, check: &PreviousCheck) {
+        let Ok(bytes) = printobserver_types::serde_json::to_vec(check) else {
+            return;
+        };
+        let path = self.previous_path_of(print_id);
+        let held = path.with_extension("json.part");
+        if std::fs::write(&held, bytes).is_ok() {
+            let _ = std::fs::rename(&held, &path);
+        }
     }
 
     /// One print's verdict as it stands.
@@ -227,7 +291,8 @@ impl Alignments {
         Some(verdict)
     }
 
-    /// Delete the verdict of every print that is not open.
+    /// Delete the verdict and the last check's record of every print that is
+    /// not open.
     ///
     /// A store that cannot list the open prints, a directory that cannot be
     /// listed and a file that cannot be removed each leave a verdict behind,
@@ -243,13 +308,15 @@ impl Alignments {
             .iter()
             .map(|print| format!("{}.json", print.id))
             .collect();
-        let Ok(entries) = std::fs::read_dir(&self.directory) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            if !open.iter().any(|kept| name.to_str() == Some(kept.as_str())) {
-                let _ = std::fs::remove_file(entry.path());
+        for directory in [&self.directory, &self.previous_directory] {
+            let Ok(entries) = std::fs::read_dir(directory) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                if !open.iter().any(|kept| name.to_str() == Some(kept.as_str())) {
+                    let _ = std::fs::remove_file(entry.path());
+                }
             }
         }
     }

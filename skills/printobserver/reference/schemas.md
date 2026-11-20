@@ -14472,6 +14472,13 @@ Declared by `printobserver-core`.
       ],
       "description": "The frame the camera gave, absent when no camera is configured or it\ngave none \u2014 which the history records as a port failure."
     },
+    "image_note": {
+      "description": "What the image at `image_path` is, and why it is that one, in one line;\nabsent with no image, or when what made it says nothing.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "image_path": {
       "description": "The absolute path the frame's bytes are at, on the supervisor's host.",
       "type": [
@@ -43054,6 +43061,13 @@ Declared by `printobserver-supervisor-api`.
           ],
           "description": "When the frame an alert brought was captured, which its source says or the\nmoment it answered; absent when the event says so itself or has no frame."
         },
+        "image": {
+          "description": "What the image attached to the prompt is, and why it is that one, in\none line; absent when no image is attached or what made it says\nnothing.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "noticed": {
           "default": null,
           "description": "What the printer watch noticed that prompted this turn \u2014 how the print\nended, what the printer did on its own after it, that the camera gave\nno usable frame, that the failure detector stopped answering \u2014 in\nwords beginning with the event's kind; null when the turn was prompted\nby anything else.",
@@ -43353,6 +43367,13 @@ Declared by `printobserver-supervisor-api`.
         }
       ],
       "description": "When the frame an alert brought was captured, which its source says or the\nmoment it answered; absent when the event says so itself or has no frame."
+    },
+    "image": {
+      "description": "What the image attached to the prompt is, and why it is that one, in\none line; absent when no image is attached or what made it says\nnothing.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "noticed": {
       "default": null,

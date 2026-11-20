@@ -1126,6 +1126,11 @@ export interface Look {
    * gave none — which the history records as a port failure.
    */
   frame?: ImageRef | null;
+  /**
+   * What the image at `image_path` is, and why it is that one, in one line;
+   * absent with no image, or when what made it says nothing.
+   */
+  image_note?: string | null;
   /** The absolute path the frame's bytes are at, on the supervisor's host. */
   image_path?: string | null;
   /** The job the printer reports now, absent when it could not be read. */
@@ -5012,6 +5017,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "shape": {
       "nullable": {
        "ref": "ImageRef"
+      }
+     }
+    },
+    "image_note": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
       }
      }
     },

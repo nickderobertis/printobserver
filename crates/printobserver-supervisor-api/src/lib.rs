@@ -117,6 +117,11 @@ pub struct TurnSituation {
     /// moment it answered; absent when the event says so itself or has no frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame_captured_at: Option<Timestamp>,
+    /// What the image attached to the prompt is, and why it is that one, in
+    /// one line; absent when no image is attached or what made it says
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 impl Sample for TurnSituation {
@@ -132,6 +137,11 @@ impl Sample for TurnSituation {
                     .to_owned(),
             ),
             frame_captured_at: Some(Timestamp::sample_full()),
+            image: Some(
+                "the three-panel check image: this layer's planned toolpath on the frame, \
+                 a close-up of the part being printed, and the previous check's frame"
+                    .to_owned(),
+            ),
         }
     }
 

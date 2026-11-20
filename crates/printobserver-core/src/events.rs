@@ -51,6 +51,7 @@ use printobserver_types::EventId;
 use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, Timestamp};
 use printobserver_vision_api::NormalizedAlert;
 
+use crate::check_image::{ImageUse, captured_at_of};
 use crate::context::{AgentContext, PrintContext, Since, newer_than};
 use crate::error::CoreError;
 use crate::inbox::Arrival;
@@ -425,10 +426,23 @@ impl Supervisor {
         let terminal = printer_state
             .clone()
             .filter(|state| TERMINAL_STATES.contains(state));
-        let image_path = match &event.image {
-            Some(reference) => self.check_image_path(Some(print.id), reference).await,
+        let shown = match &event.image {
+            Some(reference) => {
+                let plan = self.plan_position(print, context.job.as_ref()).await;
+                let captured_at = captured_at_of(event, arrival.frame_captured_at);
+                self.shown_image_of(
+                    reference,
+                    Some(print.id),
+                    captured_at,
+                    ImageUse::Check,
+                    plan,
+                )
+                .await
+            }
             None => None,
         };
+        let (image_path, image) =
+            shown.map_or((None, None), |shown| (Some(shown.path), shown.note));
         let facts = crate::context::turn_facts(&context.for_agent(None));
         let situation = TurnSituation {
             printer_state,
@@ -439,6 +453,7 @@ impl Supervisor {
             arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
             noticed: noticed_of(event),
             frame_captured_at: arrival.frame_captured_at,
+            image,
         };
         // The turn's credentials are bound to it from here, and revoked the
         // moment it returns — whatever it returned — and when this future is

@@ -520,8 +520,13 @@ impl Server {
         // credential minted for them.
         let turns = TurnCredentials::new(Some(address));
         supervisor.install_turn_authority(Arc::new(turns.clone()));
-        supervisor.install_check_images(Arc::new(crate::check_images::WholeFrames::under(
+        supervisor.install_check_images(Arc::new(crate::check_images::PanelImages::new(
             &config.state_dir,
+            Arc::clone(&alignments),
+            config
+                .camera_snapshot_url
+                .as_ref()
+                .map(|url| url.as_str().to_owned()),
         )));
         if let Some(scoring) = scoring_read(&config, &ports.vision)? {
             supervisor.install_scoring_probe(scoring);

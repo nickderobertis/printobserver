@@ -51,9 +51,12 @@ pub mod turns;
 pub mod watch;
 pub mod wire;
 
-pub use alignment::{AlignmentFailure, Alignments, PrintAlignment};
+pub use alignment::{AlignmentFailure, Alignments, PreviousCheck, PrintAlignment};
 pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, SPOOL_RECENT_EVENTS, router};
-pub use check_images::{CHECK_IMAGES_DIRECTORY, WholeFrames};
+pub use check_images::{
+    CHECK_IMAGES_DIRECTORY, COMPOSITE_NOTE, PanelImages, PlanAt, WHOLE_FRAME_NOTE,
+    WholeFrameReason, WholeFrames, compose_at, composite_note, whole_frame_note,
+};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
     CredentialVerifier, DEFAULT_INGRESS_ANSWER_BOUND_MS, DEFAULT_OBSERVATION_INTERVAL_S,

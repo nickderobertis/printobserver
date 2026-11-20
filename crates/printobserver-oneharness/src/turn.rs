@@ -128,12 +128,28 @@ impl OneharnessSupervisor {
     /// answers anything other than one result, or answers one the harness did
     /// not complete.
     pub fn probe(&self, session: &str, prompt: &str) -> Result<RunResult, SupervisorError> {
+        self.probe_with_image(session, prompt, None)
+    }
+
+    /// [`probe`](Self::probe), with `image` attached to the prompt as a turn's
+    /// check image is: what one check image adds to a call is this run's first
+    /// call less a text-only probe's.
+    ///
+    /// # Errors
+    ///
+    /// As [`probe`](Self::probe)'s.
+    pub fn probe_with_image(
+        &self,
+        session: &str,
+        prompt: &str,
+        image: Option<PathBuf>,
+    ) -> Result<RunResult, SupervisorError> {
         let name = SessionName::probe(session)?;
         let by_prompt = self.held_by_prompt()?;
         let request = self.build_request(
             &name,
             &instructed(prompt.to_owned(), by_prompt.as_ref()),
-            Vec::new(),
+            image.into_iter().collect(),
             None,
             by_prompt.as_ref(),
         );

@@ -51,12 +51,12 @@ const MARK: u32 = 150;
 /// A camera frame: a checkerboard of two greys, which no blank-frame bound
 /// reads as a camera showing nothing, with a pure red mark in each corner, so a
 /// crop loses a mark and a frame scaled whole keeps all four.
-fn marked_frame() -> Vec<u8> {
+pub(crate) fn marked_frame() -> Vec<u8> {
     marked_frame_of(CAMERA)
 }
 
 /// A marked frame of one size.
-fn marked_frame_of((width, height): (u32, u32)) -> Vec<u8> {
+pub(crate) fn marked_frame_of((width, height): (u32, u32)) -> Vec<u8> {
     let frame = image::RgbImage::from_fn(width, height, |x, y| {
         let left_or_right = x < MARK || x >= width - MARK;
         let top_or_bottom = y < MARK || y >= height - MARK;
@@ -83,7 +83,7 @@ fn red(pixel: image::Rgb<u8>) -> bool {
 
 /// Hold a check's image to the whole frame scaled: 1280x720, a mark in every
 /// corner, and the middle of every edge grey.
-fn is_the_whole_frame_scaled(bytes: &[u8], what: &str) {
+pub(crate) fn is_the_whole_frame_scaled(bytes: &[u8], what: &str) {
     let decoded = image::load_from_memory(bytes)
         .unwrap_or_else(|error| panic!("{what} is no image: {error}"))
         .to_rgb8();
@@ -115,7 +115,7 @@ fn is_the_whole_frame_scaled(bytes: &[u8], what: &str) {
 
 /// Every run request the port built, in order.
 #[derive(Default)]
-struct Requests(Mutex<Vec<RunRequest>>);
+pub(crate) struct Requests(Mutex<Vec<RunRequest>>);
 
 impl RunRequestObserver for Requests {
     fn built(&self, request: &RunRequest) {
@@ -127,7 +127,7 @@ impl RunRequestObserver for Requests {
 }
 
 impl Requests {
-    fn all(&self) -> Vec<RunRequest> {
+    pub(crate) fn all(&self) -> Vec<RunRequest> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -137,7 +137,7 @@ impl Requests {
 
 /// An assessment the scripted agent answers, as Claude Code streams one: one
 /// model call, then the result.
-fn streamed(answer: &Value) -> String {
+pub(crate) fn streamed(answer: &Value) -> String {
     [
         json!({
             "type": "assistant",
@@ -167,7 +167,7 @@ fn streamed(answer: &Value) -> String {
 }
 
 /// An assessment answering with a disposition and a reason.
-fn answering(disposition: &str, why: &str) -> Value {
+pub(crate) fn answering(disposition: &str, why: &str) -> Value {
     json!({
         "summary": "the walls are going down clean",
         "confidence": "high",
@@ -180,7 +180,7 @@ fn answering(disposition: &str, why: &str) -> Value {
 }
 
 /// Copy one directory tree into another.
-fn copy_tree(from: &Path, to: &Path) {
+pub(crate) fn copy_tree(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).expect("the copy's directory is writable");
     for entry in std::fs::read_dir(from).expect("the directory is readable") {
         let path = entry.expect("an entry").path();
@@ -195,11 +195,11 @@ fn copy_tree(from: &Path, to: &Path) {
 
 /// The configuration `installer`'s template writes, its `[camera]` example
 /// taken up and what an operator fills in filled in, written under `root`.
-fn configured(
+pub(crate) fn configured(
     installer: &str,
     root: &TempDir,
     octoprint: &ScriptedOctoPrint,
-    camera: &crate::http_host::Host,
+    camera_url: &str,
     interval_s: i64,
 ) -> PathBuf {
     let state = root.path().join("state");
@@ -226,7 +226,10 @@ fn configured(
         "ingress.shared_secret",
         toml::Value::String(SECRET.to_owned()),
     );
-    fill("camera.snapshot_url", toml::Value::String(camera.url()));
+    fill(
+        "camera.snapshot_url",
+        toml::Value::String(camera_url.to_owned()),
+    );
     fill(
         "supervisor.observation_interval_s",
         toml::Value::Integer(interval_s),
@@ -250,7 +253,7 @@ fn configured(
 /// The agent composed from `config` as the server composes it, its harness the
 /// responder scripted to answer `answers` in turn after issuing `actions`, and
 /// what watches the run requests it builds.
-fn scripted_agent(
+pub(crate) fn scripted_agent(
     config: &ServerConfig,
     root: &Path,
     answers: &[Value],
@@ -339,7 +342,7 @@ impl Lean {
         octoprint.reports("Printing", JobScript::printing(FILE, size, size / 2, 600));
         let camera = crate::http_host::image_host(frame).await;
 
-        let path = configured(installer, &root, &octoprint, &camera, interval_s);
+        let path = configured(installer, &root, &octoprint, &camera.url(), interval_s);
         let config = ServerConfig::load(&path)
             .unwrap_or_else(|error| panic!("{installer}'s configuration reads: {error}"));
 
@@ -473,7 +476,7 @@ impl Lean {
 
 /// The prompt and the image the harness process was handed on its standard
 /// input, as `OneHarness`'s stream-json user frame carries them.
-fn handed(seen: &Value) -> (String, Vec<u8>) {
+pub(crate) fn handed(seen: &Value) -> (String, Vec<u8>) {
     use base64::Engine as _;
 
     let stdin = seen["stdin"]

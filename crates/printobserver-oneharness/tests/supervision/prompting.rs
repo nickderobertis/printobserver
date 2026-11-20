@@ -83,6 +83,7 @@ fn knowing_everything(print_id: PrintId) -> TurnSituation {
         arrived_while_busy: vec![event(print_id, unreadable("an earlier alert"))],
         noticed: Some("print_ended: the print ended interrupted".to_owned()),
         frame_captured_at: None,
+        image: Some("the whole camera frame, because no calibration is configured".to_owned()),
     }
 }
 
