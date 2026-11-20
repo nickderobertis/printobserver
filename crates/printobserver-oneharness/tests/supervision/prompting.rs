@@ -376,8 +376,8 @@ fn the_filled_prompt_holds_only_its_slots_and_their_framing() {
     let skill = built.system.expect("the run carries the skill");
     let skill_words = skill.split_whitespace().collect::<Vec<_>>().join(" ");
     for moved in [
-        "Run each command naming no configuration:",
-        "Name yourself as the actor only where a command's usage asks who.",
+        "Name no configuration:",
+        "Give an actor only where a command's usage asks who.",
     ] {
         assert!(
             skill_words.contains(moved),
