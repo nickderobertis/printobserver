@@ -37,6 +37,7 @@ fn trivial_request() -> TurnRequest {
         event: printobserver_types::EventRecord::sample_minimal(),
         image_path: None,
         context_command: String::new(),
+        facts: None,
         situation: printobserver_supervisor_api::TurnSituation::default(),
     }
 }

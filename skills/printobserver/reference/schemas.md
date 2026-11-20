@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-206 types. The set is every type any crate declares under
+207 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -7354,6 +7354,26 @@ Declared by `printobserver-supervisor-api`.
           "type": "string"
         }
       ]
+    },
+    "Disposition": {
+      "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "The print should stop.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -7367,6 +7387,10 @@ Declared by `printobserver-supervisor-api`.
     "did": {
       "description": "What the agent did.",
       "type": "string"
+    },
+    "disposition": {
+      "$ref": "#/$defs/Disposition",
+      "description": "What the turn's event is acknowledged with, when the turn acknowledged\nnothing by command."
     },
     "escalating": {
       "description": "Whether the agent is escalating to a person.",
@@ -7391,7 +7415,8 @@ Declared by `printobserver-supervisor-api`.
     "should_continue",
     "did",
     "why",
-    "escalating"
+    "escalating",
+    "disposition"
   ],
   "title": "AgentAssessment",
   "type": "object"
@@ -7417,6 +7442,10 @@ Declared by `printobserver-core`.
           "description": "What the agent did.",
           "type": "string"
         },
+        "disposition": {
+          "$ref": "#/$defs/Disposition",
+          "description": "What the turn's event is acknowledged with, when the turn acknowledged\nnothing by command."
+        },
         "escalating": {
           "description": "Whether the agent is escalating to a person.",
           "type": "boolean"
@@ -7440,7 +7469,8 @@ Declared by `printobserver-core`.
         "should_continue",
         "did",
         "why",
-        "escalating"
+        "escalating",
+        "disposition"
       ],
       "type": "object"
     },
@@ -7460,6 +7490,26 @@ Declared by `printobserver-core`.
         {
           "const": "high",
           "description": "Sure.",
+          "type": "string"
+        }
+      ]
+    },
+    "Disposition": {
+      "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "The print should stop.",
           "type": "string"
         }
       ]
@@ -10580,6 +10630,35 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "DetectorStatus"
+}
+```
+
+### Disposition
+
+Declared by `printobserver-supervisor-api`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+  "oneOf": [
+    {
+      "const": "continue",
+      "description": "Carry on printing.",
+      "type": "string"
+    },
+    {
+      "const": "watch",
+      "description": "Carry on printing, watched more closely.",
+      "type": "string"
+    },
+    {
+      "const": "stop",
+      "description": "The print should stop.",
+      "type": "string"
+    }
+  ],
+  "title": "Disposition"
 }
 ```
 
@@ -42573,6 +42652,10 @@ Declared by `printobserver-supervisor-api`.
           "description": "What the agent did.",
           "type": "string"
         },
+        "disposition": {
+          "$ref": "#/$defs/Disposition",
+          "description": "What the turn's event is acknowledged with, when the turn acknowledged\nnothing by command."
+        },
         "escalating": {
           "description": "Whether the agent is escalating to a person.",
           "type": "boolean"
@@ -42596,7 +42679,8 @@ Declared by `printobserver-supervisor-api`.
         "should_continue",
         "did",
         "why",
-        "escalating"
+        "escalating",
+        "disposition"
       ],
       "type": "object"
     },
@@ -42616,6 +42700,26 @@ Declared by `printobserver-supervisor-api`.
         {
           "const": "high",
           "description": "Sure.",
+          "type": "string"
+        }
+      ]
+    },
+    "Disposition": {
+      "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "The print should stop.",
           "type": "string"
         }
       ]
@@ -42985,6 +43089,14 @@ Declared by `printobserver-supervisor-api`.
     "event": {
       "$ref": "#/$defs/EventRecord",
       "description": "The event that prompted the turn."
+    },
+    "facts": {
+      "additionalProperties": true,
+      "description": "The print's context as the context command answered it when the turn\nbegan, its events cut to those since the agent last answered: what the\nturn decides from without running a command. Absent when no context\ncould be read.\n\nA document rather than the context's own type, because that type is the\nsupervision core's, which this port may not depend on: the core builds\nit from its own context answer and nothing else.",
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "image_path": {
       "description": "The absolute path of the image to look at, when there is one.",

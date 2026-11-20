@@ -39,7 +39,7 @@ use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{EventPayload, EventRecord, PrintId, PrinterState, Timestamp};
 
 pub use access::{CREDENTIAL_ENV, SERVER_ENV, TurnAccess, TurnPass, TurnSession};
-pub use assessment::{AgentAssessment, Confidence};
+pub use assessment::{AgentAssessment, Confidence, Disposition};
 pub use session::{SessionPhase, SupervisionSession};
 
 /// A future this port's methods answer with, in the one shape a trait object
@@ -60,6 +60,18 @@ pub struct TurnRequest {
     pub image_path: Option<PathBuf>,
     /// The command the turn runs to read the print's context.
     pub context_command: String,
+    /// The print's context as the context command answered it when the turn
+    /// began, its events cut to those since the agent last answered: what the
+    /// turn decides from without running a command. Absent when no context
+    /// could be read.
+    ///
+    /// A document rather than the context's own type, because that type is the
+    /// supervision core's, which this port may not depend on: the core builds
+    /// it from its own context answer and nothing else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub facts: Option<
+        printobserver_types::serde_json::Map<String, printobserver_types::serde_json::Value>,
+    >,
     /// What the supervisor knew about the moment the turn began.
     #[serde(default)]
     pub situation: TurnSituation,

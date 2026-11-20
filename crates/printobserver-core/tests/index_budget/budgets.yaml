@@ -53,10 +53,15 @@ budgets:
     timeout_seconds: 60
   - id: gcode-index-seconds
     description: >-
-      Time to index one print's G-code: wall time from the first byte of the
-      print's G-code reaching the core's index builder, streamed as the read
-      path streams it, to the index being ready: the elapsed time, each 64 KiB
-      piece handed to the builder as fast as a read delivers one. Inner
+      Time to index one print's G-code: the CPU time, user and system, of the
+      thread building it, from the first byte of the print's G-code reaching
+      the core's index builder, streamed as the read path streams it, to the
+      index being ready, each 64 KiB piece handed to the builder as fast as a
+      read delivers one. CPU time rather than wall time, because the gate's
+      shared runners swing the wall time with their load — 3.06 to 5.18 s on
+      one linux-aarch64 cell at loads of 6.5 to 7.6 on 4 cores, against 1.2 to
+      2.1 s on the other Linux cell — while a slower index costs CPU time
+      however loaded the host is. Inner
       measure, because the index is the only new work on the first check's
       path and that check's whole delay is dominated by an agent turn
       that varies by minutes; the network read from OctoPrint on the LAN is
@@ -71,11 +76,16 @@ budgets:
       in one layer, G2/G3 arcs with I/J, streamed once into the builder
       through the reader interface the OctoPrint read path feeds it, in an
       unoptimised test build. Detail: bytes, lines, layers, index entries, the
-      throughput in MB/s, and the builder's own share of the elapsed time. Basis: measured — spike-check-costs' index
+      elapsed wall time, the throughput in MB/s, and the builder's own share
+      of the elapsed time. Basis: measured — spike-check-costs' index
       prototype on the real 78 MB slice took a median 1.321 s and at worst
       1.665 s in an unoptimised build (0.141 s and 0.174 s optimised), at a
       1-minute load of about 16; the threshold, 5 s, is 3.0 times the debug
-      worst, a margin for slower runners, confirmed by the manager. Read from
+      worst, a margin for slower runners, confirmed by the manager, and kept
+      for CPU time: unloaded it reads as the wall time did (1.66 to 1.84 s on
+      an 8-core host); with 16 busy processes on that host it read 2.9 s
+      where the wall time read 9.9 to 12.0 s; and four times the indexing work
+      read 6.8 s, over the line. Read from
       the telemetry the `printobserver-core-index-budget:test` journey
       records.
     measure: reported

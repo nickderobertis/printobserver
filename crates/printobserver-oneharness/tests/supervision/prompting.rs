@@ -7,9 +7,11 @@
 use std::fs;
 use std::sync::Arc;
 
+use oneharness_core::domain::structured::{self, Schema};
+
 use printobserver_oneharness::{
-    ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, OneharnessSupervisor,
-    SITUATION_SLOT, SLOTS, UnclosedFrontmatter, skill_prose,
+    ACTOR_SLOT, AgentCommand, COMMANDS_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT,
+    OneharnessSupervisor, SITUATION_SLOT, SLOTS, UnclosedFrontmatter, skill_prose,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
 use printobserver_types::{PrintId, PrinterState, serde_json};
@@ -84,8 +86,50 @@ fn knowing_everything(print_id: PrintId) -> TurnSituation {
     }
 }
 
-/// Every prompt is the committed template with only its slots differing, and
-/// the actor it hands the agent is the agent in the session the turn ran in.
+/// The prompt of the run request a turn was last built as, once that request
+/// attaches exactly `image` and the prompt names no path of it — less the
+/// engine's own instruction to answer to the schema, which a Claude Code run
+/// carries after the template because it is held to the schema by its prompt.
+fn attached_once(watch: &Watch, image: Option<&std::path::PathBuf>) -> String {
+    let built = watch
+        .requests()
+        .last()
+        .expect("the port built a run request")
+        .clone();
+    assert_eq!(
+        built.images,
+        image.into_iter().cloned().collect::<Vec<_>>(),
+        "the turn's image is not the one image attached to its run"
+    );
+    let prompt = built
+        .prompt
+        .first()
+        .expect("the run request carries a prompt")
+        .clone();
+    if let Some(path) = image {
+        assert!(
+            !prompt.contains(&path.display().to_string()),
+            "the prompt names the image's path:\n{prompt}"
+        );
+    }
+    assert_eq!(
+        built.schema, None,
+        "a Claude Code run passed the schema natively"
+    );
+    let schema = Schema::compile(
+        &fs::read_to_string(generated_assessment_schema()).expect("the schema is readable"),
+    )
+    .expect("the schema compiles");
+    let instruction = format!("\n\n{}", structured::prompt_instruction(schema.as_text()));
+    prompt
+        .strip_suffix(&instruction)
+        .unwrap_or_else(|| panic!("the prompt does not end with the schema instruction:\n{prompt}"))
+        .to_owned()
+}
+
+/// Every prompt is the committed template with only its slots differing, the
+/// actor it hands the agent is the agent in the session the turn ran in, and a
+/// turn's image is attached to the run rather than named in its prompt.
 #[test]
 fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     // Every answer here is judged by the checked-in schema, so it is held still.
@@ -107,7 +151,8 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
     let (literals, order) = segments(&template);
 
     let picture = fixture.path("frame.jpg");
-    fs::write(&picture, b"not really a picture").expect("a scratch picture");
+    // A JPEG by its leading bytes, which is all an attachment is held to here.
+    fs::write(&picture, b"\xff\xd8\xff\xe0 not really a picture").expect("a scratch picture");
     let triggers = [
         (
             failure_alert(7, Some("bracket.gcode")),
@@ -124,27 +169,25 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         // The first turn knew everything, and came after an event never taken.
         if index == 0 {
             request.situation = knowing_everything(print_id);
+            request.facts = serde_json::json!({
+                "print": { "id": print_id, "state": "printing" },
+                "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
+            })
+            .as_object()
+            .cloned();
         }
         let expected_event =
             serde_json::to_string_pretty(&request.event).expect("the event is writable");
         let expected_situation =
             serde_json::to_string_pretty(&request.situation).expect("the situation is writable");
-        let expected_image = image
-            .as_ref()
-            .map_or_else(|| NO_IMAGE.to_owned(), |path| path.display().to_string());
+        let expected_facts =
+            serde_json::to_string_pretty(&request.facts).expect("the facts are writable");
         let expected_command = request.context_command.clone();
         // A print's first turn runs in that print's first session.
         let expected_actor = actor_in(&format!("print-{print_id}"));
         block_on(supervisor.run_turn(request, crate::support::access())).expect("the turn runs");
 
-        let prompt = watch
-            .requests()
-            .last()
-            .expect("the port built a run request")
-            .prompt
-            .first()
-            .expect("the run request carries a prompt")
-            .clone();
+        let prompt = attached_once(&watch, image.as_ref());
         let found = fillings(&literals, &prompt).unwrap_or_else(|| {
             panic!("the prompt is not the committed template with only its slots filled:\n{prompt}")
         });
@@ -152,9 +195,11 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
             match *slot {
                 EVENT_SLOT => assert_eq!(filling, &expected_event),
                 SITUATION_SLOT => assert_eq!(filling, &expected_situation),
-                IMAGE_SLOT => assert_eq!(filling, &expected_image),
+                FACTS_SLOT => assert_eq!(filling, &expected_facts),
                 CONTEXT_COMMAND_SLOT => assert_eq!(filling, &expected_command),
                 ACTOR_SLOT => assert_eq!(filling, &expected_actor),
+                // This port is configured with no command a turn may run.
+                COMMANDS_SLOT => assert_eq!(filling, ""),
                 other => panic!("the template declares an unknown slot {other}"),
             }
         }
@@ -264,11 +309,12 @@ fn a_turn_moved_to_a_new_session_hands_the_agent_that_sessions_actor() {
     );
 }
 
-/// The committed template hands acting to the skill and the policy, and says
-/// which commands take the agent's actor, rather than calling the turn a
-/// reading. Read off a real filled prompt, because that is what the agent reads.
+/// The committed template holds its slots and the framing saying what each
+/// holds, and nothing procedural: how to act, which commands take the actor and
+/// how to run them are the skill's, which every turn is sent as its system
+/// prompt. Read off a real filled prompt, because that is what the agent reads.
 #[test]
-fn the_filled_prompt_hands_acting_to_the_skill_and_the_policy() {
+fn the_filled_prompt_holds_only_its_slots_and_their_framing() {
     let schemas = schema_read_lock();
     let fixture = Fixture::new("prompting-wording");
     let watch = Arc::new(Watch::default());
@@ -292,40 +338,50 @@ fn the_filled_prompt_hands_acting_to_the_skill_and_the_policy() {
         crate::support::access(),
     ))
     .expect("the turn runs");
-    let prompt = prompt_of(
-        watch
-            .requests()
-            .first()
-            .expect("the port built a run request"),
-    );
+    let built = watch
+        .requests()
+        .first()
+        .expect("the port built a run request")
+        .clone();
+    let prompt = prompt_of(&built);
     // The template wraps its prose at a fixed width, so it is read as words.
     let words = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
 
-    for said in [
-        "decide, and act as your skill describes.",
-        "Everything you ask for goes through the same policy an operator's requests do, \
-         and that policy decides what your role may change.",
-        "Run every other command the same way, with no `--config`:",
-        "a credential minted for this turn alone",
-        "stops working when the turn ends.",
-        "A command whose usage lists `--actor` names who is asking.",
-        "A command whose usage does not list it, the one above included, refuses it:",
-        "what you did (each command you ran and what it answered)",
+    for heading in [
+        "## The event",
+        "## The situation when this turn began",
+        "## The print's facts",
+        "## The whole context",
+        "## Your actor",
+        "## The commands you may run",
     ] {
         assert!(
-            words.contains(said),
-            "the prompt does not say {said:?}:\n{prompt}"
+            prompt.contains(heading),
+            "the prompt frames no {heading:?}:\n{prompt}"
         );
     }
-    for unsaid in [
-        "This turn is a reading, not a repair.",
-        "the same `--config` file this one takes",
-        "Nothing here asks you to change what the machine is doing",
-        "the only command named below is the one that reads",
+    for procedural in [
+        "act as your skill describes",
+        "Run this command and read what it answers",
+        "Run every other command the same way",
+        "Your skill says how to take a fresh look",
+        "Once you have done what you decided to do",
+        "## The picture",
     ] {
         assert!(
-            !words.contains(unsaid),
-            "the prompt still says {unsaid:?}:\n{prompt}"
+            !words.contains(procedural),
+            "the prompt still carries the procedure {procedural:?}:\n{prompt}"
+        );
+    }
+    let skill = built.system.expect("the run carries the skill");
+    let skill_words = skill.split_whitespace().collect::<Vec<_>>().join(" ");
+    for moved in [
+        "Name no configuration:",
+        "Give an actor only where a command's usage asks who.",
+    ] {
+        assert!(
+            skill_words.contains(moved),
+            "the skill does not say {moved:?}"
         );
     }
     assert!(
@@ -518,4 +574,53 @@ fn the_prose_is_everything_after_the_line_closing_the_frontmatter() {
         let expected = case["prose"].as_str().ok_or(UnclosedFrontmatter);
         assert_eq!(skill_prose(text), expected, "the case `{named}`");
     }
+}
+
+/// A turn is handed the usage line of each command it may run, as the program
+/// prints them and in its order, and no line of any other command — however
+/// alike its name begins.
+#[test]
+fn a_turn_is_handed_the_usage_of_the_commands_it_may_run_and_no_other() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("prompting-commands");
+    let watch = Arc::new(Watch::default());
+    let mut configured = config(
+        &schemas,
+        &fixture,
+        HARNESS,
+        &generated_assessment_schema(),
+        always("SID-COMMANDS", &assessment("the print is fine", "high")),
+    );
+    configured.agent_commands = ["printobserver context", "printobserver set-fan-percent"]
+        .map(|command| AgentCommand::new(command).expect("a command prefix"))
+        .to_vec();
+    configured.command_usage = [
+        "printobserver server",
+        "printobserver context --print-id <value> [--since <value>]",
+        "printobserver contexts --print-id <value>",
+        "printobserver register-spool --actor <json> --name <value> --reason <value>",
+        "printobserver set-fan-percent --print-id <value> --actor <json> --percent <value> --reason <value>",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let supervisor = port(configured, &watch);
+    let print_id = PrintId::new();
+    block_on(supervisor.run_turn(
+        turn(print_id, event(print_id, failure_alert(7, None)), None),
+        crate::support::access(),
+    ))
+    .expect("the turn runs");
+    let prompt = attached_once(&watch, None);
+    let template = fs::read_to_string(template_path()).expect("the committed template is readable");
+    let (literals, order) = segments(&template);
+    let found = fillings(&literals, &prompt).expect("the prompt is the template filled");
+    let at = order
+        .iter()
+        .position(|slot| *slot == COMMANDS_SLOT)
+        .expect("the template declares the commands");
+    assert_eq!(
+        found[at],
+        "printobserver context --print-id <value> [--since <value>]\n\
+         printobserver set-fan-percent --print-id <value> --actor <json> --percent <value> --reason <value>"
+    );
 }

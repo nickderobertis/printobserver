@@ -403,6 +403,7 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
         "did": "slowed the feedrate for ten minutes and was refused a second change",
         "why": "the extrusion width was widening on the long edges",
         "escalating": false,
+        "disposition": "continue",
     })
     .to_string();
     let document = json!({
@@ -442,6 +443,7 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
         // This tier's responder issues its actions itself rather than through a
         // shell, so the turn keeps the read-only mode.
         agent_commands: Vec::new(),
+        command_usage: Vec::new(),
     })
     .expect("the supervising agent is built")
 }

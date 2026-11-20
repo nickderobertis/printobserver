@@ -122,9 +122,8 @@ fn a_template_that_does_not_declare_each_slot_once_is_refused() {
     let committed = fs::read_to_string(crate::support::template_path())
         .expect("the committed template is readable");
 
-    let without = fixture.path("no-image.md");
-    fs::write(&without, committed.replace("{{image_path}}", "a picture"))
-        .expect("a scratch template");
+    let without = fixture.path("no-facts.md");
+    fs::write(&without, committed.replace("{{facts}}", "the facts")).expect("a scratch template");
     let twice = fixture.path("twice.md");
     fs::write(
         &twice,
@@ -133,7 +132,7 @@ fn a_template_that_does_not_declare_each_slot_once_is_refused() {
     .expect("a scratch template");
 
     for (path, naming) in [
-        (&without, "declares no {{image_path}} slot"),
+        (&without, "declares no {{facts}} slot"),
         (&twice, "more than once"),
     ] {
         let mut configured = answering(&schemas, &fixture);
@@ -515,7 +514,7 @@ fn a_ledger_written_under_another_shape_is_refused() {
         &fixture,
         &print_id,
         &serde_json::json!({
-            "schema_version": "2",
+            "schema_version": "3",
             "print_id": print_id,
             "sessions": [],
             "turns": [],
@@ -529,7 +528,7 @@ fn a_ledger_written_under_another_shape_is_refused() {
         .expect_err("a ledger of another shape was read as this build's");
     let said = detail(&refused);
     assert!(
-        said.contains("not a ledger this build reads") && said.contains("V1"),
+        said.contains("not a ledger this build reads") && said.contains("V2"),
         "the refusal does not say which shape this build writes: {said}"
     );
 }

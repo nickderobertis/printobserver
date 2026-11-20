@@ -296,6 +296,9 @@ class AgentAssessment(TypedDict):
     confidence: Confidence
     # What the agent did.
     did: str
+    # What the turn's event is acknowledged with, when the turn acknowledged
+    # nothing by command.
+    disposition: Disposition
     # Whether the agent is escalating to a person.
     escalating: bool
     # Whether the print should carry on.
@@ -828,6 +831,15 @@ DetectorHealthStatus: TypeAlias = Literal[
 
 # What a check of the failure detector's own health found.
 DetectorStatus: TypeAlias = Literal["available", "unavailable"]
+
+
+# What the agent's answer asks for next, in the vocabulary an
+# acknowledgement's disposition is spelled in.
+#
+# A turn that acknowledged nothing by command is acknowledged from its
+# answer with this, so a quiet check records its judgement without a command
+# of its own.
+Disposition: TypeAlias = Literal["continue", "watch", "stop"]
 
 
 class EffectiveBounds(TypedDict):
@@ -5060,6 +5072,13 @@ SHAPES: dict[str, object] = json.loads(
       "scalar": "string"
      }
     },
+    "disposition": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Disposition"
+     }
+    },
     "escalating": {
      "paired_with": "",
      "required": true,
@@ -5853,6 +5872,13 @@ SHAPES: dict[str, object] = json.loads(
   "enum": [
    "available",
    "unavailable"
+  ]
+ },
+ "Disposition": {
+  "enum": [
+   "continue",
+   "watch",
+   "stop"
   ]
  },
  "EffectiveBounds": {

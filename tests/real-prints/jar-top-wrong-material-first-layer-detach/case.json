@@ -314,7 +314,7 @@
   },
   "right_action": "Pause the print at once (agent-009) and escalate for a person: the part is off the sheet in the first few layers, so nothing is salvageable and no temperature, fan, flow or speed change can reattach it. A person must clear the filament from the nozzle, clean the sheet and cancel. Cancelling outright would also be acceptable, since every remaining layer would be laid onto nothing, but pause-and-escalate is preferred so a person can inspect the nozzle. It must not take several more looks first: each minute of printing winds more filament around the nozzle.",
   "agent_did": "The agent called the start-up and first-layer frames correctly, recognised the detachment at the first frame that showed it (18:24:50), took one confirming look and paused at about 18:25:49 with escalation, then held the pause until a person cancelled. That was right and fast, but like everyone else it did not notice the material mismatch (it called 220 °C normal).",
-  "labelling_notes": "Frames are 1920x1080, not the stated 1280x720. Rows 1-4 share agent turns with their looks, as do 5-6, 7-8 and 9-11. The G-code fields drift after the pause (z 1.6 to 2.0, progress 3.1 to 5.2 while paused), probably because of buffered moves and how the packet sampled position, so the camera is the better clock here. When the ring was dragged, the G-code was already at z 1.6 with solid infill in the layer: the base ring had a few layers, but on camera it never got past a thin first-layer ring. Root cause, from the case description: Elegoo PETG printed with the Prusament PLA profile (about 215-220 °C nozzle and 60 °C bed), which gives weak first-layer adhesion. Nothing in the frames shows the wrong material before the detachment.",
+  "labelling_notes": "Frames are 1920x1080, not the stated 1280x720. Rows 1-4 share agent turns with their looks, as do 5-6, 7-8 and 9-11. The G-code fields drift after the pause (z 1.6 to 2.0, progress 3.1 to 5.2 while paused), probably because of buffered moves and how the packet sampled position, so the camera is the better clock here. When the ring was dragged, the G-code was already at z 1.6 with solid infill in the layer: the base ring had a few layers, but on camera it never got past a thin first-layer ring. Root cause, from the case description: Elegoo PETG printed with the Prusament PLA profile (about 215-220 °C nozzle and 60 °C bed), which gives weak first-layer adhesion. Nothing in the frames shows the wrong material before the detachment. The ring-dragged-off-its-place decision point is left out of the replay for now: it is a judgement of the part's place against an earlier frame, which the check image that projects the planned toolpath onto the frame is to make, and it is to be replayed again once checks carry it.",
   "sources": {
     "3423-TOP-REV F.gcode": "the G-code OctoPrint printed, byte for byte, from the run folder",
     "provenance.json": "the operator's provenance for the run: the model, slicer, profiles and command that made the G-code",
@@ -325,7 +325,7 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
-    "replay": ["first-layer-before-the-failure", "ring-dragged-off-its-place"],
+    "replay": ["first-layer-before-the-failure"],
     "scenarios": [
       {
         "id": "ring-dragged-off-its-place",

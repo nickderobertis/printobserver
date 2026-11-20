@@ -296,7 +296,7 @@ impl Supervisor {
     ) -> Look {
         let frame = event.image.clone();
         let image_path = match &frame {
-            Some(reference) => self.image_path(reference).await,
+            Some(reference) => self.check_image_path(event.print_id, reference).await,
             None => None,
         };
         Look {

@@ -69,8 +69,8 @@ SessionName = NewType("SessionName", str)
 SpoolId = NewType("SpoolId", str)
 #: The tools a conversation has, and the ones of them allowed outright, as the
 #: supervisor port grants a supervision turn's: `printobserver-oneharness`'s own.
-TOOLS = ("Read", "Grep", "Glob", "Bash")
-READ_TOOLS = ("Read", "Grep", "Glob")
+TOOLS = ("Bash", "Read")
+READ_TOOLS = ("Read",)
 #: The one tool a conversation has beyond a supervision turn's, and the one rule for
 #: it: Claude Code offers an installed Agent Skill through its skill tool alone, so
 #: without it the skill installed for the operator's agent is one it never sees.

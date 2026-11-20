@@ -8,10 +8,12 @@
 //! whole-file read feeds it. The plate is written into memory first, because
 //! the generator stands in for the `OctoPrint` read, which the budget leaves
 //! out: timing its writing would measure this test rather than the indexer.
-//! The build is then timed as the elapsed wall time from the first piece
+//! The build is then timed as the CPU time, user and system, of the thread
+//! that hands every piece to the builder and finishes it, from the first piece
 //! reaching the builder to the index being ready, each piece handed over as
-//! fast as a read delivers one, and the builder's own share of that time is
-//! recorded beside it; and the heap is counted over the whole build by the counting
+//! fast as a read delivers one — CPU time because a shared runner's load moves
+//! the wall time and not the work. The elapsed wall time and the builder's own
+//! share of it are recorded beside it; and the heap is counted over the whole build by the counting
 //! global allocator this binary runs under, from a baseline taken once the
 //! written plate is held, so the held plate is outside it while the read
 //! buffer and the built index are inside. The context answer is then rendered at the layer naming
@@ -35,6 +37,7 @@ use core::ops::ControlFlow;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use cpu_time::ThreadTime;
 use peak_alloc::PeakAlloc;
 use printobserver_core::{GcodeIndex, IndexBuilder, PlanMismatch, PrintContext, Rise};
 use printobserver_printer_api::GcodeSink as _;
@@ -145,8 +148,11 @@ struct Built {
     /// calls, the pieces' arrival between them left out.
     building: Duration,
     /// The elapsed wall time from the first byte reaching the builder to the
-    /// index being ready: what the budget `gcode-index-seconds` measures.
+    /// index being ready.
     wall: Duration,
+    /// The building thread's CPU time over that same window: what the budget
+    /// `gcode-index-seconds` measures.
+    cpu: Duration,
     /// The peak heap over the build, beyond what was held before it.
     peak: usize,
 }
@@ -175,6 +181,7 @@ fn built() -> Built {
     let mut builder = IndexBuilder::new();
     let mut building = Duration::ZERO;
     let started = Instant::now();
+    let working = ThreadTime::now();
     for held in &pieces {
         piece.clear();
         piece.extend_from_slice(held.as_bytes());
@@ -185,6 +192,7 @@ fn built() -> Built {
     let finishing = Instant::now();
     let index = builder.finish();
     building += finishing.elapsed();
+    let cpu = working.elapsed();
     let wall = started.elapsed();
     let peak = ALLOCATOR.peak_usage().saturating_sub(baseline);
     Built {
@@ -192,6 +200,7 @@ fn built() -> Built {
         shape,
         building,
         wall,
+        cpu,
         peak,
     }
 }
@@ -292,6 +301,7 @@ fn one_long_plate_is_indexed_and_its_plan_rendered() {
         shape,
         building,
         wall,
+        cpu,
         peak,
     } = built();
     let generated = [
@@ -335,6 +345,7 @@ fn one_long_plate_is_indexed_and_its_plan_rendered() {
         "index_entries": index.entries(),
         "index_resident_bytes": index.resident_bytes(),
         "peak_heap_bytes": peak,
+        "cpu_seconds": cpu.as_secs_f64(),
         "wall_seconds": wall.as_secs_f64(),
         "builder_seconds": building.as_secs_f64(),
         "throughput_mb_per_s": figure(shape.bytes / 1_000) / 1_000.0 / wall.as_secs_f64(),
@@ -342,7 +353,7 @@ fn one_long_plate_is_indexed_and_its_plan_rendered() {
     });
     record(
         "gcode-index.json",
-        &json!({ "seconds": wall.as_secs_f64(), "peak_mb": megabytes(peak) }),
+        &json!({ "seconds": cpu.as_secs_f64(), "peak_mb": megabytes(peak) }),
         &built,
     );
     record(

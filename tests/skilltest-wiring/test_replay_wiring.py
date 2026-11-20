@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -31,6 +32,7 @@ import mock_turn
 import pytest
 import record
 import replay as replay_module
+import shell_lines
 from cases import (
     CASES,
     REPO,
@@ -49,8 +51,11 @@ from cases import (
 )
 from mock_turn import ScriptedRun, Seen
 from replay import (
+    PROBE_RECORD,
     Assessment,
     Confidence,
+    DecisionPoint,
+    Disposition,
     Replay,
     Replayed,
     ReplayError,
@@ -72,7 +77,7 @@ from repo_checks.checks_real_prints import Trigger as RepoCheckTrigger
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
 from repo_checks.shell import run
-from turns_per_run import UnreadableCaseError, turns_per_test
+from turns_per_run import PROBE_TURNS, UnreadableCaseError, turns_per_test
 
 HERE = Path(__file__).resolve().parent
 MOCK_TURN = HERE / "mock_turn.py"
@@ -85,11 +90,13 @@ REPLAYS = {
     "jar-top-wrong-material-detach-spaghetti": [
         "wall-building-cleanly",
         "wall-top-porous-and-stringing",
-        "part-detached-and-moved",
+        # part-detached-and-moved waits for the check image that projects the
+        # planned toolpath: a judgement of the part's place, left out until then.
     ],
     "jar-top-wrong-material-first-layer-detach": [
         "first-layer-before-the-failure",
-        "ring-dragged-off-its-place",
+        # ring-dragged-off-its-place waits for the check image that projects
+        # the planned toolpath: a judgement of the part's place, left out until then.
     ],
     "petg-spool-jam-air-print": ["first-layers-healthy", "air-print-parts-stopped-growing"],
     "petg-clip-detach-and-stringing-web": [
@@ -259,7 +266,7 @@ def scratch(tmp_path: Path) -> Path:
 
 
 def test_the_suites_vocabularies_are_the_contracts() -> None:
-    """Its trigger and machine-state words are the ones the schemas declare."""
+    """Its trigger, machine-state and assessment words are the ones the schemas declare."""
     schema = json.loads((CASES / "case.schema.json").read_text(encoding="utf-8"))
     declared = schema["$defs"]["Scenario"]["properties"]["trigger"]["enum"]
     equal(sorted(trigger.value for trigger in Trigger), sorted(declared))
@@ -272,6 +279,9 @@ def test_the_suites_vocabularies_are_the_contracts() -> None:
     confidence = sorted(arm["const"] for arm in assessment["$defs"]["Confidence"]["oneOf"])
     equal(sorted(get_args(Confidence)), confidence)
     equal(sorted(get_args(mock_turn.Confidence)), confidence)
+    disposition = sorted(arm["const"] for arm in assessment["$defs"]["Disposition"]["oneOf"])
+    equal(sorted(get_args(Disposition)), disposition)
+    equal(sorted(get_args(mock_turn.Disposition)), disposition)
     primitive = {"string": str, "boolean": bool}
     declared_types = {
         name: primitive[field["type"]]
@@ -399,8 +409,19 @@ def _scenario_named(document: dict[str, Any], scenario: str) -> dict[str, Any]:
     return next(s for s in document["assertions"]["scenarios"] if s["id"] == scenario)
 
 
-TWO_EVENTS = "jar-top-wrong-material-first-layer-detach"
-LAST = "ring-dragged-off-its-place"
+TWO_EVENTS = "jar-top-wrong-material-detach-spaghetti"
+#: A case's two periodic observations with one frame between them, and every
+#: scenario of them: the timeline the tests of the replay's own clock read.
+TIMELINE_CASE = "jar-top-wrong-material-first-layer-detach"
+TIMELINE = ("first-layer-before-the-failure", "ring-dragged-off-its-place")
+
+
+def _timeline() -> Case:
+    """The two-event timeline the clock's tests read, whatever the suite replays of it."""
+    return read_case(TIMELINE_CASE, replay=TIMELINE)
+
+
+LAST = "wall-top-porous-and-stringing"
 
 
 def _unknown_id(document: dict[str, Any]) -> None:
@@ -426,7 +447,7 @@ def _missing(document: dict[str, Any]) -> None:
     [
         (_unknown_id, "replay names no-such-scenario"),
         (_out_of_order, "not strictly increasing"),
-        (_past_the_end, "past the end of 3423-TOP-REV F.gcode"),
+        (_past_the_end, "past the end of 3423-TOP-REV F brim.gcode"),
         (_missing, "names no file_position_bytes"),
     ],
 )
@@ -506,7 +527,7 @@ def test_the_configuration_is_the_installers_with_only_the_blanks_filled(tmp_pat
 
 def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch: Path) -> None:
     """The port opens one conversation, and each turn is handed its frame and its position."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [CONTEXT, STATUS]}], scratch)
     ledger = done.replayed.ledger
     equal(len(ledger["sessions"]), 1)
@@ -537,7 +558,7 @@ def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch
 
 def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
     """With no frame left before the next event a look repeats the newest."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = _timeline()
     done = mock_replay(case, [{"commands": [LOOK, LOOK]}], scratch)
     first, second = case.moments
     between = case.frames[case.frame_at_or_before(first.at, first.event_image) + 1].file
@@ -553,11 +574,13 @@ def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
 
 def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Path) -> None:
     """Over the real cases whose next event shows a fault, however many looks a turn takes."""
-    for name in (
-        "jar-top-wrong-material-first-layer-detach",
-        "jar-top-wrong-material-detach-spaghetti",
+    for name, case in (
+        (TIMELINE_CASE, _timeline()),
+        (
+            "jar-top-wrong-material-detach-spaghetti",
+            read_case("jar-top-wrong-material-detach-spaghetti"),
+        ),
     ):
-        case = read_case(name)
         faulty = case.moments[-1].event_image
         directory = scratch / name
         directory.mkdir()
@@ -568,7 +591,7 @@ def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Pat
 
 def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
     """The record's times are the recording's, and a repeated frame says it is one."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = _timeline()
     first, second = case.moments
     waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
     done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
@@ -587,7 +610,7 @@ def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
 
 def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
     """What the server records of the job's start stays put across a whole print."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [STATUS]}], scratch)
     started = {
         json.loads(turn["ran"][0]["out"])["print"]["job_started_at"][:16] for turn in done.turns
@@ -597,7 +620,7 @@ def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
 
 def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path) -> None:
     """A look after the last event does not jump to the print's end."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     last = case.moments[-1]
     done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], scratch)
     equal(done.replayed.fetches[-3:], [last.looks[-1]] * 3)
@@ -670,7 +693,7 @@ def test_however_long_a_last_turn_runs_nothing_passes_the_next_recorded_moment(
 
 def test_the_print_clock_never_goes_back_whatever_a_look_waited(scratch: Path) -> None:
     """A clock going back reads to the server as a later job: one print, one session."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [LOOK]}], scratch)
     equal(len(done.replayed.ledger["sessions"]), 1)
 
@@ -706,8 +729,9 @@ def test_a_recorded_alert_reaches_the_agent_at_its_time(scratch: Path) -> None:
 
 def test_a_pause_at_a_carry_on_point_fails_it_and_its_test(scratch: Path) -> None:
     """What the server recorded the agent asking for is what is judged."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
-    done = mock_replay(case, [{"commands": [PAUSE]}], scratch)
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    # A turn that pauses answers that the print should stop, as the skill asks.
+    done = mock_replay(case, [{"commands": [PAUSE], "disposition": "stop"}], scratch)
     carry_on, fault = done.replayed.points
     contains(carry_on.why_not or "", "it must never pause")
     equal(fault.why_not, None)
@@ -716,9 +740,35 @@ def test_a_pause_at_a_carry_on_point_fails_it_and_its_test(scratch: Path) -> Non
 
 def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
     """Carrying on at the carry-on point and pausing at the fault is the whole test passing."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
-    done = mock_replay(case, [{"commands": [CONTEXT]}, {"commands": [PAUSE]}], scratch)
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    done = mock_replay(
+        case, [{"commands": [CONTEXT]}, {"commands": [PAUSE], "disposition": "stop"}], scratch
+    )
     truth(done.replayed.passed, describing=f"every decision point: {done.replayed.failures()}")
+
+
+def test_the_agents_minimum_interval_spans_the_recorded_time_between_checks(
+    scratch: Path,
+) -> None:
+    """A pause at one check leaves the next check's pause, recorded much later, unrefused.
+
+    The replay reaches the second check seconds after the first, but the recording
+    reached it far past the agent's minimum interval, and the print then would have
+    taken a pause; one measured on the host's own clock would refuse it.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    first, second = case.moments
+    truth(
+        (instant(second.at) - instant(first.at)).total_seconds() > 30,
+        describing="the two checks recorded further apart than the minimum interval",
+    )
+    pausing: ScriptedRun = {"commands": [PAUSE], "disposition": "stop"}
+    done = mock_replay(case, [pausing, pausing], scratch)
+    equal(
+        [[(entry["status"], entry["err"]) for entry in turn["ran"]] for turn in done.turns],
+        [[(0, "")], [(0, "")]],
+        describing="each check's pause taken",
+    )
 
 
 def test_a_supervision_turns_compound_command_is_reported_under_its_conversation(
@@ -728,7 +778,7 @@ def test_a_supervision_turns_compound_command_is_reported_under_its_conversation
 
     With no ledger turn to read a decision point's session from, it is the print's last.
     """
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     chained = "printobserver context --print-id {print} --json; echo read"
     done = mock_replay(case, [{"commands": [chained]}, {"commands": [CONTEXT]}], scratch)
     replayed = done.replayed
@@ -744,7 +794,7 @@ def test_a_supervision_turns_compound_command_is_reported_under_its_conversation
 
 def test_a_read_piped_only_through_a_filter_is_no_compound_command(scratch: Path) -> None:
     """Production runs a read piped into `grep`, so the run's record reports nothing of it."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     piped = 'printobserver context --print-id {print} --json | grep -E "detector|slicer"'
     done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
     replayed = done.replayed
@@ -842,7 +892,7 @@ def test_an_outcome_is_met_only_by_its_values_in_its_order() -> None:
 
 
 def test_a_plain_pytest_collects_no_live_test_and_an_opted_in_one_does() -> None:
-    """Nothing fires by accident, and the opt-in reaches every case."""
+    """Nothing fires by accident, and the opt-in reaches every case and the probe."""
     command = ["uv", "run", "-q", "pytest", "--collect-only", "-q", "tests/skilltest"]
     environment = {k: v for k, v in os.environ.items() if k != "SKILLTEST_E2E"}
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
@@ -850,7 +900,7 @@ def test_a_plain_pytest_collects_no_live_test_and_an_opted_in_one_does() -> None
     truth("test_replay" not in plain.stdout, describing=f"no live test in {plain.stdout}")
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     opted = run(command, cwd=REPO, env={**environment, "SKILLTEST_E2E": "1"}, check=True)
-    contains(opted.stdout, f"test_replay.py: {len(replayed_case_names())}")
+    contains(opted.stdout, f"test_replay.py: {len(replayed_case_names()) + PROBE_TURNS}")
 
 
 def test_a_turns_assessment_is_attributed_to_its_own_decision_point(scratch: Path) -> None:
@@ -870,7 +920,7 @@ def test_the_printer_reports_the_temperatures_the_gcode_asks_for_at_its_position
     scratch: Path,
 ) -> None:
     """The stand-in serves the G-code's own heater targets, through the real adapter."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     before = case.moments[1].file_position_bytes - 100
     gcode = b"M140 S60\nM104 S220\n" + b";\n" * (before // 2) + b"M104 S240\n"
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
@@ -968,7 +1018,7 @@ def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
     """
     # One frame lies between this case's two events: the first look moves the
     # clock to it, and the second, with nothing newer, moves it by its wait alone.
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = _timeline()
     turn: ScriptedRun = {"commands": [LOOK_WAITING, LOOK_WAITING]}
     for each in ("real", "jumped"):
         (tmp_path / each).mkdir()
@@ -1048,7 +1098,7 @@ def test_the_real_supervisor_reads_the_replays_detector_through_obicos_record(
     reads apart have seen its snapshot move, a turn reads it scoring with nothing
     flagged; the same case with no detector recorded never reads scoring.
     """
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     truth(len(case.moments) >= 2, describing="two turns, so two reads lie between them")
     for directory in ("watched", "unwatched"):
         (scratch / directory).mkdir()
@@ -1302,9 +1352,9 @@ def test_the_budgets_command_reports_the_turns_the_cases_count(scratch: Path) ->
     equal(done.returncode, 0, describing=done.stderr)
     counted = turns_per_test()
     reported = json.loads(result.read_text(encoding="utf-8"))
-    equal(reported["value"], sum(counted.values()))
-    equal(json.loads(reported["detail"]), {"turns_per_test": counted})
-    contains(done.stderr, f"turns per full run: {sum(counted.values())}")
+    equal(reported["value"], sum(counted.values()) + PROBE_TURNS)
+    equal(json.loads(reported["detail"]), {"turns_per_test": counted, "probe_turns": PROBE_TURNS})
+    contains(done.stderr, f"turns per full run: {sum(counted.values()) + PROBE_TURNS}")
 
 
 def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
@@ -1324,7 +1374,7 @@ def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
 
 def test_a_history_command_that_fails_stops_the_replay(scratch: Path) -> None:
     """An unanswered read is the replay gone wrong, never a print with no events."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     replay = Replay(case, [sys.executable, str(MOCK_TURN), str(scratch / "script.json")])
     try:
         replay._install()
@@ -1374,7 +1424,7 @@ def test_a_replay_spending_past_its_allowance_stops(
     monkeypatch.setattr(replay_module, "RUN_ALLOWANCE_PER_ENTRY", 0)
     with pytest.raises(ReplayError, match="stopping the spend"):
         mock_replay(
-            read_case("jar-top-wrong-material-first-layer-detach"),
+            read_case("jar-top-wrong-material-detach-spaghetti"),
             [{"commands": [CONTEXT]}],
             scratch,
         )
@@ -1383,7 +1433,7 @@ def test_a_replay_spending_past_its_allowance_stops(
 def test_the_doubles_refuse_what_no_adapter_sends(scratch: Path) -> None:
     """A malformed body, an unknown printer command and another Obico route are refused."""
     timeline = doubles.Timeline(
-        case=read_case("jar-top-wrong-material-first-layer-detach"),
+        case=read_case("jar-top-wrong-material-detach-spaghetti"),
         picture=stamped,
         clock=scratch / "clock",
     )
@@ -1525,14 +1575,14 @@ def test_a_harnesss_own_bookkeeping_is_no_model_a_turn_answered_with() -> None:
 
 def test_a_turn_says_how_many_looks_it_took(scratch: Path) -> None:
     """The record counts the server's own looks for that turn, and only those."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [LOOK, LOOK]}, {"commands": [CONTEXT]}], scratch)
     equal([point.looks for point in done.replayed.points], [2, 0])
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
     """A call the transcript writes twice ran once, and a file tool's read is reported."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(
         case,
         [{"commands": [CONTEXT], "reads": ["/somewhere/SKILL.md"], "streamed_twice": True}],
@@ -1546,7 +1596,7 @@ def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
 
 def test_a_turn_the_engine_gave_up_on_fails_its_own_decision_point(scratch: Path) -> None:
     """Its failure is that entry's verdict, and the next event still gets its turn."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     unreadable: ScriptedRun = {"commands": [CONTEXT], "unreadable": True}
     done = mock_replay(case, [unreadable, unreadable, unreadable, {"commands": [CONTEXT]}], scratch)
     first, second = done.replayed.points
@@ -1569,7 +1619,7 @@ def test_only_the_ingress_accepting_an_alert_counts_as_delivering_it() -> None:
 
 def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: Path) -> None:
     """The engine's second run of one turn neither ends it nor moves the replay on."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(
         case,
         [
@@ -1617,11 +1667,13 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "usage": None,
         "models": [],
         "compacted": False,
+        "calls": [{"input_tokens": 3, "output_tokens": 80, "cache_write_tokens": 5_000}],
+        "check_class": "quiet",
     }
-    carry_on, bridge = REPLAYS["jar-top-wrong-material-first-layer-detach"]
+    carry_on, bridge = REPLAYS["jar-top-wrong-material-detach-spaghetti"]
     points = [{**point, "scenario": carry_on}, {**point, "scenario": bridge}]
     test_record = {
-        "test": "jar-top-wrong-material-first-layer-detach",
+        "test": "jar-top-wrong-material-detach-spaghetti",
         "passed": True,
         "turns": 2,
         "sessions": [],
@@ -1705,6 +1757,24 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
             "field",
             {**test_record, "decision_points": [{**points[0], "looks": "many"}, points[1]]},
         ),
+        (
+            "a passing check reporting no call",
+            {**test_record, "decision_points": [{**points[0], "calls": []}, points[1]]},
+        ),
+        (
+            "a call reporting no counts",
+            {**test_record, "decision_points": [{**points[0], "calls": [{}]}, points[1]]},
+        ),
+        (
+            "a negative count",
+            {
+                **test_record,
+                "decision_points": [
+                    {**points[0], "calls": [{"input_tokens": -1, "output_tokens": 2}]},
+                    points[1],
+                ],
+            },
+        ),
     ):
         unreadable = tmp_path / name
         unreadable.mkdir()
@@ -1763,11 +1833,15 @@ def test_the_record_command_runs_the_suite_and_folds_what_that_run_wrote(
         describing="what the recipe was asked",
     )
     folded = json.loads(written.read_text("utf-8"))
-    equal(folded["figures"], {"turns": 2}, describing="the turns the run wrote")
+    equal(
+        folded["figures"],
+        {"turns": 2, "quiet_check_model_calls": 1.0},
+        describing="the figures of the run it wrote, which kept no probe",
+    )
     equal(folded["detail"]["passed"], True, describing="the run's verdict")
     equal(
         [test["test"] for test in folded["detail"]["tests"]],
-        ["jar-top-wrong-material-first-layer-detach"],
+        ["jar-top-wrong-material-detach-spaghetti"],
         describing="the tests the run wrote",
     )
 
@@ -1792,8 +1866,12 @@ def test_the_harness_credential_is_the_variable_then_the_hosts_sign_in(
 def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
     scratch: Path, tmp_path: Path
 ) -> None:
-    """`record` over a mock run writes each usage as the mock reported it."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    """`record` over a mock run writes each usage as the mock reported it.
+
+    And each check's calls as the supervisor port recorded them from the stream
+    the harness wrote, with its class: quiet for the read, acting for the pause.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     usages = [
         {"input_tokens": 101, "output_tokens": 11, "cache_read_input_tokens": 7},
         {"input_tokens": 202, "output_tokens": 22, "cache_read_input_tokens": 9},
@@ -1802,7 +1880,7 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
         case,
         [
             {"commands": [CONTEXT], "usage": usages[0]},
-            {"commands": [PAUSE], "usage": usages[1], "compact": True},
+            {"commands": [PAUSE], "usage": usages[1], "compact": True, "disposition": "stop"},
         ],
         scratch,
     )
@@ -1812,7 +1890,10 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
         json.dumps(done.replayed.as_record()), encoding="utf-8"
     )
     written = record.folded(run_directory, "a-commit")
-    equal(written["figures"], {"turns": 2})
+    equal(
+        written["figures"],
+        {"turns": 2, "quiet_check_model_calls": 1.0, "acting_check_model_calls": 1.0},
+    )
     detail = written["detail"]
     equal(detail["commit"], "a-commit")
     equal(detail["harness"], "claude-code")
@@ -1822,7 +1903,35 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
     points = detail["tests"][0]["decision_points"]
     equal([point["usage"] for point in points], usages)
     equal([point["compacted"] for point in points], [False, True])
+    equal(
+        [point["calls"] for point in points],
+        [
+            [{"input_tokens": 101, "output_tokens": 11, "cache_read_tokens": 7}],
+            [{"input_tokens": 202, "output_tokens": 22, "cache_read_tokens": 9}],
+        ],
+        describing="each check's calls, as the port recorded them",
+    )
+    equal([point["check_class"] for point in points], ["quiet", "acting"])
     contains(points[1]["commands"][0], "printobserver pause")
+
+
+def test_the_facts_are_measured_off_the_prompt_a_real_check_is_handed(scratch: Path) -> None:
+    """The replay finds the facts in the prompt the supervisor really wrote.
+
+    `replay.FACTS_HEADING` restates the turn prompt's heading; a prompt that moved
+    its facts would leave every check's `facts_bytes` unmeasured, which this fails.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    handed = (scratch / mock_turn.CONVERSATION_FILE).read_text(encoding="utf-8")
+    report = RunReport()
+
+    report.take([{"type": "user", "message": {"content": [{"type": "text", "text": handed}]}}])
+
+    truth(
+        report.facts_bytes is not None and report.facts_bytes > 0,
+        describing=f"the facts measured off the prompt the check was handed: {handed}",
+    )
 
 
 @dataclass
@@ -1978,3 +2087,215 @@ def test_the_claude_code_release_owes_it(clone: Clone) -> None:
 def test_a_diff_it_cannot_read_owes_the_suite(clone: Clone) -> None:
     """Unknown is never omission."""
     truth(classify.classify(clone.root, "no-such-ref", "HEAD").owed, describing="an unknown base")
+
+
+def _a_check(commands: list[str], requests: list[Request]) -> DecisionPoint:
+    """A decision point whose outcome any requests meet, so only how it acted can fail it."""
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    moment = dataclasses.replace(case.moments[0], accept_any_of=((),), never=())
+    return DecisionPoint(
+        moment=moment,
+        requests=requests,
+        commands=commands,
+        opened=[],
+        assessment=None,
+        usage=None,
+        models=[],
+        compacted=False,
+        failure=None,
+        event_kind="periodic_observation",
+        image_sha256=None,
+        looks=0,
+    )
+
+
+@pytest.mark.parametrize(
+    "acting",
+    [
+        "printobserver pause --print-id P --actor A --reason r",
+        "printobserver cancel --print-id P --actor A --reason r",
+        "printobserver resume --print-id P --actor A --reason r",
+        "printobserver set-fan-percent --print-id P --percent 80 --actor A --reason r",
+        "printobserver set-flowrate-factor --print-id P --factor 1.0 --actor A --reason r",
+        "printobserver set-feedrate-factor --print-id P --factor 0.9 --actor A --reason r",
+        "printobserver set-tool-target-c --print-id P --tool 0 --target 200 --actor A --reason r",
+        "printobserver set-bed-target-c --print-id P --target 60 --actor A --reason r",
+    ],
+)
+def test_a_check_that_looks_again_after_acting_fails_its_decision_point(acting: str) -> None:
+    """A `look` anywhere after a command that acts fails the check, naming both."""
+    looked = _a_check(
+        [acting, "printobserver context --print-id P", "printobserver look --print-id P 2>&1"],
+        [Request(acting.split()[1], {})],
+    )
+    reason = looked.why_not
+    truth(reason is not None, describing=f"a look after `{acting}` to fail its check")
+    contains(str(reason), "it looked again after acting")
+    contains(str(reason), acting.split()[1])
+    equal(looked.as_record()["passed"], False)
+
+
+def test_a_check_that_looks_before_acting_passes_its_decision_point() -> None:
+    """A look before the action, and an action with no look after it, pass."""
+    for commands in (
+        ["printobserver look --print-id P", "printobserver pause --print-id P --reason r"],
+        ["printobserver set-fan-percent --print-id P --percent 80 --reason r"],
+        ["printobserver look --print-id P", "printobserver look --print-id P"],
+    ):
+        equal(_a_check(commands, []).why_not, None, describing=f"{commands}")
+
+
+def _point_with(scenario: str, check_class: str, calls: list[dict[str, int]]) -> dict[str, Any]:
+    point, _ = _a_finished_test()
+    return {**point[0], "scenario": scenario, "check_class": check_class, "calls": calls}
+
+
+def test_the_record_works_out_each_figure_the_budgets_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every figure is the value worked out by hand from known calls, history-free inputs included.
+
+    One test of two checks — quiet, then acting — and a probe whose first call reads
+    4,000. Each call's input is its input, cache reads and cache writes.
+    """
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    finished = tmp_path / "finished"
+    finished.mkdir()
+    first, second = REPLAYS["jar-top-wrong-material-detach-spaghetti"]
+    # The first check: one call reading 6,000, the probe's base plus its own 2,000.
+    quiet = [
+        {
+            "input_tokens": 10,
+            "cache_write_tokens": 2_000,
+            "cache_read_tokens": 3_990,
+            "output_tokens": 100,
+        }
+    ]
+    # The second, acting: two calls, after a check whose last call read 6,000 and wrote 100.
+    acting = [
+        {"input_tokens": 20, "cache_read_tokens": 9_000, "output_tokens": 50},
+        {"input_tokens": 30, "cache_read_tokens": 9_500, "output_tokens": 60},
+    ]
+    points = [_point_with(first, "quiet", quiet), _point_with(second, "acting", acting)]
+    test_record = {
+        "test": "jar-top-wrong-material-detach-spaghetti",
+        "passed": True,
+        "turns": 2,
+        "sessions": [],
+        "compound_commands": {},
+        "decision_points": points,
+    }
+    (finished / "jar-top-wrong-material-first-layer-detach.json").write_text(
+        json.dumps(test_record), encoding="utf-8"
+    )
+    probe = {
+        "prompt": "Answer with the assessment for a print that is printing normally.",
+        "calls": [{"input_tokens": 4, "cache_write_tokens": 3_996, "output_tokens": 70}],
+        "skill_bytes": 5_983,
+    }
+    (finished / PROBE_RECORD).write_text(json.dumps(probe), encoding="utf-8")
+
+    folded = record.folded(finished, "a-commit")
+    base = 4_000
+    quiet_input = 10 + 2_000 + 3_990
+    history = quiet_input + 100
+    acting_raw = (20 + 9_000) + (30 + 9_500)
+    equal(
+        folded["figures"],
+        {
+            "turns": 2,
+            "quiet_check_model_calls": 1.0,
+            "acting_check_model_calls": 2.0,
+            # The first check carries nothing: its history is the base.
+            "quiet_check_input_tokens": float(quiet_input),
+            "acting_check_input_tokens": float(acting_raw - 2 * (history - base)),
+            "base_context_tokens": float(base),
+        },
+    )
+    equal(folded["figures"]["acting_check_input_tokens"], 14_350.0, describing="by hand")
+    detail = folded["detail"]["figures"]
+    equal(detail["base_context_tokens"]["cache_write_tokens"], 3_996)
+    equal(detail["base_context_tokens"]["skill_bytes"], 5_983)
+    equal(detail["acting_check_input_tokens"]["each"][0]["history"], history)
+    equal(detail["acting_check_model_calls"]["max"], 2)
+    equal(detail["quiet_check_model_calls"]["above_one_call"], [])
+    equal(folded["detail"]["probe"], probe)
+
+    # With no probe, no input figure can be worked out, and none is written.
+    (finished / PROBE_RECORD).unlink()
+    without = record.folded(finished, "a-commit")["figures"]
+    equal(
+        without,
+        {"turns": 2, "quiet_check_model_calls": 1.0, "acting_check_model_calls": 2.0},
+    )
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        {},
+        {"input_tokens": 3},
+        {"input_tokens": 3, "output_tokens": -1},
+        {"input_tokens": "3", "output_tokens": 2},
+        {"input_tokens": 3, "output_tokens": 2, "cache_read_tokens": 1.5},
+        [3, 2],
+    ],
+)
+def test_a_probe_call_reporting_no_measurable_usage_is_refused(usage: object) -> None:
+    """A call missing its input or output count, or carrying one that is no count, is refused."""
+    with pytest.raises(ReplayError, match="probe reported"):
+        replay_module._call_usage(usage)
+
+
+def test_a_probe_call_keeps_its_counts_and_nothing_else() -> None:
+    """The counts a call reports, its cost and anything else left out."""
+    equal(
+        replay_module._call_usage(
+            {"input_tokens": 2, "output_tokens": 8, "cache_read_tokens": 3, "cost_usd": 0.1}
+        ),
+        {"input_tokens": 2, "output_tokens": 8, "cache_read_tokens": 3},
+    )
+
+
+def _ledger_with(calls: object) -> dict[str, Any]:
+    """A ledger of one session and one turn carrying `calls`."""
+    return {
+        "sessions": [{"session_name": "print-p", "harness_identity": "claude-code"}],
+        "turns": [{"session_name": "print-p", "calls": calls}],
+    }
+
+
+@pytest.mark.parametrize(
+    "calls",
+    [
+        {},
+        [{}],
+        [{"input_tokens": 3}],
+        [{"input_tokens": 3, "output_tokens": -2}],
+        [{"input_tokens": 3, "output_tokens": 2, "cost_usd": 0.1}],
+        [[3, 2]],
+    ],
+)
+def test_a_ledger_turn_whose_calls_are_no_counts_is_refused(calls: object) -> None:
+    """The replay reads no figure off a turn whose calls it cannot hold to counts."""
+    with pytest.raises(ReplayError, match="no ledger"):
+        replay_module._ledger_of(_ledger_with(calls), Path("ledger.json"))
+
+
+def test_a_ledger_turn_keeps_its_calls_and_a_turn_with_none_reads_as_none() -> None:
+    """Counted calls read back as they are; an earlier ledger's turn carries none."""
+    counted = [{"input_tokens": 3, "output_tokens": 2, "cache_read_tokens": 9}]
+    equal(replay_module._ledger_of(_ledger_with(counted), Path("l"))["turns"][0]["calls"], counted)
+    earlier = _ledger_with([])
+    del earlier["turns"][0]["calls"]
+    equal(replay_module._ledger_of(earlier, Path("l"))["turns"][0].get("calls"), None)
+
+
+def test_the_global_options_taking_a_value_are_the_programs_own() -> None:
+    """What reading a subcommand skips is what `printobserver --help` says takes a value."""
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    done = run([str(program("printobserver")), "--help"], check=True)
+    _, _, globals_said = done.stdout.partition("Every command also takes")
+    truth(bool(globals_said), describing="the help to name the global options")
+    valued = set(re.findall(r"(--[a-z-]+) <", globals_said))
+    equal(valued, shell_lines.VALUED_OPTIONS)

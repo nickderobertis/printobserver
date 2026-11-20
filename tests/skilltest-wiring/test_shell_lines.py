@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 from repo_checks.expect import equal
-from shell_lines import commands, is_compound
+from shell_lines import commands, is_compound, subcommands
 
 
 @pytest.mark.parametrize(
@@ -91,3 +91,22 @@ def test_every_command_a_line_runs_is_read_wrappers_and_substitutions_included()
     equal(commands("timeout 30 ls -l"), [["timeout", "30"], ["ls", "-l"]])
     equal(commands("sh -c 'ls; pwd'"), [["sh", "-c", "ls; pwd"], ["ls"], ["pwd"]])
     equal(commands("echo `ls`"), [["echo", "__substitution__"], ["ls"]])
+
+
+@pytest.mark.parametrize(
+    ("line", "named"),
+    [
+        ("printobserver pause --print-id P --reason r", ["pause"]),
+        ("printobserver --config /etc/printobserver.toml pause --print-id P", ["pause"]),
+        ("printobserver --json look --print-id P 2>&1", ["look"]),
+        ("printobserver --config=/etc/p.toml set-fan-percent --percent 80", ["set-fan-percent"]),
+        ("printobserver context --print-id P && printobserver look", ["context", "look"]),
+        ("printobserver --help", []),
+        ("ls -la", []),
+    ],
+)
+def test_each_command_names_its_subcommand_past_the_global_options(
+    line: str, named: list[str]
+) -> None:
+    """A global option and the value it takes are never read as the subcommand."""
+    equal(subcommands(line), named)

@@ -51,6 +51,7 @@ pub mod accounting;
 pub mod actions;
 pub mod block_on;
 pub mod bounds;
+pub mod check_image;
 pub mod clock;
 pub mod closing;
 pub mod config;
@@ -86,6 +87,7 @@ pub use accounting::{ChargeRule, UNTRACKED_REASON, charge_rule};
 pub use actions::{ActionOutcome, reported_value};
 pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};
+pub use check_image::CheckImages;
 pub use clock::{Clock, SystemClock, plus_seconds, seconds_between, unix_seconds};
 pub use config::{
     CoreConfig, DEFAULT_DETECTOR_RESUME_GRACE, DEFAULT_EXPIRY_POLL, DEFAULT_OBSERVATION_INTERVAL,

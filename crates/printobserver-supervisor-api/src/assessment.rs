@@ -31,6 +31,28 @@ pub enum Confidence {
     High,
 }
 
+/// What the agent's answer asks for next, in the vocabulary an
+/// acknowledgement's disposition is spelled in.
+///
+/// A turn that acknowledged nothing by command is acknowledged from its
+/// answer with this, so a quiet check records its judgement without a command
+/// of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(
+    crate = "printobserver_types::serde",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum Disposition {
+    /// Carry on printing.
+    Continue,
+    /// Carry on printing, watched more closely.
+    Watch,
+    /// The print should stop.
+    Stop,
+}
+
 /// The agent's written record of one supervision turn.
 ///
 /// This is deliberately not how the agent acts: acting is a
@@ -51,11 +73,20 @@ pub struct AgentAssessment {
     pub why: String,
     /// Whether the agent is escalating to a person.
     pub escalating: bool,
+    /// What the turn's event is acknowledged with, when the turn acknowledged
+    /// nothing by command.
+    pub disposition: Disposition,
 }
 
 impl Sample for Confidence {
     fn sample_full() -> Self {
         Self::Medium
+    }
+}
+
+impl Sample for Disposition {
+    fn sample_full() -> Self {
+        Self::Watch
     }
 }
 
@@ -68,6 +99,7 @@ impl Sample for AgentAssessment {
             did: "slowed the feedrate to 80% for ten minutes".to_owned(),
             why: "the extrusion width was widening on the long edges".to_owned(),
             escalating: false,
+            disposition: Disposition::Watch,
         }
     }
 }

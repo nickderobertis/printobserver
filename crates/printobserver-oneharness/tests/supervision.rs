@@ -20,6 +20,8 @@ mod credentials;
 mod failures;
 #[path = "supervision/launching.rs"]
 mod launching;
+#[path = "supervision/lean.rs"]
+mod lean;
 #[path = "supervision/permissions.rs"]
 mod permissions;
 #[path = "supervision/prompting.rs"]

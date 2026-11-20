@@ -1,10 +1,7 @@
 # One supervision turn
 
-A print you are watching has produced an event. Read what the supervisor
-already knows about the print, look at the picture that came with the event,
-decide, and act as your skill describes. Everything you ask for goes through
-the same policy an operator's requests do, and that policy decides what your
-role may change.
+A print you are watching has produced an event. The camera's frame of it, when
+there is one, is attached to this message.
 
 ## The event
 
@@ -23,42 +20,37 @@ never saw, are listed here too, oldest first.
 {{situation}}
 ```
 
-## The picture
+## The print's facts
 
-{{image_path}}
+The print's context as it stood when this turn began: its state, the plan at
+the current position, the bounds in force, the active interventions, the
+detector's status, and the events you have not been shown, newest first.
 
-## What the supervisor already knows
+```json
+{{facts}}
+```
 
-Run this command and read what it answers:
+## The whole context
+
+The command that reads the print's whole context, events included:
 
 ```console
 {{context_command}}
 ```
 
-Run every other command the same way, with no `--config`: this turn's
-environment already names the supervisor it belongs to and carries a
-credential minted for this turn alone, which answers for you, in this session,
-on this print, and stops working when the turn ends.
+## The commands you may run
 
-A command whose usage lists `--actor` names who is asking. In this turn that is
-you, in the session this turn runs in, so give each of those commands this
-actor, quoted as written. A command whose usage does not list it, the one above
-included, refuses it:
+Each as the program prints its usage:
+
+```console
+{{commands}}
+```
+
+## Your actor
+
+The value every command whose usage lists `--actor` takes in this turn, quoted
+as written:
 
 ```console
 --actor '{{actor}}'
 ```
-
-This picture and that context are from when the event arrived. Your skill says
-how to take a fresh look at the print and how to watch it for a while before
-deciding; new events for this print reach you through those looks rather than
-through a second turn.
-
-## What to answer with
-
-Once you have done what you decided to do, answer with the assessment document
-alone: one line saying what is happening, how sure you are, whether the print
-should carry on, what you did (each command you ran and what it answered), why
-you did it, and whether you are escalating to a person. Say plainly when you
-are not sure. A low-confidence reading a person can act on is worth more than a
-confident guess.

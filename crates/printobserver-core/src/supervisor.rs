@@ -264,6 +264,12 @@ pub struct Supervisor {
     /// What reads the failure detector's own record of the print, once the
     /// composition root has installed it.
     scoring_probe: std::sync::OnceLock<Arc<dyn crate::scoring::ScoringProbe>>,
+    /// What makes the image every check is shown, once the composition root
+    /// has installed it.
+    pub(crate) check_images: std::sync::OnceLock<Arc<dyn crate::check_image::CheckImages>>,
+    /// The prints whose running turn acknowledged its event by command, which
+    /// is then not acknowledged again from the turn's answer.
+    pub(crate) acknowledged_by_turn: Mutex<BTreeSet<PrintId>>,
     /// What the printer watch holds between its reads.
     pub(crate) watch: Mutex<WatchState>,
     /// Whether Z is trusted, which this supervisor starts out not doing.
@@ -349,6 +355,8 @@ impl Supervisor {
             detector_pauses: Mutex::new(BTreeMap::new()),
             turn_authority: std::sync::OnceLock::new(),
             scoring_probe: std::sync::OnceLock::new(),
+            check_images: std::sync::OnceLock::new(),
+            acknowledged_by_turn: Mutex::new(BTreeSet::new()),
             watch: Mutex::new(WatchState::default()),
             z_trust: Mutex::new(ZTrust::Untrusted(
                 crate::recovery::UNTRUSTED_AT_START.to_owned(),
@@ -571,7 +579,7 @@ impl Supervisor {
         };
         Ok(last.map(|action| {
             self.clock()
-                .elapsed()
+                .paced()
                 .saturating_sub(action.seen_at)
                 .saturating_add(action.already)
         }))

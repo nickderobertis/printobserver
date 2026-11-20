@@ -379,6 +379,15 @@ pub fn is_duration(parameter: &Parameter) -> bool {
     parameter.name == DURATION_FIELD && parameter.located == Located::Body
 }
 
+/// Every command's usage line, as `--help` prints it.
+#[must_use]
+pub fn usage_lines() -> Vec<String> {
+    surface()
+        .iter()
+        .map(|command| command.usage_line().trim().to_owned())
+        .collect()
+}
+
 /// The whole command surface, which is also what `--help` prints.
 #[must_use]
 pub fn usage() -> String {

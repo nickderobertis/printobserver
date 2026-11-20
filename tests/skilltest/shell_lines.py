@@ -278,3 +278,34 @@ def is_compound(line: str) -> bool:
     if _filtered(line):
         return False
     return len(run) > 1 or _grouped(line)
+
+
+def subcommands(line: str) -> list[str]:
+    """The `printobserver` subcommand each command a line runs names, in order.
+
+    Its first word after the program that is no option; a command naming none, and a
+    command of another program, names nothing here.
+    """
+    found = []
+    for words in commands(line):
+        if not runs_the_program(words):
+            continue
+        found.extend(_subcommand(_named(words)[1:]))
+    return found
+
+
+#: The global options that take a value, which is never the subcommand.
+VALUED_OPTIONS = {"--config"}
+
+
+def _subcommand(words: list[str]) -> list[str]:
+    """The first word that is neither an option nor a valued option's value."""
+    skipping = False
+    for word in words:
+        if skipping:
+            skipping = False
+        elif word in VALUED_OPTIONS:
+            skipping = True
+        elif not word.startswith("-"):
+            return [word]
+    return []

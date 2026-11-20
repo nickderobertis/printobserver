@@ -343,6 +343,41 @@ def test_a_program_that_is_not_there_is_answered_as_one(world: World, tmp_path: 
     )
 
 
+def test_an_answer_reaches_a_client_still_sending_input(world: World, tmp_path: Path) -> None:
+    """Input the relay never reads costs the client nothing of the answer it was sent.
+
+    A program that cannot start reads none of the input its client forwards. A
+    relay that closed with that input unread would reset the connection, and a
+    reset may discard an answer the client has not read yet — on Windows it does.
+    """
+    environment = relayed(world, program=tmp_path / "no-such-printobserver")
+    command = b"status"
+    unread = b"input nothing reads"
+    with connected(environment) as connection:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
+        connection.sendall(
+            (1).to_bytes(4, "big")
+            + len(command).to_bytes(4, "big")
+            + command
+            + len(unread).to_bytes(4, "big")
+            + unread
+        )
+        # Long enough for the relay to have answered and, without the fix, closed.
+        time.sleep(1.0)
+        reply = received(connection)
+
+    equal(
+        int.from_bytes(reply[:4], "big", signed=True),
+        PROGRAM_NOT_FOUND,
+        describing="the exit the relay answered",
+    )
+    contains(
+        reply.decode("utf-8", errors="replace"),
+        "no-such-printobserver",
+        describing="what the relay said",
+    )
+
+
 @pytest.mark.parametrize("reachable", ["closed", "unnamed", "elsewhere", "unparsable"])
 def test_a_client_that_reaches_no_relay_says_so(world: World, reachable: str) -> None:
     """A client with no relay to hand its command to exits as unanswered, saying why.

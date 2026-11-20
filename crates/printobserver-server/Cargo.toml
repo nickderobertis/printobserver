@@ -60,6 +60,11 @@ oneharness = { workspace = true, optional = true }
 clap = { version = "4.5", default-features = false, optional = true }
 
 [dev-dependencies]
+# The journeys' own camera frame, drawn and encoded, and every check image
+# decoded where a journey reads it.
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# The run request a journey's supervisor port is watched building.
+oneharness-core.workspace = true
 # `display` is a test-only need: the journeys build a configuration document as
 # values and render it, so a journey that makes one field unacceptable changes
 # that field and nothing else.
@@ -88,6 +93,13 @@ required-features = ["test-responder"]
 name = "printobserver-server-oneharness"
 path = "src/bin/oneharness.rs"
 required-features = ["operator-harness"]
+
+# One probe of the shipped supervisor configuration, which the real-print
+# suite's base-context figure is read from; see its source.
+[[bin]]
+name = "printobserver-server-probe"
+path = "src/bin/probe.rs"
+required-features = ["test-responder"]
 
 # The real-print replay's pass-through in front of the harness; see its source.
 [[bin]]

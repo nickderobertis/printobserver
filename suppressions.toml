@@ -269,8 +269,8 @@ reason = "Claude Code's login command is a third-party CLI surface with no machi
 [[suppression]]
 rule = "least_privilege_grants"
 file = "crates/printobserver-oneharness/src/turn.rs"
-site = "arguments.extend(CLAUDE_READ_TOOLS.map(str::to_owned));"
-reason = "The task that made turns act specifies exactly this grant — `--allowedTools Read Grep Glob` — as the surface validated on the real printer. A turn has to read the event's image, which the supervisor materializes under its state directory, outside the skill directory the turn runs in, and the skill's reference documents; scoping Read to path patterns would have to spell Windows and POSIX path forms that nothing here can re-validate against Claude Code. What the read tools can reach is bounded by the service's own account rather than by this list: a dedicated system user whose unit hides every home. None of the three can change anything, and the tool set itself is named rather than denied, so `Write`, `Edit`, `WebFetch` and `Task` are absent."
+site = "let mut arguments = vec![\"--allowedTools\".to_owned(), CLAUDE_READ_TOOL.to_owned()];"
+reason = "A turn is granted `Read` outright, the one read tool its lean tool set loads beside the shell: it has to read a look's frame, which the supervisor materializes under its state directory, outside the skill directory the turn runs in, and the skill's reference documents; scoping Read to path patterns would have to spell Windows and POSIX path forms that nothing here can re-validate against Claude Code. What it can reach is bounded by the service's own account rather than by this list: a dedicated system user whose unit hides every home. Read changes nothing, and the tool set itself is `tool_set = [shell, read]`, so `Write`, `Edit`, `WebFetch`, `Task`, `Grep` and `Glob` are not loaded at all."
 
 [[suppression]]
 rule = "least_privilege_grants"
@@ -2335,6 +2335,30 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/printer-smoke/tests/relay.py"
 site = "listener = socket.create_server(LISTEN_ON)"
 reason = "The relay is not a service this repository calls: it is the printer-smoke suite's own instrument, one child process a test's `World` starts on loopback and stops with it, standing in front of the program so a command can be made never to answer. What it serves is `relay_client.rs`, a compiled client the smoke runs as a blocking subprocess per command, and what it does for each is run one program to its end — a blocking subprocess too. A thread per connection is what lets one command be held while others are answered; an event loop would add nothing but a second concurrency model under a blocking subprocess boundary, and there is no typed client to adopt for a wire this suite defines and drives from both ends in `test_relay.py`."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/printer-smoke/tests/relay.py"
+site = "connection.shutdown(socket.SHUT_WR)"
+reason = "The relay's own connection, answered on the thread per connection its listener's entry gives the reason for: ending the relay's half and draining the client's is how one blocking connection is closed without resetting an answer the client has not read. There is no typed client of this suite's own wire to adopt, and an event loop would be a second concurrency model under the same blocking subprocess boundary."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/printer-smoke/tests/relay.py"
+site = "reply.send(connection)"
+reason = "The relay's own connection, answered on the thread per connection its listener's entry gives the reason for: sending the answer, ending the relay's half and draining the client's, for at most `LINGER_S`, is how one blocking connection is closed without resetting an answer the client has not read. There is no typed client of this suite's own wire to adopt, and an event loop would be a second concurrency model under the same blocking subprocess boundary."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/printer-smoke/tests/relay.py"
+site = "if not connection.recv(65536):"
+reason = "The relay's own connection, answered on the thread per connection its listener's entry gives the reason for: sending the answer, ending the relay's half and draining the client's, for at most `LINGER_S`, is how one blocking connection is closed without resetting an answer the client has not read. There is no typed client of this suite's own wire to adopt, and an event loop would be a second concurrency model under the same blocking subprocess boundary."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/printer-smoke/tests/test_relay.py"
+site = "connection.sendall("
+reason = "The test sends the relay's wire byte for byte so that input the relay never reads is already waiting before it answers, which the compiled client — forwarding its input on a thread of its own — cannot be made to do deterministically. The wire is this suite's own, defined by `relay.py` and `relay_client.rs`, so there is no typed client to adopt, and the relay it talks to is a synchronous instrument whose listener's entry gives that reason."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -4558,6 +4582,12 @@ reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest/replay.py"
+site = "case {\"type\": \"user\", \"message\": {\"content\": list(content)}}:"
+reason = "The user message of Claude Code's session transcript, where the replay reads the prompt a turn was handed to measure the facts it carried. The transcript has no published schema to derive from or check against; a move of its shape leaves `facts_bytes` absent in the record, which the dispatch reads, rather than passing a figure off as measured."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/replay.py"
 site = "case {\"type\": \"tool_use\", \"id\": str(called), \"name\": str(name), \"input\": dict(given)}:"
 reason = "Claude Code publishes no schema for this. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models, commands or opened files come back empty, which is what a moved field reads as."
 
@@ -4812,6 +4842,12 @@ rule = "code_lands_in_the_domain_that_owns_it"
 file = "crates/printobserver-types/src/timestamp.rs"
 site = "pub fn pass_replay_time(wait: core::time::Duration) -> bool {"
 reason = "The real-print replay's clock already lives here, before this change: `Timestamp::now` reads it under the `replay-clock` feature, from the private `replay_clock` module's file and offset, because `now` is the one instant every crate of the server reads. Passing time on that clock writes the same file and offset, so it sits with the reader; put anywhere else, one clock has two owners, and the replay suite, which is Python driving the built programs, holds no Rust code the server could call. Every build but the suite's answers `false` and changes nothing, and no domain's entry is added to this crate."
+
+[[suppression]]
+rule = "code_lands_in_the_domain_that_owns_it"
+file = "crates/printobserver-types/src/timestamp.rs"
+site = "pub fn on_replay_clock(steady: core::time::Duration) -> core::time::Duration {"
+reason = "It reads the same replay clock file `Timestamp::now` and `pass_replay_time` already read here, under the same `replay-clock` feature: the agent's minimum interval has to jump when that file's offset jumps, or two changes at recorded events hours apart read as the seconds the replay took between them. Put anywhere else, the one replay clock would have two readers of its file format. Every build but the suite's answers its argument unchanged."
 
 [[suppression]]
 rule = "instruction_layer_localized"

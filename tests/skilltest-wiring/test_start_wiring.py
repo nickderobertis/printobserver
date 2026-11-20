@@ -11,6 +11,7 @@ this directory's plain fixture, stamped with the name of the frame it stands for
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import json
 import shlex
 import sys
@@ -191,11 +192,12 @@ def test_the_conversation_has_the_skill_and_a_supervision_turns_permissions(
         [rule for rule in granted if rule != "Skill(printobserver)"],
         supervision_granted[: len(granted) - 1],
     )
-    supervision_tools = supervision[supervision.index("--tools") + 1 :]
-    equal(
-        tail[1 : tail.index("--allowedTools")],
-        [*supervision_tools[: supervision_tools.index("--allowedTools")], "Skill"],
+    # The engine writes a supervision turn's one tool list up to its next option.
+    after_tools = supervision[supervision.index("--tools") + 1 :]
+    supervision_tools = list(
+        itertools.takewhile(lambda word: not word.startswith("--"), after_tools)
     )
+    equal(tail[1 : tail.index("--allowedTools")], [*supervision_tools, "Skill"])
 
 
 def test_a_start_is_judged_by_the_sheet_its_manifest_declares(scratch: Path) -> None:

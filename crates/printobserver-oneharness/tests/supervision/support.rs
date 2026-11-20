@@ -259,6 +259,7 @@ pub fn config<Mode>(
         harness_bin: Some(responder()),
         harness_env: env,
         agent_commands: Vec::new(),
+        command_usage: Vec::new(),
     }
 }
 
@@ -350,6 +351,7 @@ pub fn assessment(summary: &str, confidence: &str) -> String {
         "did": "read the event, the picture and the print's context",
         "why": "the first layer is down and the walls are clean",
         "escalating": false,
+        "disposition": "continue",
     })
     .to_string()
 }
@@ -485,6 +487,7 @@ pub fn turn(print_id: PrintId, event: EventRecord, image: Option<PathBuf>) -> Tu
         event,
         image_path: image,
         context_command: format!("printobserver context --print-id {print_id}"),
+        facts: None,
         situation: printobserver_supervisor_api::TurnSituation::default(),
     }
 }

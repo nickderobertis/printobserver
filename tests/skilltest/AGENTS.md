@@ -22,6 +22,15 @@ The rules the real-print suite is held to, and why.
   document and the session transcript under its configuration directory. A live
   test fails a turn reporting no usage, models or commands, so a move of either
   fails the next run rather than passing with an empty record.
+- **A check's calls are the supervisor port's record of them,** each ledger turn's
+  `calls`, which `OneHarness` reads off Claude Code's stream-json output. A check
+  is acting when the server recorded it asking for a pause, cancel, resume or any
+  `set-*`, else quiet; its requests run until the next harness run starts, because
+  a turn that acknowledged nothing by command is acknowledged from its answer once
+  its harness exits. A check that runs `look` after acting fails.
+- **The probe is one turn of the shipped configuration alone,** through
+  `printobserver-server-probe`, with no image; its first call's input is the base
+  context every check's input figure is held free of history against.
 - **A case's position and time are data,** in `case.json`; `checks_real_prints` and
   `tests/skilltest-wiring` hold them. `just skilltest-record` folds a run into
   `results/latest.json`.
