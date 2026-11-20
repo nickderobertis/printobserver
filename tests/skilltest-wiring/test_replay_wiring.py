@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -31,6 +32,7 @@ import mock_turn
 import pytest
 import record
 import replay as replay_module
+import shell_lines
 from cases import (
     CASES,
     REPO,
@@ -2244,3 +2246,13 @@ def test_a_ledger_turn_keeps_its_calls_and_a_turn_with_none_reads_as_none() -> N
     earlier = _ledger_with([])
     del earlier["turns"][0]["calls"]
     equal(replay_module._ledger_of(earlier, Path("l"))["turns"][0].get("calls"), None)
+
+
+def test_the_global_options_taking_a_value_are_the_programs_own() -> None:
+    """What reading a subcommand skips is what `printobserver --help` says takes a value."""
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    done = run([str(program("printobserver")), "--help"], check=True)
+    _, _, globals_said = done.stdout.partition("Every command also takes")
+    truth(bool(globals_said), describing="the help to name the global options")
+    valued = set(re.findall(r"(--[a-z-]+) <", globals_said))
+    equal(valued, shell_lines.VALUED_OPTIONS)

@@ -456,3 +456,67 @@ fn an_acknowledgement_the_answer_cannot_make_is_recorded_and_supervision_goes_on
         .expect("the next event is handled");
     assert_eq!(world.agent.turns().len(), 2, "the next event got no turn");
 }
+
+/// The event identifiers a turn's facts carry, newest first.
+fn facts_event_ids(turn: &printobserver_supervisor_api::TurnRequest) -> Vec<String> {
+    turn.facts["recent_events"]
+        .as_array()
+        .expect("the facts carry their events")
+        .iter()
+        .map(|event| {
+            event["id"]
+                .as_str()
+                .expect("an event's identifier")
+                .to_owned()
+        })
+        .collect()
+}
+
+/// A turn's facts carry what happened since the agent last answered: before
+/// any answer, the print's whole recent window; after one, every event newer
+/// than it and none from before it, its own event among them.
+#[test]
+fn a_turns_facts_carry_the_events_since_the_agents_last_answer() {
+    let world = World::new();
+    let print = world.open_print(7);
+    let first = world
+        .handle(failure_alert_with_image(7))
+        .expect("the first event is handled");
+    let second = world
+        .handle(failure_alert_with_image(7))
+        .expect("the second event is handled");
+
+    let turns = world.agent.turns();
+    assert_eq!(turns.len(), 2);
+    let before = facts_event_ids(&turns[0]);
+    assert!(before.contains(&first.id.to_string()), "{before:?}");
+
+    // The store keeps a print's events in the order they were appended, which
+    // is the order "newer" means while the clock stands still.
+    let held = world.store.events_of(print.id);
+    let answered = held
+        .iter()
+        .position(|record| record.kind() == &AgentAssessmentPayload::kind())
+        .expect("the first turn answered");
+    let asked = held
+        .iter()
+        .position(|record| record.id == second.id)
+        .expect("the second event is kept");
+    let after = facts_event_ids(&turns[1]);
+    assert!(after.contains(&second.id.to_string()), "{after:?}");
+    assert!(
+        !after.contains(&first.id.to_string()),
+        "an event before the answer: {after:?}"
+    );
+    let newer: Vec<String> = held[answered + 1..=asked]
+        .iter()
+        .map(|record| record.id.to_string())
+        .collect();
+    for id in &newer {
+        assert!(
+            after.contains(id),
+            "an event since the answer is missing: {id} from {after:?}"
+        );
+    }
+    assert_eq!(after.len(), newer.len(), "{after:?} against {newer:?}");
+}

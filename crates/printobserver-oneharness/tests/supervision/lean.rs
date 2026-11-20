@@ -329,3 +329,157 @@ fn a_ledger_of_the_earlier_shape_is_read_and_written_back_as_this_one() {
     assert_eq!(written["schema_version"], "2");
     assert_eq!(written["turns"][0]["calls"][0]["cache_write_tokens"], 3_000);
 }
+
+/// A probe runs one prompt through the turn's own configuration in a fresh
+/// session of its own, with no image, held to the schema as a turn is, and
+/// answers the engine's result with each call's usage.
+#[test]
+fn a_probe_runs_the_turn_configuration_alone_and_answers_its_calls() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("lean-probe");
+    let calls = [(2, 5_000, 3_000, 8)];
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(
+        config(
+            &schemas,
+            &fixture,
+            HARNESS,
+            &generated_assessment_schema(),
+            runs_answering(
+                &fixture.path("attempts"),
+                &[streamed("SID-PROBE", &assessment("fine", "high"), &calls)],
+            ),
+        ),
+        &watch,
+    );
+    let result = supervisor
+        .probe(
+            "one",
+            "Answer with the assessment for a print that is printing normally.",
+        )
+        .expect("the probe runs");
+    let usage = result.calls.expect("the probe reports its calls");
+    assert_eq!(usage.len(), 1);
+    assert_eq!(usage[0].cache_write_tokens, Some(5_000));
+    let request = watch
+        .requests()
+        .pop()
+        .expect("the probe built a run request");
+    assert_eq!(request.session.as_deref(), Some("probe-one"));
+    assert!(request.images.is_empty());
+    assert!(
+        request.prompt[0]
+            .starts_with("Answer with the assessment for a print that is printing normally.")
+            && request.prompt[0].contains("JSON Schema"),
+        "{:?}",
+        request.prompt
+    );
+}
+
+/// A probe whose harness did not complete its run measured nothing, and is
+/// refused naming why rather than answered as a measurement.
+#[test]
+fn a_probe_the_harness_did_not_complete_is_refused() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("lean-probe-failed");
+    let mut env = runs_answering(
+        &fixture.path("attempts"),
+        &[streamed(
+            "SID-PROBE",
+            &assessment("fine", "high"),
+            &[(2, 1, 1, 1)],
+        )],
+    );
+    env.push(assignment("MOCK_EXIT=3"));
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(
+        config(
+            &schemas,
+            &fixture,
+            HARNESS,
+            &generated_assessment_schema(),
+            env,
+        ),
+        &watch,
+    );
+    let refused = supervisor
+        .probe(
+            "two",
+            "Answer with the assessment for a print that is printing normally.",
+        )
+        .expect_err("a run the harness did not complete was answered");
+    assert!(
+        refused.to_string().contains("did not complete"),
+        "{refused}"
+    );
+}
+
+/// Issues the first run its pass and refuses every later one, as a turn that
+/// returned while a run was being asked for would.
+#[derive(Default)]
+struct IssuesOnce(std::sync::atomic::AtomicUsize);
+
+impl printobserver_supervisor_api::TurnAccess for IssuesOnce {
+    fn issue(
+        &self,
+        _session: &printobserver_supervisor_api::TurnSession,
+    ) -> Result<printobserver_supervisor_api::TurnPass, SupervisorError> {
+        if self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            printobserver_supervisor_api::TurnPass::new(
+                Some("127.0.0.1:9".parse().expect("an address")),
+                "a-first-credential".to_owned(),
+            )
+        } else {
+            Err(SupervisorError::Unavailable {
+                detail: "the turn this run belongs to has already returned".to_owned(),
+            })
+        }
+    }
+}
+
+/// A turn whose answer could not be asked for again is still written down: a
+/// failed turn naming why asking again failed, with the calls it made.
+#[test]
+fn a_turn_that_cannot_ask_again_is_recorded_failed_with_its_calls() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("lean-cannot-ask-again");
+    let call = (3, 1_000, 2_000, 40);
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(
+        config(
+            &schemas,
+            &fixture,
+            HARNESS,
+            &generated_assessment_schema(),
+            runs_answering(
+                &fixture.path("attempts"),
+                &[streamed(
+                    "SID-ONCE",
+                    &serde_json::json!({ "summary": "no disposition" }).to_string(),
+                    &[call],
+                )],
+            ),
+        ),
+        &watch,
+    );
+    let print_id = PrintId::new();
+    let refused = block_on(supervisor.run_turn(
+        turn(
+            print_id,
+            event(print_id, failure_alert(7, None)),
+            Some(frame(&fixture)),
+        ),
+        Arc::new(IssuesOnce::default()),
+    ));
+    let Err(SupervisorError::InvalidAnswer { detail }) = refused else {
+        panic!("a turn that could not ask again was not refused as an answer: {refused:?}");
+    };
+    assert!(detail.contains("asking again failed"), "{detail}");
+    assert!(detail.contains("already returned"), "{detail}");
+    let turns = supervisor
+        .recorded_turns(&print_id)
+        .expect("the ledger reads");
+    assert_eq!(turns.len(), 1, "the turn was not written down");
+    assert!(turns[0].failure.is_some());
+    assert_eq!(turns[0].calls, vec![recorded(call)]);
+}

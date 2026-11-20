@@ -21,6 +21,7 @@ use crate::watch::{DetectorHealth, DetectorHealthStatus};
 use printobserver_printer_api::{
     HeaterSnapshot, JobError, JobSnapshot, PrinterSnapshot, PrinterState,
 };
+use printobserver_types::EventPayload;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
@@ -283,10 +284,6 @@ impl PrintContext {
     }
 }
 
-/// The kind of event a turn's answer is written down under: what a turn's facts
-/// carry the events newer than.
-pub const ANSWERED_KIND: &str = "agent_assessment";
-
 /// The facts a supervision turn is handed up front: the context read as the
 /// turn began, as [`AgentContext`] answers it — and no field that answer does
 /// not carry — with its events cut to those newer than the agent's last
@@ -296,11 +293,9 @@ pub const ANSWERED_KIND: &str = "agent_assessment";
 #[must_use]
 pub fn turn_facts(context: &AgentContext) -> Value {
     let mut facts = context.clone();
-    if let Some(answered) = facts
-        .recent_events
-        .iter()
-        .position(|event| event.kind.as_str() == ANSWERED_KIND)
-    {
+    if let Some(answered) = facts.recent_events.iter().position(|event| {
+        event.kind.as_str() == <crate::kinds::AgentAssessmentPayload as EventPayload>::KIND
+    }) {
         facts.recent_events.truncate(answered);
     }
     printobserver_types::serde_json::to_value(facts).unwrap_or(Value::Null)

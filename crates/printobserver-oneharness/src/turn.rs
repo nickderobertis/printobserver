@@ -124,8 +124,9 @@ impl OneharnessSupervisor {
     ///
     /// # Errors
     ///
-    /// Returns [`SupervisorError::Unavailable`] when `OneHarness` refuses the run
-    /// or answers anything other than one result.
+    /// Returns [`SupervisorError::Unavailable`] when `OneHarness` refuses the run,
+    /// answers anything other than one result, or answers one the harness did
+    /// not complete.
     pub fn probe(&self, session: &str, prompt: &str) -> Result<RunResult, SupervisorError> {
         let name = SessionName::probe(session)?;
         let by_prompt = self.held_by_prompt()?;
@@ -142,6 +143,16 @@ impl OneharnessSupervisor {
                 detail: format!("the probe answered {} results, not one", results.len()),
             }
         })?;
+        // A run the harness did not complete measured nothing worth reporting.
+        if result.status != Status::Ok || result.failure_kind.is_some() {
+            return Err(SupervisorError::Unavailable {
+                detail: format!(
+                    "the probe's run did not complete ({:?}): {}",
+                    result.status,
+                    result.error.as_deref().unwrap_or("no detail")
+                ),
+            });
+        }
         Ok(result)
     }
 
@@ -462,7 +473,7 @@ impl OneharnessSupervisor {
 
         let mut reported = TurnReport::of(outcome.report, &session, &self.config.harness)?;
         if let Some(schema) = &by_prompt {
-            self.held_to_the_schema(schema, &mut reported, access)?;
+            self.held_to_the_schema(schema, &mut reported, access);
         }
         self.record(&mut ledger, print_id, &reported)
     }
@@ -472,13 +483,14 @@ impl OneharnessSupervisor {
     /// is extracted and validated with the engine's own functions, and a
     /// non-conforming one is asked for again in the same session with the
     /// engine's own feedback, and no image, up to [`SCHEMA_RETRIES`] times. The
-    /// turn's result is the last answer's, and its calls every run's, in order.
+    /// turn's result is the last answer's, and its calls every run's, in order;
+    /// a run that could not ask again ends the asking, the turn failed with why.
     fn held_to_the_schema(
         &self,
         schema: &Schema,
         reported: &mut TurnReport,
         access: &dyn TurnAccess,
-    ) -> Result<(), SupervisorError> {
+    ) {
         let mut calls = Vec::new();
         for asked in 0..=SCHEMA_RETRIES {
             calls.extend(reported.result.calls.take().into_iter().flatten());
@@ -493,14 +505,34 @@ impl OneharnessSupervisor {
                 break;
             }
             let again = structured::retry_instruction(schema.as_text(), &text, &checked.errors);
-            let outcome = self
-                .drive(&reported.name, &again, &[], access, Some(schema))?
-                .map_err(|error| unavailable(&error))?;
-            reported.result =
-                TurnReport::of(outcome.report, &reported.name, &self.config.harness)?.result;
+            match self.asked_again(&reported.name, &again, schema, access) {
+                Ok(answered) => reported.result = answered,
+                // A run that could not ask again leaves the turn the answer it
+                // has, failed, with why beside the schema's own errors.
+                Err(why) => {
+                    reported.result.schema_error = Some(format!(
+                        "{}; asking again failed: {why}",
+                        checked.errors.join("; ")
+                    ));
+                    break;
+                }
+            }
         }
         reported.result.calls = Some(calls);
-        Ok(())
+    }
+
+    /// One run asking again in the turn's session, and the result it answered.
+    fn asked_again(
+        &self,
+        session: &SessionName,
+        again: &str,
+        schema: &Schema,
+        access: &dyn TurnAccess,
+    ) -> Result<RunResult, SupervisorError> {
+        let outcome = self
+            .drive(session, again, &[], access, Some(schema))?
+            .map_err(|error| unavailable(&error))?;
+        Ok(TurnReport::of(outcome.report, session, &self.config.harness)?.result)
     }
 
     /// Write down what a finished run did, and answer the caller.
