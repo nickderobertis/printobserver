@@ -33,6 +33,10 @@ LEAST_HEIGHTS = 3
 LEAST_HEIGHT_SPAN_MM = 20.0
 """How far apart the lowest and highest of those heights are, at the least."""
 
+LEAST_LANDMARKS = 2
+"""The fewest distinct chassis landmarks: the service's drift check rules only
+when at least two are visible, so a calibration with fewer could never rule."""
+
 
 class MarksError(ValueError):
     """A marks file the fit cannot use."""
@@ -179,6 +183,13 @@ def load(path: Path) -> Marks:
         landmarks.append(
             LandmarkSpec(_text(entry, "name", where), _point(entry.get("center_px"), where))
         )
+    names = {landmark.name for landmark in landmarks}
+    if len(names) < LEAST_LANDMARKS or len(names) != len(landmarks):
+        msg = (
+            f"{path} names {len(landmarks)} chassis landmarks, {len(names)} of them distinct: "
+            f"the drift check needs at least {LEAST_LANDMARKS}, each named once"
+        )
+        raise MarksError(msg)
     return Marks(tuple(frames), tuple(landmarks))
 
 

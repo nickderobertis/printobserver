@@ -342,6 +342,12 @@ def _set_heights(doc: Marks, heights: list[float]) -> None:
         (lambda doc: _first_curve(doc).update(px=[[5000, 10]]), "a mark on it is at"),
         (lambda doc: doc.update(landmarks=["rail"]), "landmarks[0] is not an object"),
         (lambda doc: doc["landmarks"][0].update(center_px=[1915, 5]), "too near the frame's edge"),
+        (lambda doc: doc.pop("landmarks"), "names 0 chassis landmarks"),
+        (lambda doc: doc.update(landmarks=doc["landmarks"][:1]), "names 1 chassis landmarks"),
+        (
+            lambda doc: doc["landmarks"][1].update(name=doc["landmarks"][0]["name"]),
+            "each named once",
+        ),
     ],
 )
 def test_marks_the_fit_cannot_use_are_refused_naming_why(
