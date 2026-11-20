@@ -307,7 +307,8 @@ pub fn turn_facts(
 /// resume taken as the agent answered, or the printer's own report. The turn's
 /// own requests, their outcomes and what it recorded of itself are left out. A
 /// print the agent has not answered on keeps every event; one whose answered
-/// event cannot be found keeps only those newer than the answer.
+/// event cannot be found keeps every event back to the answer before, its
+/// own aside, because one shown twice costs less than one never shown.
 #[must_use]
 pub fn unseen_events(events: &[AgentEvent]) -> Vec<AgentEvent> {
     let is_answer = |event: &AgentEvent| {
@@ -323,7 +324,7 @@ pub fn unseen_events(events: &[AgentEvent]) -> Vec<AgentEvent> {
         .iter()
         .find_map(agents_acknowledged_event)
         .and_then(|answered_event| turn.iter().position(|event| event.id == answered_event))
-        .map_or(&[][..], |at| &turn[..at]);
+        .map_or(turn, |at| &turn[..at]);
     let own: Vec<&Value> = during
         .iter()
         .filter(|event| is_agents_request(event))
@@ -335,7 +336,6 @@ pub fn unseen_events(events: &[AgentEvent]) -> Vec<AgentEvent> {
             .iter()
             .filter(|event| {
                 !TURNS_OWN_KINDS.contains(&event.kind.as_str())
-                    && !is_agents_request(event)
                     && !event
                         .payload
                         .get("action_id")

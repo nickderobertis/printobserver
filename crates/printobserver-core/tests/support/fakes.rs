@@ -1909,6 +1909,9 @@ pub struct FakeSupervisor {
     stalls: Mutex<bool>,
     /// What runs as each turn has done its work and is about to answer.
     before_answering: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    /// What somebody else asks for through core while each turn runs, after
+    /// the turn's own action.
+    meanwhile: Mutex<Option<PrintAction>>,
 }
 
 impl FakeSupervisor {
@@ -1932,6 +1935,7 @@ impl FakeSupervisor {
             unissued: Mutex::new(Vec::new()),
             stalls: Mutex::new(false),
             before_answering: Mutex::new(None),
+            meanwhile: Mutex::new(None),
         }
     }
 
@@ -1979,6 +1983,12 @@ impl FakeSupervisor {
     /// Stop acting on every turn.
     pub fn acts_with_nothing(&self) {
         *self.action.lock().expect("the harness holds") = None;
+    }
+
+    /// Have somebody else ask for `action`, or nothing, while every turn from
+    /// now on runs, after the turn's own action.
+    pub fn meanwhile(&self, action: Option<PrintAction>) {
+        *self.meanwhile.lock().expect("the harness holds") = action;
     }
 
     /// Fail every turn from now on.
@@ -2161,6 +2171,12 @@ impl SupervisorPort for FakeSupervisor {
                         .await
                         .map_err(|error| error.to_string());
                     self.acted.lock().expect("the harness holds").push(outcome);
+                }
+                let meanwhile = self.meanwhile.lock().expect("the harness holds").clone();
+                if let Some(action) = meanwhile {
+                    core.request_action(request.print_id, action)
+                        .await
+                        .expect("somebody else's request is taken");
                 }
             }
             if let Some(hook) = self

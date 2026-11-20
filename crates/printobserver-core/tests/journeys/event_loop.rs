@@ -523,6 +523,170 @@ fn a_turns_facts_carry_the_events_since_the_agents_last_answer() {
     assert_eq!(after.len(), newer.len(), "{after:?} against {newer:?}");
 }
 
+/// The events a turn's facts carry, newest first.
+fn facts_events(
+    turn: &printobserver_supervisor_api::TurnRequest,
+) -> Vec<printobserver_types::serde_json::Value> {
+    turn.facts
+        .as_ref()
+        .and_then(|facts| facts.get("recent_events"))
+        .and_then(printobserver_types::serde_json::Value::as_array)
+        .expect("the facts carry their events")
+        .clone()
+}
+
+/// A fan change asked for by `actor`.
+fn fan(percent: f64, actor: Actor) -> PrintAction {
+    PrintAction::SetFanPercent {
+        percent,
+        duration_s: None,
+        reason: "the fan, by whoever asked".to_owned(),
+        actor,
+    }
+}
+
+/// Hold the facts of `turn` to carrying the person's fan request taken while
+/// the turn before it ran, with that request's outcome, and to leaving out the
+/// agent's own request of that turn, its outcome and the turn's session.
+fn carries_the_persons_request_and_not_the_agents_own(
+    world: &World,
+    print_id: printobserver_types::PrintId,
+    turn: &printobserver_supervisor_api::TurnRequest,
+    agents_own: &str,
+) {
+    let facts = facts_events(turn);
+    let ids: Vec<&str> = facts
+        .iter()
+        .filter_map(|event| event["id"].as_str())
+        .collect();
+    let requested = |actor_is_agent: bool, action: &str| -> Vec<(String, String)> {
+        world
+            .store
+            .events_of(print_id)
+            .iter()
+            .filter(|record| record.kind().as_str() == "action_requested")
+            .filter_map(|record| {
+                let payload = &record.body.payload;
+                (payload["actor"].get("agent").is_some() == actor_is_agent
+                    && payload["action"]["action"] == action)
+                    .then(|| {
+                        (
+                            record.id.to_string(),
+                            payload["action_id"].as_str().unwrap_or_default().to_owned(),
+                        )
+                    })
+            })
+            .collect()
+    };
+    let persons = requested(false, "set_fan_percent");
+    assert_eq!(persons.len(), 1, "{persons:?}");
+    let (person, action) = &persons[0];
+    assert!(
+        ids.contains(&person.as_str()),
+        "the person's request is missing: {facts:?}"
+    );
+    assert!(
+        facts.iter().any(|event| event["kind"] != "action_requested"
+            && event["payload"]["action_id"] == action.as_str()),
+        "the person's request's outcome is missing: {facts:?}"
+    );
+    for (own, own_action) in requested(true, agents_own) {
+        assert!(
+            !ids.contains(&own.as_str()),
+            "the agent's own request is back: {facts:?}"
+        );
+        assert!(
+            !facts
+                .iter()
+                .any(|event| event["payload"]["action_id"] == own_action.as_str()),
+            "the agent's own request's outcome is back: {facts:?}"
+        );
+    }
+    assert!(
+        !facts.iter().any(
+            |event| event["kind"] == SupervisionSessionOpenedPayload::KIND
+                || event["kind"] == AgentAssessmentPayload::KIND
+        ),
+        "the facts carry the turn's own bookkeeping: {facts:?}"
+    );
+}
+
+/// What somebody else asked for while the last turn ran, and so recorded
+/// before its answer, is in the next turn's facts; what that turn asked for
+/// itself is not.
+#[test]
+fn a_turns_facts_carry_what_others_did_while_the_last_turn_ran() {
+    let world = World::new();
+    let print = world.open_print(7);
+    world.printer.reports_state(PrinterState::Printing);
+    world.agent.acts_with(fan(40.0, agent_actor(print.id)));
+    world.agent.meanwhile(Some(fan(80.0, Actor::Operator)));
+    world
+        .handle(failure_alert_with_image(7))
+        .expect("the first event is handled");
+    world.agent.acts_with_nothing();
+    world.agent.meanwhile(None);
+    world
+        .handle(failure_alert_with_image(7))
+        .expect("the second event is handled");
+
+    let turns = world.agent.turns();
+    assert_eq!(turns.len(), 2);
+    carries_the_persons_request_and_not_the_agents_own(
+        &world,
+        print.id,
+        &turns[1],
+        "set_fan_percent",
+    );
+}
+
+/// When the event the last turn answered cannot be found — that turn
+/// acknowledged another by command — the next turn's facts still carry what
+/// somebody else did while it ran, and still leave out what it did itself.
+#[test]
+fn a_turn_whose_answered_event_is_unknown_still_hands_on_what_others_did() {
+    let world = World::new();
+    let print = world.open_print(7);
+    world.printer.reports_state(PrinterState::Printing);
+    let first = world
+        .handle(failure_alert_with_image(7))
+        .expect("the first event is handled");
+    world.agent.acts_with(PrintAction::AcknowledgeFailure {
+        event_id: first.id,
+        disposition: printobserver_core::AcknowledgementDisposition::Continue,
+        reason: "the earlier one, again".to_owned(),
+        actor: agent_actor(print.id),
+    });
+    world.agent.meanwhile(Some(fan(80.0, Actor::Operator)));
+    let second = world
+        .handle(failure_alert_with_image(7))
+        .expect("the second event is handled");
+    world.agent.acts_with_nothing();
+    world.agent.meanwhile(None);
+    world
+        .handle(failure_alert_with_image(7))
+        .expect("the third event is handled");
+
+    // Nothing the agent asked for names the second event, so the facts cannot
+    // place where its turn began.
+    let second_id = second.id.to_string();
+    assert!(
+        !world.store.events_of(print.id).iter().any(|record| {
+            record.kind().as_str() == "action_requested"
+                && record.body.payload["action"]["event_id"] == second_id.as_str()
+        }),
+        "the second event was acknowledged after all"
+    );
+    let turns = world.agent.turns();
+    assert_eq!(turns.len(), 3);
+    carries_the_persons_request_and_not_the_agents_own(
+        &world,
+        print.id,
+        &turns[2],
+        "acknowledge_failure",
+    );
+}
+
 /// A print that ends while its turn runs is not acknowledged from that turn's
 /// answer: its record is closed, and nothing is left to carry on or stop. The
 /// answer itself is kept.
