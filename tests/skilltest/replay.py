@@ -1251,16 +1251,28 @@ def skill_prose_bytes() -> int:
     return len(rest.encode("utf-8"))
 
 
+#: The counts a call's usage must report: what it read outside the cache and what it wrote.
+REPORTED_COUNTS = ("input_tokens", "output_tokens")
+
+
 def _call_usage(usage: object) -> CallUsage:
-    """One call's usage as the engine reports it, its token counts alone."""
-    if not isinstance(usage, dict):
-        msg = f"the probe reported a call that is no usage: {usage!r}"
+    """One call's usage as the engine reports it, its token counts alone.
+
+    A count it reports must be a whole, non-negative number, and it must report
+    [`REPORTED_COUNTS`]: a call that says less is no measurement of what it read.
+    """
+    if not isinstance(usage, dict) or not all(name in usage for name in REPORTED_COUNTS):
+        msg = f"the probe reported a call with no input and output counts: {usage!r}"
         raise ReplayError(msg)
     counted: CallUsage = {}
     for name in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
         value = usage.get(name)
-        if type(value) is int:
-            counted[name] = value
+        if value is None:
+            continue
+        if type(value) is not int or value < 0:
+            msg = f"the probe reported {name} as {value!r}, which is no count"
+            raise ReplayError(msg)
+        counted[name] = value
     return counted
 
 

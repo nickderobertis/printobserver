@@ -338,3 +338,121 @@ fn an_alert_naming_no_print_is_recorded_and_reaches_no_other_port() {
     );
     world.journal.assert_no_violations();
 }
+
+/// What makes a check's image in these journeys: it answers `made`, or fails,
+/// and keeps every stored frame it was handed.
+struct ScriptedCheckImages {
+    made: Option<std::path::PathBuf>,
+    handed: std::sync::Mutex<Vec<std::path::PathBuf>>,
+}
+
+impl printobserver_core::CheckImages for ScriptedCheckImages {
+    fn check_image(
+        &self,
+        _print_id: Option<printobserver_types::PrintId>,
+        frame: &std::path::Path,
+    ) -> Result<std::path::PathBuf, String> {
+        self.handed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(frame.to_path_buf());
+        self.made
+            .clone()
+            .ok_or_else(|| "the frame could not be read".to_owned())
+    }
+}
+
+/// A turn is shown the image what is installed makes of the stored frame, and
+/// the stored frame itself when that fails: a check shown more than it needs
+/// rather than nothing.
+#[test]
+fn a_check_is_shown_the_check_image_or_the_stored_frame_when_none_can_be_made() {
+    let made = std::env::temp_dir().join("a-check-image.jpg");
+    for answer in [Some(made.clone()), None] {
+        let world = World::new();
+        let images = std::sync::Arc::new(ScriptedCheckImages {
+            made: answer.clone(),
+            handed: std::sync::Mutex::new(Vec::new()),
+        });
+        assert!(world.core.install_check_images(images.clone()));
+        world.open_print(7);
+        world
+            .handle(failure_alert_with_image(7))
+            .expect("the event is handled");
+
+        let handed = images
+            .handed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(handed.len(), 1, "the stored frame was not handed over once");
+        assert!(
+            handed[0].exists(),
+            "what was handed over is no stored frame"
+        );
+        let shown = world.agent.turns()[0].image_path.clone();
+        let expected = answer.unwrap_or_else(|| handed[0].clone());
+        assert_eq!(shown, Some(expected));
+    }
+}
+
+/// An answer whose acknowledgement cannot be made still stands: the assessment
+/// is kept, the acknowledgement's failure is recorded against the turn's event,
+/// and the next event of the print gets its own turn.
+#[test]
+fn an_acknowledgement_the_answer_cannot_make_is_recorded_and_supervision_goes_on() {
+    use printobserver_core::store::StoreError;
+
+    let world = World::new();
+    let print = world.open_print(7);
+    let store = std::sync::Arc::clone(&world.store);
+    // The agent's interval is read off the history as its request is decided,
+    // so a history that cannot be read refuses the acknowledgement alone.
+    world.agent.before_answering(move || {
+        store.fails(
+            crate::fakes::StoreMethod::History,
+            StoreError::Io {
+                detail: "the disk is unreadable".to_owned(),
+            },
+        );
+    });
+    let event = world
+        .handle(failure_alert_with_image(7))
+        .expect("the event is handled");
+    world.store.heals();
+
+    let held = world.store.events_of(print.id);
+    assert!(
+        held.iter()
+            .any(|record| record.kind() == &AgentAssessmentPayload::kind()),
+        "the turn's assessment was not kept"
+    );
+    let failed: Vec<String> = held
+        .iter()
+        .filter(|record| record.kind().as_str() == "port_failure")
+        .filter_map(|record| {
+            record.body.payload["detail"]
+                .as_str()
+                .map(ToOwned::to_owned)
+        })
+        .collect();
+    assert!(
+        failed
+            .iter()
+            .any(|detail| detail.starts_with("the answer's acknowledgement could not be made")),
+        "{failed:?}"
+    );
+    assert!(
+        held.iter().any(
+            |record| record.body.payload["event_id"] == event.id.to_string()
+                && record.kind().as_str() == "port_failure"
+        ),
+        "the failure is not recorded against the turn's event"
+    );
+
+    world.agent.before_answering(|| {});
+    world
+        .handle(failure_alert_with_image(7))
+        .expect("the next event is handled");
+    assert_eq!(world.agent.turns().len(), 2, "the next event got no turn");
+}

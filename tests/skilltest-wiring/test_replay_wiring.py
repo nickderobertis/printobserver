@@ -53,6 +53,7 @@ from replay import (
     Assessment,
     Confidence,
     DecisionPoint,
+    Disposition,
     Replay,
     Replayed,
     ReplayError,
@@ -263,7 +264,7 @@ def scratch(tmp_path: Path) -> Path:
 
 
 def test_the_suites_vocabularies_are_the_contracts() -> None:
-    """Its trigger and machine-state words are the ones the schemas declare."""
+    """Its trigger, machine-state and assessment words are the ones the schemas declare."""
     schema = json.loads((CASES / "case.schema.json").read_text(encoding="utf-8"))
     declared = schema["$defs"]["Scenario"]["properties"]["trigger"]["enum"]
     equal(sorted(trigger.value for trigger in Trigger), sorted(declared))
@@ -276,6 +277,9 @@ def test_the_suites_vocabularies_are_the_contracts() -> None:
     confidence = sorted(arm["const"] for arm in assessment["$defs"]["Confidence"]["oneOf"])
     equal(sorted(get_args(Confidence)), confidence)
     equal(sorted(get_args(mock_turn.Confidence)), confidence)
+    disposition = sorted(arm["const"] for arm in assessment["$defs"]["Disposition"]["oneOf"])
+    equal(sorted(get_args(Disposition)), disposition)
+    equal(sorted(get_args(mock_turn.Disposition)), disposition)
     primitive = {"string": str, "boolean": bool}
     declared_types = {
         name: primitive[field["type"]]
@@ -1727,6 +1731,20 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
             "field",
             {**test_record, "decision_points": [{**points[0], "looks": "many"}, points[1]]},
         ),
+        (
+            "a call reporting no counts",
+            {**test_record, "decision_points": [{**points[0], "calls": [{}]}, points[1]]},
+        ),
+        (
+            "a negative count",
+            {
+                **test_record,
+                "decision_points": [
+                    {**points[0], "calls": [{"input_tokens": -1, "output_tokens": 2}]},
+                    points[1],
+                ],
+            },
+        ),
     ):
         unreadable = tmp_path / name
         unreadable.mkdir()
@@ -2160,4 +2178,31 @@ def test_the_record_works_out_each_figure_the_budgets_read(
     equal(
         without,
         {"turns": 2, "quiet_check_model_calls": 1.0, "acting_check_model_calls": 2.0},
+    )
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        {},
+        {"input_tokens": 3},
+        {"input_tokens": 3, "output_tokens": -1},
+        {"input_tokens": "3", "output_tokens": 2},
+        {"input_tokens": 3, "output_tokens": 2, "cache_read_tokens": 1.5},
+        [3, 2],
+    ],
+)
+def test_a_probe_call_reporting_no_measurable_usage_is_refused(usage: object) -> None:
+    """A call missing its input or output count, or carrying one that is no count, is refused."""
+    with pytest.raises(ReplayError, match="probe reported"):
+        replay_module._call_usage(usage)
+
+
+def test_a_probe_call_keeps_its_counts_and_nothing_else() -> None:
+    """The counts a call reports, its cost and anything else left out."""
+    equal(
+        replay_module._call_usage(
+            {"input_tokens": 2, "output_tokens": 8, "cache_read_tokens": 3, "cost_usd": 0.1}
+        ),
+        {"input_tokens": 2, "output_tokens": 8, "cache_read_tokens": 3},
     )

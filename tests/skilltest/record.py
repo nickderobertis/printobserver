@@ -25,7 +25,15 @@ import tempfile
 from pathlib import Path
 from typing import Any, TypedDict
 
-from replay import PROBE_RECORD, CallUsage, DecisionRecord, ProbeRecord, TestRecord, is_assessment
+from replay import (
+    PROBE_RECORD,
+    REPORTED_COUNTS,
+    CallUsage,
+    DecisionRecord,
+    ProbeRecord,
+    TestRecord,
+    is_assessment,
+)
 from repo_checks.shell import run
 from turns_per_run import CASES, UnreadableCaseError, replays
 
@@ -75,9 +83,14 @@ class UnreadableRunError(Exception):
 
 
 def _is_usage(usage: object) -> bool:
-    """Whether one call's usage carries token counts alone."""
+    """Whether one call's usage carries token counts alone, its input and output among them.
+
+    A call reporting neither is no measurement, and would be folded as a call that read
+    nothing.
+    """
     return (
         isinstance(usage, dict)
+        and set(REPORTED_COUNTS) <= usage.keys()
         and usage.keys() <= CallUsage.__annotations__.keys()
         and all(type(count) is int and count >= 0 for count in usage.values())
     )

@@ -417,10 +417,17 @@ impl OneharnessSupervisor {
         let mut session = ledger.session_for_next_turn();
         let images: Vec<PathBuf> = request.image_path.iter().cloned().collect();
         let by_prompt = self.held_by_prompt()?;
+        // The one prompt a turn opens with in a session, whichever session.
+        let prompt_in = |session: &SessionName| -> Result<String, SupervisorError> {
+            Ok(instructed(
+                self.prompt_for(request, session)?,
+                by_prompt.as_ref(),
+            ))
+        };
 
         let outcome = match self.drive(
             &session,
-            &instructed(self.prompt_for(request, &session)?, by_prompt.as_ref()),
+            &prompt_in(&session)?,
             &images,
             access,
             by_prompt.as_ref(),
@@ -443,7 +450,7 @@ impl OneharnessSupervisor {
                 // credential, which is bound to that session.
                 self.drive(
                     &session,
-                    &self.prompt_for(request, &session)?,
+                    &prompt_in(&session)?,
                     &images,
                     access,
                     by_prompt.as_ref(),

@@ -52,7 +52,11 @@ const MARK: u32 = 150;
 /// reads as a camera showing nothing, with a pure red mark in each corner, so a
 /// crop loses a mark and a frame scaled whole keeps all four.
 fn marked_frame() -> Vec<u8> {
-    let (width, height) = CAMERA;
+    marked_frame_of(CAMERA)
+}
+
+/// A marked frame of one size.
+fn marked_frame_of((width, height): (u32, u32)) -> Vec<u8> {
     let frame = image::RgbImage::from_fn(width, height, |x, y| {
         let left_or_right = x < MARK || x >= width - MARK;
         let top_or_bottom = y < MARK || y >= height - MARK;
@@ -308,6 +312,17 @@ impl Lean {
     /// each turn in `answers` in turn, the last from then on, after issuing
     /// `actions`.
     async fn open(installer: &str, interval_s: i64, answers: &[Value], actions: &Value) -> Self {
+        Self::open_with_frame(installer, interval_s, answers, actions, marked_frame()).await
+    }
+
+    /// The same, with a camera answering `frame`.
+    async fn open_with_frame(
+        installer: &str,
+        interval_s: i64,
+        answers: &[Value],
+        actions: &Value,
+        frame: Vec<u8>,
+    ) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         let state = root.path().join("state");
         copy_tree(
@@ -318,7 +333,7 @@ impl Lean {
         octoprint.holds_file(FILE, SLICE.to_vec(), 1_000.0);
         let size = i64::try_from(SLICE.len()).expect("a file's size");
         octoprint.reports("Printing", JobScript::printing(FILE, size, size / 2, 600));
-        let camera = crate::http_host::image_host(marked_frame()).await;
+        let camera = crate::http_host::image_host(frame).await;
 
         let path = configured(installer, &root, &octoprint, &camera, interval_s);
         let config = ServerConfig::load(&path)
@@ -885,5 +900,35 @@ async fn an_answer_without_a_valid_disposition_is_refused() {
     assert!(detail.contains("disposition"), "{detail}");
     assert!(lean.history(&print_id, "agent_assessment").await.is_empty());
     assert!(acknowledgements(&lean, &print_id).await.is_empty());
+    lean.server.stop().await;
+}
+
+/// A camera frame that already fits a check is shown as stored: a look answers
+/// the stored frame's own path, holding the camera's bytes, and makes no copy.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_frame_that_already_fits_is_shown_as_stored() {
+    let fitting = marked_frame_of(CHECK);
+    let lean = Lean::open_with_frame(
+        INSTALLERS[0],
+        3_600,
+        &[answering("continue", "fine")],
+        &json!([]),
+        fitting.clone(),
+    )
+    .await;
+    let look = lean.get("/look").await;
+    let shown = look["image_path"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the look answers no frame: {look}"));
+    let frame = look["frame"]["id"]
+        .as_str()
+        .expect("the look's frame record");
+    let stored = lean.get(&format!("/images/{frame}")).await;
+    assert_eq!(
+        Some(shown),
+        stored["path"].as_str(),
+        "a fitting frame was copied"
+    );
+    assert_eq!(std::fs::read(shown).expect("the frame reads"), fitting);
     lean.server.stop().await;
 }

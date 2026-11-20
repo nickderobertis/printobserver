@@ -253,7 +253,7 @@
     },
     "facts": {
       "default": null,
-      "description": "The print's context as the context command answered it when the turn\nbegan, less its events: what the turn decides from without running a\ncommand. `null` when no context could be read."
+      "description": "The print's context as the context command answered it when the turn\nbegan, its events cut to those since the agent last answered: what the\nturn decides from without running a command. `null` when no context\ncould be read."
     },
     "image_path": {
       "description": "The absolute path of the image to look at, when there is one.",

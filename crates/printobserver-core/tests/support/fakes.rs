@@ -1907,6 +1907,8 @@ pub struct FakeSupervisor {
     unissued: Mutex<Vec<String>>,
     /// Whether a turn, once issued its credential, never returns.
     stalls: Mutex<bool>,
+    /// What runs as each turn has done its work and is about to answer.
+    before_answering: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
 }
 
 impl FakeSupervisor {
@@ -1929,7 +1931,15 @@ impl FakeSupervisor {
             authority: Mutex::new(None),
             unissued: Mutex::new(Vec::new()),
             stalls: Mutex::new(false),
+            before_answering: Mutex::new(None),
         }
+    }
+
+    /// Run `hook` as each turn has done its work and is about to answer: what
+    /// changes the world between a turn's own requests and what core does with
+    /// its answer.
+    pub fn before_answering(&self, hook: impl Fn() + Send + Sync + 'static) {
+        *self.before_answering.lock().expect("the harness holds") = Some(Box::new(hook));
     }
 
     /// Never return from a turn once it has been issued its credential, so
@@ -2152,6 +2162,14 @@ impl SupervisorPort for FakeSupervisor {
                         .map_err(|error| error.to_string());
                     self.acted.lock().expect("the harness holds").push(outcome);
                 }
+            }
+            if let Some(hook) = self
+                .before_answering
+                .lock()
+                .expect("the harness holds")
+                .as_ref()
+            {
+                hook();
             }
             let induced = self.failure.lock().expect("the harness holds").clone();
             let answer = if let Some(error) = induced {
