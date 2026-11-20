@@ -1200,6 +1200,27 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
     assert_eq!(done.status.code(), Some(1));
     assert!(done.stdout.is_empty());
     assert!(String::from_utf8_lossy(&done.stderr).contains("absent.toml"));
+
+    // A usage file it cannot read stops it before it reads any configuration.
+    let unread = root.path().join("no-usage.txt");
+    let unread = unread.to_str().expect("a path");
+    let done = probe(&[
+        "--config",
+        missing,
+        "--session",
+        "s",
+        "--prompt",
+        "p",
+        "--usage",
+        unread,
+    ]);
+    assert_eq!(done.status.code(), Some(1));
+    assert!(done.stdout.is_empty(), "it printed an answer");
+    let stderr = String::from_utf8_lossy(&done.stderr);
+    assert!(
+        stderr.contains("no-usage.txt is unreadable") && !stderr.contains("absent.toml"),
+        "{stderr}"
+    );
 }
 
 /// A check image that cannot be written into its directory is refused naming
