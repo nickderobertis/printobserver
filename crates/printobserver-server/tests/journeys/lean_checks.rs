@@ -1163,6 +1163,30 @@ async fn a_look_whose_check_image_cannot_be_made_is_shown_the_stored_frame() {
     lean.server.stop().await;
 }
 
+/// A stored frame whose bytes are no image — a file damaged on disk, since the
+/// camera's own frames are refused undecoded before they are stored — cannot
+/// be made a check image: the refusal says why, nothing is written, and the
+/// check is left to show the stored frame.
+#[test]
+fn a_stored_frame_that_is_no_image_is_refused_and_leaves_nothing() {
+    use printobserver_core::CheckImages as _;
+
+    let root = TempDir::new().expect("a journey's own root");
+    let stored = root.path().join("frame.jpg");
+    std::fs::write(&stored, b"these bytes are no image").expect("the stored frame");
+    let refused = printobserver_server::WholeFrames::under(root.path())
+        .check_image(None, &stored)
+        .expect_err("bytes that are no image were made into one");
+    assert!(!refused.is_empty());
+    assert!(
+        !root
+            .path()
+            .join(printobserver_server::CHECK_IMAGES_DIRECTORY)
+            .exists(),
+        "a refused frame left a check image behind"
+    );
+}
+
 /// The probe, run with arguments it cannot read, says which on its error stream,
 /// prints nothing on its output and exits 2; one whose configuration cannot be
 /// loaded exits 1, naming why.
