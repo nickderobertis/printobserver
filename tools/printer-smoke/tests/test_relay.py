@@ -354,6 +354,7 @@ def test_an_answer_reaches_a_client_still_sending_input(world: World, tmp_path: 
     command = b"status"
     unread = b"input nothing reads"
     with connected(environment) as connection:
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         connection.sendall(
             (1).to_bytes(4, "big")
             + len(command).to_bytes(4, "big")

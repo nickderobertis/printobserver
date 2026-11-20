@@ -328,6 +328,7 @@ def _answer_and_close(connection: socket.socket, reply: Reply) -> None:
     deadline = time.monotonic() + LINGER_S
     # A client gone already, or one past the bound, leaves nothing to wait for.
     with contextlib.suppress(OSError):
+        # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
         connection.shutdown(socket.SHUT_WR)
         while (left := deadline - time.monotonic()) > 0:
             connection.settimeout(left)
