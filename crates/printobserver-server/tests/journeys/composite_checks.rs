@@ -1129,7 +1129,7 @@ async fn until(what: &str, mut condition: impl FnMut() -> bool) {
 }
 
 /// A previous-check record that cannot be read back, or that names a frame
-/// gone from the store, leaves panel 3 empty rather than the check without an
+/// gone from the store or one that no longer decodes, leaves panel 3 empty rather than the check without an
 /// image; and the record goes once the print closes, and is swept at the next
 /// start when one is left behind.
 #[tokio::test(flavor = "multi_thread")]
@@ -1167,6 +1167,8 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
         host: ScriptedHost::answering(vec![
             Scripted::frame(frames[0].clone()),
             Scripted::frame(frames[1].clone()),
+            // The store keeps a frame by its bytes, so the third is another.
+            Scripted::frame(frames[2].clone()),
         ])
         .await,
         calibration: Some(calibration.clone()),
@@ -1199,6 +1201,23 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
         "a previous frame gone from the store leaves panel 3 empty"
     );
     assert!(second.note.contains("panel 3 empty"), "{}", second.note);
+
+    // The record now names the second alert's frame; make it no image.
+    let named: Value =
+        printobserver_types::serde_json::from_slice(&std::fs::read(&record).expect("a record"))
+            .expect("the record is JSON");
+    std::fs::write(
+        named["frame"].as_str().expect("a frame path"),
+        b"these bytes are no image",
+    )
+    .expect("the stored frame is writable");
+    alert(&started.server, &url).await;
+    let third = read_handed(&journey.runs(3).await[2]);
+    assert_eq!(
+        third.image,
+        expected_composite(&index, walls, &frames[2], None, &url, &calibrated),
+        "a previous frame that no longer decodes leaves panel 3 empty"
+    );
 
     journey.octoprint.reports("Operational", JobScript::idle());
     until("the closed print's record is swept", || !record.exists()).await;
@@ -1441,10 +1460,13 @@ fn the_probe_refuses_an_image_it_cannot_attach() {
     let root = TempDir::new().expect("a journey's own root");
     let not_an_image = root.path().join("notes.txt");
     std::fs::write(&not_an_image, b"no picture here").expect("written");
+    let signature_only = root.path().join("signature.jpg");
+    std::fs::write(&signature_only, [0xff, 0xd8, 0xff, 0xe0]).expect("written");
     let absent = root.path().join("absent.jpg");
     for (image, said) in [
         (&absent, "absent.jpg is unreadable"),
-        (&not_an_image, "no JPEG or PNG"),
+        (&not_an_image, "no JPEG image"),
+        (&signature_only, "no JPEG image"),
     ] {
         let done = std::process::Command::new(env!("CARGO_BIN_EXE_printobserver-server-probe"))
             .args([

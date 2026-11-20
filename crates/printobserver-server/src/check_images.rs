@@ -74,14 +74,15 @@ impl CheckImages for WholeFrames {
         if !scaled.scaled {
             return Ok(frame.to_path_buf());
         }
-        write_whole(&self.directory, &destination, &scaled.jpeg)?;
+        write_image(&self.directory, &destination, &scaled.jpeg)?;
         Ok(destination)
     }
 }
 
-/// Write an image under `directory` at `destination`, beside its name first
+/// Write one check image — a scaled frame or a three-panel image — under
+/// `directory` at `destination`, beside its name first
 /// and moved onto it, so a reader never opens a half-written image.
-fn write_whole(directory: &Path, destination: &Path, bytes: &[u8]) -> Result<(), String> {
+fn write_image(directory: &Path, destination: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::create_dir_all(directory)
         .map_err(|error| format!("{} cannot be made: {error}", directory.display()))?;
     let partial = destination.with_extension(format!(
@@ -352,11 +353,13 @@ impl PanelImages {
         }
         let current = std::fs::read(request.frame)
             .map_err(|error| format!("{} is unreadable: {error}", request.frame.display()))?;
-        // A previous frame gone from the store is one the panel cannot show,
-        // which is the first check's placeholder rather than no image at all.
+        // A previous frame gone from the store, or one that no longer decodes,
+        // is one the panel cannot show, which leaves panel 3 empty rather than
+        // the check without an image.
         let earlier = previous.and_then(|check| {
             std::fs::read(&check.frame)
                 .ok()
+                .filter(|bytes| whole_frame(bytes).is_ok())
                 .map(|bytes| (bytes, check.captured_at))
         });
         let composed = match compose_at(
@@ -367,13 +370,18 @@ impl PanelImages {
             calibration,
         ) {
             Ok(composed) => composed,
+            // The current frame was judged whole by the vision port before it
+            // was stored, and the previous one was decoded above, so neither
+            // refusal is reached by a frame the camera gave; one that is is a
+            // check shown the stored frame, as any check image that cannot be
+            // made is, which `a check image that cannot be written` proves.
             Err(WholeFrameReason::Refused(
                 ComposeError::Undecodable { detail } | ComposeError::Encode { detail },
             )) => return Err(detail),
             Err(reason) => return Ok(Err(reason)),
         };
         let destination = self.composite_destination(request.frame, previous);
-        write_whole(&self.whole.directory, &destination, &composed.jpeg)?;
+        write_image(&self.whole.directory, &destination, &composed.jpeg)?;
         Ok(Ok(ShownImage {
             path: destination,
             note: Some(composite_note(earlier.is_none())),

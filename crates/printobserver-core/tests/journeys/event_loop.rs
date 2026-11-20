@@ -765,3 +765,140 @@ fn the_first_check_images_installed_stand() {
         "the refused installation was handed a frame"
     );
 }
+
+/// One request a check image was asked for, as the recording maker kept it.
+#[derive(Debug, Clone, PartialEq)]
+struct Asked {
+    print_id: Option<printobserver_types::PrintId>,
+    captured_at: printobserver_types::Timestamp,
+    made_for: printobserver_core::ImageUse,
+    position: Option<u64>,
+}
+
+/// What makes a check's image in this journey: it keeps every request and
+/// answers the stored frame, saying so.
+#[derive(Default)]
+struct RecordingCheckImages {
+    asked: std::sync::Mutex<Vec<Asked>>,
+}
+
+impl printobserver_core::CheckImages for RecordingCheckImages {
+    fn check_image(
+        &self,
+        _print_id: Option<printobserver_types::PrintId>,
+        frame: &std::path::Path,
+    ) -> Result<std::path::PathBuf, String> {
+        Ok(frame.to_path_buf())
+    }
+
+    fn shown_image(
+        &self,
+        request: &printobserver_core::CheckImageRequest<'_>,
+    ) -> Result<printobserver_core::ShownImage, String> {
+        self.asked
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(Asked {
+                print_id: request.print_id,
+                captured_at: request.captured_at,
+                made_for: request.made_for,
+                position: request.plan.as_ref().map(|plan| plan.file_position_bytes),
+            });
+        Ok(printobserver_core::ShownImage {
+            path: request.frame.to_path_buf(),
+            note: Some("the stored frame, as recorded".to_owned()),
+        })
+    }
+}
+
+/// A check's image is asked for with the print, the moment its frame was
+/// captured — what the alert's source said, else the observation's own record
+/// of it — the check's use, and where the job stands in the print's own file:
+/// none when the job runs another file, reports no position or a negative one.
+/// What it answers reaches the turn as the image and its line.
+#[test]
+fn a_checks_image_is_asked_for_with_its_capture_time_and_its_place_in_the_plan() {
+    use printobserver_core::ImageUse;
+
+    let world = World::with_camera();
+    let images = std::sync::Arc::new(RecordingCheckImages::default());
+    assert!(world.core.install_check_images(images.clone()));
+    world
+        .printer
+        .holds_gcode("benchy.gcode", ";LAYER_CHANGE\n;Z:0.2\nG1 X10 Y10 E1\n");
+    let print = world.open_print(7);
+    let source_said =
+        printobserver_types::Timestamp::from_unix_seconds(1_790_000_000).expect("a moment");
+    world.vision.serves_captured_at(Some(source_said));
+
+    let mut positions = Vec::new();
+    for (file, position) in [
+        (Some("benchy.gcode"), Some(30)),
+        (Some("another.gcode"), Some(30)),
+        (Some("benchy.gcode"), None),
+        (Some("benchy.gcode"), Some(-5)),
+    ] {
+        world
+            .printer
+            .reports_job(file, printobserver_printer_api::PrinterState::Printing);
+        world.printer.reports_position(position, Some(4_194_304));
+        world
+            .handle(failure_alert_with_image(7))
+            .expect("the event is handled");
+        positions.push(position);
+    }
+    let asked = images
+        .asked
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    assert_eq!(
+        asked.iter().map(|each| each.position).collect::<Vec<_>>(),
+        vec![Some(30), None, None, None],
+        "the plan position of the job's own file alone, for {positions:?}"
+    );
+    for each in &asked {
+        assert_eq!(each.print_id, Some(print.id));
+        assert_eq!(each.made_for, ImageUse::Check);
+        assert_eq!(
+            each.captured_at, source_said,
+            "the alert's source's capture time"
+        );
+    }
+    let turn = &world.agent.turns()[0];
+    assert_eq!(
+        turn.situation.image.as_deref(),
+        Some("the stored frame, as recorded"),
+        "the maker's line reaches the turn"
+    );
+
+    // An observation's frame says nothing of when it was captured, so its
+    // own record of the moment it answered is the capture time.
+    world.vision.serves_captured_at(None);
+    world.printer.reports_job(
+        Some("benchy.gcode"),
+        printobserver_printer_api::PrinterState::Printing,
+    );
+    world.printer.reports_position(Some(30), Some(4_194_304));
+    let observed = printobserver_core::block_on(world.core.observe_active_prints())
+        .expect("the open prints are read");
+    for turn in observed.turns {
+        printobserver_core::block_on(world.core.run_supervision(turn)).expect("supervised");
+    }
+    let observed_at = world
+        .agent
+        .turns()
+        .last()
+        .and_then(|turn| turn.event.body.payload.get("frame_captured_at").cloned())
+        .and_then(|value| printobserver_types::serde_json::from_value(value).ok())
+        .expect("the observation records when its frame answered");
+    let last = images
+        .asked
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .last()
+        .cloned()
+        .expect("the observation's check asked for an image");
+    assert_eq!(last.captured_at, observed_at);
+    assert_eq!(last.position, Some(30));
+}
