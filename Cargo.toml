@@ -55,8 +55,8 @@ authors = ["Nick DeRobertis"]
 [workspace.dependencies]
 base64 = "0.22"
 jsonschema ={ version = "0.34", default-features = false }
-oneharness-core = "0.12.3"
-oneharness = "0.11.4"
+oneharness-core = "0.34.0"
+oneharness = "0.31.0"
 plist = { version = "1.10.1", default-features = false }
 printobserver-core = { path = "crates/printobserver-core", version = "0.13.1" }
 printobserver-obico = { path = "crates/printobserver-obico", version = "0.13.1" }
