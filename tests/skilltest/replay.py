@@ -39,6 +39,7 @@ from cases import REPO, Case, Moment, Request
 from jsonschema import Draft202012Validator
 from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
+from repo_checks.docs import skill_prose
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
 from shell_lines import is_compound, subcommands
@@ -1261,10 +1262,12 @@ class ProbeRecord(TypedDict):
 
 
 def skill_prose_bytes() -> int:
-    """The bytes of the committed skill after its frontmatter: what a turn's system prompt is."""
-    text = (SKILL / "SKILL.md").read_text(encoding="utf-8")
-    _, _, rest = text.removeprefix("---\n").partition("\n---\n")
-    return len(rest.encode("utf-8"))
+    """The bytes of the committed skill after its frontmatter: what a turn's system prompt is.
+
+    Split by `repo_checks.docs.skill_prose`, which is the adapter's own split.
+    """
+    prose = skill_prose((SKILL / "SKILL.md").read_text(encoding="utf-8")).prose
+    return len(prose.encode("utf-8"))
 
 
 #: The counts a call's usage must report: what it read outside the cache and what it wrote.
