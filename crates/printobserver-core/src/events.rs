@@ -522,7 +522,12 @@ impl Supervisor {
                 .await
         {
             // The turn answered; an acknowledgement that could not be
-            // made is recorded against its event and ends nothing.
+            // made is recorded against its event and ends nothing. Only a
+            // store failing mid-turn reaches here, which the real store can
+            // be made to do only by breaking its database under a running
+            // server; the core journey
+            // `an_acknowledgement_the_answer_cannot_make_is_recorded_and_supervision_goes_on`
+            // proves it over a store that fails its history read instead.
             self.record_port_failure(
                 print_id,
                 event_id,

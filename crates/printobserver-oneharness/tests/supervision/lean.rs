@@ -12,7 +12,9 @@
 use std::fs;
 use std::sync::Arc;
 
-use printobserver_oneharness::{CallUsage, EnvAssignment, SCHEMA_RETRIES, SESSIONS_DIRECTORY};
+use printobserver_oneharness::{
+    CallUsage, EnvAssignment, SCHEMA_RETRIES, SESSIONS_DIRECTORY, SessionName,
+};
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort as _};
 use printobserver_types::{PrintId, serde_json};
 
@@ -275,13 +277,19 @@ fn an_image_turn_never_conforming_fails_as_an_invalid_answer() {
     assert_eq!(turns[0].calls, vec![recorded(call); 1 + SCHEMA_RETRIES]);
 }
 
-/// A ledger written in the earlier shape, with no turn's calls, is read as this
-/// build's and written back as it.
+/// A ledger written in the earlier shape, its session and turn carrying no
+/// calls, is read as this build's and written back as it, the earlier turn kept
+/// as it was beside the new one's calls.
 #[test]
 fn a_ledger_of_the_earlier_shape_is_read_and_written_back_as_this_one() {
     let schemas = schema_read_lock();
     let fixture = Fixture::new("lean-earlier-ledger");
     let print_id = PrintId::new();
+    let session = SessionName::of(&print_id, 1).to_string();
+    let earlier_turn = serde_json::json!({
+        "session_name": session,
+        "ran_at": "2026-01-01T00:00:00Z",
+    });
     let ledger = fixture
         .state_dir()
         .join(SESSIONS_DIRECTORY)
@@ -292,8 +300,14 @@ fn a_ledger_of_the_earlier_shape_is_read_and_written_back_as_this_one() {
         serde_json::json!({
             "schema_version": "1",
             "print_id": print_id,
-            "sessions": [],
-            "turns": [],
+            "sessions": [{
+                "print_id": print_id,
+                "session_name": session,
+                "harness_identity": HARNESS,
+                "created_at": "2026-01-01T00:00:00Z",
+                "last_turn_at": "2026-01-01T00:00:00Z",
+            }],
+            "turns": [earlier_turn],
         })
         .to_string(),
     )
@@ -327,7 +341,14 @@ fn a_ledger_of_the_earlier_shape_is_read_and_written_back_as_this_one() {
         serde_json::from_str(&fs::read_to_string(&ledger).expect("the ledger reads"))
             .expect("the ledger is JSON");
     assert_eq!(written["schema_version"], "2");
-    assert_eq!(written["turns"][0]["calls"][0]["cache_write_tokens"], 3_000);
+    assert_eq!(written["sessions"][0]["session_name"], session);
+    let turns = written["turns"].as_array().expect("the turns");
+    assert_eq!(turns.len(), 2, "the earlier turn was not kept: {written}");
+    assert_eq!(
+        turns[0], earlier_turn,
+        "the earlier turn, which made no calls this build knows of, was rewritten"
+    );
+    assert_eq!(turns[1]["calls"][0]["cache_write_tokens"], 3_000);
 }
 
 /// A probe runs one prompt through the turn's own configuration in a fresh
