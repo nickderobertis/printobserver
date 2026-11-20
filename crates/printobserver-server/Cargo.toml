@@ -99,7 +99,7 @@ required-features = ["operator-harness"]
 [[bin]]
 name = "printobserver-server-probe"
 path = "src/bin/probe.rs"
-required-features = ["operator-harness"]
+required-features = ["test-responder"]
 
 # The real-print replay's pass-through in front of the harness; see its source.
 [[bin]]

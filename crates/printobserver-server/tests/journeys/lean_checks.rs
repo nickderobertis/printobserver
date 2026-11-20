@@ -1048,3 +1048,76 @@ async fn a_look_whose_check_image_cannot_be_made_is_shown_the_stored_frame() {
     );
     lean.server.stop().await;
 }
+
+/// The probe, run with arguments it cannot read, says which on its error stream,
+/// prints nothing on its output and exits 2; one whose configuration cannot be
+/// loaded exits 1, naming why.
+#[test]
+fn the_probe_refuses_what_it_cannot_run_naming_why() {
+    let root = TempDir::new().expect("a journey's own root");
+    let probe = |arguments: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_printobserver-server-probe"))
+            .args(arguments)
+            .output()
+            .expect("the probe runs")
+    };
+    let missing = root.path().join("absent.toml");
+    let missing = missing.to_str().expect("a path");
+    for (arguments, said) in [
+        (vec![], "--config is required"),
+        (vec!["--config", missing], "--session is required"),
+        (
+            vec!["--config", missing, "--session", "s", "--colour", "red"],
+            "is no option",
+        ),
+        (
+            vec!["--config", missing, "--config", missing],
+            "is given twice",
+        ),
+        (vec!["--config", missing, "--session", ""], "takes a value"),
+    ] {
+        let done = probe(&arguments);
+        assert_eq!(done.status.code(), Some(2), "{arguments:?}");
+        assert!(done.stdout.is_empty(), "{arguments:?} printed an answer");
+        let stderr = String::from_utf8_lossy(&done.stderr);
+        assert!(stderr.contains(said), "{arguments:?}: {stderr}");
+    }
+    let done = probe(&["--config", missing, "--session", "s", "--prompt", "p"]);
+    assert_eq!(done.status.code(), Some(1));
+    assert!(done.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&done.stderr).contains("absent.toml"));
+}
+
+/// A check image that cannot be written into its directory is refused naming
+/// why, and leaves no partial image behind.
+#[cfg(unix)]
+#[test]
+fn a_check_image_that_cannot_be_written_is_refused_and_leaves_nothing() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    use printobserver_core::CheckImages as _;
+
+    let root = TempDir::new().expect("a journey's own root");
+    let stored = root.path().join("frame.jpg");
+    std::fs::write(&stored, marked_frame_of(CAMERA)).expect("the stored frame");
+    let directory = root
+        .path()
+        .join(printobserver_server::CHECK_IMAGES_DIRECTORY);
+    std::fs::create_dir_all(&directory).expect("the check images' directory");
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o555))
+        .expect("the directory is made read-only");
+
+    let refused = printobserver_server::WholeFrames::under(root.path())
+        .check_image(None, &stored)
+        .expect_err("an image was written into a read-only directory");
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755))
+        .expect("the directory is made writable again");
+    assert!(refused.contains("cannot be written"), "{refused}");
+    assert_eq!(
+        std::fs::read_dir(&directory)
+            .expect("the directory reads")
+            .count(),
+        0,
+        "a partial image was left behind"
+    );
+}
