@@ -70,9 +70,16 @@ impl CheckImages for WholeFrames {
             std::process::id(),
             WRITES.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::write(&partial, &scaled.jpeg)
-            .and_then(|()| std::fs::rename(&partial, &destination))
-            .map_err(|error| format!("{} cannot be written: {error}", destination.display()))?;
+        let written = std::fs::write(&partial, &scaled.jpeg)
+            .and_then(|()| std::fs::rename(&partial, &destination));
+        if let Err(error) = written {
+            // Whatever was written is no image a reader may open.
+            let _ = std::fs::remove_file(&partial);
+            return Err(format!(
+                "{} cannot be written: {error}",
+                destination.display()
+            ));
+        }
         Ok(destination)
     }
 }

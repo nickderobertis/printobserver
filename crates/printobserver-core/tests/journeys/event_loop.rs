@@ -567,3 +567,37 @@ fn a_print_that_ended_during_its_turn_is_not_acknowledged_from_the_answer() {
         "skipping the acknowledgement was recorded as a failure"
     );
 }
+
+/// What makes the check images is installed once: a second installation is
+/// refused, and the first goes on making every check's image.
+#[test]
+fn the_first_check_images_installed_stand() {
+    let world = World::new();
+    let made = std::env::temp_dir().join("the-first-check-image.jpg");
+    let first = std::sync::Arc::new(ScriptedCheckImages {
+        made: Some(made.clone()),
+        handed: std::sync::Mutex::new(Vec::new()),
+    });
+    let second = std::sync::Arc::new(ScriptedCheckImages {
+        made: Some(std::env::temp_dir().join("the-second-check-image.jpg")),
+        handed: std::sync::Mutex::new(Vec::new()),
+    });
+    assert!(world.core.install_check_images(first.clone()));
+    assert!(
+        !world.core.install_check_images(second.clone()),
+        "a second installation stood"
+    );
+    world.open_print(7);
+    world
+        .handle(failure_alert_with_image(7))
+        .expect("the event is handled");
+    assert_eq!(world.agent.turns()[0].image_path, Some(made));
+    assert!(
+        second
+            .handed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty(),
+        "the refused installation was handed a frame"
+    );
+}

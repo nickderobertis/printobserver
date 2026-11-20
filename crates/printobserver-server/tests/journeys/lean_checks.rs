@@ -1121,3 +1121,41 @@ fn a_check_image_that_cannot_be_written_is_refused_and_leaves_nothing() {
         "a partial image was left behind"
     );
 }
+
+/// A check image written and then refused its place is refused naming why, and
+/// what was written beside it is taken away rather than left for a reader.
+#[test]
+fn a_check_image_refused_its_place_leaves_no_partial_image() {
+    use printobserver_core::CheckImages as _;
+
+    let root = TempDir::new().expect("a journey's own root");
+    let stored = root.path().join("01").join("digest");
+    std::fs::create_dir_all(stored.parent().expect("a directory")).expect("the image directory");
+    std::fs::write(&stored, marked_frame_of(CAMERA)).expect("the stored frame");
+    // A directory, not empty, where the scaled image would be put.
+    let directory = root
+        .path()
+        .join(printobserver_server::CHECK_IMAGES_DIRECTORY);
+    let taken = directory.join(format!("01-digest-{}x{}.jpg", CHECK.0, CHECK.1));
+    std::fs::create_dir_all(taken.join("occupied")).expect("the occupied place");
+
+    let refused = printobserver_server::WholeFrames::under(root.path())
+        .check_image(None, &stored)
+        .expect_err("an image was put where a directory stands");
+    assert!(refused.contains("cannot be written"), "{refused}");
+    let left: Vec<String> = std::fs::read_dir(&directory)
+        .expect("the directory reads")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(
+        left,
+        [format!("01-digest-{}x{}.jpg", CHECK.0, CHECK.1)],
+        "{left:?}"
+    );
+}
