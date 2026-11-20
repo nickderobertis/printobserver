@@ -57,9 +57,9 @@ Reading frames:
   absent from an earlier frame included, or out of place; off the part, on a rail, screw or frame,
   not.
 - **Position.** Judge growth only against the frame the plan's rise names, never without one: by the
-  top's height then and the rise since, what should show, not proof it did: measure the tallest
-  printing part's base and top pixel rows, then and now, all four in the reason. Short of the
-  rise, likely, unsure or lacking them is not printing: a clear defect, never watched.
+  top's height then and the rise since, what should show, not proof it did: compare the tallest
+  printing part's top against a fixed mark at its base, then and now. Short of the rise, likely,
+  unsure or unclear is not printing: a clear defect, never watched.
   Hidden parts: look again first. A still landmark proves only a still view; a part moved when
   its base's distance to a fixed sheet hole, edge or mark changed. Each reason gives each part's base
   pixels from a named landmark; each turn, before looking, measure the event frame so against the
