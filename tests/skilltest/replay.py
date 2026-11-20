@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, Literal, NewType, NotRequired, TextIO, TypedDict, cast, get_args
 
 import doubles
-from cases import REPO, Case, Moment, Request, read_case
+from cases import REPO, Case, Moment, Request, instant, read_case
 from jsonschema import Draft202012Validator
 from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
@@ -81,6 +81,8 @@ TRIGGERS = {"periodic_observation", "obico_failure_alert"}
 #: The requests that make a check an acting one rather than a quiet one: those that
 #: change what the machine is doing. Every `set-*` request is one as well.
 ACTING = {"pause", "cancel", "resume"}
+#: What the server writes down when an answer of `stop` stopped nothing.
+STOP_UNACTED = "agent_stop_unacted"
 #: The command a check takes a fresh look with, which it never runs after acting.
 LOOK = "look"
 #: The heading the turn prompt carries the print's facts under.
@@ -185,6 +187,55 @@ def service_config(
     )
     tomllib.loads(text)
     return text
+
+
+#: The extrusion types the G-code index counts as supports, which lay no part.
+SUPPORT_TYPES = (b"Support material", b"Support material interface")
+#: The checking interval of the server started only to decide a print's alignment
+#: before the first event, so that no check is due while it runs.
+DECIDING_INTERVAL_S = 3600
+#: How long the replay stands where the job passed its first layer for the printer
+#: watch to decide the print's alignment there: past one of its reads, the installer's
+#: fifteen-second poll, and the frame the decision fetches.
+PASSING_WAIT_S = 25
+
+
+def first_layer_end(gcode: bytes) -> int | None:
+    """Where a slice's first layer laying the part ends: the next `;LAYER_CHANGE`.
+
+    The rule the server's G-code index decides the first object layer by: the first
+    layer extruding under a declared `;TYPE:` other than supports, its skirt and brim
+    included. Nothing for a slice that lays no such layer, or none after it.
+    """
+    offset = 0
+    kind = b""
+    relative = True
+    last_e = 0.0
+    in_layer = False
+    laid = False
+    for line in gcode.splitlines(keepends=True):
+        text = line.split(b";", 1)[0].strip()
+        if line.startswith(b";LAYER_CHANGE"):
+            if laid:
+                return offset
+            in_layer = True
+        elif line.startswith(b";TYPE:"):
+            kind = line[len(b";TYPE:") :].strip()
+        elif text in {b"M83", b"M82"}:
+            relative = text == b"M83"
+        elif text.startswith(b"G92"):
+            found = re.search(rb"\bE(-?[\d.]+)", text)
+            last_e = float(found.group(1)) if found else last_e
+        elif text[:3] in {b"G1 ", b"G2 ", b"G3 "}:
+            found = re.search(rb"\bE(-?[\d.]+)", text)
+            if found:
+                value = float(found.group(1))
+                extruded = value if relative else value - last_e
+                last_e = last_e if relative else value
+                if in_layer and extruded > 0 and kind and kind not in SUPPORT_TYPES:
+                    laid = True
+        offset += len(line)
+    return None
 
 
 #: Where on the camera double's address its frames are fetched from.
@@ -603,6 +654,8 @@ class DecisionPoint:
     calls: list[CallUsage] = field(default_factory=list)
     facts_bytes: int | None = None
     image_note: str | None = None
+    #: Whether the server wrote down that the turn answered `stop` and stopped nothing.
+    stopped_nothing: bool = False
 
     @property
     def check_class(self) -> CheckClass:
@@ -615,6 +668,8 @@ class DecisionPoint:
         if self.failure:
             return f"the turn failed: {self.failure}"
         reasons = [self.moment.verdict(self.requests)]
+        if self.stopped_nothing:
+            reasons.append("it answered stop and asked for no pause, so nothing stopped the print")
         looked = looked_after_acting(self.commands)
         if looked is not None:
             reasons.append(f"it looked again after acting ({looked})")
@@ -950,6 +1005,10 @@ class Replay:
         #: The print's alignment verdict as last read, which the server deletes once
         #: the print closes.
         self.alignment: Alignment | None = None
+        #: Where the slice's first layer laying the part ends, when it has one.
+        self.first_layer_end = first_layer_end(gcode) if gcode is not None else None
+        #: The case's calibration as the server is configured with it, once laid out.
+        self.calibration: Path | None = None
 
     def _install(self) -> Path:
         """Put the programs, the skill and the configuration where the installer puts them."""
@@ -973,20 +1032,23 @@ class Replay:
             if self.case.camera_calibration is not None
             else None
         )
+        self.calibration = calibration
         config = self.root / "config.toml"
-        config.write_text(
-            service_config(
-                self.state,
-                f"127.0.0.1:{self.port}",
-                doubles.address(self.servers[0]),
-                camera,
-                doubles.address(self.servers[2]),
-                self.minted,
-                calibration=calibration,
-            ),
-            encoding="utf-8",
-        )
+        config.write_text(self._config_text(OBSERVATION_INTERVAL_S), encoding="utf-8")
         return config
+
+    def _config_text(self, interval_s: int) -> str:
+        """The server's configuration for this replay, checking every `interval_s` seconds."""
+        return service_config(
+            self.state,
+            f"127.0.0.1:{self.port}",
+            doubles.address(self.servers[0]),
+            doubles.address(self.servers[1]),
+            doubles.address(self.servers[2]),
+            self.minted,
+            interval_s=interval_s,
+            calibration=self.calibration,
+        )
 
     def _harness_started(self) -> str:
         """Note one harness run, and say where its output is to be kept."""
@@ -1021,6 +1083,98 @@ class Replay:
         except (ReplayError, OSError, subprocess.SubprocessError) as error:
             self.errors.append(str(error))
 
+    def _first_layer_frame(self) -> doubles.Passing | None:
+        """The frame the printer watch decided the print's alignment on, live.
+
+        A live watch reads the job every poll and decides once the first layer laying
+        the part is down, on the frame it takes then: the first frame the recording's
+        supervisor took on its own schedule — one carrying the progress the printer
+        reported — whose progress puts the job past that layer. Nothing for a case
+        naming no calibration, or a slice laying no such layer.
+        """
+        ends = self.first_layer_end
+        if self.case.camera_calibration is None or ends is None:
+            return None
+        for index, (frame, when) in enumerate(
+            zip(self.case.frames, self.timeline.frame_times, strict=True)
+        ):
+            if frame.progress_pct is None:
+                continue
+            position = int(frame.progress_pct / 100 * self.case.gcode_size)
+            if position > ends:
+                return doubles.Passing(position, index, when)
+        return None
+
+    def _stand_passing(self, passing: doubles.Passing, short_of: Moment) -> None:
+        """Stand at the passing frame, short of an event's position, until the server decides.
+
+        The job stands no further than the event it comes before, and past the first
+        layer, as it did: the server decides on its next read, or [`PASSING_WAIT_S`]
+        passes.
+        """
+        ends = self.first_layer_end or 0
+        position = min(passing.position, short_of.file_position_bytes)
+        with self.timeline.lock:
+            self.timeline.pass_at(passing._replace(position=max(position, ends + 1)))
+        deadline = time.monotonic() + PASSING_WAIT_S
+        while time.monotonic() < deadline and not any((self.state / "alignment").glob("*.json")):
+            time.sleep(0.25)
+        self._read_alignment()
+
+    def _pass_the_first_layer(self, upcoming: Moment) -> None:
+        """Let the printer watch see the job pass its first layer between two events.
+
+        The replay moves the job from one event to the next; when the frame the live
+        watch decided on falls after the event that ended and no later than the next,
+        the replay first stands there — while the finished turn still holds the print,
+        so no scheduled check can fire — and the next event then stands as it always
+        does.
+        """
+        passing = self._first_layer_frame()
+        if passing is None or self.alignment is not None:
+            return
+        if instant(self.timeline.moment.at) < passing.at <= instant(upcoming.at):
+            self._stand_passing(passing, upcoming)
+
+    def _decide_before_the_first_event(self) -> None:
+        """Decide the alignment first when the first layer went down before the first event.
+
+        The recording's watch decided it before the replay's first event, which no
+        replayed turn stands at, so the server is started once with no check due, at
+        the passing frame, until it decides; then stopped, its state kept, to start
+        again at the first event. A print stays open, and its verdict with it, through
+        a restart.
+        """
+        first = self.case.moments[0]
+        passing = self._first_layer_frame()
+        if passing is None or passing.at > instant(first.at):
+            return
+        config = self.root / "deciding.toml"
+        config.write_text(self._config_text(DECIDING_INTERVAL_S), encoding="utf-8")
+        self.server = self._started(config)
+        try:
+            self._wait_for_server()
+            self._stand_passing(passing, first)
+        finally:
+            self.stop_server()
+        with self.timeline.lock:
+            self.timeline.stand_at(0)
+
+    def _started(self, config: Path) -> subprocess.Popen[str]:
+        """The server, started on one configuration, its output kept."""
+        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        server = start(
+            [str(self.bin / f"printobserver{suffix}"), "server", "--config", str(config)],
+            cwd=self.state,
+            env={
+                **neutral_environment(self.bin, self.home),
+                **({REAL_WAITS: "1"} if self.real_waits else {}),
+            },
+        )
+        self._keep_the_log(server)
+        return server
+
     def _read_alignment(self) -> None:
         """Keep the print's alignment verdict while the server keeps it."""
         for path in sorted((self.state / "alignment").glob("*.json")):
@@ -1039,6 +1193,7 @@ class Replay:
                 timeline.finished = True
             return
         upcoming = self.case.moments[following]
+        self._pass_the_first_layer(upcoming)
         if timeline.paused and upcoming.printer_state == "printing":
             self._operator_resumes()
         with timeline.lock:
@@ -1237,17 +1392,8 @@ class Replay:
     def run(self) -> Replayed:
         """Feed every event in order, and judge each decision point from the server's record."""
         config = self._install()
-        suffix = platforms.host(Repo(REPO)).program.removeprefix("printobserver")
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        self.server = start(
-            [str(self.bin / f"printobserver{suffix}"), "server", "--config", str(config)],
-            cwd=self.state,
-            env={
-                **neutral_environment(self.bin, self.home),
-                **({REAL_WAITS: "1"} if self.real_waits else {}),
-            },
-        )
-        self._keep_the_log(self.server)
+        self._decide_before_the_first_event()
+        self.server = self._started(config)
         try:
             self._wait_for_server()
             first = self.case.moments[0]
@@ -1367,11 +1513,19 @@ class Replay:
             looks=sum(1 for event in during if event["kind"] == CAMERA_LOOK),
             facts_bytes=report.facts_bytes,
             image_note=report.image_note,
+            stopped_nothing=any(event["kind"] == STOP_UNACTED for event in answered),
         )
 
     def stop(self) -> None:
         """Stop the server and every double."""
         self.timeline.stopped.set()
+        self.stop_server()
+        for server in self.servers:
+            server.shutdown()
+            server.server_close()
+
+    def stop_server(self) -> None:
+        """Stop the server, leaving the doubles and the state as they are."""
         if self.server is not None and self.server.poll() is None:
             self.server.terminate()
             try:
@@ -1380,9 +1534,6 @@ class Replay:
                 # llmlint: ignore[changed_behavior_has_e2e] See suppressions.toml.
                 self.server.kill()
                 self.server.wait()
-        for server in self.servers:
-            server.shutdown()
-            server.server_close()
 
     def clean_up(self) -> None:
         """Remove the install, once what a test reads from it has been read."""

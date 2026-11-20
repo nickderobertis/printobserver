@@ -4756,7 +4756,7 @@ reason = "A synchronous test running one real program to its exit and reading wh
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest/replay.py"
-site = "self.server = start("
+site = "server = start("
 reason = "This starts the real `printobserver server` as the long-running child process a replay drives, through `repo_checks.shell.start`, the one path this repository allows for one. No request is exchanged here for a typed client to model; the replay talks to it separately once its port answers."
 
 [[suppression]]

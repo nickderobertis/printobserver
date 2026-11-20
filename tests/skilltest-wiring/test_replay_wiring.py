@@ -66,6 +66,7 @@ from replay import (
     check_image,
     composed_check_image,
     delivered,
+    first_layer_end,
     harness_token,
     is_event,
     is_held_print,
@@ -967,6 +968,129 @@ def test_the_printer_reports_the_temperatures_the_gcode_asks_for_at_its_position
     equal(tools[0]["bed"]["target_c"], 60.0)
 
 
+@pytest.mark.parametrize(
+    ("gcode", "change"),
+    [
+        # The first layer lays a skirt, so it ends at the second layer change.
+        (
+            b"G90\nM83\n;LAYER_CHANGE\n;TYPE:Skirt/Brim\nG1 X1 Y1 E0.5\n;LAYER_CHANGE\nG1 X2 E1\n",
+            2,
+        ),
+        # A layer laying supports alone is skipped for the next.
+        (
+            b"M83\n;LAYER_CHANGE\n;TYPE:Support material\nG1 X1 E1\n;LAYER_CHANGE\n"
+            b";TYPE:Perimeter\nG1 X2 E1\n;LAYER_CHANGE\nG1 X3 E1\n",
+            3,
+        ),
+        # In absolute extrusion only a rising E lays material.
+        (
+            b"M82\nG92 E5\n;TYPE:Perimeter\n;LAYER_CHANGE\nG1 X1 E5\n;LAYER_CHANGE\n"
+            b"G1 X2 E6\n;LAYER_CHANGE\nG1 X3 E7\n",
+            3,
+        ),
+        # Extrusion under no declared type lays no part, as the index reads it.
+        (b"M83\n;LAYER_CHANGE\nG1 X1 E1\n;LAYER_CHANGE\nG1 X2 E1\n", None),
+        # Nothing after the first such layer, so it ends nowhere.
+        (b";LAYER_CHANGE\n;TYPE:Perimeter\nG1 X1 E1\n", None),
+    ],
+)
+def test_the_first_layer_ends_where_the_servers_index_says(
+    gcode: bytes, change: int | None
+) -> None:
+    """At the `;LAYER_CHANGE` after the first layer extruding a declared non-support type."""
+    changes = [found.start() for found in re.finditer(rb";LAYER_CHANGE", gcode)]
+    equal(first_layer_end(gcode), None if change is None else changes[change - 1])
+
+
+def test_the_watch_sees_the_job_pass_its_first_layer_between_two_events(scratch: Path) -> None:
+    """Between two events the replay stands where the first layer went down, on its frame.
+
+    A calibrated case whose first layer ends between its first two events: as the
+    first event's turn ends, the stood-in printer reports the position the first
+    frame past that layer records, and the camera answers that frame, before the
+    next event stands as it always does — with one turn per event.
+    """
+    case = read_case("jar-top-petg-healthy")
+    ends = 10_000
+    first, second = case.moments[:2]
+    layer = b";LAYER_CHANGE\n;Z:0.2\nM83\n;TYPE:Perimeter\nG1 X1 Y1 E1\n"
+    gcode = layer + b";\n" * ((ends - len(layer)) // 2) + b";LAYER_CHANGE\n;Z:0.4\n"
+    gcode += b";\n" * ((second.file_position_bytes - len(gcode)) // 2 + 1000)
+    layer_ends = first_layer_end(gcode)
+    if layer_ends is None:
+        pytest.fail("the slice's first layer ends nowhere")
+    passing = next(
+        (index, frame)
+        for index, frame in enumerate(case.frames)
+        if frame.progress_pct is not None
+        and int(frame.progress_pct / 100 * case.gcode_size) > layer_ends
+    )
+    truth(
+        instant(first.at) < case.frame_times()[passing[0]] <= instant(second.at),
+        describing="the passing frame to fall between the first two events",
+    )
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
+    contains(done.replayed.fetches, passing[1].file)
+    position = int((passing[1].progress_pct or 0) / 100 * case.gcode_size)
+    truth(
+        any(read.position == position for read in done.job_reads),
+        describing=f"a job read at the passing position {position}",
+    )
+    equal(len(done.replayed.ledger["turns"]), len(case.moments))
+
+
+def test_a_first_layer_down_before_the_first_event_is_decided_before_it(scratch: Path) -> None:
+    """The server is started once, with no check due, to decide at the passing frame.
+
+    The case's first layer ended before its first event, so the replay first starts
+    the server at the frame taken just past it, until it decides; then starts it
+    again over the same state at the first event. The verdict stands, the camera was
+    asked for that frame before the first check's own, and no turn ran beyond one
+    per event.
+    """
+    case = read_case(TIMELINE_CASE)
+    first = case.moments[0]
+    layer = b";LAYER_CHANGE\n;Z:0.2\nM83\n;TYPE:Perimeter\nG1 X1 Y1 E1\n"
+    gcode = layer + b";LAYER_CHANGE\n;Z:0.4\n"
+    gcode += b";\n" * ((case.moments[-1].file_position_bytes - len(gcode)) // 2 + 1000)
+    truth(
+        first_layer_end(gcode) is not None
+        and (first_layer_end(gcode) or 0) < first.file_position_bytes,
+        describing="the first layer to end before the first event",
+    )
+    passing = next(
+        frame
+        for frame in case.frames
+        if frame.progress_pct is not None
+        and int(frame.progress_pct / 100 * case.gcode_size) > (first_layer_end(gcode) or 0)
+    )
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
+    equal(done.replayed.fetches[:2], [passing.file, first.event_image])
+    truth(done.replayed.alignment is not None, describing="the verdict decided before it")
+    equal(len(done.replayed.ledger["turns"]), len(case.moments))
+
+
+def test_a_timeline_passing_its_first_layer_answers_that_until_the_next_event(
+    tmp_path: Path,
+) -> None:
+    """While passing, every job read and camera fetch answers the passing frame; then not."""
+    case = read_case("jar-top-petg-healthy")
+    timeline = doubles.Timeline(case=case, picture=stamped, clock=tmp_path / "clock")
+    when = case.frame_times()[6]
+    timeline.pass_at(doubles.Passing(22_555, 6, when))
+    equal(timeline.position(), 22_555)
+    truth(
+        timedelta() <= timeline.now() - when < timedelta(seconds=5),
+        describing="the clock to stand at the passing frame's capture",
+    )
+    for _ in range(2):
+        due = timeline.next_fetch()
+        equal(due.name if due else None, case.frames[6].file)
+    timeline.stand_at(1)
+    equal(timeline.passing, None)
+    equal(timeline.position(), case.moments[1].file_position_bytes)
+
+
 def test_a_gcode_named_with_spaces_is_planned_through_the_real_adapter(scratch: Path) -> None:
     """The stand-in's download link reaches the file whatever its name holds.
 
@@ -1647,6 +1771,23 @@ def test_a_turn_the_engine_gave_up_on_fails_its_own_decision_point(scratch: Path
     equal(first.assessment, None, describing="the failed turn, which answered nothing")
     truth(second.assessment is not None, describing="the next turn's assessment to be its own")
     equal(done.replayed.passed, False)
+
+
+def test_a_stop_that_stopped_nothing_fails_its_decision_point(scratch: Path) -> None:
+    """An answer of `stop` with no pause, refused and given again, fails its decision point.
+
+    The server refuses it once in the same turn, which the replay keeps as that turn,
+    and writes it down when it comes again; the record carries why it failed.
+    """
+    case = read_case(TIMELINE_CASE)
+    unacted: ScriptedRun = {"commands": [], "disposition": "stop"}
+    done = mock_replay(case, [{"commands": [CONTEXT]}, unacted, unacted], scratch)
+    before, dragged = done.replayed.points
+    equal(before.why_not, None)
+    truth(dragged.stopped_nothing, describing="the unacted stop to be read off the record")
+    contains(dragged.why_not or "", "it answered stop and asked for no pause")
+    equal(len(done.replayed.ledger["turns"]), 2, describing="the refusal stays one turn")
+    equal(len(done.turns), 3, describing="the harness ran the refusal as a run of its own")
 
 
 def test_only_the_ingress_accepting_an_alert_counts_as_delivering_it() -> None:

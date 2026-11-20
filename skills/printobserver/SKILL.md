@@ -49,12 +49,13 @@ A person's resume settles what they resumed over: after it, judge only what is n
 Reading frames:
 
 - **The check image.** In print, three panels: 1 the frame, this layer's planned toolpath
-  drawn on it, coloured by kind; 2 a close-up of the part printing; 3 the previous check's view.
-  Drawn lines are the plan, never plastic; grey ones are the nearest part layer below on a
-  support-only layer. A part off its toolpath, or moved since panel 3, has shifted or come loose.
+  drawn on it, coloured by kind; 2 a close-up of where the part should be; 3 the last check's
+  view. Drawn lines are the plan, never plastic; grey ones, the part layer under a support-only
+  one. A part off its drawn walls, bare sheet inside them, or a part moved since 3: it shifted or
+  came loose.
 - **The plan.** Features and toolpath plan shape and place, never surface quality; the frame
   shows layers below too: a support, bridge or overhang listed is designed; supports, bridges and
-  infill look open, in straight lines. Rough, porous or strung material is a defect even where
+  infill look open and straight. Rough, porous or strung material is a defect even where
   planned: judge the surface in the close-up.
 - **Walls** are under-extruded when visibly thinner, gappy or see-through where the part's shape
   would make them solid; texture its shape explains, ribs or lattice, is not.
@@ -64,10 +65,10 @@ Reading frames:
 - **Position.** Judge growth only against the frame the plan's rise names, never by Z or how
   tall parts look: by the top's height then and the rise since, what should show, not proof it
   did: compare the tallest printing part's top then and now. Short of the rise, likely, unsure or
-  unclear is not printing: a clear defect, never watched. Hidden parts: look again first.
+  unclear is not printing: a clear defect, never watched.
   A part off the bed, a first layer not sticking, or one off its own place, left empty, has
-  moved; no later frame undoes it. The facts' X and Y are the bed's: they place nothing in the
-  frame.
+  moved: run pause now, before any look; no later frame undoes it. The facts' X and Y are the
+  bed's, placing nothing in a frame.
 
 ## When the detector has already paused the print
 

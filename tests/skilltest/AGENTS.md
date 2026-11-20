@@ -37,6 +37,15 @@ The rules the real-print suite is held to, and why.
 - **A case naming a `camera_calibration` is replayed with it** on the camera
   double's stream; the record carries each check's image, read off its prompt's
   `image` line, and the alignment verdict the server kept for the print.
+- **The watch sees the job pass its first layer, as it did live.** The live watch
+  decides alignment on the frame it takes as the first layer goes down; a replay
+  jumping between events would show it the next event's frame instead. So the
+  replay stands at the first recorded observation frame past that layer — between
+  two events while the ended turn still holds the print, or, when it precedes the
+  first event, in a start of the server with no check due — until it decides.
+- **An answer of `stop` that asked for no pause fails its decision point.** The
+  server refuses it once in the same turn and writes down `agent_stop_unacted`
+  when it comes again.
 - **A case's position and time are data,** in `case.json`; `checks_real_prints` and
   `tests/skilltest-wiring` hold them. `just skilltest-record` folds a run into
   `results/latest.json`.
