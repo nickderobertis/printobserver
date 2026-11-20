@@ -222,11 +222,30 @@ impl World {
         edit: impl FnOnce(&mut toml::Value),
         between: impl FnOnce(Stores) -> Stores,
     ) -> Self {
+        Self::tuned(printer, agent, edit, |_| {}, between).await
+    }
+
+    /// The same, the loaded configuration then tuned past what a file may
+    /// say — a printer poll faster than the file admits, so a journey waits
+    /// seconds rather than minutes on the watch.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the journey's root cannot be made, the configuration is
+    /// refused, or the server does not start.
+    pub async fn tuned(
+        printer: Arc<RecordingPrinter>,
+        agent: Arc<StandInAgent>,
+        edit: impl FnOnce(&mut toml::Value),
+        tune: impl FnOnce(&mut ServerConfig),
+        between: impl FnOnce(Stores) -> Stores,
+    ) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         let mut configured = document(root.path(), "http://127.0.0.1:1");
         edit(&mut configured);
         let path = write(root.path(), &configured);
-        let config = ServerConfig::load(&path).expect("the base configuration is accepted");
+        let mut config = ServerConfig::load(&path).expect("the base configuration is accepted");
+        tune(&mut config);
         let (server, stores) = start(&config, &printer, &agent, between).await;
         let credential = OPERATOR.to_owned();
         Self {

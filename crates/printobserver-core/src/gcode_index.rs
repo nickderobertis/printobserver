@@ -37,6 +37,15 @@
 //! material, and where, is known; a comment is not a command, a leading
 //! `N<line number>` is not a word, and `*<checksum>` ends the line.
 //!
+//! # The planned geometry
+//!
+//! The same read records each object's outline, where each object's labelled
+//! block starts and each layer's byte range, and — when the supervisor is
+//! given a spool directory — copies the file's bytes to a per-print spool, so
+//! a layer's toolpath ([`crate::toolpath`]) is read back from the spool rather
+//! than from a second read of the printer's file. The spool is deleted when
+//! the print closes, and at start-up for any print no longer open.
+//!
 //! # Where a position falls
 //!
 //! A line counts when every byte of it, its newline included, lies before the
@@ -66,6 +75,10 @@ use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{PrintId, Timestamp};
+
+use crate::toolpath::{
+    ExtrusionKind, LayerRef, LayerToolpath, ObjectOutline, Reach, SpoolError, ToolpathSegment,
+};
 
 /// The longest line this reader holds; anything longer is no line it reads.
 ///
@@ -120,11 +133,34 @@ const NOT_THE_PART: &str = "Custom";
 /// What `M106` sets the fan to with no `S` word, and what full speed is.
 const FAN_FULL: f64 = 255.0;
 
+/// The longest chord an arc's toolpath is cut into, in millimetres.
+const CHORD_MM: f64 = 0.5;
+
+/// Where the reader stood at one point of the file: what a toolpath read of
+/// a layer starts from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Head {
+    /// Where the head is in X, Y and Z.
+    at: [f64; 3],
+    /// The extruder's position.
+    e: f64,
+    /// What `G90`/`G91` last said.
+    axes: Positioning,
+    /// What `M82`/`M83` last said.
+    extruder: Positioning,
+    /// The type being extruded, as a bit of the type table.
+    current_type: Option<usize>,
+}
+
 /// One layer, from its `;LAYER_CHANGE` to the next.
 #[derive(Debug, Clone, PartialEq)]
 struct Layer {
+    /// The offset of its `;LAYER_CHANGE` line's first byte.
+    begins: u64,
     /// The offset just past its `;LAYER_CHANGE` line.
     at: u64,
+    /// Where the reader stood just past that line.
+    head: Head,
     /// Its height, from the `;Z:` after it.
     z_mm: Option<f64>,
     /// The types any of its moves laid material under, as bits of the index's
@@ -146,6 +182,8 @@ struct Mark<T> {
 struct ObjectDraft {
     /// The rectangle its material reached: least X, least Y, most X, most Y.
     bounds: Option<[f64; 4]>,
+    /// How far its material reached in every outline direction.
+    reach: Reach,
 }
 
 /// One file's slicer plan, by file position.
@@ -171,6 +209,14 @@ pub struct GcodeIndex {
     objects: Vec<BedArea>,
     /// Whether the file labels any object.
     labelled_objects: bool,
+    /// Each object's outline, in the order of `objects`; one over all the
+    /// part's extrusion when the file labels none.
+    outlines: Vec<ObjectOutline>,
+    /// Where each labelled object's block starts — the offset just past its
+    /// `M486 S<n>` — and the outline it lays, in file order.
+    blocks: Vec<(u64, Option<usize>)>,
+    /// The spool the file's bytes were copied to as it was read.
+    spool: Option<std::path::PathBuf>,
 }
 
 /// What a file set one adjustable to, as of a file position: the value, and
@@ -226,6 +272,132 @@ impl GcodeIndex {
             + self.flow.capacity() * core::mem::size_of::<Mark<f64>>()
             + self.fan.capacity() * core::mem::size_of::<Mark<f64>>()
             + self.objects.capacity() * core::mem::size_of::<BedArea>()
+            + self.outlines.capacity() * core::mem::size_of::<ObjectOutline>()
+            + self
+                .outlines
+                .iter()
+                .map(|outline| outline.hull_mm.capacity() * core::mem::size_of::<[f32; 2]>())
+                .sum::<usize>()
+            + self.blocks.capacity() * core::mem::size_of::<(u64, Option<usize>)>()
+    }
+
+    /// Each object's footprint outline, in [`SlicerPlan::objects`]' order;
+    /// one outline over all the part's extrusion when the file labels no
+    /// objects, and none when it lays nothing.
+    #[must_use]
+    pub fn object_outlines(&self) -> &[ObjectOutline] {
+        &self.outlines
+    }
+
+    /// Which object the printer is laying at a file position, as an index
+    /// into [`object_outlines`](Self::object_outlines): the object whose
+    /// labelled block holds it, else the last laid before it; 0 for a file
+    /// labelling none. Nothing before any object is laid.
+    #[must_use]
+    pub fn object_at(&self, file_position_bytes: u64) -> Option<usize> {
+        if !self.labelled_objects {
+            return (!self.outlines.is_empty()).then_some(0);
+        }
+        let started = self
+            .blocks
+            .partition_point(|(start, _)| *start <= file_position_bytes);
+        self.blocks[..started]
+            .iter()
+            .rev()
+            .find_map(|(_, outline)| *outline)
+    }
+
+    /// The layer the printer is laying at a file position.
+    #[must_use]
+    pub fn layer_at(&self, file_position_bytes: u64) -> Option<LayerRef> {
+        self.layers
+            .iter()
+            .rposition(|layer| layer.at <= file_position_bytes)
+            .map(LayerRef)
+    }
+
+    /// One layer's height, when the file states it.
+    #[must_use]
+    pub fn layer_z_mm(&self, layer: LayerRef) -> Option<f64> {
+        self.layers.get(layer.0).and_then(|held| held.z_mm)
+    }
+
+    /// Whether a layer lays object extrusion, which the planned-geometry
+    /// contract defines as anything but supports: skirt, brim and unlabelled
+    /// moves count, because the first layer's brim is part of what the
+    /// alignment check matches.
+    fn lays_object(&self, layer: &Layer) -> bool {
+        layer.types & !self.type_bits(&SUPPORTS) != 0
+    }
+
+    /// The nearest layer at or below one that lays the part rather than its
+    /// supports alone, so a support-only layer still shows the part.
+    #[must_use]
+    pub fn object_layer_at_or_below(&self, layer: LayerRef) -> Option<LayerRef> {
+        let held = self.layers.get(..=layer.0)?;
+        held.iter()
+            .rposition(|layer| self.lays_object(layer))
+            .map(LayerRef)
+    }
+
+    /// The first layer laying the part, and the file position at which it
+    /// ends: the first byte of the next layer's `;LAYER_CHANGE`.
+    #[must_use]
+    pub fn first_object_layer(&self) -> Option<(LayerRef, u64)> {
+        let first = self
+            .layers
+            .iter()
+            .position(|layer| self.lays_object(layer))?;
+        Some((LayerRef(first), self.layer_end(first)))
+    }
+
+    /// Where a layer's bytes end.
+    fn layer_end(&self, index: usize) -> u64 {
+        self.layers
+            .get(index + 1)
+            .map_or(self.bytes, |next| next.begins)
+    }
+
+    /// One layer's planned toolpath, read from that layer's byte range of the
+    /// print's spool and never from a fresh read of the printer's file.
+    ///
+    /// # Errors
+    ///
+    /// [`SpoolError::NoSpool`] for an index built with no spool,
+    /// [`SpoolError::UnknownLayer`] for a layer not this index's, and
+    /// [`SpoolError::Io`] when the spool cannot be read to the layer's end.
+    pub fn layer_toolpath(&self, layer: LayerRef) -> Result<LayerToolpath, SpoolError> {
+        use std::io::{Read as _, Seek as _, SeekFrom};
+
+        let held = self.layers.get(layer.0).ok_or(SpoolError::UnknownLayer)?;
+        let path = self.spool.as_ref().ok_or(SpoolError::NoSpool)?;
+        let io = |error: std::io::Error| SpoolError::Io {
+            detail: error.to_string(),
+        };
+        let length =
+            usize::try_from(self.layer_end(layer.0).saturating_sub(held.at)).map_err(|_| {
+                SpoolError::Io {
+                    detail: "a layer too long to hold".to_owned(),
+                }
+            })?;
+        let mut file = std::fs::File::open(path).map_err(io)?;
+        file.seek(SeekFrom::Start(held.at)).map_err(io)?;
+        let mut bytes = vec![0; length];
+        file.read_exact(&mut bytes).map_err(io)?;
+        let mut builder = IndexBuilder::reading_layer(self.type_names.clone(), held.head);
+        let _ = builder.take(&bytes);
+        if !builder.line.is_empty() {
+            builder.end_line();
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a layer height is a few hundred millimetres at most"
+        )]
+        let z_mm = held.z_mm.unwrap_or(0.0) as f32;
+        Ok(LayerToolpath {
+            z_mm,
+            segments: builder.collected.unwrap_or_default(),
+        })
     }
 
     /// The most extrusion types any one layer lays material under, and the
@@ -684,6 +856,30 @@ pub struct IndexBuilder {
     axes: Positioning,
     /// What `M82`/`M83` last said.
     extruder: Positioning,
+    /// Where the line being read began.
+    line_began: u64,
+    /// How far the part's extrusion reached, for a file labelling no object.
+    all: Reach,
+    /// Where each labelled object's block starts, and its place in
+    /// `objects`.
+    blocks: Vec<(u64, usize)>,
+    /// Where the file's bytes are copied as they are read.
+    spool: Option<Spooling>,
+    /// The segments of a toolpath read, when this builder is one.
+    collected: Option<Vec<ToolpathSegment>>,
+    /// Where the last move an outline reached ended.
+    reached_last: Option<[f64; 2]>,
+}
+
+/// A spool being written.
+#[derive(Debug)]
+struct Spooling {
+    /// The spool file, removed again when any write to it fails.
+    path: std::path::PathBuf,
+    /// The open file, buffered.
+    writer: std::io::BufWriter<std::fs::File>,
+    /// Whether a write failed, which leaves no spool.
+    failed: bool,
 }
 
 impl GcodeSink for IndexBuilder {
@@ -691,6 +887,16 @@ impl GcodeSink for IndexBuilder {
         // Plain index loops rather than iterator adaptors throughout this
         // reader: it runs over every byte of a print, and is as fast in a
         // build without optimisation as in one with it only written so.
+        // A write the filesystem refuses — a full disk — is proved by no test:
+        // making one fail needs a filesystem made to fail mid-stream, which no
+        // host the suite runs on offers without privileges. What it leads to
+        // is the same index with no spool, which
+        // `a_spool_that_cannot_be_created_leaves_the_plan_without_toolpaths`
+        // proves end to end.
+        if let Some(spool) = self.spool.as_mut().filter(|spool| !spool.failed) {
+            use std::io::Write as _;
+            spool.failed = spool.writer.write_all(piece).is_err();
+        }
         let mut start = 0;
         let mut at = 0;
         while at < piece.len() {
@@ -707,6 +913,7 @@ impl GcodeSink for IndexBuilder {
                     self.hold(head);
                     self.end_line();
                 }
+                self.line_began = self.read;
                 start = at + 1;
             }
             at += 1;
@@ -725,6 +932,41 @@ impl IndexBuilder {
         Self::default()
     }
 
+    /// A builder that has read nothing and copies every byte it is given to
+    /// a spool file at `path`, created or truncated now, which the index it
+    /// builds reads each layer's toolpath back from.
+    ///
+    /// # Errors
+    ///
+    /// The filesystem's own error when the file cannot be created.
+    pub fn spooling(path: std::path::PathBuf) -> std::io::Result<Self> {
+        let file = std::fs::File::create(&path)?;
+        Ok(Self {
+            spool: Some(Spooling {
+                path,
+                writer: std::io::BufWriter::with_capacity(1 << 16, file),
+                failed: false,
+            }),
+            ..Self::default()
+        })
+    }
+
+    /// A builder reading one layer's bytes from where the reader stood at
+    /// its start, collecting its extrusion moves.
+    fn reading_layer(type_names: Vec<String>, head: Head) -> Self {
+        Self {
+            type_names,
+            labelled_types: true,
+            current_type: head.current_type,
+            at: head.at,
+            e: head.e,
+            axes: head.axes,
+            extruder: head.extruder,
+            collected: Some(Vec::new()),
+            ..Self::default()
+        }
+    }
+
     /// The index of everything read, the file's last line counting whether or
     /// not it ended in a newline.
     #[must_use]
@@ -733,21 +975,44 @@ impl IndexBuilder {
             self.end_line();
         }
         let mut drafts: Vec<Option<ObjectDraft>> = self.objects.into_iter().map(Some).collect();
-        let objects = self
-            .object_numbers
-            .into_values()
-            .filter_map(|place| drafts.get_mut(place).and_then(Option::take))
-            .filter_map(|draft| {
-                draft.bounds.map(|[least_x, least_y, most_x, most_y]| {
-                    [
-                        whole(tenth(least_x).floor()),
-                        whole(tenth(least_y).floor()),
-                        whole(tenth(most_x).ceil()),
-                        whole(tenth(most_y).ceil()),
-                    ]
-                })
-            })
+        let mut objects = Vec::new();
+        let mut outlines = Vec::new();
+        let mut outline_of = vec![None; drafts.len()];
+        for place in self.object_numbers.into_values() {
+            let Some(draft) = drafts.get_mut(place).and_then(Option::take) else {
+                continue;
+            };
+            let Some([least_x, least_y, most_x, most_y]) = draft.bounds else {
+                continue;
+            };
+            objects.push([
+                whole(tenth(least_x).floor()),
+                whole(tenth(least_y).floor()),
+                whole(tenth(most_x).ceil()),
+                whole(tenth(most_y).ceil()),
+            ]);
+            outline_of[place] = Some(outlines.len());
+            outlines.push(draft.reach.outline().unwrap_or(ObjectOutline {
+                hull_mm: Vec::new(),
+            }));
+        }
+        if !self.labelled_objects {
+            outlines.extend(self.all.outline());
+        }
+        let blocks = self
+            .blocks
+            .into_iter()
+            .map(|(start, place)| (start, outline_of.get(place).copied().flatten()))
             .collect();
+        let spool = self.spool.and_then(|mut spool| {
+            use std::io::Write as _;
+            if spool.failed || spool.writer.flush().is_err() {
+                drop(spool.writer);
+                let _ = std::fs::remove_file(&spool.path);
+                return None;
+            }
+            Some(spool.path)
+        });
         GcodeIndex {
             bytes: self.read,
             lines: self.lines,
@@ -759,6 +1024,9 @@ impl IndexBuilder {
             fan: self.fan,
             objects,
             labelled_objects: self.labelled_objects,
+            outlines,
+            blocks,
+            spool,
         }
     }
 
@@ -837,6 +1105,14 @@ impl IndexBuilder {
     fn comment(&mut self, comment: &str) {
         if comment == "LAYER_CHANGE" {
             self.layers.push(Layer {
+                begins: self.line_began,
+                head: Head {
+                    at: self.at,
+                    e: self.e,
+                    axes: self.axes,
+                    extruder: self.extruder,
+                    current_type: self.current_type,
+                },
                 at: self.read,
                 z_mm: None,
                 types: 0,
@@ -908,22 +1184,46 @@ impl IndexBuilder {
         if let (Some(layer), Some(bit)) = (self.layers.last_mut(), self.current_type) {
             layer.types |= 1 << bit;
         }
-        let Some(object) = self.current_object else {
+        let end = self.at;
+        let turn = match code {
+            2 => Some(Turn::Clockwise),
+            3 => Some(Turn::CounterClockwise),
+            _ => None,
+        };
+        let arc = turn.and_then(|turn| arc_of(words, turn, start, end));
+        if let Some(collected) = self.collected.as_mut() {
+            let kind = self
+                .current_type
+                .and_then(|bit| self.type_names.get(bit))
+                .map_or(ExtrusionKind::Other, |name| ExtrusionKind::of_type(name));
+            collect_segments(collected, kind, start, end, arc);
+            return;
+        }
+        let part_of_plan = !(self.labelled_types && self.current_type.is_none());
+        let reach = if let Some(object) = self.current_object {
+            let draft = &mut self.objects[object];
+            grow(&mut draft.bounds, start[0], start[1]);
+            grow(&mut draft.bounds, end[0], end[1]);
+            if let Some(turn) = turn {
+                for [x, y] in arc_extremes(words, turn, start, end) {
+                    grow(&mut draft.bounds, x, y);
+                }
+            }
+            &mut draft.reach
+        } else if !self.labelled_objects && part_of_plan {
+            &mut self.all
+        } else {
             return;
         };
-        let end = self.at;
-        let draft = &mut self.objects[object];
-        grow(&mut draft.bounds, start[0], start[1]);
-        grow(&mut draft.bounds, end[0], end[1]);
-        if code >= 2 {
-            let turn = if code == 2 {
-                Turn::Clockwise
-            } else {
-                Turn::CounterClockwise
-            };
-            for [x, y] in arc_extremes(words, turn, start, end) {
-                grow(&mut draft.bounds, x, y);
-            }
+        // A move continuing the last one starts where that one ended, which
+        // has been reached already.
+        if self.reached_last != Some([start[0], start[1]]) {
+            reach.point(start[0], start[1]);
+        }
+        reach.point(end[0], end[1]);
+        self.reached_last = Some([end[0], end[1]]);
+        if let Some(arc) = arc {
+            reach.arc(arc.centre, arc.radius, arc.base, arc.sweep);
         }
     }
 
@@ -1030,6 +1330,7 @@ impl IndexBuilder {
         self.labelled_objects = true;
         if number < 0.0 {
             self.current_object = None;
+            self.reached_last = None;
             return;
         }
         let id = whole(number);
@@ -1037,6 +1338,7 @@ impl IndexBuilder {
             *place
         } else if self.objects.len() >= OBJECT_LIMIT {
             self.current_object = None;
+            self.reached_last = None;
             return;
         } else {
             self.objects.push(ObjectDraft::default());
@@ -1044,6 +1346,8 @@ impl IndexBuilder {
             self.objects.len() - 1
         };
         self.current_object = Some(place);
+        self.reached_last = None;
+        self.blocks.push((self.read, place));
     }
 }
 
@@ -1110,27 +1414,15 @@ fn arc_extremes(
     start: [f64; 3],
     end: [f64; 3],
 ) -> impl Iterator<Item = [f64; 2]> {
-    let centre = words.r.map_or_else(
-        || {
-            Some([
-                start[0] + words.i.unwrap_or(0.0),
-                start[1] + words.j.unwrap_or(0.0),
-            ])
-        },
-        |radius| centre_of_radius(radius, turn, start, end),
-    );
-    let reach = centre.map(|centre| {
-        let radius = (start[0] - centre[0]).hypot(start[1] - centre[1]);
-        let from = (start[1] - centre[1]).atan2(start[0] - centre[0]);
-        let to = (end[1] - centre[1]).atan2(end[0] - centre[0]);
+    let reach = arc_of(words, turn, start, end).map(|arc| {
+        let ArcGeometry {
+            centre,
+            radius,
+            base,
+            sweep,
+            ..
+        } = arc;
         let tau = core::f64::consts::TAU;
-        // How far the arc turns, counter-clockwise from `from`, as a positive
-        // sweep: a clockwise arc is the same sweep taken from its end.
-        let (base, sweep) = match turn {
-            Turn::Clockwise => (to, (from - to).rem_euclid(tau)),
-            Turn::CounterClockwise => (from, (to - from).rem_euclid(tau)),
-        };
-        let sweep = if sweep < 1e-9 { tau } else { sweep };
         (0..4).filter_map(move |quarter| {
             let angle = core::f64::consts::FRAC_PI_2 * f64::from(quarter);
             ((angle - base).rem_euclid(tau) <= sweep + 1e-9).then(|| {
@@ -1142,6 +1434,107 @@ fn arc_extremes(
         })
     });
     reach.into_iter().flatten()
+}
+
+/// One arc's circle and the part of it swept.
+#[derive(Debug, Clone, Copy)]
+struct ArcGeometry {
+    /// The circle's centre in bed mm, from `I`/`J` or the `R` form.
+    centre: [f64; 2],
+    /// The distance from that centre to the move's start, in mm.
+    radius: f64,
+    /// The angle the sweep starts at, counter-clockwise: the arc's start for
+    /// `G3`, its end for `G2`.
+    base: f64,
+    /// How far it turns, as a positive angle; a whole turn for an arc ending
+    /// where it began.
+    sweep: f64,
+    /// The direction it is laid in.
+    turn: Turn,
+}
+
+/// The circle an arc lies on and the part of it swept: the centre `I` and `J`
+/// name, or for the `R` form the one [`centre_of_radius`] finds. Nothing for
+/// an `R` arc with no circle.
+fn arc_of(words: &Move, turn: Turn, start: [f64; 3], end: [f64; 3]) -> Option<ArcGeometry> {
+    let centre = words.r.map_or_else(
+        || {
+            Some([
+                start[0] + words.i.unwrap_or(0.0),
+                start[1] + words.j.unwrap_or(0.0),
+            ])
+        },
+        |radius| centre_of_radius(radius, turn, start, end),
+    )?;
+    let radius = (start[0] - centre[0]).hypot(start[1] - centre[1]);
+    let from = (start[1] - centre[1]).atan2(start[0] - centre[0]);
+    let to = (end[1] - centre[1]).atan2(end[0] - centre[0]);
+    let tau = core::f64::consts::TAU;
+    // How far the arc turns, counter-clockwise from `base`, as a positive
+    // sweep: a clockwise arc is the same sweep taken from its end.
+    let (base, sweep) = match turn {
+        Turn::Clockwise => (to, (from - to).rem_euclid(tau)),
+        Turn::CounterClockwise => (from, (to - from).rem_euclid(tau)),
+    };
+    let sweep = if sweep < 1e-9 { tau } else { sweep };
+    Some(ArcGeometry {
+        centre,
+        radius,
+        base,
+        sweep,
+        turn,
+    })
+}
+
+/// A move's toolpath segments: the move itself, or an arc cut into chords
+/// of at most [`CHORD_MM`] from its start to its end, in the direction laid.
+fn collect_segments(
+    collected: &mut Vec<ToolpathSegment>,
+    kind: ExtrusionKind,
+    start: [f64; 3],
+    end: [f64; 3],
+    arc: Option<ArcGeometry>,
+) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "bed millimetres are far inside f32's range; a toolpath is drawn, not measured"
+    )]
+    let at = |x: f64, y: f64| [x as f32, y as f32];
+    let Some(arc) = arc else {
+        collected.push(ToolpathSegment {
+            from_mm: at(start[0], start[1]),
+            to_mm: at(end[0], end[1]),
+            kind,
+        });
+        return;
+    };
+    let length = arc.sweep * arc.radius;
+    let chords = (length / CHORD_MM).ceil().clamp(1.0, 4096.0);
+    let (from, step) = match arc.turn {
+        Turn::CounterClockwise => (arc.base, arc.sweep / chords),
+        Turn::Clockwise => (arc.base + arc.sweep, -arc.sweep / chords),
+    };
+    let mut previous = at(start[0], start[1]);
+    let mut k = 1.0;
+    while k < chords {
+        let angle = from + step * k;
+        let next = at(
+            arc.centre[0] + arc.radius * angle.cos(),
+            arc.centre[1] + arc.radius * angle.sin(),
+        );
+        collected.push(ToolpathSegment {
+            from_mm: previous,
+            to_mm: next,
+            kind,
+        });
+        previous = next;
+        k += 1.0;
+    }
+    collected.push(ToolpathSegment {
+        from_mm: previous,
+        to_mm: at(end[0], end[1]),
+        kind,
+    });
 }
 
 /// The centre of an `R`-form arc: on the chord's perpendicular, on the side a
@@ -1685,6 +2078,76 @@ impl crate::supervisor::Supervisor {
         }))
     }
 
+    /// One open print's G-code index, built from its file — and spooled —
+    /// when this supervisor has none for it yet; nothing for a print the
+    /// store does not hold or could not read, that has ended, names no file,
+    /// or whose file could not be read.
+    pub async fn print_gcode_index(&self, print_id: PrintId) -> Option<Arc<GcodeIndex>> {
+        // A store that cannot be read answers nothing, as a print it does not
+        // hold does, and its caller asks again at the next read. No test makes
+        // the store fail here, since every store fake failure lands on the read
+        // before this one; the same `None` for a print the store does not
+        // hold is proved by `the_spool_goes_when_the_print_closes_and_strays_are_swept`,
+        // and the alignment check's asking again by its retried-fetch journey.
+        let print = self.stores().prints.print(print_id).await.ok()??;
+        if print.ended_at.is_some() {
+            return None;
+        }
+        self.index_of(print.id, print.file_name.as_deref()?).await
+    }
+
+    /// Delete one print's G-code spool, when there is one.
+    pub(crate) fn drop_gcode_spool(&self, print_id: PrintId) {
+        if let Some(directory) = self.config().gcode_spool_dir.as_deref() {
+            let _ = std::fs::remove_file(crate::toolpath::spool_path(directory, print_id));
+        }
+    }
+
+    /// Delete every G-code spool of a print that is not open: what a print
+    /// closed while no supervisor was running left behind.
+    ///
+    /// # Errors
+    ///
+    /// The store's own error when the open prints could not be read.
+    pub async fn sweep_gcode_spools(&self) -> Result<(), crate::error::CoreError> {
+        let Some(directory) = self.config().gcode_spool_dir.clone() else {
+            return Ok(());
+        };
+        let open: Vec<String> = self
+            .stores()
+            .prints
+            .open_prints()
+            .await?
+            .iter()
+            .map(|print| print.id.to_string())
+            .collect();
+        // A directory that cannot be listed, an entry that cannot be read and
+        // a spool that cannot be removed each leave a file behind, which the
+        // next start's sweep tries again. No test makes the filesystem refuse
+        // them, since that needs one made to fail beneath a running server;
+        // what proves the sweep is that it removes exactly the spools of
+        // closed prints and nothing else, at start and on a close
+        // (`the_spool_goes_when_the_print_closes_and_strays_are_swept`).
+        let Ok(entries) = std::fs::read_dir(&directory) else {
+            return Ok(());
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            // Only a file named for a print is a spool; anything else is left.
+            let Some(print) = name
+                .to_str()
+                .and_then(|name| name.strip_suffix(crate::toolpath::SPOOL_SUFFIX))
+                .filter(|print| print.parse::<PrintId>().is_ok())
+            else {
+                continue;
+            };
+            if !open.iter().any(|id| id == print) {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+        Ok(())
+    }
+
     /// One print's index, built from its file when there is none yet.
     async fn index_of(&self, print_id: PrintId, file: &str) -> Option<Arc<GcodeIndex>> {
         // A name no file could carry is no file to read.
@@ -1693,7 +2156,16 @@ impl crate::supervisor::Supervisor {
             Claimed::Ready(index) => return Some(index),
             Claimed::Build(claim) => claim,
         };
-        let mut builder = IndexBuilder::new();
+        // A spool that cannot be created leaves an index with no toolpaths,
+        // which is no reason to go without the plan.
+        let mut builder = self
+            .config()
+            .gcode_spool_dir
+            .as_deref()
+            .and_then(|directory| {
+                IndexBuilder::spooling(crate::toolpath::spool_path(directory, print_id)).ok()
+            })
+            .unwrap_or_default();
         self.read_gcode(file_name.clone(), &mut builder)
             .await
             .ok()?;
@@ -1786,7 +2258,34 @@ impl crate::supervisor::Supervisor {
 
 #[cfg(test)]
 mod tests {
-    use super::{GcodeIndexes, HELD_INDEXES, RISE_WINDOW_S};
+    use super::{GcodeIndexes, HELD_INDEXES, OVER_AIR, RISE_WINDOW_S, SUPPORTS, WALLS};
+    use crate::toolpath::ExtrusionKind;
+
+    /// The type names the plan's facts single out are the ones the toolpath
+    /// draws in the same kinds: a wall is drawn as a wall, a support as a
+    /// support, and what is laid over air as a bridge or an overhang.
+    #[test]
+    fn the_plans_type_names_map_to_the_kinds_the_toolpath_draws() {
+        for name in WALLS {
+            assert_eq!(ExtrusionKind::of_type(name), ExtrusionKind::Wall, "{name}");
+        }
+        for name in SUPPORTS {
+            assert_eq!(
+                ExtrusionKind::of_type(name),
+                ExtrusionKind::Support,
+                "{name}"
+            );
+        }
+        for name in OVER_AIR {
+            assert!(
+                matches!(
+                    ExtrusionKind::of_type(name),
+                    ExtrusionKind::Bridge | ExtrusionKind::Overhang
+                ),
+                "{name}"
+            );
+        }
+    }
     use printobserver_types::{PrintId, Timestamp};
 
     /// An instant some seconds after another.

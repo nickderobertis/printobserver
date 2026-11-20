@@ -60,7 +60,7 @@ git_tag_enable = false
 git_release_enable = false
 
 # One version group holding every crate of the workspace, so a release of any
-# of them is a release of all twelve at one version — the one `[workspace.
+# of them is a release of all thirteen at one version — the one `[workspace.
 # package] version` every crate inherits and the one `v<version>` tag below.
 # Without it release-plz decides each crate apart: a release of some writes the
 # next version into that shared field, which moves every crate, but rewrites
@@ -98,6 +98,10 @@ version_group = "printobserver"
 
 [[package]]
 name = "printobserver-oneharness"
+version_group = "printobserver"
+
+[[package]]
+name = "printobserver-panels"
 version_group = "printobserver"
 
 [[package]]

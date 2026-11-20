@@ -47,10 +47,17 @@ BUILD_TIMEOUT_SECONDS = 2400
 
 
 @pytest.fixture(scope="module")
-def supervisor() -> Path:
-    """The real program, built once: what the finished build carries and the clients reach."""
+def supervisor(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The real program, built once: what the finished build carries and the clients reach.
+
+    The tests read a copy rather than `target/debug` itself. The gate runs other
+    projects' cargo builds beside this suite, and one that relinks the program
+    there between `finished` and a later proof would hand that proof a program
+    other than the one the finished build carries.
+    """
     repo = Repo(REPO_ROOT)
-    built = repo.root / "target" / "debug" / platforms.host(repo).program
+    program = platforms.host(repo).program
+    built = repo.root / "target" / "debug" / program
     if not built.is_file():
         passing(
             run(
@@ -60,7 +67,9 @@ def supervisor() -> Path:
             ),
             describing="building the program the finished build carries",
         )
-    return built
+    held = tmp_path_factory.mktemp("supervisor") / program
+    shutil.copy2(built, held)
+    return held
 
 
 @pytest.fixture(scope="module")

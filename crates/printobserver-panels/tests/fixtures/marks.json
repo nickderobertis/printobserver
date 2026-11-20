@@ -1,0 +1,318 @@
+{
+ "about": "Hand-marked points on printed parts' edges, in pixels of the frames under frames/, held out of the calibration's fit. `outline` names the layer each point's edge belongs to: `top`, the layer at the frame's recorded height; `first`, the first object layer (a part's base). `part` names the physical part, and `parts` a bed point inside each: on the bubbler plate the guard and the pad are one G-code object, so each is measured against its own island of walls.",
+ "parts": {
+  "guard": [
+   110.0,
+   109.0
+  ],
+  "pad": [
+   160.0,
+   95.0
+  ],
+  "jar-top": [
+   125.0,
+   110.0
+  ]
+ },
+ "held_out": [
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-018-obs-123246-p24.5.jpg",
+   "part": "jar-top",
+   "outline": "top",
+   "px": [
+    [
+     1081,
+     286
+    ],
+    [
+     1156,
+     275
+    ],
+    [
+     1196,
+     257.5
+    ],
+    [
+     1231,
+     230
+    ]
+   ],
+   "marked_by": "the frame-panels spike, on unannotated zooms, before any projection was drawn"
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-049-obs-133131-p59.0.jpg",
+   "part": "jar-top",
+   "outline": "top",
+   "px": [
+    [
+     901,
+     170
+    ],
+    [
+     1171,
+     175
+    ],
+    [
+     1056,
+     237.5
+    ],
+    [
+     1131,
+     220
+    ],
+    [
+     1006,
+     117.5
+    ]
+   ],
+   "marked_by": "the frame-panels spike, on unannotated zooms, before any projection was drawn"
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-069-obs-141200-p88.4.jpg",
+   "part": "jar-top",
+   "outline": "top",
+   "px": [
+    [
+     892,
+     130
+    ],
+    [
+     1183.5,
+     155
+    ],
+    [
+     966,
+     105
+    ]
+   ],
+   "marked_by": "the frame-panels spike, on unannotated zooms, before any projection was drawn"
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-016-obs-170731-p13.8.jpg",
+   "part": "guard",
+   "outline": "top",
+   "px": [
+    [
+     915.7,
+     193.3
+    ],
+    [
+     995.7,
+     176.7
+    ],
+    [
+     1074,
+     210
+    ],
+    [
+     1002.3,
+     251.7
+    ],
+    [
+     1055.7,
+     243.3
+    ]
+   ],
+   "marked_by": "the frame-panels spike, on unannotated zooms, before any projection was drawn"
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-048-obs-180412-p65.7.jpg",
+   "part": "guard",
+   "outline": "top",
+   "px": [
+    [
+     890.3,
+     190
+    ],
+    [
+     977,
+     175
+    ],
+    [
+     1075.3,
+     205
+    ],
+    [
+     983.7,
+     256.7
+    ],
+    [
+     1043.7,
+     240
+    ]
+   ],
+   "marked_by": "the frame-panels spike, on unannotated zooms, before any projection was drawn"
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-067-obs-184042-p89.2.jpg",
+   "part": "guard",
+   "outline": "top",
+   "px": [
+    [
+     1081,
+     196.7
+    ],
+    [
+     1043.7,
+     160
+    ],
+    [
+     1017,
+     153.3
+    ],
+    [
+     1077,
+     180
+    ]
+   ],
+   "marked_by": "the frame-panels spike, on unannotated zooms, before any projection was drawn"
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-005-obs-165325-p01.7.jpg",
+   "part": "guard",
+   "outline": "first",
+   "px": [
+    [
+     865,
+     200
+    ],
+    [
+     960,
+     148
+    ],
+    [
+     1050,
+     160
+    ],
+    [
+     1095,
+     210
+    ],
+    [
+     1000,
+     275
+    ],
+    [
+     900,
+     255
+    ]
+   ],
+   "marked_by": "this change, on the unannotated frame, before any projection was drawn: the guard base outer edge"
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-005-obs-165325-p01.7.jpg",
+   "part": "pad",
+   "outline": "first",
+   "px": [
+    [
+     1179,
+     122
+    ],
+    [
+     1200,
+     120
+    ],
+    [
+     1217,
+     123
+    ],
+    [
+     1234,
+     133
+    ],
+    [
+     1226,
+     146
+    ],
+    [
+     1202,
+     157
+    ],
+    [
+     1180,
+     160
+    ]
+   ],
+   "marked_by": "this change, on a 4x zoom with a 10 px grid, before any projection was drawn: the outer edge of the pad's front foot, the one beside the head"
+  }
+ ],
+ "ring": {
+  "case": "jar-top-wrong-material-first-layer-detach",
+  "ring_top_mm": 0.4,
+  "frames": {
+   "agent-008-look-182419.jpg": [
+    [
+     848,
+     165
+    ],
+    [
+     999,
+     72.5
+    ],
+    [
+     1049,
+     300
+    ],
+    [
+     1234,
+     180
+    ],
+    [
+     899,
+     240
+    ],
+    [
+     874,
+     115
+    ],
+    [
+     1174,
+     265
+    ]
+   ],
+   "agent-009-obs-182450-p03.1.jpg": [
+    [
+     1179,
+     135
+    ],
+    [
+     1234,
+     190
+    ],
+    [
+     1359,
+     245
+    ],
+    [
+     1474,
+     230
+    ],
+    [
+     1509,
+     190
+    ],
+    [
+     1469,
+     130
+    ],
+    [
+     1384,
+     70
+    ],
+    [
+     1284,
+     50
+    ]
+   ]
+  },
+  "marked_by": "the frame-panels spike: the rim ring outer edge in the frame before the drag shows and the first frame showing it"
+ }
+}

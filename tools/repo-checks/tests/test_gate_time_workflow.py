@@ -75,7 +75,9 @@ MOVED = {
 #: tooling project the gate's tiers reach and no lane of the integration tier
 #: does, and `repo-checks-host`, the repository checks' host-dependent suites
 #: split out of `repo-checks`, and `release-artifacts-independent`, the release
-#: tooling's host-independent suites split out of `release-artifacts`.
+#: tooling's host-independent suites split out of `release-artifacts`, and the
+#: camera panels: the `printobserver-panels` crate, its recorded-frame suite and
+#: the `camera-calibration` tool.
 ADDED = {
     "gate (macos-aarch64)": {
         ("skilltest", "budgets"),
@@ -107,6 +109,15 @@ ADDED = {
         ("release-artifacts-independent", "lint"),
         ("release-artifacts-independent", "test"),
         ("release-artifacts-independent", "typecheck"),
+        ("printobserver-panels", "build"),
+        ("printobserver-panels", "format-check"),
+        ("printobserver-panels", "lint"),
+        ("printobserver-panels", "test"),
+        ("printobserver-panels-fixtures", "test"),
+        ("camera-calibration", "format-check"),
+        ("camera-calibration", "lint"),
+        ("camera-calibration", "test"),
+        ("camera-calibration", "typecheck"),
     },
     "integration (macos-aarch64)": set(),
 }

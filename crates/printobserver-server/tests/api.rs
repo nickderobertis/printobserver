@@ -32,6 +32,8 @@ mod refusing_prints;
 #[path = "support/world.rs"]
 mod world;
 
+#[path = "journeys/aligning.rs"]
+mod aligning;
 #[path = "journeys/authenticating.rs"]
 mod authenticating;
 #[path = "journeys/bed_clear.rs"]

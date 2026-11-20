@@ -14,7 +14,9 @@
 # prints a warning on success trains the next reader to ignore its output.
 
 [tool.uv.workspace]
-members = []
+# The camera calibration tool's numpy, scipy and OpenCV are resolved here, and
+# installed only when that package is synced or run.
+members = ["tools/camera-calibration"]
 
 [dependency-groups]
 dev = [

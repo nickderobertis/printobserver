@@ -164,6 +164,7 @@ fn unacceptable(
                 toml::Value::String("file:///var/lib/camera/frame.jpg".to_owned()),
             )])),
         ),
+        ConfigField::CameraCalibration => unacceptable_calibration(root, &mut document),
         ConfigField::SpoolsPreflight
         | ConfigField::SpoolsBufferPercent
         | ConfigField::SpoolsBufferMinG
@@ -237,6 +238,20 @@ fn unacceptable_watch(field: ConfigField, document: &mut toml::Value) {
         ),
         _ => unreachable!("{field} is not one of the watch's fields"),
     }
+}
+
+/// Make the camera calibration unacceptable: a file that is no calibration.
+fn unacceptable_calibration(root: &std::path::Path, document: &mut toml::Value) {
+    let path = root.join("calibration.json");
+    std::fs::write(&path, "{\"schema_version\": 1}").expect("a file is written");
+    set(
+        document,
+        "camera",
+        toml::Value::Table(toml::Table::from_iter([(
+            "calibration".to_owned(),
+            toml::Value::String(path.display().to_string()),
+        )])),
+    );
 }
 
 /// Make the sheet table unacceptable: a material listed on no sheet, which

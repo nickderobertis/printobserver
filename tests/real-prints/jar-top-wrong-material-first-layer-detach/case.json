@@ -1,5 +1,6 @@
 {
   "case": "jar-top-wrong-material-first-layer-detach",
+  "camera_calibration": "../cameras/core-one-2026-09-27.json",
   "verdict": "real failure: the part came off the sheet on the first layers",
   "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), textured sheet",
   "printed_on": "2026-10-29, 18:14 to about 18:27",

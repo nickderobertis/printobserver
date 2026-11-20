@@ -235,6 +235,8 @@ pub enum ConfigField {
     /// Where a fresh frame of the print is fetched from, when a camera is
     /// configured.
     CameraSnapshotUrl,
+    /// The camera's calibration file, when one is configured.
+    CameraCalibration,
     /// Where `Obico`'s own API answers, when it is configured.
     ObicoUrl,
     /// The bearer token `Obico`'s API is reached with.
@@ -279,7 +281,7 @@ pub enum ConfigField {
 
 impl ConfigField {
     /// Every field this program takes, and there is no other.
-    pub const ALL: [Self; 38] = [
+    pub const ALL: [Self; 39] = [
         Self::StateDir,
         Self::Listen,
         Self::OctoprintUrl,
@@ -298,6 +300,7 @@ impl ConfigField {
         Self::ApiCredential,
         Self::ApiCredentialVerifier,
         Self::CameraSnapshotUrl,
+        Self::CameraCalibration,
         Self::ObicoUrl,
         Self::ObicoAccessToken,
         Self::ObicoMlApiUrl,
@@ -342,6 +345,7 @@ impl ConfigField {
             Self::ApiCredential => "api.credential",
             Self::ApiCredentialVerifier => "api.credential_verifier",
             Self::CameraSnapshotUrl => "camera.snapshot_url",
+            Self::CameraCalibration => "camera.calibration",
             Self::ObicoUrl => "obico.url",
             Self::ObicoAccessToken => "obico.access_token",
             Self::ObicoMlApiUrl => "obico.ml_api_url",
@@ -621,6 +625,13 @@ pub struct CameraSection {
     /// as a `go2rtc` `frame.jpeg` address. Left out, a look carries no frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snapshot_url: Option<String>,
+    /// The path of this camera's calibration file, which
+    /// `tools/camera-calibration` writes: it lets a check draw the planned
+    /// toolpath where it sits in this camera's view. Read and validated at
+    /// start, and an unreadable or invalid file is refused. Left out, nothing
+    /// is drawn and no print's first-layer alignment is checked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calibration: Option<PathBuf>,
 }
 
 /// Where `Obico`'s own API answers, as written down.
@@ -1201,6 +1212,9 @@ pub struct ServerConfig {
     pub api_credential_verifier: Option<CredentialVerifier>,
     /// Where a fresh frame of the print is fetched from, when configured.
     pub camera_snapshot_url: Option<WebAddress>,
+    /// The camera's calibration, read and validated at start, when one is
+    /// configured.
+    pub camera_calibration: Option<std::sync::Arc<printobserver_panels::CameraCalibration>>,
     /// `Obico`'s own API, when configured; its debug form omits the token.
     pub obico_api: Option<ObicoApi>,
     /// How spools are checked before a print, and the margin asked for.
@@ -1304,11 +1318,7 @@ impl ServerConfig {
                     .map_err(|why| ConfigError::about(ConfigField::ApiCredentialVerifier, why))
             })
             .transpose()?;
-        let camera_snapshot_url = file
-            .camera
-            .snapshot_url
-            .map(|url| web_address(ConfigField::CameraSnapshotUrl, &url))
-            .transpose()?;
+        let (camera_snapshot_url, camera_calibration) = camera(file.camera)?;
         let obico_api = obico_api(file.obico)?;
         let spools = spool_policy(&file.spools)?;
         let sheets = match file.sheets.allowed {
@@ -1338,6 +1348,7 @@ impl ServerConfig {
             api_credential,
             api_credential_verifier,
             camera_snapshot_url,
+            camera_calibration,
             obico_api,
             spools,
             sheets,
@@ -1646,6 +1657,46 @@ fn readable(field: ConfigField, named: Option<&Path>) -> Result<Option<PathBuf>,
         .map_err(|error| {
             ConfigError::about(field, format!("{} cannot be read: {error}", path.display()))
         })
+}
+
+/// The camera's snapshot address and calibration, each when configured.
+fn camera(
+    section: CameraSection,
+) -> Result<
+    (
+        Option<WebAddress>,
+        Option<std::sync::Arc<printobserver_panels::CameraCalibration>>,
+    ),
+    ConfigError,
+> {
+    let snapshot_url = section
+        .snapshot_url
+        .map(|url| web_address(ConfigField::CameraSnapshotUrl, &url))
+        .transpose()?;
+    let calibration = section
+        .calibration
+        .as_deref()
+        .map(calibration)
+        .transpose()?
+        .map(std::sync::Arc::new);
+    Ok((snapshot_url, calibration))
+}
+
+/// The camera's calibration file, read and validated where it was named, and
+/// refused naming `camera.calibration` when it cannot be read or is not one.
+fn calibration(path: &Path) -> Result<printobserver_panels::CameraCalibration, ConfigError> {
+    let bytes = std::fs::read(path).map_err(|error| {
+        ConfigError::about(
+            ConfigField::CameraCalibration,
+            format!("{} cannot be read: {error}", path.display()),
+        )
+    })?;
+    printobserver_panels::CameraCalibration::from_json(&bytes).map_err(|error| {
+        ConfigError::about(
+            ConfigField::CameraCalibration,
+            format!("{} is not a camera calibration: {error}", path.display()),
+        )
+    })
 }
 
 /// The installed skill, refused naming how to install one when it is absent or

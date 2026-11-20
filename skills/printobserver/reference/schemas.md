@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-205 types. The set is every type any crate declares under
+206 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -43914,6 +43914,240 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "ZTrust"
+}
+```
+
+### camera-calibration
+
+Declared by `printobserver-panels`.
+
+```json
+{
+  "$defs": {
+    "BedPose": {
+      "additionalProperties": false,
+      "description": "Where the bed is, seen from the camera: the transform from the bed frame\nto the camera's, `X_cam = R \u00b7 X_bed + t`.",
+      "properties": {
+        "rotation_rodrigues": {
+          "description": "`R` as a Rodrigues vector, in radians.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "translation_mm": {
+          "description": "`t`, in millimetres.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "rotation_rodrigues",
+        "translation_mm"
+      ],
+      "type": "object"
+    },
+    "Fit": {
+      "additionalProperties": false,
+      "description": "How well the fit went.",
+      "properties": {
+        "calibrated_at": {
+          "description": "The date the frames were taken, `YYYY-MM-DD`.",
+          "type": "string"
+        },
+        "frames": {
+          "description": "How many frames the marks were on.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rms_reprojection_px": {
+          "description": "The RMS distance of the marks from their projected outlines, in\npixels.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "rms_reprojection_px",
+        "frames",
+        "calibrated_at"
+      ],
+      "type": "object"
+    },
+    "Intrinsics": {
+      "additionalProperties": false,
+      "description": "The lens: focal lengths and principal point in pixels, and the fisheye\ndistortion terms `k1`\u2013`k4`.",
+      "properties": {
+        "cx": {
+          "description": "Principal point, X.",
+          "format": "double",
+          "type": "number"
+        },
+        "cy": {
+          "description": "Principal point, Y.",
+          "format": "double",
+          "type": "number"
+        },
+        "fx": {
+          "description": "Focal length along X, in pixels.",
+          "format": "double",
+          "type": "number"
+        },
+        "fy": {
+          "description": "Focal length along Y, in pixels.",
+          "format": "double",
+          "type": "number"
+        },
+        "k": {
+          "description": "The equidistant model's `k1`\u2013`k4`; the tool fits `k1` and writes the\nrest as 0.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array"
+        }
+      },
+      "required": [
+        "fx",
+        "fy",
+        "cx",
+        "cy",
+        "k"
+      ],
+      "type": "object"
+    },
+    "Landmark": {
+      "additionalProperties": false,
+      "description": "A fixed chassis feature the drift check locates in every frame.",
+      "properties": {
+        "center_px": {
+          "description": "Where its patch's centre was in the calibrated frames, in pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "name": {
+          "description": "What it is.",
+          "type": "string"
+        },
+        "patch_png_base64": {
+          "description": "The grey patch around it, as a base64 PNG.",
+          "type": "string"
+        },
+        "search_radius_px": {
+          "description": "How far from `center_px` it is searched for, in pixels.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "center_px",
+        "patch_png_base64",
+        "search_radius_px"
+      ],
+      "type": "object"
+    },
+    "Motion": {
+      "description": "How the printer moves its bed: the one motion a calibration describes.",
+      "oneOf": [
+        {
+          "const": "bed-z",
+          "description": "The bed moves only in Z, dropping as the print rises.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One printer's camera calibration, as `tools/camera-calibration` writes it.",
+  "properties": {
+    "alignment_max_offset_px": {
+      "description": "The first-layer alignment check's pass threshold, in pixels.",
+      "format": "double",
+      "type": "number"
+    },
+    "bed_pose": {
+      "$ref": "#/$defs/BedPose",
+      "description": "The bed's pose."
+    },
+    "camera_snapshot_url": {
+      "description": "The `[camera] snapshot_url` the calibrated frames came from; a frame\nfrom any other is refused.",
+      "type": "string"
+    },
+    "drift_tolerance_px": {
+      "description": "How far, in pixels, two visible landmarks must both have moved for the\ncamera to count as moved.",
+      "format": "double",
+      "type": "number"
+    },
+    "fit": {
+      "$ref": "#/$defs/Fit",
+      "description": "How well the fit went."
+    },
+    "image_size_px": {
+      "description": "The calibrated frames' size, `[width, height]`; a frame of any other\nsize is refused, never scaled.",
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "intrinsics": {
+      "$ref": "#/$defs/Intrinsics",
+      "description": "The lens."
+    },
+    "landmarks": {
+      "description": "The drift check's landmarks.",
+      "items": {
+        "$ref": "#/$defs/Landmark"
+      },
+      "type": "array"
+    },
+    "motion": {
+      "$ref": "#/$defs/Motion",
+      "description": "How the printer moves its bed."
+    },
+    "schema_version": {
+      "description": "Always [`SCHEMA_VERSION`], which the generated schema pins, so the\ncalibration tool's tests refuse a file of any other version.",
+      "format": "uint32",
+      "maximum": 1,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "motion",
+    "image_size_px",
+    "intrinsics",
+    "bed_pose",
+    "landmarks",
+    "drift_tolerance_px",
+    "camera_snapshot_url",
+    "alignment_max_offset_px",
+    "fit"
+  ],
+  "title": "CameraCalibration",
+  "type": "object"
 }
 ```
 

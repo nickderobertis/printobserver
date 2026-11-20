@@ -89,6 +89,16 @@ an operator installs with `gh skill install`, whose `SKILL.md` the server is
 pointed at, and the agent runs from that skill's directory so the reference
 documents the skill links to resolve beside it.
 
+### printobserver-panels
+
+What lets a print check show the agent the current layer's planned toolpath
+where it sits in the camera's own view: one printer's camera calibration and its
+fisheye projection, the check that the camera has not moved since it was
+calibrated, the per-print check that the projection lands on the printed first
+layer, and the three-panel check image. It draws the planned geometry the
+supervision domain answers — outlines and toolpaths in bed millimetres — and
+never reads G-code itself.
+
 ### printobserver-store-sqlite
 
 The SQLite store — the one durable implementation of the store traits the
@@ -251,8 +261,9 @@ a crate the workspace lacks, and a crate the table omits.
 | `printobserver-octoprint` | `printobserver-printer-api`, `printobserver-types` |
 | `printobserver-obico` | `printobserver-vision-api`, `printobserver-core`, `printobserver-types` |
 | `printobserver-oneharness` | `printobserver-supervisor-api`, `printobserver-types` |
+| `printobserver-panels` | `printobserver-types`, `printobserver-core`, `printobserver-vision-api` |
 | `printobserver-store-sqlite` | `printobserver-core`, `printobserver-supervisor-api`, `printobserver-printer-api`, `printobserver-types` |
-| `printobserver-server` | `printobserver-types`, `printobserver-printer-api`, `printobserver-vision-api`, `printobserver-supervisor-api`, `printobserver-core`, `printobserver-octoprint`, `printobserver-obico`, `printobserver-oneharness`, `printobserver-store-sqlite` |
+| `printobserver-server` | `printobserver-types`, `printobserver-printer-api`, `printobserver-vision-api`, `printobserver-supervisor-api`, `printobserver-core`, `printobserver-octoprint`, `printobserver-obico`, `printobserver-oneharness`, `printobserver-panels`, `printobserver-store-sqlite` |
 | `printobserver-sdk` | — |
 | `printobserver` | `printobserver-server`, `printobserver-sdk`, `printobserver-types` |
 

@@ -633,6 +633,19 @@ pub struct Watched {
     /// The turns it claimed, each to be run by
     /// [`Supervisor::run_supervision`].
     pub turns: Vec<PendingTurn>,
+    /// The open print the printer's job is, and the file position the read
+    /// found it at; absent when no job is running or it could not be read.
+    pub active: Option<ActiveJob>,
+}
+
+/// The open print a read found the printer running, and how far into its
+/// file the job was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActiveJob {
+    /// The print.
+    pub print_id: PrintId,
+    /// The job's file position, when the printer reported one.
+    pub file_position_bytes: Option<i64>,
 }
 
 /// Whether a state is one a connection change is recorded into or out of.
@@ -939,13 +952,20 @@ impl Supervisor {
         self.catch_up().await;
         let resolving = self.resolving().await;
         let observed = self.observe_job().await;
+        let mut active = None;
         if let Some(observed) = &observed {
             self.note_connection(
                 &observed.job.state,
                 observed.job.error.as_ref().map(|error| error.text.as_str()),
             )
             .await?;
-            self.settle_and_adopt(observed).await?;
+            active = self
+                .settle_and_adopt(observed)
+                .await?
+                .map(|print_id| ActiveJob {
+                    print_id,
+                    file_position_bytes: observed.job.file_position_bytes,
+                });
         }
         drop(resolving);
         if let Some(observed) = &observed {
@@ -953,6 +973,7 @@ impl Supervisor {
         }
         Ok(Watched {
             turns: std::mem::take(&mut self.watch_state().pending_turns),
+            active,
         })
     }
 

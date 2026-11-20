@@ -326,6 +326,19 @@ impl Supervisor {
         Some((url, fetched))
     }
 
+    /// One good frame from the configured camera, as its JPEG bytes and the
+    /// URL they came from, fetched as a look fetches one — retried while the
+    /// camera answers a server error and judged by the vision port, each such
+    /// answer written down to the print's history as a look's are. Nothing
+    /// when no camera is configured or no good frame came; the frame itself is
+    /// not recorded.
+    pub async fn fetch_camera_frame(&self, print_id: PrintId) -> Option<(String, Vec<u8>)> {
+        match self.fetch_configured_frame(Some(print_id)).await? {
+            (url, Frame::Good(image)) => Some((url, image.bytes.as_slice().to_vec())),
+            _ => None,
+        }
+    }
+
     /// When a fetched frame was captured: what its source says, or now.
     pub(crate) fn frame_captured_at(&self, fetched: Option<&(String, Frame)>) -> Option<Timestamp> {
         match fetched {

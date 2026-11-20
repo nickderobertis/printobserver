@@ -291,6 +291,12 @@ shared_secret = ""
 # looks carry the printer's state but no frame.
 # [camera]
 # snapshot_url = "http://127.0.0.1:1984/api/frame.jpeg?src=camera"
+# Optional, with a camera: the path of this camera's calibration file, which
+# tools/camera-calibration fits once per printer and again whenever the camera
+# moves. With it, a check can draw the planned toolpath where it sits in the
+# camera's view. The service refuses to start with an unreadable or invalid
+# file. Left out, nothing is drawn.
+# calibration = "/path/to/core-one-2026-09-27.json"
 
 # Optional: Obico's own API and its failure detector. With the address and the
 # token, Obico's record of the printer is read once per observation interval,
