@@ -324,6 +324,7 @@ def _answer_and_close(connection: socket.socket, reply: Reply) -> None:
     discard an answer the client has not read yet, as Windows does. So the
     relay ends its own half and waits out the client's, for at most `LINGER_S`.
     """
+    # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
     reply.send(connection)
     deadline = time.monotonic() + LINGER_S
     # A client gone already, or one past the bound, leaves nothing to wait for.
@@ -332,6 +333,7 @@ def _answer_and_close(connection: socket.socket, reply: Reply) -> None:
         connection.shutdown(socket.SHUT_WR)
         while (left := deadline - time.monotonic()) > 0:
             connection.settimeout(left)
+            # llmlint: ignore[async_typed_clients_at_boundaries] suppressions.toml has the reason.
             if not connection.recv(65536):
                 return
 

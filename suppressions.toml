@@ -2344,6 +2344,18 @@ reason = "The relay's own connection, answered on the thread per connection its 
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
+file = "tools/printer-smoke/tests/relay.py"
+site = "reply.send(connection)"
+reason = "The relay's own connection, answered on the thread per connection its listener's entry gives the reason for: sending the answer, ending the relay's half and draining the client's, for at most `LINGER_S`, is how one blocking connection is closed without resetting an answer the client has not read. There is no typed client of this suite's own wire to adopt, and an event loop would be a second concurrency model under the same blocking subprocess boundary."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
+file = "tools/printer-smoke/tests/relay.py"
+site = "if not connection.recv(65536):"
+reason = "The relay's own connection, answered on the thread per connection its listener's entry gives the reason for: sending the answer, ending the relay's half and draining the client's, for at most `LINGER_S`, is how one blocking connection is closed without resetting an answer the client has not read. There is no typed client of this suite's own wire to adopt, and an event loop would be a second concurrency model under the same blocking subprocess boundary."
+
+[[suppression]]
+rule = "async_typed_clients_at_boundaries"
 file = "tools/printer-smoke/tests/test_relay.py"
 site = "connection.sendall("
 reason = "The test sends the relay's wire byte for byte so that input the relay never reads is already waiting before it answers, which the compiled client — forwarding its input on a thread of its own — cannot be made to do deterministically. The wire is this suite's own, defined by `relay.py` and `relay_client.rs`, so there is no typed client to adopt, and the relay it talks to is a synchronous instrument whose listener's entry gives that reason."
