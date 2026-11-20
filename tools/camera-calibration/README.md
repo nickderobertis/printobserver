@@ -101,6 +101,14 @@ project every marked outline within 3.7 px of each other. The per-number bounds
 admit that spread, and the projection bound is what holds a refit to the
 committed file. Marks spread towards the bed's edges, as step 3 asks, narrow it.
 
+**Trust the committed calibration only near its marks.** Away from them, the
+equally good minima disagree. Over an 11 × 11 grid across the bed, one minimum
+reached by moving the marks 1e-6 px projects within 10 px of the committed file
+on the bed's surface and within 13 px 40 mm below it. One reached by moving
+them 0.01 px differs by up to 75 px at the bed's edges. A part printed far from
+the marked parts' region may be drawn that far off its place, and the
+first-layer alignment check is what refuses such a print.
+
 `alignment_max_offset_px` is written as **30**: on the four verified cases a
 healthy first layer scored at most 23 px and every empty bed or a projection
 moved 49 px at least 47 px.
