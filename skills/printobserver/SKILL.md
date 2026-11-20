@@ -25,12 +25,12 @@ it going as it should, and which bounded adjustment, if any, is right now?
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **To act, ask for the change, then answer.** Give a reason a reader can act on and, if
    temporary, how long. Never look again after acting.
-6. **Your answer's disposition records the check,** its `why` what you saw and made of it: stop
+6. **Your answer's disposition records the check,** its reason what you saw and made of it: stop
    with every pause, yours or the detector's; watch after a setting, or when uncertain on a running
    print; continue when nothing is there, a false alarm included.
 
-Run each command without `--config`: the environment names the supervisor and this turn's
-credential. Give `--actor` only to a command whose usage lists it.
+Run each command naming no configuration: the environment names the supervisor and this
+turn's credential. Name yourself as the actor only where a command's usage asks who.
 
 ## The decision order
 

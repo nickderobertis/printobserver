@@ -1175,16 +1175,16 @@ name = "the escalation path"
 marker = "## When to escalate instead"
 
 [[docs.skill_element]]
-name = "the workflow step that reads the context"
-marker = "1. **Read the context.**"
+name = "the workflow step that decides from the facts and the frame"
+marker = "1. **Decide from what is in front of you:**"
 
 [[docs.skill_element]]
 name = "the workflow step that inspects the image"
-marker = "2. **Look at the image.**"
+marker = "2. **Judge the frame.**"
 
 [[docs.skill_element]]
-name = "the workflow step that looks again before deciding"
-marker = "3. **Look again, and watch if you need to.**"
+name = "the workflow step that looks again only for an ambiguous frame"
+marker = "3. **Look again only when the frame is genuinely ambiguous.**"
 
 [[docs.skill_element]]
 name = "the workflow step that decides"
@@ -1192,11 +1192,11 @@ marker = "4. **Decide.**"
 
 [[docs.skill_element]]
 name = "the workflow step that acts with a reason"
-marker = "5. **Act, and say why.**"
+marker = "5. **To act, ask for the change, then answer.**"
 
 [[docs.skill_element]]
-name = "the workflow step that records what was seen"
-marker = "6. **Record what you saw.**"
+name = "the workflow step that records the check in the answer"
+marker = "6. **Your answer's disposition records the check,**"
 
 # Every reference document this repository declares, with the headings each one
 # owes. A heading declared here and absent from the document is a failing check

@@ -269,8 +269,8 @@ reason = "Claude Code's login command is a third-party CLI surface with no machi
 [[suppression]]
 rule = "least_privilege_grants"
 file = "crates/printobserver-oneharness/src/turn.rs"
-site = "arguments.extend(CLAUDE_READ_TOOLS.map(str::to_owned));"
-reason = "The task that made turns act specifies exactly this grant — `--allowedTools Read Grep Glob` — as the surface validated on the real printer. A turn has to read the event's image, which the supervisor materializes under its state directory, outside the skill directory the turn runs in, and the skill's reference documents; scoping Read to path patterns would have to spell Windows and POSIX path forms that nothing here can re-validate against Claude Code. What the read tools can reach is bounded by the service's own account rather than by this list: a dedicated system user whose unit hides every home. None of the three can change anything, and the tool set itself is named rather than denied, so `Write`, `Edit`, `WebFetch` and `Task` are absent."
+site = "let mut arguments = vec![\"--allowedTools\".to_owned(), CLAUDE_READ_TOOL.to_owned()];"
+reason = "A turn is granted `Read` outright, the one read tool its lean tool set loads beside the shell: it has to read a look's frame, which the supervisor materializes under its state directory, outside the skill directory the turn runs in, and the skill's reference documents; scoping Read to path patterns would have to spell Windows and POSIX path forms that nothing here can re-validate against Claude Code. What it can reach is bounded by the service's own account rather than by this list: a dedicated system user whose unit hides every home. Read changes nothing, and the tool set itself is `tool_set = [shell, read]`, so `Write`, `Edit`, `WebFetch`, `Task`, `Grep` and `Glob` are not loaded at all."
 
 [[suppression]]
 rule = "least_privilege_grants"
