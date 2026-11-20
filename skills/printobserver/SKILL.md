@@ -95,7 +95,7 @@ override.
 - **Every adjustment is bounded:** ask inside the context's range.
 - **A refusal says what was allowed:** ask inside it; wait with a look.
 - **The vocabulary is closed: no path in this system sends a command to the printer.**
-- **One command per shell call,** starting with the program's name: no variable, chain, pipe,
+- **One `printobserver` command per shell call,** no other program: no variable, chain, pipe,
   redirection, `cd` or usage listing. Every command acts; none is a trial. Rewrite one it
   refuses; never leave it undone.
 
