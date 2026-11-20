@@ -272,6 +272,10 @@ fn scripted_agent(
         ),
         format!("PRINTOBSERVER_RESPONDER_ACTIONS={actions}"),
         format!(
+            "PRINTOBSERVER_RESPONDER_HOLD={}",
+            root.join("hold").display()
+        ),
+        format!(
             "MOCK_STDOUT={}",
             streamed(answers.last().expect("an answer"))
         ),
@@ -861,6 +865,84 @@ async fn a_quiet_turn_is_acknowledged_from_its_answer() {
         assert_eq!(
             actor, &session,
             "the acknowledgement is not the turn's agent's"
+        );
+    }
+    lean.server.stop().await;
+}
+
+/// A person's request taken while a turn runs, and so recorded before that
+/// turn's answer, is in the next turn's facts, which leave out the look that
+/// turn took itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_persons_request_during_a_turn_reaches_the_next_turns_facts() {
+    let lean = Lean::open(
+        INSTALLERS[0],
+        3_600,
+        &[answering("watch", "judged it")],
+        &json!([{ "operation": "look", "body": {} }]),
+    )
+    .await;
+    let print_id = lean.active().await;
+    let hold = lean.root.path().join("hold");
+    std::fs::write(&hold, b"").expect("the hold is writable");
+    lean.alert().await;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    while lean.seen().is_empty() {
+        assert!(tokio::time::Instant::now() < deadline, "no turn started");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let path = printobserver_server::operation("set_fan_percent")
+        .expect("`set_fan_percent` is served")
+        .path
+        .replace("{print_id}", &print_id);
+    let asked = lean
+        .client
+        .post(format!("{}{path}", lean.server.base_url()))
+        .json(&json!({
+            "percent": 80.0,
+            "reason": "a person turned the fan up",
+            "actor": "operator",
+        }))
+        .send()
+        .await
+        .expect("the server answers");
+    assert!(asked.status().is_success(), "{}", asked.status());
+    std::fs::remove_file(&hold).expect("the hold is removable");
+    lean.turns_ended(&print_id, 1).await;
+
+    let persons = |event: &Value| {
+        event["kind"] == "action_requested" && event["payload"]["actor"] == "operator"
+    };
+    let requested = lean.history(&print_id, "action_requested").await;
+    let person = requested
+        .iter()
+        .find(|event| persons(event))
+        .expect("the person's request is recorded");
+    let answer = &lean.history(&print_id, "agent_assessment").await[0];
+    assert!(
+        person["received_at"].as_str() < answer["received_at"].as_str(),
+        "the request was not taken during the turn: {person} {answer}"
+    );
+    assert!(
+        !lean.history(&print_id, "camera_look").await.is_empty(),
+        "the turn took no look"
+    );
+
+    lean.alert().await;
+    lean.turns_ended(&print_id, 2).await;
+    let (prompt, _) = handed(&lean.seen()[1]);
+    let facts = facts_in(&prompt);
+    let events = facts["recent_events"]
+        .as_array()
+        .expect("the facts carry their events");
+    assert!(
+        events.iter().any(persons),
+        "the person's request is not in the next turn's facts: {facts}"
+    );
+    for left_out in ["camera_look", "agent_assessment"] {
+        assert!(
+            !events.iter().any(|event| event["kind"] == left_out),
+            "the facts carry a `{left_out}` the agent already saw: {facts}"
         );
     }
     lean.server.stop().await;

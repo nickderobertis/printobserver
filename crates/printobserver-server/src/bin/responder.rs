@@ -57,6 +57,11 @@ const EVENT_PLACEHOLDER: &str = "{event_id}";
 /// process that request started.
 const SEEN: &str = "PRINTOBSERVER_RESPONDER_SEEN";
 
+/// The variable naming a file this responder waits on, once its actions are
+/// issued, for as long as the file exists, and at most [`BOUND`]: a turn held
+/// open while a journey does what a person does during one.
+const HOLD: &str = "PRINTOBSERVER_RESPONDER_HOLD";
+
 /// The flags a Claude Code run is handed its system prompt under: inline, or
 /// as a file when the prompt is large enough to risk the argument ceiling.
 const SYSTEM_FLAGS: (&str, &str) = ("--append-system-prompt", "--append-system-prompt-file");
@@ -302,6 +307,18 @@ fn act() {
             );
         }
         append(&log, &answered.to_string());
+    }
+    hold();
+}
+
+/// Wait while the file [`HOLD`] names exists, and at most [`BOUND`].
+fn hold() {
+    let Some(held) = std::env::var_os(HOLD).map(std::path::PathBuf::from) else {
+        return;
+    };
+    let started = std::time::Instant::now();
+    while held.exists() && started.elapsed() < BOUND {
+        std::thread::sleep(core::time::Duration::from_millis(20));
     }
 }
 

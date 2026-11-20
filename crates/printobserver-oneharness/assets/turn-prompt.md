@@ -24,7 +24,7 @@ never saw, are listed here too, oldest first.
 
 The print's context as it stood when this turn began: its state, the plan at
 the current position, the bounds in force, the active interventions, the
-detector's status, and the events since you last answered, newest first.
+detector's status, and the events you have not been shown, newest first.
 
 ```json
 {{facts}}
