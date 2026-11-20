@@ -21,7 +21,7 @@ them with file tools.
 2. **Look at the image.** Open the file the context names. A path is not evidence nor is a picture
    too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
 3. **Look again, and watch if you need to.** Run look at least once: frames the context names are
-   already old. A look can wait up to 90 s first; a few show a defect growing. Open
+   already old. A look can wait up to a minute and a half first; a few show a defect growing. Open
    each; each states its capture time. One time twice is a camera with nothing newer, no defect:
    say so and judge the frame.
 4. **Decide.** Follow the order below, saying which way and how sure.
@@ -58,9 +58,8 @@ Reading frames:
   not.
 - **Position.** Judge growth only against the frame the plan's rise names, never without one: by the
   top's height then and the rise since, what should show, not proof it did: measure the tallest
-  printing part's base and top pixel rows, then and now, all four in the reason; finished ones
-  don't grow. Short of the rise, likely, unsure or lacking them is not printing: a clear defect,
-  never watched.
+  printing part's base and top pixel rows, then and now, all four in the reason. Short of the
+  rise, likely, unsure or lacking them is not printing: a clear defect, never watched.
   Hidden parts: look again first. A still landmark proves only a still view; a part moved when its
   distance to a fixed sheet hole, edge or mark changed. Each reason gives each part's pixels from a
   named landmark; each turn, before looking, measure the event frame so against the last reason's
@@ -74,7 +73,7 @@ The order holds
 with that pause standing; a look settles nothing on a paused print: an uncertain reading is stopped, not watched.
 
 - **If a clear defect a setting addresses is all you see**, ask for it while paused; the
-  supervisor resumes the print itself 20 s after your last such change, or when your
+  supervisor resumes the print itself twenty seconds after your last such change, or when your
   turn ends; never you.
 - **Otherwise,** whatever else you see or do not: change nothing and acknowledge with the
   disposition stop; it stays paused for a person to read your reason.
