@@ -14,7 +14,7 @@ it going as it should, and which bounded adjustment, if any, is right now?
 
 [The command surface](reference/command-surface.md)
 and [common operations](reference/common-operations.md) hold the commands: read
-them with your file tools.
+them with file tools.
 
 1. **Read the context.** After the first read, since the newest event it named. It gives the
    print, heaters, bounds, events, picture and the slicer's plan.
@@ -27,7 +27,7 @@ them with your file tools.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **Act, and say why.** Ask for any change with a reason a reader can act on and, if temporary,
    how long. After a setting, look again.
-6. **Record what you saw.** Acknowledge this turn's event with a reason giving
+6. **Record what you saw.** After a look, acknowledge this turn's event with a reason giving
    what you saw and made of it: disposition stop with every pause, yours or the detector's; watch
    after a setting, or when uncertain on a running print; continue when nothing is there, a false
    alarm included.
@@ -103,7 +103,7 @@ override.
 
 Escalate when the machine, or the safe thing, is beyond what you may ask:
 pause, naming what the person must check.
-A person's resume in the record settles what they resumed over.
+A person's resume settles what they resumed over.
 
 ## Elsewhere
 
