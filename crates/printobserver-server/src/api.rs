@@ -227,6 +227,30 @@ fn operator_refused(caller: &Caller, command: &str) -> Option<Response> {
     }
 }
 
+/// Refuse a turn's acknowledgement before the turn has taken a look.
+///
+/// The frames a turn's context names are already old when it reads them, so
+/// what a turn writes down of its event is judged from a look it took; the
+/// operator, who is not a turn, is held to nothing here.
+fn unlooked_refused(
+    turns: &TurnCredentials,
+    caller: &Caller,
+    print_id: PrintId,
+) -> Option<Response> {
+    match caller {
+        Caller::Turn(binding) if !turns.has_looked(binding) => Some(refusal(
+            StatusCode::FORBIDDEN,
+            format!(
+                "this request authenticated as {} and acknowledges an event before the turn \
+                 has taken a look: run `printobserver look --print-id {print_id}`, open the \
+                 frames it names, and acknowledge what they show",
+                caller.named()
+            ),
+        )),
+        _ => None,
+    }
+}
+
 /// What [`authenticate`] checks a presented credential against.
 #[derive(Clone)]
 pub struct Admission {
@@ -567,6 +591,11 @@ async fn act(
         Err(rejected) => return rejected.into_response(),
     };
     if let Some(refused) = claim_refused(&caller, &body.actor) {
+        return refused;
+    }
+    if kind == ActionKind::AcknowledgeFailure
+        && let Some(refused) = unlooked_refused(&state.turns, &caller, print_id)
+    {
         return refused;
     }
     let action = match body.into_action(kind) {
@@ -1122,6 +1151,11 @@ async fn look(
             return refusal(StatusCode::NOT_FOUND, CoreError::NoSuchPrint { print_id });
         }
         Err(error) => return refusal(store_status(&error), error),
+    }
+    // A look that was asked for counts whatever the camera then gives it: a
+    // turn whose camera is down has still looked, and can say so.
+    if let Caller::Turn(binding) = &caller {
+        state.turns.note_look(binding);
     }
     let supervisor = Arc::clone(&state.supervisor);
     let taken = tokio::task::spawn_blocking(move || {

@@ -528,6 +528,7 @@ fn acknowledging_stop_leaves_the_pause_for_a_person() {
     let api = obico("200 OK");
     let watching = Watching::start(
         r#"eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about" > "$dir/fan-$print" 2>&1
+eval "printobserver look $about" > "$dir/look-$print" 2>&1
 eval "printobserver acknowledge-failure --event-id $event --disposition stop --reason 'nothing I may change reaches this' $actor $about" > "$dir/stop-$print" 2>&1"#,
         detector_configuration(&api, true),
     );
@@ -550,6 +551,46 @@ eval "printobserver acknowledge-failure --event-id $event --disposition stop --r
         api.received().is_empty(),
         "Obico was told about a pause left for a person"
     );
+}
+
+/// A turn that acknowledges its event before it has looked is refused, told to
+/// look first, and records nothing; once it has looked, the same turn's
+/// acknowledgement is taken. The frames a turn's context names are already old.
+#[test]
+fn a_turn_acknowledges_its_event_only_after_it_has_looked() {
+    let api = obico("200 OK");
+    let watching = Watching::start(
+        r#"eval "printobserver acknowledge-failure --event-id $event --disposition stop --reason 'judged from the context alone' $actor $about" > "$dir/early-$print" 2>&1; echo $? > "$dir/early-$print.code"
+eval "printobserver look $about" > "$dir/look-$print" 2>&1
+eval "printobserver acknowledge-failure --event-id $event --disposition stop --reason 'the look shows what the alert did' $actor $about" > "$dir/stop-$print" 2>&1; echo $? > "$dir/stop-$print.code""#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+
+    let early = format!("early-{print}");
+    assert_eq!(
+        exited(&watching, &early),
+        i32::from(Exit::Refused.status()),
+        "{}",
+        printed(&watching, &early)
+    );
+    let said = printed(&watching, &early);
+    assert!(
+        said.contains("before the turn has taken a look")
+            && said.contains(&format!("printobserver look --print-id {print}")),
+        "the refusal does not say to look first: {said}"
+    );
+    let stop = format!("stop-{print}");
+    assert_eq!(exited(&watching, &stop), 0, "{}", printed(&watching, &stop));
+    watching.settled_after(&print, 1);
+
+    let asked = actions_asked(world, &print);
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert_eq!(asked[0]["action"], "acknowledge_failure");
+    assert_eq!(asked[0]["reason"], "the look shows what the alert did");
 }
 
 /// A resume the policy refuses — the system is not granted it — leaves the
