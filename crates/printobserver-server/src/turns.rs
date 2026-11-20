@@ -277,6 +277,49 @@ mod tests {
 
     /// A credential is admitted as the session and print it was issued for
     /// while its turn runs, a second issue replaces the first, and revoking
+    /// A look one run of a turn took counts for every run the turn issues
+    /// after it, and for no other turn; it goes when the turn returns.
+    #[test]
+    fn a_look_is_the_turns_whichever_of_its_runs_took_it() {
+        let registry = TurnCredentials::new(None);
+        let print_id = PrintId::new();
+        let opened = registry.open(print_id);
+        let access = opened.access();
+        let first = value_of(
+            &access.issue(&session("print-a")).expect("minted"),
+            CREDENTIAL_ENV,
+        );
+        let looking = registry.admit(first.as_bytes()).expect("admitted");
+        assert!(!registry.has_looked(&looking));
+        registry.note_look(&looking);
+        let second = value_of(
+            &access.issue(&session("print-a-2")).expect("minted"),
+            CREDENTIAL_ENV,
+        );
+        let moved = registry.admit(second.as_bytes()).expect("admitted");
+        assert!(
+            registry.has_looked(&moved),
+            "the turn's second run lost its look"
+        );
+
+        let other = registry.open(print_id);
+        let elsewhere = value_of(
+            &other.access().issue(&session("print-b")).expect("minted"),
+            CREDENTIAL_ENV,
+        );
+        let unlooked = registry.admit(elsewhere.as_bytes()).expect("admitted");
+        assert!(
+            !registry.has_looked(&unlooked),
+            "another turn took this one's look"
+        );
+
+        drop(opened);
+        assert!(
+            !registry.has_looked(&moved),
+            "a returned turn's look outlived it"
+        );
+    }
+
     /// the turn admits none of them and issues no more.
     #[test]
     fn a_turns_credential_lives_exactly_as_long_as_its_turn() {

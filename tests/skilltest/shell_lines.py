@@ -227,12 +227,13 @@ def runs_the_program(words: list[str]) -> bool:
     return bool(named) and _program(named[0]) == "printobserver"
 
 
-#: The operator a pipe is written in.
 PIPE = "|"
-#: The text filters a `printobserver` command's output may be piped through. Each only
-#: reads what it is handed, and Claude Code runs a pipe into one under a rule allowing
-#: the command before it, so such a line costs nothing a production turn would refuse.
-READ_ONLY_FILTERS = {"grep", "egrep", "fgrep", "head", "tail", "wc", "sort", "uniq", "cut"}
+#: The text filters a `printobserver` command's output may be piped through. None can
+#: write a file whatever its arguments, and Claude Code runs a pipe into one under a
+#: rule allowing the command before it, so such a line costs nothing a production turn
+#: would refuse.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] suppressions.toml has the reason.
+READ_ONLY_FILTERS = {"grep", "egrep", "fgrep", "head", "tail", "wc", "cut"}
 
 
 def _filtered(line: str) -> bool:

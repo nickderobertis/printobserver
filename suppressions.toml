@@ -4848,3 +4848,9 @@ rule = "async_typed_clients_at_boundaries"
 file = "tools/obico-env/obico_record.py"
 site = "posted = post_snapshot(instance.url, instance.printer_token)"
 reason = "The Obico tier's own snapshot post, reused unchanged so the recorder puts a snapshot on the stack exactly as the tier does; it runs once, before the one read, in a strictly ordered command with nothing to overlap."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/shell_lines.py"
+site = "READ_ONLY_FILTERS = {"
+reason = "Which pipes Claude Code runs under a rule allowing the command before them is its own permission evaluator's, at the release `repo-policy.toml`'s `[skilltest] claude_code` pins, and that evaluator publishes no machine-readable list to derive this set from. The set is the text filters that cannot write a file whatever their arguments, read off a replay at that release whose turn piped `printobserver context` into `grep` and was answered grep's output. The real-print suite runs that same release on every change it is owed, so a release that stopped running such a pipe would show it refused in the suite's own transcripts."

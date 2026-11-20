@@ -287,6 +287,8 @@ def test_a_compound_start_the_rules_refuse_reaches_no_server_and_is_reported(
         # A pipe into anything else, or beside another operator, still acts beside it.
         ("printobserver look | sh", True),
         ("printobserver look | tee out", True),
+        ("printobserver look | sort -o out", True),
+        ("printobserver look | uniq - out", True),
         ("printobserver look | grep x; printobserver prints", True),
         ("printobserver look | grep x > out", True),
         ("printobserver look | grep $(printobserver prints)", True),

@@ -72,7 +72,7 @@ pub struct ObicoVisionError {
 }
 
 impl ObicoVisionError {
-    /// The error one failure to build a client is.
+    /// Carry the HTTP client's own words for why it could not be built.
     pub(crate) const fn of(detail: String) -> Self {
         Self { detail }
     }
