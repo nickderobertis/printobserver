@@ -6,7 +6,8 @@
 //! that the camera has not moved since ([`drift`]), the per-print check that
 //! the projection lands on the printed first layer ([`alignment`]), and the
 //! check image's three panels, their colours and their drawing
-//! ([`compose`]).
+//! ([`compose`]), and the whole camera frame scaled to a check's bound
+//! ([`whole_frame`]).
 //!
 //! May depend on: `printobserver-types`; `printobserver-vision-api`, whose
 //! validated web address the calibration's snapshot URL is held to; and
@@ -23,6 +24,7 @@ pub mod drift;
 pub mod error;
 mod geometry;
 mod text;
+pub mod whole_frame;
 
 pub use alignment::{AlignmentInputs, AlignmentVerdict, verify_first_layer_alignment};
 pub use calibration::{
@@ -30,3 +32,4 @@ pub use calibration::{
 };
 pub use compose::{CheckImage, CheckImageInputs, compose_check_image};
 pub use error::{ComposeError, FrameField};
+pub use whole_frame::{WHOLE_FRAME_HEIGHT, WHOLE_FRAME_WIDTH, WholeFrame, whole_frame};

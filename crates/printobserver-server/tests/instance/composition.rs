@@ -403,6 +403,7 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
         "did": "slowed the feedrate for ten minutes and was refused a second change",
         "why": "the extrusion width was widening on the long edges",
         "escalating": false,
+        "disposition": "continue",
     })
     .to_string();
     let document = json!({

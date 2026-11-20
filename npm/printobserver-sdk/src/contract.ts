@@ -251,6 +251,11 @@ export interface AgentAssessment {
   confidence: Confidence;
   /** What the agent did. */
   did: string;
+  /**
+   * What the turn's event is acknowledged with, when the turn acknowledged
+   * nothing by command.
+   */
+  disposition: Disposition;
   /** Whether the agent is escalating to a person. */
   escalating: boolean;
   /** Whether the print should carry on. */
@@ -623,6 +628,16 @@ export type DetectorHealthStatus =
 
 /** What a check of the failure detector's own health found. */
 export type DetectorStatus = "available" | "unavailable";
+
+/**
+ * What the agent's answer asks for next, in the vocabulary an
+ * acknowledgement's disposition is spelled in.
+ *
+ * A turn that acknowledged nothing by command is acknowledged from its
+ * answer with this, so a quiet check records its judgement without a command
+ * of its own.
+ */
+export type Disposition = "continue" | "watch" | "stop";
 
 /**
  * The envelope intersected with the print's manifest.
@@ -3072,6 +3087,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "scalar": "string"
      }
     },
+    "disposition": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Disposition"
+     }
+    },
     "escalating": {
      "paired_with": "",
      "required": true,
@@ -3865,6 +3887,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
   "enum": [
    "available",
    "unavailable"
+  ]
+ },
+ "Disposition": {
+  "enum": [
+   "continue",
+   "watch",
+   "stop"
   ]
  },
  "EffectiveBounds": {

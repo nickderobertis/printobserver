@@ -506,6 +506,9 @@ impl Server {
         // credential minted for them.
         let turns = TurnCredentials::new(Some(address));
         supervisor.install_turn_authority(Arc::new(turns.clone()));
+        supervisor.install_check_images(Arc::new(crate::check_images::WholeFrames::under(
+            &config.state_dir,
+        )));
         if let Some(scoring) = scoring_read(&config, &ports.vision)? {
             supervisor.install_scoring_probe(scoring);
         }

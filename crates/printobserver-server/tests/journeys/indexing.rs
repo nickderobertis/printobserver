@@ -556,6 +556,7 @@ async fn start(config: &ServerConfig, root: &Path) -> Running {
             "did": "read the print's context",
             "why": "nothing in it called for a change",
             "escalating": false,
+            "disposition": "continue",
         })
         .to_string(),
         "session_id": "SID-INDEXING",

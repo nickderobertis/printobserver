@@ -20,7 +20,10 @@ use printobserver_core::{
     AcknowledgementDisposition, ActionKind, Actor, ActorClass, InterventionId, PolicyDecision,
     PrintAction, PrintOutcome, PrintRecord, RejectionReason, block_on, changes_the_machine,
 };
-use printobserver_core::{ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload};
+use printobserver_core::{
+    ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
+    ExecutionOutcome,
+};
 use printobserver_printer_api::{Adjustable, PrinterState};
 use printobserver_supervisor_api::SupervisionSessionOpenedPayload;
 use printobserver_types::{EventId, EventPayload as _, PrintId, Range};
@@ -421,8 +424,14 @@ fn a_rejection_while_an_event_is_handled_leaves_the_loops_own_writes_standing() 
             Call::AppendEvent(SupervisionSessionOpenedPayload::kind()),
             Call::PutSession,
             Call::AppendEvent(AgentAssessmentPayload::kind()),
+            // The turn acknowledged nothing by command, so its answer does.
+            Call::RecordAction(PolicyDecision::Accepted),
+            Call::RecordExecution(ExecutionOutcome::Succeeded),
+            Call::AppendEvent(ActionRequestedPayload::kind()),
+            Call::AppendEvent(ActionExecutedPayload::kind()),
         ],
-        "the loop's own writes for the event, plus the record of the rejection, and nothing else"
+        "the loop's own writes for the event, the record of the rejection and the answer's \
+         acknowledgement, and nothing else"
     );
     assert_eq!(
         world.journal.printer_actions(),

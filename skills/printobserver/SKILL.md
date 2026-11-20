@@ -12,25 +12,25 @@ it going as it should, and which bounded adjustment, if any, is right now?
 
 ## The normal workflow
 
-[The command surface](reference/command-surface.md)
-and [common operations](reference/common-operations.md) hold the commands: read
-them with file tools.
+[The command surface](reference/command-surface.md) and
+[common operations](reference/common-operations.md) hold the commands; read them with file tools.
 
-1. **Read the context.** After the first read, since the newest event it named. It gives the
-   print, heaters, bounds, events, picture and the slicer's plan.
-2. **Look at the image.** Open the file the context names. A path is not evidence nor is a picture
-   too dark, blurred or aimed at nothing: say so; it is uncertain. A file's name excuses nothing.
-3. **Look again, and watch if you need to.** Run look at least once: frames the context names are
-   already old. A look can wait up to a minute and a half first; a few show a defect growing. Open
-   each; each states its capture time. One time twice is a camera with nothing newer, no defect:
-   say so and judge the frame.
+1. **Decide from what is in front of you:** the event, the print's facts and the frame. Read the
+   whole context only when the facts lack what you need.
+2. **Judge the frame.** A path is not evidence nor is a picture too dark, blurred or aimed at
+   nothing: say so; it is uncertain. A file's name excuses nothing.
+3. **Look again only when the frame is genuinely ambiguous.** A look can wait up to a minute and a
+   half first; a few show a defect growing. Open each; each states its capture time. One time twice
+   is a camera with nothing newer, no defect: say so and judge the frame.
 4. **Decide.** Follow the order below, saying which way and how sure.
-5. **Act, and say why.** Ask for any change with a reason a reader can act on and, if temporary,
-   how long. After a setting, look again.
-6. **Record what you saw.** Acknowledge this turn's event with a reason giving
-   what you saw and made of it: disposition stop with every pause, yours or the detector's; watch
-   after a setting, or when uncertain on a running print; continue when nothing is there, a false
-   alarm included.
+5. **To act, ask for the change, then answer.** Give a reason a reader can act on and, if
+   temporary, how long. Never look again after acting.
+6. **Your answer's disposition records the check,** its `why` what you saw and made of it: stop
+   with every pause, yours or the detector's; watch after a setting, or when uncertain on a running
+   print; continue when nothing is there, a false alarm included.
+
+Run each command without `--config`: the environment names the supervisor and this turn's
+credential. Give `--actor` only to a command whose usage lists it.
 
 ## The decision order
 
@@ -76,7 +76,7 @@ with that pause standing; a look settles nothing on a paused print: an uncertain
 - **If a clear defect a setting addresses is all you see**, ask for it while paused; the
   supervisor resumes the print itself twenty seconds after your last such change, or when your
   turn ends; never you.
-- **Otherwise,** whatever else you see or do not: change nothing and acknowledge with the
+- **Otherwise,** whatever else you see or do not: change nothing and answer with the
   disposition stop; it stays paused for a person to read your reason.
 
 ## When you are asked to start a print
@@ -93,7 +93,7 @@ override.
 ## The boundaries you work inside
 
 - **Every adjustment is bounded:** ask inside the context's range.
-- **A refusal says what was allowed:** ask inside it; wait with a look.
+- **A refusal says what was allowed:** ask inside it.
 - **The vocabulary is closed: no path in this system sends a command to the printer.**
 - **One `printobserver` command per shell call,** no other program: no variable, chain, pipe,
   redirection, `cd` or usage listing. Every command acts; none is a trial. Rewrite one it

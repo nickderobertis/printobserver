@@ -10,7 +10,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
+use printobserver_supervisor_api::{SessionPhase, SupervisionSession, SupervisorError};
 use printobserver_types::{PrintId, Timestamp};
 use serde::{Deserialize, Serialize};
 
@@ -26,13 +26,18 @@ pub const SESSIONS_DIRECTORY: &str = "supervisor-sessions";
 /// cannot silently accept the new one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LedgerFormat {
-    /// The shape this build writes: one print's sessions and turns, in order.
+    /// One print's sessions and turns, in order, with no turn's model calls.
+    /// Still read: it is [`LedgerFormat::V2`] with every turn's calls unknown.
     #[serde(rename = "1")]
     V1,
+    /// The shape this build writes: [`LedgerFormat::V1`], each turn carrying
+    /// the usage of every model call it made.
+    #[serde(rename = "2")]
+    V2,
 }
 
 /// The shape this build writes.
-const LEDGER_FORMAT: LedgerFormat = LedgerFormat::V1;
+const LEDGER_FORMAT: LedgerFormat = LedgerFormat::V2;
 
 /// The name of the session watching one print, at one point in its sequence.
 ///
@@ -58,6 +63,22 @@ impl SessionName {
         } else {
             format!("print-{print_id}-{sequence}")
         })
+    }
+
+    /// The session a probe of the turn configuration runs in: the caller's name
+    /// under a prefix no print's session carries, so a probe never continues a
+    /// print's conversation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SupervisorError::Unavailable`] when `name` is empty.
+    pub fn probe(name: &str) -> Result<Self, SupervisorError> {
+        if name.trim().is_empty() {
+            return Err(SupervisorError::Unavailable {
+                detail: "a probe's session name that is empty names no conversation".to_owned(),
+            });
+        }
+        Ok(Self(format!("probe-{name}")))
     }
 
     /// The name as `OneHarness` and the ledger spell it.
@@ -86,6 +107,38 @@ impl<'de> Deserialize<'de> for SessionName {
     }
 }
 
+/// The tokens one model call of a turn read and wrote, as the harness reported
+/// them: each count absent when it reported none, never a guess of zero.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CallUsage {
+    /// Input tokens billed outside the prompt cache.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    /// Output tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    /// Input tokens read from the prompt cache.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    /// Input tokens written to the prompt cache.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u64>,
+}
+
+impl CallUsage {
+    /// One call's usage, as `OneHarness` reports it.
+    #[must_use]
+    pub const fn of(usage: &oneharness_core::domain::signals::Usage) -> Self {
+        Self {
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cache_read_tokens: usage.cache_read_tokens,
+            cache_write_tokens: usage.cache_write_tokens,
+        }
+    }
+}
+
 /// One supervision turn as this port recorded it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -98,6 +151,10 @@ pub struct RecordedTurn {
     /// failed is written down and the loop carries on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<String>,
+    /// The usage of each model call the turn made, in order: empty when the
+    /// harness reported no per-call usage.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<CallUsage>,
 }
 
 /// One print's sessions and turns.
@@ -153,7 +210,11 @@ impl PrintLedger {
                 ledger
                     .agrees_with_itself()
                     .map_err(|detail| io::Error::other(format!("{}: {detail}", path.display())))?;
-                Ok(ledger)
+                // An earlier shape is read as this one, and written back as it.
+                Ok(Self {
+                    schema_version: LEDGER_FORMAT,
+                    ..ledger
+                })
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 // A print with no ledger has no history only where the ledger
@@ -318,11 +379,13 @@ impl PrintLedger {
         session_name: &SessionName,
         at: Timestamp,
         failure: Option<&str>,
+        calls: Vec<CallUsage>,
     ) {
         self.turns.push(RecordedTurn {
             session_name: session_name.clone(),
             ran_at: at,
             failure: failure.map(ToOwned::to_owned),
+            calls,
         });
     }
 }

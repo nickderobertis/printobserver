@@ -39,6 +39,7 @@
 
 pub mod alignment;
 pub mod api;
+pub mod check_images;
 pub mod config;
 pub mod events;
 pub mod ingress;
@@ -52,6 +53,7 @@ pub mod wire;
 
 pub use alignment::{AlignmentFailure, Alignments, PrintAlignment};
 pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, SPOOL_RECENT_EVENTS, router};
+pub use check_images::{CHECK_IMAGES_DIRECTORY, WholeFrames};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
     CredentialVerifier, DEFAULT_INGRESS_ANSWER_BOUND_MS, DEFAULT_OBSERVATION_INTERVAL_S,

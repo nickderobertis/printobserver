@@ -35,7 +35,7 @@ const PATIENCE: Duration = Duration::from_secs(30);
 
 /// The four committed installers whose configuration templates carry the
 /// examples.
-const INSTALLERS: [&str; 4] = [
+pub const INSTALLERS: [&str; 4] = [
     "scripts/install.sh",
     "scripts/install-service.sh",
     "scripts/install.ps1",
@@ -54,7 +54,7 @@ const EXAMPLES: [&str; 6] = [
 
 /// The configuration one committed installer writes, with what it
 /// interpolates given this root's state directory.
-fn template(installer: &str, state: &Path) -> String {
+pub fn template(installer: &str, state: &Path) -> String {
     let script = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")

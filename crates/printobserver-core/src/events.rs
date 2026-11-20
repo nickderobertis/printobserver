@@ -22,6 +22,15 @@
 //! turn's event and situation still describe what prompted it; a look
 //! ([`crate::look`]) also takes a fresh camera frame.
 //!
+//! # Everything a check decides from is in its prompt
+//!
+//! A turn is handed its print's facts — the context read as it begins, less the
+//! events ([`crate::context::turn_facts`]) — and the check's image of the
+//! event's frame ([`crate::check_image`]), so a quiet check needs no command to
+//! decide. Its answer's disposition is its acknowledgement: a turn that
+//! acknowledged nothing by command has its event acknowledged from its answer,
+//! as the agent in that turn's session, with the answer's `why` as the reason.
+//!
 //! # One agent per print
 //!
 //! [`Supervisor::receive_event`] writes an event down and claims its print's
@@ -32,11 +41,12 @@
 //! took. A print that has ended starts no turn at all, and its inbox is
 //! released with whatever was still waiting in it.
 
-use crate::records::PrintRecord;
+use crate::records::{AcknowledgementDisposition, Actor, PrintAction, PrintRecord};
 use crate::store::{EventDraft, HistoryQuery, ImageLookup};
 use printobserver_printer_api::{JobSnapshot, PrinterState};
-use printobserver_supervisor_api::SessionPhase;
+use printobserver_supervisor_api::{AgentAssessment, Disposition, SessionPhase};
 use printobserver_supervisor_api::{SupervisionSessionOpenedPayload, TurnRequest, TurnSituation};
+use printobserver_types::EventId;
 use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, Timestamp};
 use printobserver_vision_api::NormalizedAlert;
 
@@ -415,9 +425,10 @@ impl Supervisor {
             .clone()
             .filter(|state| TERMINAL_STATES.contains(state));
         let image_path = match &event.image {
-            Some(reference) => self.image_path(reference).await,
+            Some(reference) => self.check_image_path(Some(print.id), reference).await,
             None => None,
         };
+        let facts = crate::context::turn_facts(&context.for_agent(None));
         let situation = TurnSituation {
             printer_state,
             detector_warned: arrival.detection.map(|detection| detection.warning),
@@ -432,6 +443,7 @@ impl Supervisor {
         // moment it returns — whatever it returned — and when this future is
         // abandoned, because dropping what was opened revokes too.
         let opened = self.open_turn(print.id);
+        self.forget_acknowledged_by_turn(print.id);
         let turn = self
             .agent()
             .run_turn(
@@ -440,35 +452,19 @@ impl Supervisor {
                     event: event.clone(),
                     image_path,
                     context_command: self.config().context_command_for(print.id),
+                    facts,
                     situation,
                 },
                 opened.access(),
             )
             .await;
         opened.revoke();
+        let acknowledged_by_command = self.forget_acknowledged_by_turn(print.id);
         drop(guard);
         match turn {
             Ok(outcome) => {
-                if outcome.phase == SessionPhase::Created {
-                    self.append_system_event(
-                        print.id,
-                        EventBody::of(&SupervisionSessionOpenedPayload {
-                            session_name: outcome.session.session_name.clone(),
-                            harness_identity: outcome.session.harness_identity.clone(),
-                        })?,
-                    )
+                self.record_answered(print.id, event.id, outcome, acknowledged_by_command)
                     .await?;
-                }
-                let session_name = outcome.session.session_name.clone();
-                self.stores().sessions.put_session(outcome.session).await?;
-                self.append_system_event(
-                    print.id,
-                    EventBody::of(&AgentAssessmentPayload {
-                        session_name,
-                        assessment: outcome.assessment,
-                    })?,
-                )
-                .await?;
             }
             Err(error) => {
                 self.record_port_failure(
@@ -486,6 +482,119 @@ impl Supervisor {
             Some(state) if !ended => Supervised::Terminal(state),
             _ => Supervised::Ran,
         })
+    }
+
+    /// Write down what an answered turn said — the session it opened, its
+    /// assessment — and acknowledge its event from the answer when the turn
+    /// acknowledged nothing by command.
+    async fn record_answered(
+        &self,
+        print_id: PrintId,
+        event_id: EventId,
+        outcome: printobserver_supervisor_api::TurnOutcome,
+        acknowledged_by_command: bool,
+    ) -> Result<(), CoreError> {
+        if outcome.phase == SessionPhase::Created {
+            self.append_system_event(
+                print_id,
+                EventBody::of(&SupervisionSessionOpenedPayload {
+                    session_name: outcome.session.session_name.clone(),
+                    harness_identity: outcome.session.harness_identity.clone(),
+                })?,
+            )
+            .await?;
+        }
+        let session_name = outcome.session.session_name.clone();
+        self.stores().sessions.put_session(outcome.session).await?;
+        let assessment = outcome.assessment;
+        self.append_system_event(
+            print_id,
+            EventBody::of(&AgentAssessmentPayload {
+                session_name: session_name.clone(),
+                assessment: assessment.clone(),
+            })?,
+        )
+        .await?;
+        if !acknowledged_by_command
+            && let Err(error) = self
+                .acknowledge_from_answer(print_id, event_id, session_name, &assessment)
+                .await
+        {
+            // The turn answered; an acknowledgement that could not be
+            // made is recorded against its event and ends nothing.
+            self.record_port_failure(
+                print_id,
+                event_id,
+                PortFailureSite::SupervisionTurn,
+                format!("the answer's acknowledgement could not be made: {error}"),
+            )
+            .await;
+        }
+        Ok(())
+    }
+
+    /// Note that the running turn on one print acknowledged its event by
+    /// command.
+    pub(crate) fn note_acknowledged_by_turn(&self, print_id: PrintId) {
+        self.acknowledged_by_turn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(print_id);
+    }
+
+    /// Forget whether a turn on one print acknowledged by command, answering
+    /// whether one had.
+    fn forget_acknowledged_by_turn(&self, print_id: PrintId) -> bool {
+        self.acknowledged_by_turn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&print_id)
+    }
+
+    /// Acknowledge the event a turn was about from the turn's answer, as the
+    /// agent in the session it answered in: the same request, through the same
+    /// policy, as the agent's own command would have made.
+    ///
+    /// A print that has ended by the time the turn answers is not
+    /// acknowledged: its record is closed, and nothing is left to carry on or
+    /// stop.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when the request could not be recorded. A
+    /// refusal by policy is recorded with the request and is not an error.
+    async fn acknowledge_from_answer(
+        &self,
+        print_id: PrintId,
+        event_id: EventId,
+        session_name: String,
+        assessment: &AgentAssessment,
+    ) -> Result<(), CoreError> {
+        let open = self
+            .stores()
+            .prints
+            .print(print_id)
+            .await?
+            .is_some_and(|print| print.ended_at.is_none());
+        if !open {
+            return Ok(());
+        }
+        let disposition = match assessment.disposition {
+            Disposition::Continue => AcknowledgementDisposition::Continue,
+            Disposition::Watch => AcknowledgementDisposition::Watch,
+            Disposition::Stop => AcknowledgementDisposition::Stop,
+        };
+        self.request_action(
+            print_id,
+            PrintAction::AcknowledgeFailure {
+                event_id,
+                disposition,
+                reason: assessment.why.clone(),
+                actor: Actor::Agent { session_name },
+            },
+        )
+        .await?;
+        Ok(())
     }
 
     /// Gather the current context of one print, including while its

@@ -515,9 +515,14 @@ eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the 
     assert_eq!(look["detector_paused"], true, "{look}");
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "resume"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "acknowledge_failure", "resume"],
+        "{asked:?}"
+    );
     assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
-    assert_eq!(asked[1]["actor"], "system");
+    assert_eq!(asked[2]["actor"], "system");
     wait_for("Obico to be told", PATIENCE, || acknowledged(&api));
 }
 
@@ -610,8 +615,13 @@ fn a_resume_the_policy_refuses_leaves_the_print_paused() {
 
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "resume"], "{asked:?}");
-    assert_eq!(asked[1]["actor"], "system");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "acknowledge_failure", "resume"],
+        "{asked:?}"
+    );
+    assert_eq!(asked[2]["actor"], "system");
     let rejected = events_of(world, &print, "action_rejected");
     assert_eq!(rejected.len(), 1, "{rejected:?}");
     let refusal = &rejected[0]["payload"]["decision"]["rejected"]["actor_may_not_request"];
@@ -698,7 +708,12 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
 
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "cancel"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "cancel", "acknowledge_failure"],
+        "{asked:?}"
+    );
     assert_eq!(reports(world), Some(Reports::Operational));
     assert!(
         api.received().is_empty(),
@@ -778,7 +793,12 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
 
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "cancel"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "cancel", "acknowledge_failure"],
+        "{asked:?}"
+    );
 }
 
 /// A print somebody else resumed is no longer the detector's: when it is
@@ -821,7 +841,12 @@ eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the 
 
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["resume", "pause", "set_fan_percent"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["resume", "pause", "set_fan_percent", "acknowledge_failure"],
+        "{asked:?}"
+    );
     assert_eq!(reports(world), Some(Reports::Paused));
     assert!(
         api.received().is_empty(),
@@ -1149,7 +1174,12 @@ ask pause-again "pause""#,
     );
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "pause", "pause"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "pause", "pause", "acknowledge_failure"],
+        "{asked:?}"
+    );
 }
 
 /// A detector that reports the pause again while the turn that adjusted the
@@ -1352,7 +1382,8 @@ fn the_first_turn_acted_as_itself(world: &World, print: &str, captured: &std::pa
             .iter()
             .map(|action| action["action"].clone())
             .collect::<Vec<_>>(),
-        [json!("set_fan_percent")],
+        // The turn acknowledged nothing by command, so its answer did.
+        [json!("set_fan_percent"), json!("acknowledge_failure")],
         "a refused request was recorded: {asked:?}"
     );
     assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
@@ -1484,15 +1515,29 @@ fn an_agent_asking_to_close_its_print_is_refused_by_the_default_grants() {
     watching.settled_after(&print, 1);
 
     let asked = actions_asked(world, &print);
-    assert_eq!(asked.len(), 1, "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(asked.len(), 2, "{asked:?}");
     assert_eq!(asked[0]["action"], "close_print", "{asked:?}");
+    assert_eq!(asked[1]["action"], "acknowledge_failure", "{asked:?}");
     assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
     let rejected = events_of(world, &print, "action_rejected");
     assert_eq!(rejected.len(), 1, "{rejected:?}");
     let refusal = &rejected[0]["payload"]["decision"]["rejected"]["actor_may_not_request"];
     assert_eq!(refusal["actor_class"], "agent", "{rejected:?}");
     assert_eq!(refusal["action"], "close_print", "{rejected:?}");
-    assert!(events_of(world, &print, "action_executed").is_empty());
+    // The one action executed is the answer's acknowledgement; the close is
+    // not among them.
+    let requested = events_of(world, &print, "action_requested");
+    let acknowledgement = requested
+        .iter()
+        .find(|event| event["payload"]["action"]["action"] == "acknowledge_failure")
+        .map(|event| event["payload"]["action_id"].clone())
+        .expect("the answer's acknowledgement was requested");
+    let executed: Vec<Value> = events_of(world, &print, "action_executed")
+        .iter()
+        .map(|event| event["payload"]["action_id"].clone())
+        .collect();
+    assert_eq!(executed, [acknowledgement], "{executed:?}");
     assert!(events_of(world, &print, "print_ended").is_empty());
     assert!(events_of(world, &print, "supervision_session_closed").is_empty());
     let status = running::read(world, &["status", "--print-id", &print]);

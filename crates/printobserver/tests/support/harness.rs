@@ -83,8 +83,9 @@ pub fn stand_in(
 /// The same stand-in, whose supervision turn runs `turn` — POSIX shell — after
 /// it has recorded what it read and before it answers.
 ///
-/// Every turn writes its whole prompt to `<PROMPT>-<print>-<n>` beside the
-/// state file, and `turn` runs with the prompt read the way an agent reads it:
+/// Every turn writes its whole prompt, read off its standard input, to
+/// `<PROMPT>-<print>-<n>` beside the state file, and `turn` runs with the
+/// prompt read the way an agent reads it:
 /// `$print` is the print the prompt names, `$about` is the arguments of the
 /// context command the prompt hands it (its `--config` and its `--print-id`),
 /// `$actor` is the `--actor` line the prompt hands it, `$event` is the
@@ -126,6 +127,10 @@ case "$1" in
             echo "state=$(cat "$dir/{SIGNED_IN}")"
         }} > "$dir/{TURN_SEEN}.part"
         mv "$dir/{TURN_SEEN}.part" "$dir/{TURN_SEEN}"
+        # The prompt arrives on standard input, as plain text or as the text
+        # of a stream-json frame, whose escapes are read back as written.
+        prompt=$(cat | sed -e 's/\\n/\n/g' -e 's/\\"/"/g')
+        set -- "$1" "$prompt"
         context=$(printf '%s\n' "$2" | grep -m1 '^printobserver context ')
         about="${{context#printobserver context }}"
         print="${{about##*--print-id }}"
@@ -196,6 +201,7 @@ pub fn assessment_answer() -> String {
         "did": "read the context and changed nothing",
         "why": "nothing about the print needs an intervention",
         "escalating": false,
+        "disposition": "continue",
     })
     .to_string();
     printobserver_types::serde_json::json!({

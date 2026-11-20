@@ -2169,6 +2169,7 @@ impl SupervisorPort for FakeSupervisor {
                             did: "watched".to_owned(),
                             why: "nothing needed doing".to_owned(),
                             escalating: false,
+                            disposition: printobserver_supervisor_api::Disposition::Continue,
                         },
                     })
                 }

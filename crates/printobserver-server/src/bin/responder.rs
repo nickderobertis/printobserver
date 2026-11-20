@@ -42,6 +42,11 @@ const LOG: &str = "PRINTOBSERVER_RESPONDER_LOG";
 /// ignored, and what it answered is written down like any other.
 const ACTIONS: &str = "PRINTOBSERVER_RESPONDER_ACTIONS";
 
+/// What a scripted action's body names the turn's own event by, replaced with
+/// the identifier of the event the turn's prompt names: what an acknowledgement
+/// the turn makes by command is about.
+const EVENT_PLACEHOLDER: &str = "{event_id}";
+
 /// The variable naming the file this responder writes what it was started with
 /// to: the directory it was run in and the system prompt it was handed, as one
 /// JSON object.
@@ -80,6 +85,8 @@ struct Turn {
     credential: Credential,
     /// The print the turn is about.
     print: String,
+    /// The event the turn is about, as its prompt names it first.
+    event: Option<String>,
 }
 
 /// A credential this responder presents, held only once the server's own rule
@@ -110,12 +117,15 @@ fn from_the_environment(name: &str) -> Option<String> {
 /// The environment is where a turn is handed both — the address the server
 /// bound and the credential minted for this turn — and the context command it
 /// is told to run names neither, which is why the program a real turn runs
-/// reads them from there too. The prompt reaches the harness on its argv,
-/// which is where a real one reads it from. A turn that carries neither
+/// reads them from there too. The prompt reaches the harness on its argv or,
+/// for a run naming an `--input-format`, on its standard input, which is where
+/// a real one reads it from. A turn that carries neither
 /// variable, or whose prompt names no context command, is a turn this
 /// responder does not act on — it answers and nothing else.
-fn turn_from_the_prompt() -> Option<Turn> {
-    let prompt = std::env::args().find(|word| word.contains(CONTEXT_MARKER))?;
+fn turn_from_the_prompt(stdin: &str) -> Option<Turn> {
+    let prompt = std::env::args()
+        .chain(prompt_texts(stdin))
+        .find(|word| word.contains(CONTEXT_MARKER))?;
     let after = prompt.split(CONTEXT_MARKER).nth(1)?;
     let server = from_the_environment(printobserver_supervisor_api::SERVER_ENV)?
         .trim_end_matches('/')
@@ -129,11 +139,48 @@ fn turn_from_the_prompt() -> Option<Turn> {
         .nth(1)?
         .trim()
         .to_owned();
+    let event = prompt
+        .split_once("\"id\": \"")
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(id, _)| id.to_owned());
     Some(Turn {
         server,
         credential,
         print,
+        event,
     })
+}
+
+/// Everything a run handed this responder on its standard input, read once and
+/// only for a run naming an `--input-format`: a run that names none writes no
+/// prompt there, and reading it would wait on input nobody sends.
+fn standard_input() -> String {
+    if !std::env::args().any(|argument| argument == "--input-format") {
+        return String::new();
+    }
+    let mut read = String::new();
+    let _ = std::io::stdin().read_to_string(&mut read);
+    read
+}
+
+/// The prompt texts standard input carries: each text block of a stream-json
+/// user frame, or the whole input when it is no frame.
+fn prompt_texts(stdin: &str) -> Vec<String> {
+    let mut texts = Vec::new();
+    for line in stdin.lines() {
+        let Ok(frame) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        for block in frame["message"]["content"].as_array().into_iter().flatten() {
+            if let Some(text) = block["text"].as_str() {
+                texts.push(text.to_owned());
+            }
+        }
+    }
+    if texts.is_empty() && !stdin.is_empty() {
+        texts.push(stdin.to_owned());
+    }
+    texts
 }
 
 /// One action this responder could not issue at all.
@@ -210,12 +257,13 @@ fn read_answer(answer: &str) -> serde_json::Value {
 
 /// Issue every action this turn was scripted with, and write down what happened.
 fn act() {
-    record_what_was_seen();
+    let stdin = standard_input();
+    record_what_was_seen(&stdin);
     let Ok(log) = std::env::var(LOG) else {
         return;
     };
     let scripted = std::env::var(ACTIONS).unwrap_or_default();
-    let Some(turn) = turn_from_the_prompt() else {
+    let Some(turn) = turn_from_the_prompt(&stdin) else {
         append(
             &log,
             &refused(
@@ -242,7 +290,10 @@ fn act() {
             );
         }
         let started = std::time::Instant::now();
-        let mut answered = issue(&turn, operation, &body.to_string());
+        let sent = body
+            .to_string()
+            .replace(EVENT_PLACEHOLDER, turn.event.as_deref().unwrap_or_default());
+        let mut answered = issue(&turn, operation, &sent);
         if let Some(object) = answered.as_object_mut() {
             object.insert("operation".to_owned(), serde_json::json!(operation));
             object.insert(
@@ -254,8 +305,9 @@ fn act() {
     }
 }
 
-/// Write down where this responder was run and the system prompt it was handed.
-fn record_what_was_seen() {
+/// Write down where this responder was run, the system prompt it was handed
+/// and what it was handed on its standard input.
+fn record_what_was_seen(stdin: &str) {
     let Ok(record) = std::env::var(SEEN) else {
         return;
     };
@@ -285,6 +337,7 @@ fn record_what_was_seen() {
         // Everything after the program's own name, and the search path the
         // turn's commands would be found on.
         "arguments": arguments.get(1..).unwrap_or_default(),
+        "stdin": stdin,
         "path": std::env::var("PATH").ok(),
     });
     // A record nobody can read is a journey that cannot see what it asserts
@@ -293,6 +346,9 @@ fn record_what_was_seen() {
         eprintln!("printobserver-server-responder: {record} could not be written: {error}");
         std::process::exit(1);
     }
+    // Every run's record is kept too, one per line beside it, so a journey
+    // over several turns reads each turn's rather than only the last.
+    append(&format!("{record}.lines"), &document.to_string());
 }
 
 /// Append one line to the file a journey reads what this responder did from.
