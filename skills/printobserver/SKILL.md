@@ -27,7 +27,7 @@ them with file tools.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **Act, and say why.** Ask for any change with a reason a reader can act on and, if temporary,
    how long. After a setting, look again.
-6. **Record what you saw.** After a look, acknowledge this turn's event with a reason giving
+6. **Record what you saw.** Acknowledge this turn's event with a reason giving
    what you saw and made of it: disposition stop with every pause, yours or the detector's; watch
    after a setting, or when uncertain on a running print; continue when nothing is there, a false
    alarm included.
@@ -60,10 +60,11 @@ Reading frames:
   top's height then and the rise since, what should show, not proof it did: measure the tallest
   printing part's base and top pixel rows, then and now, all four in the reason. Short of the
   rise, likely, unsure or lacking them is not printing: a clear defect, never watched.
-  Hidden parts: look again first. A still landmark proves only a still view; a part moved when its
-  distance to a fixed sheet hole, edge or mark changed. Each reason gives each part's pixels from a
-  named landmark; each turn, before looking, measure the event frame so against the last reason's
-  figures. Changed: moved, never uncertain, whatever the cause; no later frame undoes it.
+  Hidden parts: look again first. A still landmark proves only a still view; a part moved when
+  its base's distance to a fixed sheet hole, edge or mark changed. Each reason gives each part's base
+  pixels from a named landmark; each turn, before looking, measure the event frame so against the
+  last reason's figures. Changed: moved, never uncertain, whatever the cause; no later frame undoes
+  it.
   So is a part off the bed, a first layer not sticking, or a part where the plan puts no object,
   its own place empty.
 
