@@ -516,8 +516,19 @@ fn adds_nothing_to(facts: &Value, answer: &Value, at: &str) {
             }
         }
         (Value::Array(items), Value::Array(answered)) => {
-            for (item, carried) in items.iter().zip(answered) {
-                adds_nothing_to(item, carried, &format!("{at}[]"));
+            for (index, item) in items.iter().enumerate() {
+                // An event is matched by its identifier, because a later read
+                // carries newer events ahead of those the facts were cut to.
+                let carried = match item.get("id") {
+                    Some(id) => answered
+                        .iter()
+                        .find(|carried| carried.get("id") == Some(id)),
+                    None => answered.get(index),
+                }
+                .unwrap_or_else(|| {
+                    panic!("the facts carry `{at}[{index}]`, which the context answer does not")
+                });
+                adds_nothing_to(item, carried, &format!("{at}[{index}]"));
             }
         }
         _ => {}
@@ -622,9 +633,14 @@ fn is_a_lean_check(run: &Run, installer: &str, stored_frames: &[String]) {
     );
 
     let facts = facts_in(&prompt);
+    let events = facts["recent_events"]
+        .as_array()
+        .expect("the facts carry their events");
     assert!(
-        facts.get("recent_events").is_none(),
-        "{installer}: the facts carry the events"
+        !events
+            .iter()
+            .any(|event| event["kind"] == "agent_assessment"),
+        "{installer}: the facts carry events from before the agent's last answer: {facts}"
     );
     adds_nothing_to(&facts, read, "facts");
     for field in ["layer", "z_mm", "types", "final_z_mm", "minutes_left"] {

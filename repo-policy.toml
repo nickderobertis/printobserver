@@ -1184,7 +1184,7 @@ marker = "2. **Judge the frame.**"
 
 [[docs.skill_element]]
 name = "the workflow step that looks again only for an ambiguous frame"
-marker = "3. **Look again only when the frame is genuinely ambiguous.**"
+marker = "3. **Look again only when the frame is genuinely ambiguous,**"
 
 [[docs.skill_element]]
 name = "the workflow step that decides"

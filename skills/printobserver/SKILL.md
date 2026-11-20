@@ -12,16 +12,16 @@ it going as it should, and which bounded adjustment, if any, is right now?
 
 ## The normal workflow
 
-[The command surface](reference/command-surface.md) and
-[common operations](reference/common-operations.md) hold the commands; read them with file tools.
+Commands: [the command surface](reference/command-surface.md),
+[common operations](reference/common-operations.md).
 
 1. **Decide from what is in front of you:** the event, the print's facts and the frame. Read the
    whole context only when the facts lack what you need.
-2. **Judge the frame.** A path is not evidence nor is a picture too dark, blurred or aimed at
-   nothing: say so; it is uncertain. A file's name excuses nothing.
-3. **Look again only when the frame is genuinely ambiguous.** A look can wait up to a minute and a
-   half first; a few show a defect growing. Open each; each states its capture time. One time twice
-   is a camera with nothing newer, no defect: say so and judge the frame.
+2. **Judge the frame.** A picture too dark, blurred or aimed at nothing is uncertain: say so.
+3. **Look again only when the frame is genuinely ambiguous,** detail on the part too fine to tell
+   at its size included. A look can wait up to a minute and a half first; a few show a defect
+   growing. Open each; each states its capture time. One time twice is a camera with nothing
+   newer, no defect: say so and judge the frame.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **To act, ask for the change, then answer.** Give a reason a reader can act on and, if
    temporary, how long. Never look again after acting.
@@ -29,8 +29,8 @@ it going as it should, and which bounded adjustment, if any, is right now?
    with every pause, yours or the detector's; watch after a setting, or when uncertain on a running
    print; continue when nothing is there, a false alarm included.
 
-Run each command naming no configuration: the environment names the supervisor and this
-turn's credential. Name yourself as the actor only where a command's usage asks who.
+Run each command naming no configuration: the environment names the supervisor and the
+credential. Name yourself as the actor only where a command's usage asks who.
 
 ## The decision order
 
@@ -44,6 +44,8 @@ turn's credential. Name yourself as the actor only where a command's usage asks 
 3. **An uncertain reading gets a watch and another look, never a pause,** unless the frames show
    it clearly getting worse.
 4. **Nothing there gets nothing:** carry on.
+
+A person's resume settles what they resumed over: after it, judge only what is new or worse.
 
 Reading frames:
 
@@ -103,7 +105,6 @@ override.
 
 Escalate when the machine, or the safe thing, is beyond what you may ask:
 pause, naming what the person must check.
-A person's resume settles what they resumed over.
 
 ## Elsewhere
 

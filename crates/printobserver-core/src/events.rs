@@ -24,8 +24,9 @@
 //!
 //! # Everything a check decides from is in its prompt
 //!
-//! A turn is handed its print's facts — the context read as it begins, less the
-//! events ([`crate::context::turn_facts`]) — and the check's image of the
+//! A turn is handed its print's facts — the context read as it begins, its
+//! events cut to those since the agent last answered
+//! ([`crate::context::turn_facts`]) — and the check's image of the
 //! event's frame ([`crate::check_image`]), so a quiet check needs no command to
 //! decide. Its answer's disposition is its acknowledgement: a turn that
 //! acknowledged nothing by command has its event acknowledged from its answer,

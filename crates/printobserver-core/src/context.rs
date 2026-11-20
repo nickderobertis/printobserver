@@ -283,23 +283,27 @@ impl PrintContext {
     }
 }
 
-/// The fields of a context read a turn's facts leave out: its events, which a
-/// turn's conversation and its own event already carry, and which the whole
-/// context answers when a turn asks for them.
-pub const FACTS_OMIT: [&str; 1] = ["recent_events"];
+/// The kind of event a turn's answer is written down under: what a turn's facts
+/// carry the events newer than.
+pub const ANSWERED_KIND: &str = "agent_assessment";
 
 /// The facts a supervision turn is handed up front: the context read as the
-/// turn began, as [`AgentContext`] answers it, less [`FACTS_OMIT`] — and no
-/// field that answer does not carry.
+/// turn began, as [`AgentContext`] answers it — and no field that answer does
+/// not carry — with its events cut to those newer than the agent's last
+/// answer, newest first: what happened since the agent last spoke, which its
+/// own conversation does not hold. A print the agent has not answered on yet
+/// keeps the whole window.
 #[must_use]
 pub fn turn_facts(context: &AgentContext) -> Value {
-    let mut facts = printobserver_types::serde_json::to_value(context).unwrap_or(Value::Null);
-    if let Value::Object(fields) = &mut facts {
-        for omitted in FACTS_OMIT {
-            fields.remove(omitted);
-        }
+    let mut facts = context.clone();
+    if let Some(answered) = facts
+        .recent_events
+        .iter()
+        .position(|event| event.kind.as_str() == ANSWERED_KIND)
+    {
+        facts.recent_events.truncate(answered);
     }
-    facts
+    printobserver_types::serde_json::to_value(facts).unwrap_or(Value::Null)
 }
 
 /// The events newer than `since`, newest first, when `events` — newest first —

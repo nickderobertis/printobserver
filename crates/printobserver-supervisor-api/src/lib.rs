@@ -61,8 +61,9 @@ pub struct TurnRequest {
     /// The command the turn runs to read the print's context.
     pub context_command: String,
     /// The print's context as the context command answered it when the turn
-    /// began, less its events: what the turn decides from without running a
-    /// command. `null` when no context could be read.
+    /// began, its events cut to those since the agent last answered: what the
+    /// turn decides from without running a command. `null` when no context
+    /// could be read.
     #[serde(default)]
     pub facts: printobserver_types::serde_json::Value,
     /// What the supervisor knew about the moment the turn began.
