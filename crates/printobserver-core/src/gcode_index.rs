@@ -322,7 +322,10 @@ impl GcodeIndex {
         self.layers.get(layer.0).and_then(|held| held.z_mm)
     }
 
-    /// Whether a layer lays anything but supports.
+    /// Whether a layer lays object extrusion, which the planned-geometry
+    /// contract defines as anything but supports: skirt, brim and unlabelled
+    /// moves count, because the first layer's brim is part of what the
+    /// alignment check matches.
     fn lays_object(&self, layer: &Layer) -> bool {
         layer.types & !self.type_bits(&SUPPORTS) != 0
     }

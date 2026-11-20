@@ -104,7 +104,9 @@ pub struct LayerToolpath {
 }
 
 impl LayerToolpath {
-    /// Whether any segment lays the part rather than its supports.
+    /// Whether any segment is object extrusion: anything but supports, as
+    /// `GcodeIndex::object_layer_at_or_below` reads it, so an `Other` segment
+    /// (skirt, brim or custom G-code) counts.
     #[must_use]
     pub fn carries_object_extrusion(&self) -> bool {
         self.segments
