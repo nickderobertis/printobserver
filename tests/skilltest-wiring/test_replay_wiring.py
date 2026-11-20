@@ -1732,6 +1732,10 @@ def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
             {**test_record, "decision_points": [{**points[0], "looks": "many"}, points[1]]},
         ),
         (
+            "a passing check reporting no call",
+            {**test_record, "decision_points": [{**points[0], "calls": []}, points[1]]},
+        ),
+        (
             "a call reporting no counts",
             {**test_record, "decision_points": [{**points[0], "calls": [{}]}, points[1]]},
         ),
@@ -2206,3 +2210,37 @@ def test_a_probe_call_keeps_its_counts_and_nothing_else() -> None:
         ),
         {"input_tokens": 2, "output_tokens": 8, "cache_read_tokens": 3},
     )
+
+
+def _ledger_with(calls: object) -> dict[str, Any]:
+    """A ledger of one session and one turn carrying `calls`."""
+    return {
+        "sessions": [{"session_name": "print-p", "harness_identity": "claude-code"}],
+        "turns": [{"session_name": "print-p", "calls": calls}],
+    }
+
+
+@pytest.mark.parametrize(
+    "calls",
+    [
+        {},
+        [{}],
+        [{"input_tokens": 3}],
+        [{"input_tokens": 3, "output_tokens": -2}],
+        [{"input_tokens": 3, "output_tokens": 2, "cost_usd": 0.1}],
+        [[3, 2]],
+    ],
+)
+def test_a_ledger_turn_whose_calls_are_no_counts_is_refused(calls: object) -> None:
+    """The replay reads no figure off a turn whose calls it cannot hold to counts."""
+    with pytest.raises(ReplayError, match="no ledger"):
+        replay_module._ledger_of(_ledger_with(calls), Path("ledger.json"))
+
+
+def test_a_ledger_turn_keeps_its_calls_and_a_turn_with_none_reads_as_none() -> None:
+    """Counted calls read back as they are; an earlier ledger's turn carries none."""
+    counted = [{"input_tokens": 3, "output_tokens": 2, "cache_read_tokens": 9}]
+    equal(replay_module._ledger_of(_ledger_with(counted), Path("l"))["turns"][0]["calls"], counted)
+    earlier = _ledger_with([])
+    del earlier["turns"][0]["calls"]
+    equal(replay_module._ledger_of(earlier, Path("l"))["turns"][0].get("calls"), None)

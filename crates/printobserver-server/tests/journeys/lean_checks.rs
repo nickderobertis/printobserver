@@ -932,3 +932,119 @@ async fn a_frame_that_already_fits_is_shown_as_stored() {
     assert_eq!(std::fs::read(shown).expect("the frame reads"), fitting);
     lean.server.stop().await;
 }
+
+/// Whether a decoded image carries the red mark in each of its four corners.
+fn marked_in_every_corner(image: &image::RgbImage) -> bool {
+    let (width, height) = image.dimensions();
+    let inset = 10;
+    [
+        (inset, inset),
+        (width - inset, inset),
+        (inset, height - inset),
+        (width - inset, height - inset),
+    ]
+    .into_iter()
+    .all(|(x, y)| red(*image.get_pixel(x, y)))
+}
+
+/// A frame of another shape than a check's is scaled whole to fit it, its
+/// shape kept and every corner in the image; a second check of the same stored
+/// frame is shown the image the first made, without making it again.
+#[test]
+fn a_frame_of_any_shape_is_scaled_whole_once_and_reused() {
+    use printobserver_core::CheckImages as _;
+
+    let root = TempDir::new().expect("a journey's own root");
+    let stored = root.path().join("images").join("01").join("digest");
+    std::fs::create_dir_all(stored.parent().expect("a directory")).expect("the image directory");
+    std::fs::write(&stored, marked_frame_of((2400, 1800))).expect("the stored frame");
+    let images = printobserver_server::WholeFrames::under(root.path());
+
+    let shown = images
+        .check_image(None, &stored)
+        .expect("a check image is made");
+    assert_ne!(
+        shown, stored,
+        "a frame larger than a check's was not scaled"
+    );
+    let decoded = image::load_from_memory(&std::fs::read(&shown).expect("the image reads"))
+        .expect("the check image decodes")
+        .to_rgb8();
+    assert_eq!(
+        decoded.dimensions(),
+        (960, 720),
+        "the frame's shape was not kept"
+    );
+    assert!(marked_in_every_corner(&decoded), "the frame was cropped");
+
+    // What a later check is shown is the image already made, read as it is.
+    std::fs::write(&shown, b"made once").expect("the made image is writable");
+    let again = images
+        .check_image(None, &stored)
+        .expect("the image is shown again");
+    assert_eq!(again, shown);
+    assert_eq!(std::fs::read(&again).expect("it reads"), b"made once");
+}
+
+/// A frame that cannot be read, or a check image that cannot be written, is
+/// refused naming which: what core then shows the check is the stored frame.
+#[test]
+fn a_check_image_that_cannot_be_made_is_refused_naming_why() {
+    use printobserver_core::CheckImages as _;
+
+    let root = TempDir::new().expect("a journey's own root");
+    let images = printobserver_server::WholeFrames::under(root.path());
+    let missing = root.path().join("images").join("02").join("gone");
+    let refused = images
+        .check_image(None, &missing)
+        .expect_err("a frame that is not there was made into an image");
+    assert!(refused.contains("is unreadable"), "{refused}");
+
+    let stored = root.path().join("frame.jpg");
+    std::fs::write(&stored, marked_frame_of(CAMERA)).expect("the stored frame");
+    std::fs::write(
+        root.path()
+            .join(printobserver_server::CHECK_IMAGES_DIRECTORY),
+        b"a file where the directory goes",
+    )
+    .expect("the blocking file");
+    let refused = images
+        .check_image(None, &stored)
+        .expect_err("an image was written where no directory can be");
+    assert!(refused.contains("cannot be"), "{refused}");
+}
+
+/// A server whose check images cannot be written shows a look the stored
+/// frame, at the camera's size, rather than nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_look_whose_check_image_cannot_be_made_is_shown_the_stored_frame() {
+    let lean = Lean::open(
+        INSTALLERS[0],
+        3_600,
+        &[answering("continue", "fine")],
+        &json!([]),
+    )
+    .await;
+    std::fs::write(
+        lean.root
+            .path()
+            .join("state")
+            .join(printobserver_server::CHECK_IMAGES_DIRECTORY),
+        b"a file where the directory goes",
+    )
+    .expect("the blocking file");
+    let look = lean.get("/look").await;
+    let shown = look["image_path"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the look answers no frame: {look}"));
+    let frame = look["frame"]["id"]
+        .as_str()
+        .expect("the look's frame record");
+    let stored = lean.get(&format!("/images/{frame}")).await;
+    assert_eq!(Some(shown), stored["path"].as_str());
+    assert_eq!(
+        std::fs::read(shown).expect("the frame reads"),
+        marked_frame()
+    );
+    lean.server.stop().await;
+}

@@ -97,11 +97,16 @@ def _is_usage(usage: object) -> bool:
 
 
 def _check_is_readable(point: dict[str, Any]) -> bool:
-    """Whether a supervision check says its calls and its class; a start request says neither."""
+    """Whether a supervision check says its calls and its class; a start request says neither.
+
+    A check that passed made at least one call: one that reports none measured
+    nothing, and would fold into the figures as a check that cost nothing.
+    """
     if point.get("trigger") == START_REQUEST:
         return True
     return (
         isinstance(point.get("calls"), list)
+        and (bool(point["calls"]) or point.get("passed") is False)
         and all(_is_usage(usage) for usage in point["calls"])
         and point.get("check_class") in {"quiet", "acting"}
     )

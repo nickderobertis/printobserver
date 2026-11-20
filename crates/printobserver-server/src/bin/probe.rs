@@ -34,7 +34,7 @@ struct Asked {
     usage: Option<PathBuf>,
 }
 
-/// The three options, each once and none empty.
+/// The four options, each once and none empty, and `--usage` alone optional.
 fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
     let (mut config, mut session, mut prompt, mut usage) = (None, None, None, None);
     while let Some(flag) = arguments.next() {

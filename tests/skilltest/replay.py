@@ -613,10 +613,26 @@ def _ledger_of(document: object, path: Path) -> Ledger:
             for entry in [*sessions, *turns]
         )
         or not all(isinstance(entry.get("harness_identity"), str) for entry in sessions)
+        or not all(_calls_are_counts(entry.get("calls", [])) for entry in turns)
     ):
         msg = f"{path} is no ledger of sessions and turns"
         raise ReplayError(msg)
     return {"sessions": sessions, "turns": turns}
+
+
+def _calls_are_counts(calls: object) -> bool:
+    """Whether a ledger turn's calls are each a usage of whole, non-negative counts.
+
+    Each reports its input and output, as the port writes every call the harness
+    reported both of.
+    """
+    return isinstance(calls, list) and all(
+        isinstance(call, dict)
+        and all(name in call for name in REPORTED_COUNTS)
+        and call.keys() <= CallUsage.__annotations__.keys()
+        and all(type(count) is int and count >= 0 for count in call.values())
+        for call in calls
+    )
 
 
 def _received(event: HistoryEvent) -> datetime:

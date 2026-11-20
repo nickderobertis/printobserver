@@ -290,6 +290,22 @@ def subcommands(line: str) -> list[str]:
     for words in commands(line):
         if not runs_the_program(words):
             continue
-        named = _named(words)
-        found.extend(next(([word] for word in named[1:] if not word.startswith("-")), []))
+        found.extend(_subcommand(_named(words)[1:]))
     return found
+
+
+#: The global options that take a value, which is never the subcommand.
+VALUED_OPTIONS = {"--config"}
+
+
+def _subcommand(words: list[str]) -> list[str]:
+    """The first word that is neither an option nor a valued option's value."""
+    skipping = False
+    for word in words:
+        if skipping:
+            skipping = False
+        elif word in VALUED_OPTIONS:
+            skipping = True
+        elif not word.startswith("-"):
+            return [word]
+    return []
