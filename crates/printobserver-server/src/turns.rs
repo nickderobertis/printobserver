@@ -275,8 +275,6 @@ mod tests {
             .map_or_else(|| panic!("the pass carries no {name}"), |(_, value)| value)
     }
 
-    /// A credential is admitted as the session and print it was issued for
-    /// while its turn runs, a second issue replaces the first, and revoking
     /// A look one run of a turn took counts for every run the turn issues
     /// after it, and for no other turn; it goes when the turn returns.
     #[test]
@@ -320,6 +318,8 @@ mod tests {
         );
     }
 
+    /// A credential is admitted as the session and print it was issued for
+    /// while its turn runs, a second issue replaces the first, and revoking
     /// the turn admits none of them and issues no more.
     #[test]
     fn a_turns_credential_lives_exactly_as_long_as_its_turn() {
