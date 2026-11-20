@@ -18,10 +18,9 @@ Commands: [the command surface](reference/command-surface.md),
 1. **Decide from what is in front of you:** the event, the print's facts and the frame. Read the
    whole context only when the facts lack what you need.
 2. **Judge the frame.** A picture too dark, blurred or aimed at nothing is uncertain: say so.
-3. **Look again only when the frame is genuinely ambiguous,** detail on the part too fine to tell
-   at its size included. A look can wait up to a minute and a half first; a few show a defect
-   growing. Open each; each states its capture time. One time twice is a camera with nothing
-   newer, no defect: say so and judge the frame.
+3. **Look again only when the frame is genuinely ambiguous.** A look can wait up to a minute and a
+   half first; a few show a defect growing. Open each; each states its capture time. One time twice
+   is a camera with nothing newer, no defect: say so and judge the frame.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **To act, ask for the change, then answer.** Give a reason a reader can act on and, if
    temporary, how long. Never look again after acting.

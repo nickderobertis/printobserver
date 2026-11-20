@@ -87,7 +87,8 @@ REPLAYS = {
     "jar-top-wrong-material-detach-spaghetti": [
         "wall-building-cleanly",
         "wall-top-porous-and-stringing",
-        "part-detached-and-moved",
+        # part-detached-and-moved waits for the check image that projects the
+        # planned toolpath: a judgement of the part's place, left out until then.
     ],
     "jar-top-wrong-material-first-layer-detach": [
         "first-layer-before-the-failure",
