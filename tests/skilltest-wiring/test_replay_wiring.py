@@ -92,7 +92,8 @@ REPLAYS = {
     ],
     "jar-top-wrong-material-first-layer-detach": [
         "first-layer-before-the-failure",
-        "ring-dragged-off-its-place",
+        # ring-dragged-off-its-place waits for the check image that projects
+        # the planned toolpath: a judgement of the part's place, left out until then.
     ],
     "petg-spool-jam-air-print": ["first-layers-healthy", "air-print-parts-stopped-growing"],
     "petg-clip-detach-and-stringing-web": [
@@ -402,8 +403,19 @@ def _scenario_named(document: dict[str, Any], scenario: str) -> dict[str, Any]:
     return next(s for s in document["assertions"]["scenarios"] if s["id"] == scenario)
 
 
-TWO_EVENTS = "jar-top-wrong-material-first-layer-detach"
-LAST = "ring-dragged-off-its-place"
+TWO_EVENTS = "jar-top-wrong-material-detach-spaghetti"
+#: A case's two periodic observations with one frame between them, and every
+#: scenario of them: the timeline the tests of the replay's own clock read.
+TIMELINE_CASE = "jar-top-wrong-material-first-layer-detach"
+TIMELINE = ("first-layer-before-the-failure", "ring-dragged-off-its-place")
+
+
+def _timeline() -> Case:
+    """The two-event timeline the clock's tests read, whatever the suite replays of it."""
+    return read_case(TIMELINE_CASE, replay=TIMELINE)
+
+
+LAST = "wall-top-porous-and-stringing"
 
 
 def _unknown_id(document: dict[str, Any]) -> None:
@@ -429,7 +441,7 @@ def _missing(document: dict[str, Any]) -> None:
     [
         (_unknown_id, "replay names no-such-scenario"),
         (_out_of_order, "not strictly increasing"),
-        (_past_the_end, "past the end of 3423-TOP-REV F.gcode"),
+        (_past_the_end, "past the end of 3423-TOP-REV F brim.gcode"),
         (_missing, "names no file_position_bytes"),
     ],
 )
@@ -509,7 +521,7 @@ def test_the_configuration_is_the_installers_with_only_the_blanks_filled(tmp_pat
 
 def test_one_session_spans_the_print_and_each_check_stands_at_its_moment(scratch: Path) -> None:
     """The port opens one conversation, and each turn is handed its frame and its position."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [CONTEXT, STATUS]}], scratch)
     ledger = done.replayed.ledger
     equal(len(ledger["sessions"]), 1)
@@ -540,7 +552,7 @@ def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch
 
 def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
     """With no frame left before the next event a look repeats the newest."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = _timeline()
     done = mock_replay(case, [{"commands": [LOOK, LOOK]}], scratch)
     first, second = case.moments
     between = case.frames[case.frame_at_or_before(first.at, first.event_image) + 1].file
@@ -556,11 +568,13 @@ def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
 
 def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Path) -> None:
     """Over the real cases whose next event shows a fault, however many looks a turn takes."""
-    for name in (
-        "jar-top-wrong-material-first-layer-detach",
-        "jar-top-wrong-material-detach-spaghetti",
+    for name, case in (
+        (TIMELINE_CASE, _timeline()),
+        (
+            "jar-top-wrong-material-detach-spaghetti",
+            read_case("jar-top-wrong-material-detach-spaghetti"),
+        ),
     ):
-        case = read_case(name)
         faulty = case.moments[-1].event_image
         directory = scratch / name
         directory.mkdir()
@@ -571,7 +585,7 @@ def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Pat
 
 def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
     """The record's times are the recording's, and a repeated frame says it is one."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = _timeline()
     first, second = case.moments
     waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
     done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
@@ -590,7 +604,7 @@ def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
 
 def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
     """What the server records of the job's start stays put across a whole print."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [STATUS]}], scratch)
     started = {
         json.loads(turn["ran"][0]["out"])["print"]["job_started_at"][:16] for turn in done.turns
@@ -600,7 +614,7 @@ def test_a_turn_reads_one_job_start_across_the_events(scratch: Path) -> None:
 
 def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path) -> None:
     """A look after the last event does not jump to the print's end."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     last = case.moments[-1]
     done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], scratch)
     equal(done.replayed.fetches[-3:], [last.looks[-1]] * 3)
@@ -673,7 +687,7 @@ def test_however_long_a_last_turn_runs_nothing_passes_the_next_recorded_moment(
 
 def test_the_print_clock_never_goes_back_whatever_a_look_waited(scratch: Path) -> None:
     """A clock going back reads to the server as a later job: one print, one session."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [LOOK]}], scratch)
     equal(len(done.replayed.ledger["sessions"]), 1)
 
@@ -709,7 +723,7 @@ def test_a_recorded_alert_reaches_the_agent_at_its_time(scratch: Path) -> None:
 
 def test_a_pause_at_a_carry_on_point_fails_it_and_its_test(scratch: Path) -> None:
     """What the server recorded the agent asking for is what is judged."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     # A turn that pauses answers that the print should stop, as the skill asks.
     done = mock_replay(case, [{"commands": [PAUSE], "disposition": "stop"}], scratch)
     carry_on, fault = done.replayed.points
@@ -720,7 +734,7 @@ def test_a_pause_at_a_carry_on_point_fails_it_and_its_test(scratch: Path) -> Non
 
 def test_an_accepted_action_passes_the_test(scratch: Path) -> None:
     """Carrying on at the carry-on point and pausing at the fault is the whole test passing."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(
         case, [{"commands": [CONTEXT]}, {"commands": [PAUSE], "disposition": "stop"}], scratch
     )
@@ -734,7 +748,7 @@ def test_a_supervision_turns_compound_command_is_reported_under_its_conversation
 
     With no ledger turn to read a decision point's session from, it is the print's last.
     """
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     chained = "printobserver context --print-id {print} --json; echo read"
     done = mock_replay(case, [{"commands": [chained]}, {"commands": [CONTEXT]}], scratch)
     replayed = done.replayed
@@ -750,7 +764,7 @@ def test_a_supervision_turns_compound_command_is_reported_under_its_conversation
 
 def test_a_read_piped_only_through_a_filter_is_no_compound_command(scratch: Path) -> None:
     """Production runs a read piped into `grep`, so the run's record reports nothing of it."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     piped = 'printobserver context --print-id {print} --json | grep -E "detector|slicer"'
     done = mock_replay(case, [{"commands": [piped]}, {"commands": [CONTEXT]}], scratch)
     replayed = done.replayed
@@ -876,7 +890,7 @@ def test_the_printer_reports_the_temperatures_the_gcode_asks_for_at_its_position
     scratch: Path,
 ) -> None:
     """The stand-in serves the G-code's own heater targets, through the real adapter."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     before = case.moments[1].file_position_bytes - 100
     gcode = b"M140 S60\nM104 S220\n" + b";\n" * (before // 2) + b"M104 S240\n"
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
@@ -974,7 +988,7 @@ def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
     """
     # One frame lies between this case's two events: the first look moves the
     # clock to it, and the second, with nothing newer, moves it by its wait alone.
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = _timeline()
     turn: ScriptedRun = {"commands": [LOOK_WAITING, LOOK_WAITING]}
     for each in ("real", "jumped"):
         (tmp_path / each).mkdir()
@@ -1054,7 +1068,7 @@ def test_the_real_supervisor_reads_the_replays_detector_through_obicos_record(
     reads apart have seen its snapshot move, a turn reads it scoring with nothing
     flagged; the same case with no detector recorded never reads scoring.
     """
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     truth(len(case.moments) >= 2, describing="two turns, so two reads lie between them")
     for directory in ("watched", "unwatched"):
         (scratch / directory).mkdir()
@@ -1330,7 +1344,7 @@ def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
 
 def test_a_history_command_that_fails_stops_the_replay(scratch: Path) -> None:
     """An unanswered read is the replay gone wrong, never a print with no events."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     replay = Replay(case, [sys.executable, str(MOCK_TURN), str(scratch / "script.json")])
     try:
         replay._install()
@@ -1380,7 +1394,7 @@ def test_a_replay_spending_past_its_allowance_stops(
     monkeypatch.setattr(replay_module, "RUN_ALLOWANCE_PER_ENTRY", 0)
     with pytest.raises(ReplayError, match="stopping the spend"):
         mock_replay(
-            read_case("jar-top-wrong-material-first-layer-detach"),
+            read_case("jar-top-wrong-material-detach-spaghetti"),
             [{"commands": [CONTEXT]}],
             scratch,
         )
@@ -1389,7 +1403,7 @@ def test_a_replay_spending_past_its_allowance_stops(
 def test_the_doubles_refuse_what_no_adapter_sends(scratch: Path) -> None:
     """A malformed body, an unknown printer command and another Obico route are refused."""
     timeline = doubles.Timeline(
-        case=read_case("jar-top-wrong-material-first-layer-detach"),
+        case=read_case("jar-top-wrong-material-detach-spaghetti"),
         picture=stamped,
         clock=scratch / "clock",
     )
@@ -1531,14 +1545,14 @@ def test_a_harnesss_own_bookkeeping_is_no_model_a_turn_answered_with() -> None:
 
 def test_a_turn_says_how_many_looks_it_took(scratch: Path) -> None:
     """The record counts the server's own looks for that turn, and only those."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(case, [{"commands": [LOOK, LOOK]}, {"commands": [CONTEXT]}], scratch)
     equal([point.looks for point in done.replayed.points], [2, 0])
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
     """A call the transcript writes twice ran once, and a file tool's read is reported."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(
         case,
         [{"commands": [CONTEXT], "reads": ["/somewhere/SKILL.md"], "streamed_twice": True}],
@@ -1552,7 +1566,7 @@ def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
 
 def test_a_turn_the_engine_gave_up_on_fails_its_own_decision_point(scratch: Path) -> None:
     """Its failure is that entry's verdict, and the next event still gets its turn."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     unreadable: ScriptedRun = {"commands": [CONTEXT], "unreadable": True}
     done = mock_replay(case, [unreadable, unreadable, unreadable, {"commands": [CONTEXT]}], scratch)
     first, second = done.replayed.points
@@ -1575,7 +1589,7 @@ def test_only_the_ingress_accepting_an_alert_counts_as_delivering_it() -> None:
 
 def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: Path) -> None:
     """The engine's second run of one turn neither ends it nor moves the replay on."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     done = mock_replay(
         case,
         [
@@ -1626,10 +1640,10 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "calls": [{"input_tokens": 3, "output_tokens": 80, "cache_write_tokens": 5_000}],
         "check_class": "quiet",
     }
-    carry_on, bridge = REPLAYS["jar-top-wrong-material-first-layer-detach"]
+    carry_on, bridge = REPLAYS["jar-top-wrong-material-detach-spaghetti"]
     points = [{**point, "scenario": carry_on}, {**point, "scenario": bridge}]
     test_record = {
-        "test": "jar-top-wrong-material-first-layer-detach",
+        "test": "jar-top-wrong-material-detach-spaghetti",
         "passed": True,
         "turns": 2,
         "sessions": [],
@@ -1779,7 +1793,7 @@ def test_the_record_command_runs_the_suite_and_folds_what_that_run_wrote(
     equal(folded["detail"]["passed"], True, describing="the run's verdict")
     equal(
         [test["test"] for test in folded["detail"]["tests"]],
-        ["jar-top-wrong-material-first-layer-detach"],
+        ["jar-top-wrong-material-detach-spaghetti"],
         describing="the tests the run wrote",
     )
 
@@ -1809,7 +1823,7 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
     And each check's calls as the supervisor port recorded them from the stream
     the harness wrote, with its class: quiet for the read, acting for the pause.
     """
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     usages = [
         {"input_tokens": 101, "output_tokens": 11, "cache_read_input_tokens": 7},
         {"input_tokens": 202, "output_tokens": 22, "cache_read_input_tokens": 9},
@@ -2010,7 +2024,7 @@ def test_a_diff_it_cannot_read_owes_the_suite(clone: Clone) -> None:
 
 def _a_check(commands: list[str], requests: list[Request]) -> DecisionPoint:
     """A decision point whose outcome any requests meet, so only how it acted can fail it."""
-    case = read_case("jar-top-wrong-material-first-layer-detach")
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
     moment = dataclasses.replace(case.moments[0], accept_any_of=((),), never=())
     return DecisionPoint(
         moment=moment,
@@ -2080,7 +2094,7 @@ def test_the_record_works_out_each_figure_the_budgets_read(
     monkeypatch.setattr(record, "commit", lambda: "a-commit")
     finished = tmp_path / "finished"
     finished.mkdir()
-    first, second = REPLAYS["jar-top-wrong-material-first-layer-detach"]
+    first, second = REPLAYS["jar-top-wrong-material-detach-spaghetti"]
     # The first check: one call reading 6,000, the probe's base plus its own 2,000.
     quiet = [
         {
@@ -2097,7 +2111,7 @@ def test_the_record_works_out_each_figure_the_budgets_read(
     ]
     points = [_point_with(first, "quiet", quiet), _point_with(second, "acting", acting)]
     test_record = {
-        "test": "jar-top-wrong-material-first-layer-detach",
+        "test": "jar-top-wrong-material-detach-spaghetti",
         "passed": True,
         "turns": 2,
         "sessions": [],

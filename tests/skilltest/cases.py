@@ -369,8 +369,13 @@ def _valid_document(path: Path, schema: Path) -> dict[str, Any]:
     return document
 
 
-def read_case(name: str) -> Case:
-    """One case of `tests/real-prints`, by its directory's name."""
+def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
+    """One case of `tests/real-prints`, by its directory's name.
+
+    Its moments are its own `replay` list's, or those of `replay` when given: the
+    scenarios of a timeline a test of the replay's own clock needs, whether or not
+    the suite replays them all.
+    """
     directory = CASES / name
     document = _valid_document(directory / "case.json", CASES / "case.schema.json")
     scenarios = {scenario["id"]: scenario for scenario in document["assertions"]["scenarios"]}
@@ -404,7 +409,7 @@ def read_case(name: str) -> Case:
             summary=scenarios[entry]["summary"],
             looks=tuple(look["image"] for look in scenarios[entry]["looks"]),
         )
-        for entry in document["assertions"].get("replay", ())
+        for entry in (replay if replay is not None else document["assertions"].get("replay", ()))
     )
     gcode = printed_gcode(directory)
     if gcode is None:
