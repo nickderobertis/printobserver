@@ -1915,6 +1915,25 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
     contains(points[1]["commands"][0], "printobserver pause")
 
 
+def test_the_facts_are_measured_off_the_prompt_a_real_check_is_handed(scratch: Path) -> None:
+    """The replay finds the facts in the prompt the supervisor really wrote.
+
+    `replay.FACTS_HEADING` restates the turn prompt's heading; a prompt that moved
+    its facts would leave every check's `facts_bytes` unmeasured, which this fails.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    mock_replay(case, [{"commands": [CONTEXT]}], scratch)
+    handed = (scratch / mock_turn.CONVERSATION_FILE).read_text(encoding="utf-8")
+    report = RunReport()
+
+    report.take([{"type": "user", "message": {"content": [{"type": "text", "text": handed}]}}])
+
+    truth(
+        report.facts_bytes is not None and report.facts_bytes > 0,
+        describing=f"the facts measured off the prompt the check was handed: {handed}",
+    )
+
+
 @dataclass
 class Clone:
     """A scratch clone with a committed base, for building real diffs in."""
