@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-208 types. The set is every type any crate declares under
+209 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -8566,6 +8566,49 @@ Declared by `printobserver-core`.
   },
   "title": "AgentPrinter",
   "type": "object"
+}
+```
+
+### AgentStopUnactedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The agent answered that a running print should stop, and asked for no\npause or cancel \u2014 not even when asked again \u2014 so nothing stopped it.\n\nAn answer records a judgement and does not act: acting is a request that\npolicy rules on. Written to the print's history, where a refused pause is,\nso the person reading it is told the print the agent judged should stop is\nstill running.",
+  "properties": {
+    "event_id": {
+      "$ref": "#/$defs/EventId",
+      "description": "The event the turn was about."
+    },
+    "session_name": {
+      "description": "The session the turn ran in.",
+      "type": "string"
+    },
+    "summary": {
+      "description": "What the agent said it saw, as its answer's summary put it.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "session_name",
+    "summary"
+  ],
+  "title": "AgentStopUnactedPayload",
+  "type": "object",
+  "x-event-kind": "agent_stop_unacted"
 }
 ```
 

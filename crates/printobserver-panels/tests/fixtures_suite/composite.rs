@@ -301,6 +301,42 @@ fn a_support_only_layer_shows_the_part_below_in_grey() {
     );
 }
 
+/// Infill is not drawn: where the layer's infill projects, panel 1 is the
+/// plain frame rather than the infill colour, so the part's interior — or bare
+/// sheet where a part has left its place — shows; panel 1's band keys no
+/// infill colour; and the layer's walls are still drawn.
+#[test]
+fn infill_is_never_drawn_over_the_part() {
+    let calibration = calibration();
+    let (image, path) = compose(PETG, PETG_WALLS, None, None);
+    let print_z = recorded_z(PETG, PETG_WALLS);
+    let composite = decode(&image);
+    let first = panel(&composite, 0);
+    let infill = sampled(&calibration, &path, &[ExtrusionKind::Infill], print_z);
+    assert!(infill.len() >= 20, "the layer lays infill to sample");
+    let yellow = Rgb([255, 220, 0]);
+    let share = share_carrying(&first, &infill, yellow);
+    assert!(
+        share <= 0.05,
+        "{:.0}% of sampled infill carries the infill colour; none is drawn",
+        share * 100.0
+    );
+    let keyed = (0..BAND_HEIGHT)
+        .flat_map(|y| (0..PANEL_WIDTH).map(move |x| (x, y)))
+        .filter(|(x, y)| colour_distance(*composite.get_pixel(*x, *y), yellow) <= 40)
+        .count();
+    assert!(
+        keyed < 20,
+        "band 1 keys infill ({keyed} pixels of its colour)"
+    );
+    let walls = sampled(&calibration, &path, &[ExtrusionKind::Wall], print_z);
+    assert!(
+        share_carrying(&first, &walls, colour_of(ExtrusionKind::Wall)) >= 0.7,
+        "the walls are still drawn"
+    );
+    assert!(!printobserver_panels::is_drawn(ExtrusionKind::Infill));
+}
+
 /// Walls are drawn in the wall colour where they project, 1 px wide: 2 px to
 /// either side, where no projected segment passes, the panel is the plain
 /// scaled frame within JPEG noise.
@@ -367,7 +403,6 @@ fn walls_are_drawn_where_they_project_and_one_pixel_wide() {
 fn drawn_colours() -> Vec<Rgb<u8>> {
     [
         ExtrusionKind::Wall,
-        ExtrusionKind::Infill,
         ExtrusionKind::Support,
         ExtrusionKind::Bridge,
         ExtrusionKind::Overhang,
@@ -584,7 +619,6 @@ fn the_bands_carry_the_colour_key_and_the_previous_checks_time() {
     let composite = decode(&image);
     for kind in [
         ExtrusionKind::Wall,
-        ExtrusionKind::Infill,
         ExtrusionKind::Support,
         ExtrusionKind::Bridge,
         ExtrusionKind::Overhang,

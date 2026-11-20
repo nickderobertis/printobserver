@@ -1356,3 +1356,89 @@ fn a_check_image_refused_its_place_leaves_no_partial_image() {
         "{left:?}"
     );
 }
+
+/// What one run of the harness was handed on its standard input, as text.
+fn stdin_of(seen: &Value) -> String {
+    seen["stdin"].as_str().unwrap_or_default().to_owned()
+}
+
+/// An answer of `stop` on a printing print, from a turn that asked for no
+/// pause, is refused once in the same session, naming the command that stops a
+/// print; when the answer to that is `stop` again, the print's history says
+/// the agent judged it should stop and stopped nothing. A turn that paused
+/// and answers `stop` is neither refused nor written down so.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stop_that_stopped_nothing_is_refused_once_then_written_down() {
+    let unacted = Lean::open(
+        INSTALLERS[0],
+        3_600,
+        &[
+            answering("stop", "the part moved"),
+            answering("stop", "the part moved"),
+        ],
+        &json!([]),
+    )
+    .await;
+    let print_id = unacted.active().await;
+    unacted.alert().await;
+    unacted.turns_ended(&print_id, 1).await;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    let written = loop {
+        let written = unacted.history(&print_id, "agent_stop_unacted").await;
+        if !written.is_empty() {
+            break written;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the unacted stop was never written down"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    let alerted = unacted.history(&print_id, "obico_failure_alert").await;
+    assert_eq!(written.len(), 1);
+    assert_eq!(written[0]["payload"]["event_id"], alerted[0]["id"]);
+    assert_eq!(
+        written[0]["payload"]["summary"],
+        "the walls are going down clean"
+    );
+    let seen = unacted.seen();
+    assert_eq!(seen.len(), 2, "the stop was refused once, in the same turn");
+    let refused = stdin_of(&seen[1]);
+    assert!(
+        refused.contains("an answer stops nothing") && refused.contains("printobserver pause"),
+        "{refused}"
+    );
+    assert!(
+        !stdin_of(&seen[0]).contains("an answer stops nothing"),
+        "the first run was refused before it answered"
+    );
+    unacted.server.stop().await;
+
+    let paused = Lean::open(
+        INSTALLERS[0],
+        3_600,
+        &[answering("stop", "the part moved")],
+        &json!([{ "operation": "pause", "body": { "reason": "the part moved" } }]),
+    )
+    .await;
+    let print_id = paused.active().await;
+    paused.alert().await;
+    paused.turns_ended(&print_id, 1).await;
+    let requested = paused.history(&print_id, "action_requested").await;
+    assert!(
+        requested
+            .iter()
+            .any(|event| event["payload"]["action"]["action"] == "pause"),
+        "the turn asked for its pause: {requested:?}"
+    );
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(paused.seen().len(), 1, "a turn that paused was not refused");
+    assert!(
+        paused
+            .history(&print_id, "agent_stop_unacted")
+            .await
+            .is_empty(),
+        "a stop that paused was written down as stopping nothing"
+    );
+    paused.server.stop().await;
+}

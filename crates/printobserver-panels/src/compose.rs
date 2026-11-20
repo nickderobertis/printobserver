@@ -5,7 +5,10 @@
 //!    drawn over it 1 px wide in each segment's kind's colour — and, when that
 //!    layer lays supports alone, the nearest object layer below it in grey
 //!    beneath, so the part still shows. Lines are 1 px because 2 px merged
-//!    wall and infill at this size.
+//!    wall and infill at this size. Infill is not drawn ([`is_drawn`]): its
+//!    dense hatch over the part's interior read as material being laid, and
+//!    hid whether that interior holds the part or bare sheet, which is what
+//!    tells a part off its place.
 //! 2. The current frame cropped to the active object's outline projected at
 //!    the bed and at the current height, with a [`MARGIN_PX`] margin, widened
 //!    to 16:9, never narrower than [`MIN_CROP_WIDTH_PX`] (so upscaled at most
@@ -62,10 +65,15 @@ pub const fn colour_of(kind: ExtrusionKind) -> Rgb<u8> {
     }
 }
 
-/// The colour key panel 1's band carries, in its order.
-const KEY: [(&str, ExtrusionKind); 5] = [
+/// Whether panel 1 draws a segment of this kind: every kind but infill.
+#[must_use]
+pub const fn is_drawn(kind: ExtrusionKind) -> bool {
+    !matches!(kind, ExtrusionKind::Infill)
+}
+
+/// The colour key panel 1's band carries, in its order: each kind it draws.
+const KEY: [(&str, ExtrusionKind); 4] = [
     ("wall", ExtrusionKind::Wall),
-    ("infill", ExtrusionKind::Infill),
     ("support", ExtrusionKind::Support),
     ("bridge", ExtrusionKind::Bridge),
     ("overhang", ExtrusionKind::Overhang),
@@ -172,10 +180,10 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
     let scale_y = f64::from(PANEL_HEIGHT) / f64::from(size[1]);
 
     let mut whole = scaled(&current, None);
-    for piece in &below {
+    for piece in below.iter().filter(|piece| is_drawn(piece.kind)) {
         line(&mut whole, piece.from, piece.to, scale, scale_y, BELOW_GREY);
     }
-    for piece in &drawn {
+    for piece in drawn.iter().filter(|piece| is_drawn(piece.kind)) {
         line(
             &mut whole,
             piece.from,

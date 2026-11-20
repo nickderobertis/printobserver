@@ -270,6 +270,9 @@ pub struct Supervisor {
     /// The prints whose running turn acknowledged its event by command, which
     /// is then not acknowledged again from the turn's answer.
     pub(crate) acknowledged_by_turn: Mutex<BTreeSet<PrintId>>,
+    /// The prints whose running turn has asked for a pause or a cancel,
+    /// shared with the access each turn's port is handed.
+    pub(crate) stopped_by_turn: Arc<Mutex<BTreeSet<PrintId>>>,
     /// What the printer watch holds between its reads.
     pub(crate) watch: Mutex<WatchState>,
     /// Whether Z is trusted, which this supervisor starts out not doing.
@@ -357,6 +360,7 @@ impl Supervisor {
             scoring_probe: std::sync::OnceLock::new(),
             check_images: std::sync::OnceLock::new(),
             acknowledged_by_turn: Mutex::new(BTreeSet::new()),
+            stopped_by_turn: Arc::new(Mutex::new(BTreeSet::new())),
             watch: Mutex::new(WatchState::default()),
             z_trust: Mutex::new(ZTrust::Untrusted(
                 crate::recovery::UNTRUSTED_AT_START.to_owned(),

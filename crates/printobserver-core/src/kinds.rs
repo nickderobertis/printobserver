@@ -212,6 +212,39 @@ impl Sample for AgentAssessmentPayload {
     }
 }
 
+/// The agent answered that a running print should stop, and asked for no
+/// pause or cancel — not even when asked again — so nothing stopped it.
+///
+/// An answer records a judgement and does not act: acting is a request that
+/// policy rules on. Written to the print's history, where a refused pause is,
+/// so the person reading it is told the print the agent judged should stop is
+/// still running.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct AgentStopUnactedPayload {
+    /// The event the turn was about.
+    pub event_id: EventId,
+    /// The session the turn ran in.
+    pub session_name: String,
+    /// What the agent said it saw, as its answer's summary put it.
+    pub summary: String,
+}
+
+impl EventPayload for AgentStopUnactedPayload {
+    const KIND: &'static str = "agent_stop_unacted";
+}
+
+impl Sample for AgentStopUnactedPayload {
+    fn sample_full() -> Self {
+        Self {
+            event_id: EventId::sample_full(),
+            session_name: "print-0191f0a0".to_owned(),
+            summary: "The part has moved off its planned place.".to_owned(),
+        }
+    }
+}
+
 /// An operator acknowledged an event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
