@@ -87,13 +87,9 @@ class expect:  # noqa: N801 - read as `expect.equal(...)`, the vocabulary of thi
 # under test.
 Marks = dict[str, Any]
 
-# What the README states: the RMS bound a fit of these marks meets, how far a
-# refit may land from the committed file per number, and how far it may put any
-# point of a marked outline from where the committed file puts it. The marks
-# fix the projection of the marked parts far more tightly than they fix any one
-# number: refits differing only in floating-point rounding settle in minima
-# 0.01 px RMS apart whose focal lengths differ by up to 62 px, while projecting
-# every marked outline within 3.7 px of each other.
+# The bounds the README's "What the fit is held to" states, and why: the RMS
+# bound, the per-number bounds, and how far a refit may project a marked
+# outline from the committed file.
 RMS_BOUND_PX = 4.0
 TOLERANCE = {
     "focal_px": 80.0,
