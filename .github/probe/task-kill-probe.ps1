@@ -7,6 +7,7 @@ $env:PRINTOBSERVER_TASK_NAME = $task
 & "$PSScriptRoot\..\..\scripts\install.ps1"
 $config = Join-Path $env:LOCALAPPDATA 'printobserver\config.toml'
 $text = Get-Content -Raw $config
+$text = ($text -split "`n" | Where-Object { $_ -notmatch '^(auto|idle)_compact_tokens' }) -join "`n"
 $text = $text.Replace('api_key = ""', 'api_key = "k"').Replace('shared_secret = ""', 'shared_secret = "s"')
 Set-Content -Path $config -Value $text -Encoding utf8
 $skill = ([regex]::Match($text, "skill_path = '([^']+)'")).Groups[1].Value
