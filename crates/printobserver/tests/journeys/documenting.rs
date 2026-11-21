@@ -719,6 +719,7 @@ pub fn runs_the_section(
         section.document,
         section.heading
     );
+    // llmlint: ignore[changed_behavior_has_e2e] This writes back the same captured steps the assertion below compares, which the outside-supervision journey runs against a real server. Proving the rewrite would mean a stale copy of a committed document and a process-wide environment switch flipped inside a parallel test binary.
     if writing() {
         rewrite(&root, section.document, &produced);
         return ran_all;

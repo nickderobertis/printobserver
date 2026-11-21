@@ -580,6 +580,12 @@ reason = "Proving replacement of stale committed examples requires a corrupted d
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/journeys/documenting.rs"
+site = "rewrite(&root, section.document, &produced);"
+reason = "The section's write mode writes back the same captured steps its assertion compares, which the outside-supervision journey runs against a real server. Proving the rewrite would need a stale copy of a committed document and a process-wide environment switch flipped inside a parallel test binary."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
 file = "justfile"
 site = "docs-generate:"
 reason = "Proving repair of an incomplete generated documentation set requires forbidden tree surgery. The real schema-writing CLI test, runtime surface comparison and real-server documented-example journey remain."
