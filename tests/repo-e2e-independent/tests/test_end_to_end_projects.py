@@ -49,6 +49,7 @@ ASSIGNED = {
             "test_install_powershell_script_journey.py",
             "test_install_script_journey.py",
             "test_isolation_copies.py",
+            "test_listen_port.py",
             "test_octoprint_tier.py",
             "test_per_user_unix_install_journey.py",
             "test_per_user_windows_install_journey.py",
