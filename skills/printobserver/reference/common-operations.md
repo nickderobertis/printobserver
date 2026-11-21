@@ -2,7 +2,9 @@
 
 At least one worked example of every operation this system serves, each a
 sequence of commands you can run in the order it is given. This document covers
-what to do before you start and the worked examples themselves.
+what to do before you start, the worked examples themselves, and supervising from
+outside: what a supervisor that follows a print beside printobserver's own agent
+must do at the print's milestones.
 
 Every example below was produced by running exactly the command shown against a
 real server, and a committed check runs all of them again and refuses a document
@@ -1300,3 +1302,85 @@ event.payload.reason: the cancelled print is off the bed
 event.received_at: TIMESTAMP
 event.source: operator
 ```
+
+## Supervising from outside
+
+You supervise a print from outside when you started it, or were asked to watch
+it, and follow it with `printobserver watch` beside printobserver's own agent.
+You are there to catch what that agent misses, so its verdict is one opinion
+and is no substitute for a frame of your own: "still clean" in the watch is
+never a reason to skip one.
+
+At each of these points of the print you must take a frame yourself and open
+it:
+
+- its first layer;
+- the first layer that prints an overhang;
+- the first layer that prints support;
+- the end of the print, its last layer.
+
+Each point is a look of its own, even when two of them fall on the same layer
+or a moment apart: a frame taken for one point does not stand for another.
+
+**Find the points from the context.** `printobserver context --print-id
+PRINT_ID` answers the slicer's plan at the job's position: `slicer.layer` is
+the layer being printed, counting the first as 1; `slicer.types` what that
+layer lays material as; `slicer.z_mm` its height and `slicer.final_z_mm` the
+height of the last layer; and `slicer.minutes_left` the slicer's own estimate
+of the time left. The first layer whose `slicer.types` names `Overhang
+perimeter` is the first overhang layer; the first naming `Support material` is
+the first support layer, which is the first layer itself when support stands
+on the bed; the layer whose `slicer.z_mm` is `slicer.final_z_mm` is the last.
+
+Here the print is on its first layer, which lays support from the bed, so it is
+the first support layer as well:
+
+```console
+$ printobserver context --print-id PRINT_ID
+context.slicer.final_z_mm: 142.0
+context.slicer.layer: 1
+context.slicer.minutes_left: 149
+context.slicer.types.0: Skirt/Brim
+context.slicer.types.1: Support material
+context.slicer.types.2: Perimeter
+context.slicer.types.3: External perimeter
+context.slicer.types.4: Solid infill
+context.slicer.z_mm: 0.2
+```
+
+And later on the first layer that prints an overhang:
+
+```console
+$ printobserver context --print-id PRINT_ID
+context.slicer.final_z_mm: 142.0
+context.slicer.layer: 60
+context.slicer.minutes_left: 135
+context.slicer.types.0: Perimeter
+context.slicer.types.1: External perimeter
+context.slicer.types.2: Solid infill
+context.slicer.types.3: Internal infill
+context.slicer.types.4: Overhang perimeter
+context.slicer.z_mm: 9.0
+```
+
+**Take the frame with no print named.** `printobserver look` with no
+`--print-id` is a look at the printer: it takes a frame now and keeps it,
+belonging to no print, and it waits on nothing printobserver's agent is owed,
+so it never takes an event meant for that agent. A look naming the print is
+that agent's to take and would take such an event from it, so it is never
+yours. Open the image at the `image_path` the look answers and judge it
+yourself; `printobserver image --image-id` with the frame's `frame.id` names
+the same file.
+
+```console
+$ printobserver look
+event.kind: camera_look
+frame.id: ID
+frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no print is named, so there is no planned toolpath to draw on it
+image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+```
+
+Asking for nothing is the outcome of a frame that shows nothing wrong. What a
+frame shows wrong is the operator's to act on as every other action is, in
+[the intervention policy](intervention-policy.md).

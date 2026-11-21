@@ -32,6 +32,7 @@ use super::looking::{
     reports, wait_for,
 };
 use super::running;
+use super::supervising_outside;
 
 /// The harness the world's configuration names.
 const IDENTITY: &str = "claude-code";
@@ -308,6 +309,63 @@ mv "$dir/look-$print.part" "$dir/look-$print""#,
         1,
         "the waiting alert started a second turn"
     );
+}
+
+/// While a print's turn is running and an event for it waits to be handed to
+/// it, the outside supervisor's documented examples — its two context reads and
+/// its look at the printer — take nothing the print's agent is owed: the look
+/// delivers nothing, and the print's own next look is the one the event is
+/// delivered to.
+#[test]
+fn the_documented_outside_supervision_leaves_a_waiting_event_to_the_prints_own_look() {
+    let slot = std::sync::OnceLock::new();
+    let watching = Watching::start(
+        r#"touch "$dir/started-$print"
+until [ -e "$dir/go" ]; do sleep 0.1; done
+eval "printobserver look --json --wait-s 30 $about" > "$dir/look-$print.part" 2>&1
+mv "$dir/look-$print.part" "$dir/look-$print""#,
+        supervising_outside::running_the_slice(&slot),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    watching.written(&format!("started-{print}"));
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    wait_for("the second alert to be written down", PATIENCE, || {
+        alerts(world, &print).len() == 2
+    });
+
+    let slicing = slot.get().expect("the slice runs");
+    let ran = supervising_outside::carries_out_the_section(world, slicing);
+    let printer_look = supervising_outside::labelled(&ran[2][0].printed);
+    assert!(
+        printer_look
+            .iter()
+            .all(|(label, _)| !label.starts_with("arrived")),
+        "the documented look took what the print's agent is owed: {printer_look:?}"
+    );
+    assert!(
+        printer_look
+            .iter()
+            .any(|(label, value)| label == "event.payload.delivered" && value == "[]"),
+        "{printer_look:?}"
+    );
+    assert!(
+        events_of(world, &print, "camera_look").is_empty(),
+        "the documented look was written into the print's history"
+    );
+
+    watching.go();
+    let look: Value = printobserver_types::serde_json::from_str(
+        &std::fs::read_to_string(watching.written(&format!("look-{print}"))).expect("the look"),
+    )
+    .expect("the look is a document");
+    let handed = alerts(world, &print);
+    let arrived = look["arrived"]
+        .as_array()
+        .expect("the print's look carries what arrived");
+    assert_eq!(arrived.len(), 1, "{look}");
+    assert_eq!(arrived[0]["id"], handed[1], "{look}");
 }
 
 /// What a turn never took gets exactly one more turn, in the same session:

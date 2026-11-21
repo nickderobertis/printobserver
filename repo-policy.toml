@@ -1244,7 +1244,7 @@ headings = ["The schema set", "The schemas"]
 
 [[docs.document]]
 path = "skills/printobserver/reference/common-operations.md"
-headings = ["Before you start", "The worked examples"]
+headings = ["Before you start", "The worked examples", "Supervising from outside"]
 
 [[docs.document]]
 path = "skills/printobserver/reference/testing.md"
