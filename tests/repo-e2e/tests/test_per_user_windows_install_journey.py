@@ -43,7 +43,6 @@ import os
 import re
 import secrets
 import shutil
-import socket
 import sqlite3
 import sys
 import tarfile
@@ -56,7 +55,15 @@ from typing import NewType
 from urllib.parse import urlsplit
 
 import pytest
-from journey import DEBUG_BUILD, HERE, REPO_ROOT, clean_environment, install_the_skill, run
+from journey import (
+    DEBUG_BUILD,
+    HERE,
+    REPO_ROOT,
+    clean_environment,
+    install_the_skill,
+    listen_port,
+    run,
+)
 from release_artifacts.installing import powershell
 from release_artifacts.stand_in import stand_in_program
 from release_artifacts.world import (
@@ -941,13 +948,14 @@ def _eventually(
     raise AssertionError(message)
 
 
-def _task_state(task: str, program: Path, killed: Sequence[int] = ()) -> str:
+def _task_state(task: str, program: Path, port: int, killed: Sequence[int] = ()) -> str:
     """Task Scheduler's own account of one task, and every process around it, as a failure reads it.
 
     The process Task Scheduler tracks for the running instance is its engine
     PID; beside it, every process at the program's path, every process one of
     them started, and the processes `killed` lists — the servers running when
-    one was killed, that one first — each with its parent and when it started.
+    one was killed, that one first — each with its parent and when it started;
+    and every socket on the listen `port`, with the process that holds it.
     """
     told = _powershell_answer(
         f"$t = Get-ScheduledTask -TaskName {_quoted(task)} -TaskPath '\\'; "
@@ -964,7 +972,11 @@ def _task_state(task: str, program: Path, killed: Sequence[int] = ()) -> str:
         "$ids = @($ours | ForEach-Object { $_.ProcessId }); "
         "@($ours) + @($all | Where-Object { $ids -contains $_.ParentProcessId }) | "
         "ForEach-Object { 'process ' + $_.ProcessId + ' parent ' + $_.ParentProcessId + ' ' + "
-        "$_.Name + ' started ' + $_.CreationDate + ': ' + $_.CommandLine }",
+        "$_.Name + ' started ' + $_.CreationDate + ': ' + $_.CommandLine }; "
+        f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
+        "ForEach-Object { 'port ' + $_.LocalAddress + ':' + $_.LocalPort + ' ' + $_.State + "
+        "' to ' + $_.RemoteAddress + ':' + $_.RemotePort + ' held by ' + $_.OwningProcess + ' ' + "
+        "(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName }",
         check=False,
     )
     return (
@@ -1350,13 +1362,6 @@ def _console_window_shown(pid: int, into: Path) -> str:
     return _powershell_answer(f"& {_quoted(str(probe))}").splitlines()[-1].strip()
 
 
-def _free_port() -> int:
-    """A port nothing listens on, for a configuration that names one."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
-
-
 def _serves(program: Path, port: int) -> bool:
     return _client(program, f"http://127.0.0.1:{port}", CREDENTIAL, "prints").code == 0
 
@@ -1450,7 +1455,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
 
         # The steps the installer printed, taken: the configuration filled in,
         # the skill laid down, and the documented restart.
-        port = _free_port()
+        port = listen_port()
         _fill_in(home.config, machine, CREDENTIAL, f"127.0.0.1:{port}")
         # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] see suppressions.toml.
         install_the_skill(home.config)
@@ -1483,7 +1488,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
                 bool((now := _servers(home.program)) and now[0] != killed[0])
                 and _serves(home.program, port)
             ),
-            lambda: _task_state(task, home.program, killed),
+            lambda: _task_state(task, home.program, port, killed),
         )
 
         # An image and the turn records, read as the user.
@@ -1511,7 +1516,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
         )
 
         # A configuration change, as the user, taken by the documented restart.
-        moved = _free_port()
+        moved = listen_port()
         home.config.write_text(
             home.config.read_text(encoding="utf-8")
             .replace(f'listen = "127.0.0.1:{port}"', f'listen = "127.0.0.1:{moved}"')
@@ -2386,7 +2391,7 @@ def test_on_windows_a_server_started_from_a_shell_keeps_the_shells_window(
     home = _home(tmp_path, "home-shell")
     ran = installing(home, releases(_version()))
     passing((ran.code, ran.said), describing="the per-user install, its task stood in")
-    port = _free_port()
+    port = listen_port()
     _fill_in(home.config, machine, CREDENTIAL, f"127.0.0.1:{port}")
     # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] see suppressions.toml.
     install_the_skill(home.config)
