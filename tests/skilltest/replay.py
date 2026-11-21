@@ -636,6 +636,20 @@ class Compaction(TypedDict):
     auto_compact_tokens: int | None
 
 
+def installer_compaction() -> Compaction:
+    """The compaction settings the installer's configuration template writes."""
+    written = {
+        name: int(value)
+        for name, value in re.findall(
+            r"^(idle_compact_tokens|auto_compact_tokens) = (\d+)$", _installer_template(), re.M
+        )
+    }
+    return {
+        "idle_compact_tokens": written.get("idle_compact_tokens"),
+        "auto_compact_tokens": written.get("auto_compact_tokens"),
+    }
+
+
 def configured_compaction(config: Path) -> Compaction:
     """The compaction settings one server configuration file carries."""
     supervisor = tomllib.loads(config.read_text(encoding="utf-8")).get("supervisor", {})

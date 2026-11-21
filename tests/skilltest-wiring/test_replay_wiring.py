@@ -71,6 +71,7 @@ from replay import (
     delivered,
     first_layer_end,
     harness_token,
+    installer_compaction,
     is_event,
     is_held_print,
     kept_harness,
@@ -2110,6 +2111,7 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
         {"idle_compact_tokens": 150_000, "auto_compact_tokens": 200_000},
         describing="the replays run with the installer's compaction settings",
     )
+    equal(detail["compaction"], installer_compaction())
     equal(detail["idle_compactions"], 0)
     equal(detail["commit"], "a-commit")
     equal(detail["harness"], "claude-code")
