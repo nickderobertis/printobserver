@@ -30,6 +30,7 @@ from repo_checks.checks_release import (
 )
 from repo_checks.expect import accepted, contains, equal, refused, refused_naming
 from repo_checks.model import Repo
+from repo_checks.platforms import host
 from repo_checks.release_declaration import drift, joined
 from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
@@ -335,6 +336,35 @@ def _without_onevcs_wheels(lock: str) -> str:
     return f"{head}{found}{kept}{separator}{after}"
 
 
+def _with_onevcs_wheel_for_this_host(lock: str, repo: Repo) -> str:
+    """The lock with an `onevcs-cli` wheel added, tagged for this host's own platform.
+
+    Which platforms the locked release publishes a build for is that release's
+    fact rather than this test's, and it leaves some supported host out (Windows
+    on ARM, today). So the fixture adds this host's build itself, and the
+    refusal is driven on every host rather than only where the release reaches;
+    the test strips the release's own wheels first, so no host passes for its
+    platform being one the release happens to build.
+    """
+    naming = host(repo).naming
+    tag = (
+        f"{naming.wheel_family}_1_0_{naming.wheel_machine}"
+        if naming.wheel_versioned
+        else f"{naming.wheel_family}_{naming.wheel_machine}"
+    )
+    head, found, rest = lock.partition(f'[[package]]\nname = "{ONEVCS_DISTRIBUTION}"\n')
+    marker = "wheels = [\n"
+    before, opened, wheels = rest.partition(marker)
+    if not found or not opened:
+        msg = f"uv.lock's `{ONEVCS_DISTRIBUTION}` records no wheels table; the fixture is stale"
+        raise AssertionError(msg)
+    wheel = (
+        f'    {{ url = "https://files.pythonhosted.org/onevcs_cli-0-py3-none-{tag}.whl", '
+        f'hash = "sha256:{"0" * 64}", size = 1 }},\n'
+    )
+    return f"{head}{found}{before}{opened}{wheel}{wheels}"
+
+
 def _judged_where_no_reader_is_installed(root: Path, scratch: Path) -> list[str]:
     """What the check finds over `root`, run by an interpreter whose environment has no onevcs.
 
@@ -386,6 +416,8 @@ def test_a_host_onevcs_builds_for_with_no_reader_installed_is_refused(
 ) -> None:
     """Where the lock holds this host's build, a missing reader is a broken environment."""
     copied = tree()
+    unbuilt = _without_onevcs_wheels(copied.read("uv.lock"))
+    copied.write("uv.lock", _with_onevcs_wheel_for_this_host(unbuilt, copied.repo))
     equal(onevcs_builds_for_this_host(copied.repo), True, describing="the lock's build here")
 
     refused_naming(
