@@ -15,6 +15,7 @@ import functools
 import os
 import re
 import shutil
+import socket
 import subprocess
 import tomllib
 from pathlib import Path
@@ -127,6 +128,82 @@ def install_the_skill(configuration: Path) -> Path:
     # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] suppressions.toml has the reason.
     shutil.copytree(SKILL_DIRECTORY, installed, dirs_exist_ok=True)
     return installed
+
+
+#: The ports every supported host's default dynamic range spans: Linux hands
+#: out 32768-60999, macOS and Windows 49152-65535. Excluded whatever the host
+#: reads, so a host whose range cannot be read is never handed one of them.
+DEFAULT_DYNAMIC_PORTS = range(32768, 65536)
+
+#: The band a journey's listen ports come from, below every default dynamic
+#: range, and the slice of it each xdist worker takes.
+LISTEN_PORTS = range(20000, 32000)
+PORTS_PER_WORKER = 200
+
+#: The listen ports this process has handed out, so a journey that asks twice
+#: before its server binds the first is never handed it again.
+_HANDED_OUT: set[int] = set()
+
+
+@functools.cache
+def dynamic_ports() -> range:
+    """The ports this host hands an outgoing connection that names none, as the host says.
+
+    Read from the operating system's own setting — `netsh` on Windows, `sysctl`
+    on macOS, `/proc` on Linux — and answered empty when it cannot be read.
+    """
+    if os.name == "nt":
+        said = shell_run(["netsh", "int", "ipv4", "show", "dynamicport", "tcp"], timeout=60)
+        numbers = [int(found) for found in re.findall(r":\s*(\d+)", said.stdout or "")]
+        return range(numbers[0], numbers[0] + numbers[1]) if len(numbers) == 2 else range(0)
+    if Path("/proc/sys/net/ipv4/ip_local_port_range").is_file():
+        first, last = Path("/proc/sys/net/ipv4/ip_local_port_range").read_text().split()[:2]
+        return range(int(first), int(last) + 1)
+    bounds = [
+        shell_run(["sysctl", "-n", f"net.inet.ip.portrange.{name}"], timeout=60).stdout.strip()
+        for name in ("first", "last")
+    ]
+    if all(bound.isdigit() for bound in bounds):
+        return range(int(bounds[0]), int(bounds[1]) + 1)
+    return range(0)
+
+
+def worker_ports() -> range:
+    """The slice of `LISTEN_PORTS` this xdist worker takes its listen ports from."""
+    worker = int(os.environ.get("PYTEST_XDIST_WORKER", "gw0").removeprefix("gw") or "0")
+    start = LISTEN_PORTS.start + worker * PORTS_PER_WORKER
+    return range(start, min(start + PORTS_PER_WORKER, LISTEN_PORTS.stop))
+
+
+def listen_port() -> int:
+    """A free loopback port for a server a journey kills and expects back on it.
+
+    A port the operating system chose — `bind(0)`, or a server told to listen on
+    port 0 — is one of its dynamic ports, and once the killed server lets it go
+    the host may hand it to any outgoing loopback connection as that connection's
+    own port; the server brought back cannot listen there until that connection
+    ends, which on a busy host outlasts the journey's wait. So the port comes
+    from a band outside every dynamic range, in a slice of its own for each xdist
+    worker, and is checked free before it is answered.
+    """
+    ports = worker_ports()
+    dynamic = dynamic_ports()
+    for port in ports:
+        if port in _HANDED_OUT or port in dynamic or port in DEFAULT_DYNAMIC_PORTS:
+            continue
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+        _HANDED_OUT.add(port)
+        return port
+    message = (
+        f"no free port outside this host's dynamic range ({dynamic.start}-{dynamic.stop - 1}) "
+        f"among this worker's ports {ports.start}-{ports.stop - 1}; free one of them, or move "
+        "the dynamic range off them"
+    )
+    raise AssertionError(message)
 
 
 def tracked_files(root: Path) -> list[str]:
