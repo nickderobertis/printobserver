@@ -88,10 +88,16 @@ LFS_PROGRAMS = ("git lfs", "git-lfs")
 JUST_CALL = re.compile(r"\bjust (?P<recipe>[a-z][\w-]*)")
 
 #: What starts a scenario's turn, as `case.schema.json` declares it.
-Trigger = Literal["recorded_alert", "synthetic_alert", "periodic_observation", "start_request"]
+Trigger = Literal[
+    "recorded_alert",
+    "synthetic_alert",
+    "periodic_observation",
+    "start_request",
+    "outside_supervision",
+]
 #: The triggers that happen during a print, whose position in its G-code is known.
 POSITIONED_TRIGGERS: frozenset[Trigger] = frozenset(
-    {"periodic_observation", "recorded_alert", "synthetic_alert"}
+    {"periodic_observation", "recorded_alert", "synthetic_alert", "outside_supervision"}
 )
 
 # An event's id in a case's history, and a scenario's id within its case.

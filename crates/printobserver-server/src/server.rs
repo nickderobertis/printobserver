@@ -436,6 +436,20 @@ impl Server {
     /// nothing answers at and a key that instance refuses — and the other
     /// variants for a host that will not let this server come up.
     pub async fn start(config_path: impl AsRef<Path>) -> Result<Running, StartError> {
+        Self::start_with_usage(config_path, &[]).await
+    }
+
+    /// Serve as [`Server::start`] does, handing each supervision turn the
+    /// usage line of every command it may run, out of `command_usage`: every
+    /// command the program serving the turns has, as it prints them.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`Server::start`].
+    pub async fn start_with_usage(
+        config_path: impl AsRef<Path>,
+        command_usage: &[String],
+    ) -> Result<Running, StartError> {
         let config = ServerConfig::load(config_path)?;
         let store = SqliteStore::open(&config.state_dir).map_err(|error| StartError::Store {
             detail: error.to_string(),
@@ -456,7 +470,7 @@ impl Server {
             })?
             .with_api(config.obico_api.clone()),
         );
-        let agent = Arc::new(agent_for(&config)?);
+        let agent = Arc::new(agent_for(&config, command_usage)?);
         let mut running = Self::start_with(
             config,
             Ports {
@@ -506,6 +520,14 @@ impl Server {
         // credential minted for them.
         let turns = TurnCredentials::new(Some(address));
         supervisor.install_turn_authority(Arc::new(turns.clone()));
+        supervisor.install_check_images(Arc::new(crate::check_images::PanelImages::new(
+            &config.state_dir,
+            Arc::clone(&alignments),
+            config
+                .camera_snapshot_url
+                .as_ref()
+                .map(|url| url.as_str().to_owned()),
+        )));
         if let Some(scoring) = scoring_read(&config, &ports.vision)? {
             supervisor.install_scoring_probe(scoring);
         }
@@ -744,10 +766,62 @@ fn beside_the_skill(skill_path: &Path) -> std::path::PathBuf {
 
 /// The supervising agent's harness, over the configured skill and the assets
 /// this program carries.
-fn agent_for(config: &ServerConfig) -> Result<OneharnessSupervisor, StartError> {
-    OneharnessSupervisor::open(agent_config(config)?).map_err(|error| StartError::Supervisor {
-        detail: error.to_string(),
+fn agent_for(
+    config: &ServerConfig,
+    command_usage: &[String],
+) -> Result<OneharnessSupervisor, StartError> {
+    OneharnessSupervisor::open(agent_config_with(config, command_usage)?).map_err(|error| {
+        StartError::Supervisor {
+            detail: error.to_string(),
+        }
     })
+}
+
+/// The reads a supervision turn is handed the usage of, beside every action
+/// the safety envelope grants its role: the whole context, and a fresh look.
+pub const TURN_READS: [&str; 2] = ["context", "look"];
+
+/// The supervising agent's configuration, as [`Server::start_with_usage`]
+/// composes it: [`agent_config`]'s, handing each turn the usage, out of
+/// `command_usage`, of [`TURN_READS`] and of each action the configured
+/// envelope grants the agent — what a check acts with, and no command it
+/// cannot ask for.
+///
+/// # Errors
+///
+/// The same as [`agent_config`].
+pub fn agent_config_with(
+    config: &ServerConfig,
+    command_usage: &[String],
+) -> Result<SupervisorConfig, StartError> {
+    let mut composed = agent_config(config)?;
+    let granted = config
+        .safety
+        .actions
+        .get(&printobserver_core::ActorClass::Agent)
+        .into_iter()
+        .flatten()
+        .filter_map(|kind| {
+            printobserver_types::serde_json::to_value(kind)
+                .ok()
+                .and_then(|named| named.as_str().map(command_for))
+        });
+    let handed: Vec<String> = TURN_READS
+        .iter()
+        .map(|read| command_for(read))
+        .chain(granted)
+        .map(|command| format!("printobserver {command}"))
+        .collect();
+    composed.command_usage = command_usage
+        .iter()
+        .filter(|line| {
+            handed
+                .iter()
+                .any(|command| line == &command || line.starts_with(&format!("{command} ")))
+        })
+        .cloned()
+        .collect();
+    Ok(composed)
 }
 
 /// The supervising agent's configuration, as [`Server::start`] composes it.
@@ -837,6 +911,9 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
             .and_then(|harness| harness.program_behind_launcher(&search_path)),
         harness_env,
         agent_commands: agent_commands()?,
+        command_usage: Vec::new(),
+        auto_compact_tokens: config.auto_compact_tokens,
+        idle_compact_tokens: config.idle_compact_tokens,
     })
 }
 

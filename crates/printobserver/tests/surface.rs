@@ -591,9 +591,10 @@ fn a_printer_wide_form_with_a_command_of_its_own_is_refused() {
 }
 
 /// The look takes its print as optional, because a look naming none is the
-/// printer's; every other command naming a print requires it.
+/// printer's, and so does a start, because a start naming none is made under a
+/// print this program mints; every other command naming a print requires it.
 #[test]
-fn only_a_command_with_a_printer_wide_form_takes_its_print_as_optional() {
+fn only_a_command_with_a_printer_wide_form_or_a_minted_print_takes_its_print_as_optional() {
     for command in surface() {
         let Some(operation) = command.operation else {
             continue;
@@ -608,7 +609,7 @@ fn only_a_command_with_a_printer_wide_form_takes_its_print_as_optional() {
         if operation.path.contains("{print_id}") {
             assert_eq!(
                 print.required(),
-                operation.printer_wide.is_none(),
+                operation.printer_wide.is_none() && !operation.mints_print,
                 "`{}` takes its print as {}",
                 command.name,
                 if print.required() {

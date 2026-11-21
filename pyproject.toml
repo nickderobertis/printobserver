@@ -116,6 +116,7 @@ root = [
     "python/printobserver-sdk/integration",
     "tests/repo-e2e/tests",
     "tests/repo-e2e-independent/tests",
+    "tests/release-drafting/tests",
     "tools/octoprint-env",
     "tools/octoprint-env/tests",
     "tools/obico-env",

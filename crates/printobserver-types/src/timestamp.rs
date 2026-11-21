@@ -71,6 +71,26 @@ impl Timestamp {
         }
     }
 
+    /// A span measured on the host's steady clock, as the real-print replay's
+    /// clock would measure it.
+    ///
+    /// The replay jumps its clock from one recorded event to the next, minutes or
+    /// hours apart, in a few seconds of real time, so the agent's minimum interval,
+    /// measured across a jump, has to count the jump too, or the agent's change at
+    /// the second of two recorded events an hour apart reads as seconds after its
+    /// change at the first. Only a build of the suite's own, under
+    /// the `replay-clock` feature, with its clock file beside the program, adds
+    /// anything: every other build answers `steady` unchanged. The answer never
+    /// goes back, because a steady clock never does.
+    #[must_use]
+    // llmlint: ignore[code_lands_in_the_domain_that_owns_it] suppressions.toml has the reason.
+    pub fn on_replay_clock(steady: core::time::Duration) -> core::time::Duration {
+        #[cfg(feature = "replay-clock")]
+        return replay_clock::steady(steady);
+        #[cfg(not(feature = "replay-clock"))]
+        steady
+    }
+
     /// The instant this many seconds after the Unix epoch.
     ///
     /// # Errors
@@ -201,8 +221,9 @@ impl JsonSchema for Timestamp {
 #[cfg(feature = "replay-clock")]
 mod replay_clock {
     use chrono::{DateTime, TimeDelta, Utc};
+    use core::time::Duration;
     use std::path::PathBuf;
-    use std::sync::OnceLock;
+    use std::sync::{Mutex, OnceLock};
 
     /// The file beside the program: the milliseconds to add, and the latest instant
     /// to answer in milliseconds since the epoch, or nothing past that for none.
@@ -254,6 +275,49 @@ mod replay_clock {
         )
         .is_ok()
             && std::fs::rename(&written, file).is_ok()
+    }
+
+    /// The offset the clock file holds, in milliseconds, when there is one to read.
+    fn offset_ms() -> Option<i64> {
+        let text = std::fs::read_to_string(path()?).ok()?;
+        text.split_whitespace().next()?.parse().ok()
+    }
+
+    /// What the steady clock has answered: the offset its first reading found, and
+    /// its latest answer.
+    struct Steady {
+        first_ms: Option<i64>,
+        latest: Duration,
+    }
+
+    /// `real` moved on by how far the clock file's offset has grown since the first
+    /// reading of it, and never less than the last answer. A file that cannot be read
+    /// moves nothing.
+    pub(super) fn steady(real: Duration) -> Duration {
+        static STEADY: Mutex<Steady> = Mutex::new(Steady {
+            first_ms: None,
+            latest: Duration::ZERO,
+        });
+        let mut held = STEADY
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let moved_ms = match (offset_ms(), held.first_ms) {
+            (Some(offset), Some(first)) => offset.saturating_sub(first),
+            (Some(offset), None) => {
+                held.first_ms = Some(offset);
+                0
+            }
+            (None, _) => 0,
+        };
+        let by = Duration::from_millis(moved_ms.unsigned_abs());
+        let answer = if moved_ms >= 0 {
+            real.saturating_add(by)
+        } else {
+            real.saturating_sub(by)
+        }
+        .max(held.latest);
+        held.latest = answer;
+        answer
     }
 
     pub(super) fn now(real: DateTime<Utc>) -> DateTime<Utc> {

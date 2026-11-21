@@ -103,6 +103,7 @@ impl SupervisorPort for Holding {
                     did: "lifted the nozzle and cooled the heaters".to_owned(),
                     why: "the print had stopped with the nozzle on the part".to_owned(),
                     escalating: false,
+                    disposition: printobserver_supervisor_api::Disposition::Continue,
                 },
             })
         })

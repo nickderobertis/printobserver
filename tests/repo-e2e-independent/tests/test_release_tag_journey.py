@@ -104,12 +104,19 @@ ALREADY_PUBLISHED = "{crate} {version}: already published"
 FAILED_REF = "failed to create ref refs/tags/v"
 
 #: The edits that put the former configuration back — creation on for every
-#: package — which is the one the `0.2.0` release died under. The package stays
-#: in the one version group every crate is released in.
+#: package, under the one tag name every package shared — which is the one the
+#: `0.2.0` release died under. The package stays in the one version group every
+#: crate is released in.
 CREATION_EVERYWHERE = (
-    ("git_tag_enable = false\ngit_release_enable = false\n", ""),
+    (
+        'git_tag_name = "{{ package }}-v{{ version }}"\n'
+        'git_release_name = "{{ package }}-v{{ version }}"\n'
+        "git_tag_enable = false\ngit_release_enable = false\n",
+        'git_tag_name = "v{{ version }}"\ngit_release_name = "v{{ version }}"\n',
+    ),
     (
         'name = "printobserver"\nversion_group = "printobserver"\n'
+        'git_tag_name = "v{{ version }}"\ngit_release_name = "v{{ version }}"\n'
         "git_tag_enable = true\ngit_release_enable = true\n",
         'name = "printobserver"\nversion_group = "printobserver"\n',
     ),

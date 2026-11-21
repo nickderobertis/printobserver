@@ -56,6 +56,16 @@ class Trigger(StrEnum):
     SYNTHETIC_ALERT = "synthetic_alert"
     PERIODIC_OBSERVATION = "periodic_observation"
     START_REQUEST = "start_request"
+    OUTSIDE_SUPERVISION = "outside_supervision"
+
+
+class Milestone(StrEnum):
+    """The point of a print an outside supervisor takes its own frame at, as the schema names it."""
+
+    FIRST_LAYER = "first_layer"
+    FIRST_OVERHANG = "first_overhang"
+    FIRST_SUPPORT = "first_support"
+    END = "end"
 
 
 class MachineState(StrEnum):
@@ -163,6 +173,16 @@ class Moment:
     summary: str
     #: The frames the recorded turn's looks answered, the last a replay's last event reaches.
     looks: tuple[str, ...] = ()
+    #: The milestone an outside supervisor's watch line reports, on that trigger alone.
+    milestone: Milestone | None = None
+    #: On an end milestone whose recording ends before the last layer, how many layers
+    #: before it the case's last frame, which it is handed, was taken.
+    frame_layers_before_milestone: int | None = None
+
+    @property
+    def is_outside(self) -> bool:
+        """Whether an outside supervisor is handed this entry, rather than printobserver's agent."""
+        return self.trigger is Trigger.OUTSIDE_SUPERVISION
 
     @property
     def is_alert(self) -> bool:
@@ -240,6 +260,8 @@ class Case:
     #: Whether the case records what Obico's detector did during the print, which
     #: is a detector that was watching it.
     detector_recorded: bool = False
+    #: The camera calibration its frames are projected through, when it names one.
+    camera_calibration: Path | None = None
 
     @property
     def test_id(self) -> str:
@@ -369,8 +391,13 @@ def _valid_document(path: Path, schema: Path) -> dict[str, Any]:
     return document
 
 
-def read_case(name: str) -> Case:
-    """One case of `tests/real-prints`, by its directory's name."""
+def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
+    """One case of `tests/real-prints`, by its directory's name.
+
+    Its moments are its own `replay` list's, or those of `replay` when given: the
+    scenarios of a timeline a test of the replay's own clock needs, whether or not
+    the suite replays them all.
+    """
     directory = CASES / name
     document = _valid_document(directory / "case.json", CASES / "case.schema.json")
     scenarios = {scenario["id"]: scenario for scenario in document["assertions"]["scenarios"]}
@@ -403,8 +430,12 @@ def read_case(name: str) -> Case:
             never=tuple(_step(step) for step in scenarios[entry]["never"]),
             summary=scenarios[entry]["summary"],
             looks=tuple(look["image"] for look in scenarios[entry]["looks"]),
+            milestone=Milestone(scenarios[entry]["milestone"])
+            if "milestone" in scenarios[entry]
+            else None,
+            frame_layers_before_milestone=scenarios[entry].get("frame_layers_before_milestone"),
         )
-        for entry in document["assertions"].get("replay", ())
+        for entry in (replay if replay is not None else document["assertions"].get("replay", ()))
     )
     gcode = printed_gcode(directory)
     if gcode is None:
@@ -433,6 +464,9 @@ def read_case(name: str) -> Case:
         history=tuple(history),
         anchors=tuple(anchors),
         detector_recorded=document.get("detector") is not None,
+        camera_calibration=(directory / document["camera_calibration"]).resolve()
+        if "camera_calibration" in document
+        else None,
     )
 
 

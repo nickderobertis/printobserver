@@ -41,6 +41,8 @@ mod machine;
 mod proxy;
 #[path = "support/scripted.rs"]
 mod scripted;
+#[path = "support/slicing.rs"]
+mod slicing;
 #[path = "support/standalone.rs"]
 mod standalone;
 #[path = "support/traced.rs"]
@@ -77,6 +79,8 @@ mod durations;
 mod failures;
 #[path = "journeys/finding.rs"]
 mod finding;
+#[path = "journeys/first_starting.rs"]
+mod first_starting;
 #[path = "journeys/formats.rs"]
 mod formats;
 #[path = "journeys/looking.rs"]
@@ -95,6 +99,8 @@ mod spooling;
 mod starting;
 #[path = "journeys/streaming.rs"]
 mod streaming;
+#[path = "journeys/supervising_outside.rs"]
+mod supervising_outside;
 #[path = "journeys/tainting.rs"]
 mod tainting;
 #[path = "journeys/tier.rs"]
@@ -177,6 +183,18 @@ fn the_operators_word_that_the_bed_is_clear_is_honoured_until_a_print_starts() {
     let world = World::open(world::STOOD_IN);
 
     bed_clearing::the_operators_word_is_honoured_until_a_print_starts(&world);
+}
+
+/// A first start names no print and is made under one this program mints, and
+/// a start naming something that is no print is refused saying what to pass.
+///
+/// A world of its own, because the journey starts the print every other
+/// journey here would otherwise find open.
+#[test]
+fn a_first_start_names_no_print_and_a_wrong_one_is_refused_saying_what_to_pass() {
+    let world = World::open(world::STOOD_IN);
+
+    first_starting::a_first_start_names_no_print(&world);
 }
 
 /// A turn reads a print's context, then only what came after the newest
@@ -477,6 +495,15 @@ fn every_documented_example_prints_what_the_document_shows() {
 
     documenting::accepts_the_committed_documentation(&world);
     drop(detector);
+}
+
+/// Every example the outside supervisor's section of the reference shows, run
+/// over a print whose machine reads a real slice into the layers they are
+/// about; `PRINTOBSERVER_DOCS=write` rewrites what each shows, as the walk
+/// above does.
+#[test]
+fn every_documented_example_of_supervising_from_outside_runs_over_a_print_at_its_milestones() {
+    supervising_outside::runs_over_a_print_at_its_milestones();
 }
 
 /// The documented operator workflow, carried out from the documentation alone,

@@ -50,9 +50,6 @@ const STATE_DIR: &str = "STATE_DIR";
 /// The placeholder a documented example writes an image identifier as.
 const IMAGE_ID: &str = "IMAGE_ID";
 
-/// The placeholder a documented example writes an event identifier as.
-const EVENT_ID: &str = "EVENT_ID";
-
 /// The placeholder a documented example writes a print identifier as.
 const PRINT_ID: &str = "PRINT_ID";
 
@@ -64,9 +61,6 @@ const DECISION_REASON: &str = "the picture shows the first layer lifting at one 
 
 /// The reason the second, acceptable request is made with.
 const INSIDE_REASON: &str = "asking again inside what the rejection said was allowed";
-
-/// The reason the observation is recorded with.
-const OBSERVATION_REASON: &str = "loose strands at the left of the frame and the part still down";
 
 /// The reason the escalation is made with.
 const ESCALATION_REASON: &str =
@@ -978,69 +972,17 @@ pub fn operator_workflow(world: &World, documentation: &Documentation) -> Result
         after.printed
     );
 
+    // The check is recorded by the turn's answer rather than by a command: its
+    // disposition is what the supervisor acknowledges the turn's event with.
     let step = documentation
         .step(6)
         .ok_or_else(|| unreachable("the observation record", "the skill states no sixth step"))?;
-    let recording = documentation.command_in(&step).ok_or_else(|| {
-        unreachable(
+    if !step.contains("disposition") {
+        return Err(unreachable(
             "the observation record",
-            "the skill's sixth step names no command the documents show how to run",
-        )
-    })?;
-    let record_example = documentation.example(&recording).ok_or_else(|| {
-        unreachable(
-            "the observation record",
-            "no document the skill links to shows a worked example of it",
-        )
-    })?;
-    let event_key = key_showing(&example, EVENT_ID).ok_or_else(|| {
-        unreachable(
-            "the observation record",
-            "no document says which field of the context answer names the event to record against",
-        )
-    })?;
-    let kind_key = event_key.replace(".id", ".kind");
-    let wanted_kind = shown(&example, &kind_key).ok_or_else(|| {
-        unreachable(
-            "the observation record",
-            "no document says which kind of event is the one to record against",
-        )
-    })?;
-    let event = context
-        .under(&collection_of(&event_key))
-        .into_iter()
-        .filter(|path| {
-            path.rsplit_once('.')
-                .is_some_and(|(_, last)| last == "kind")
-        })
-        .find(|path| context.at(path) == Some(wanted_kind.as_str()))
-        .map(|path| path.replace(".kind", ".id"))
-        .and_then(|path| context.at(&path))
-        .ok_or_else(|| {
-            unreachable(
-                "the observation record",
-                &format!("the context answer carries no `{wanted_kind}` to record against"),
-            )
-        })?
-        .to_owned();
-    bindings.insert(EVENT_ID.to_owned(), event);
-    let observing = with_option(
-        &bound(&record_example[0].command, &bindings),
-        "--reason",
-        OBSERVATION_REASON,
-    );
-    let observed = run(world, &observing);
-    assert_eq!(
-        observed.status, 0,
-        "the observation was refused: {}",
-        observed.printed
-    );
-    reads_back(
-        world,
-        documentation,
-        OBSERVATION_REASON,
-        "the observation record",
-    )?;
+            "the skill's sixth step does not say the answer's disposition records the check",
+        ));
+    }
 
     let escalation = documentation
         .section("When to escalate instead")
@@ -1144,21 +1086,6 @@ fn put_the_print_back(world: &World, escalated_with: &str) {
 /// The value half-way between two bounds, at the precision an example writes.
 fn midpoint(low: f64, high: f64) -> f64 {
     (f64::midpoint(low, high) * 100.0).round() / 100.0
-}
-
-/// The collection one indexed field of an answer sits in.
-///
-/// `context.recent_events.1.id` is one field of one entry, and what a reader
-/// needs is every entry: the document shows which entry it happened to be about
-/// on the run that produced it, and the live answer numbers its own.
-fn collection_of(path: &str) -> String {
-    let mut head = path.rsplit_once('.').map_or(path, |(head, _)| head);
-    if let Some((rest, last)) = head.rsplit_once('.')
-        && last.parse::<usize>().is_ok()
-    {
-        head = rest;
-    }
-    head.to_owned()
 }
 
 /// One reason reads back through the history command the documents show.

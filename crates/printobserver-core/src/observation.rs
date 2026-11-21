@@ -31,6 +31,16 @@
 //! given still runs under the same one-agent-per-print rule and the same action
 //! policy, `safety.agent_min_interval_s` included.
 //!
+//! # An idle compaction of the session ends first
+//!
+//! A supervisor port may compact a print's session while no turn of it runs
+//! ([`SupervisorPort::idle_work_ended`](printobserver_supervisor_api::SupervisorPort::idle_work_ended)),
+//! and every other event's turn cancels that compaction at once. A scheduled
+//! check alone waits for it to end, bounded by the compaction's own timeout,
+//! because it is the turn that continues that session on the port's own
+//! cadence: cancelling it would leave the session as large as it was and the
+//! next gap no longer.
+//!
 //! # The detector's record is read first
 //!
 //! Each round begins by reading the failure detector's own record of the
@@ -134,6 +144,11 @@ impl Supervisor {
         print: PrintRecord,
         scoring_failed: Option<&str>,
     ) -> Result<Option<PendingTurn>, CoreError> {
+        // A scheduled check continues the session it is about, so it lets an
+        // idle compaction of that session end rather than cancel it, and reads
+        // the printer once it has.
+        // A wait that could not be taken leaves the check to run at once.
+        let _ = self.agent().idle_work_ended(print.id).await;
         let printer = self.read_snapshot().await;
         if printer
             .as_ref()

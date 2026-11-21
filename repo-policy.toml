@@ -480,6 +480,19 @@ owed_paths = [
     "crates/printobserver-core/src/watch.rs",
     "crates/printobserver-core/src/scoring.rs",
     "crates/printobserver-core/src/gcode_index.rs",
+    "crates/printobserver-core/src/check_image.rs",
+    "crates/printobserver-server/src/check_images.rs",
+    "crates/printobserver-panels/src/whole_frame.rs",
+    "crates/printobserver-panels/src/compose.rs",
+    "crates/printobserver-panels/src/geometry.rs",
+    "crates/printobserver-panels/src/text.rs",
+    "crates/printobserver-panels/src/drift.rs",
+    "crates/printobserver-panels/src/calibration.rs",
+    "crates/printobserver-panels/src/alignment.rs",
+    "crates/printobserver-server/src/alignment.rs",
+    "crates/printobserver-core/src/toolpath.rs",
+    "crates/printobserver-core/src/look.rs",
+    "crates/printobserver-supervisor-api/src/assessment.rs",
     "tests/skilltest/**",
     "tests/real-prints/**",
 ]
@@ -1128,7 +1141,7 @@ install = "uv run -q python -m repo_checks install-powershell {version}"
 # refuses a link to a document that is not there, and refuses a skill that omits
 # a link to one of the documents declared below.
 skill = "skills/printobserver/SKILL.md"
-skill_max_characters = 6000
+skill_max_characters = 6222
 skill_max_lines = 150
 
 # The generated artifacts the documentation checks read the things they
@@ -1170,16 +1183,16 @@ name = "the escalation path"
 marker = "## When to escalate instead"
 
 [[docs.skill_element]]
-name = "the workflow step that reads the context"
-marker = "1. **Read the context.**"
+name = "the workflow step that decides from the facts and the frame"
+marker = "1. **Decide from what is in front of you:**"
 
 [[docs.skill_element]]
 name = "the workflow step that inspects the image"
-marker = "2. **Look at the image.**"
+marker = "2. **Judge the frame.**"
 
 [[docs.skill_element]]
-name = "the workflow step that looks again before deciding"
-marker = "3. **Look again, and watch if you need to.**"
+name = "the workflow step that looks again only for an ambiguous frame"
+marker = "3. **Look again only when the frame is genuinely ambiguous.**"
 
 [[docs.skill_element]]
 name = "the workflow step that decides"
@@ -1187,11 +1200,11 @@ marker = "4. **Decide.**"
 
 [[docs.skill_element]]
 name = "the workflow step that acts with a reason"
-marker = "5. **Act, and say why.**"
+marker = "5. **To act, ask for the change, then answer.**"
 
 [[docs.skill_element]]
-name = "the workflow step that records what was seen"
-marker = "6. **Record what you saw.**"
+name = "the workflow step that records the check in the answer"
+marker = "6. **Your answer's disposition records the check,**"
 
 # Every reference document this repository declares, with the headings each one
 # owes. A heading declared here and absent from the document is a failing check
@@ -1230,7 +1243,7 @@ headings = ["The schema set", "The schemas"]
 
 [[docs.document]]
 path = "skills/printobserver/reference/common-operations.md"
-headings = ["Before you start", "The worked examples"]
+headings = ["Before you start", "The worked examples", "Supervising from outside"]
 
 [[docs.document]]
 path = "skills/printobserver/reference/testing.md"

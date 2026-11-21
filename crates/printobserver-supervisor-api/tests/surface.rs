@@ -62,6 +62,11 @@ fn supervisor_port_declares_exactly_the_stated_methods() {
             &[("print_id", "PrintId"), ("close_reason", "String")],
             "BoxFuture<'_,Result<(),SupervisorError>>",
         ),
+        method(
+            "idle_work_ended",
+            &[("print_id", "PrintId")],
+            "BoxFuture<'_,Result<(),SupervisorError>>",
+        ),
     ];
     assert_eq!(trait_methods(&source, "SupervisorPort"), expected);
 }

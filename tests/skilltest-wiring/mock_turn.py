@@ -6,18 +6,23 @@ a real turn is given, writes down everything it could observe, and hands the
 provider's answer to oneharness's own published responder. So everything from the
 run request down is real, and only the paid model is not.
 
-Given the script file and then whatever the harness was asked. Each run in the
-script is `{"commands": [[word, ...], ...], "usage": {...}, "compact": bool}`, and
-`"unreadable": true` answers something the engine must re-prompt. In a command's
+Given the script file and then whatever the harness was asked, its prompt on its
+standard input as the engine hands one over. Each run in the script is
+`{"commands": [[word, ...], ...], "usage": {...}, "compact": bool}`, and
+`"unreadable": true` answers something the port must ask for again. `"calls"`
+scripts the usage of each model call the run streams, one by default carrying its
+`usage`, and `"disposition"` what its assessment answers with. In a command's
 words, `{print}`, `{actor}` and `{event}` stand for what the prompt named, and in an
 operator's message `{file}` and `{frame}` for the file it asks to start and the frame
-it hands over; `{new_print}` is an identifier no print holds. A command is a list of
+it hands over; `{new_print}` is an identifier no print holds, and a file a run reads may
+be `{looked}`, the frame its last look named. A command is a list of
 words, run as written, or one string, which is a shell line as the agent wrote it.
 
 The shell is the harness's to refuse, so a run started with permission rules takes
 the one way Claude Code's `dontAsk` mode does: a shell line runs only when every
 command it chains begins with a command a rule allows, and is otherwise refused and
-answered as refused. A run asked for no schema answers in words, its `reply`.
+answered as refused. A run whose prompt asks for no schema answers in words, its
+`reply`.
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ from repo_checks.shell import run
 from shell_lines import commands as run_by
 
 Confidence = Literal["low", "medium", "high"]
+Disposition = Literal["continue", "watch", "stop"]
 
 
 class Assessment(TypedDict):
@@ -51,10 +57,15 @@ class Assessment(TypedDict):
     did: str
     why: str
     escalating: bool
+    disposition: Disposition
 
 
 TIMEOUT_S = 120
 SEEN_FILE = "seen.jsonl"
+#: The last turn prompt this conversation was handed, which a run asked again for its
+#: answer is filled from: the engine's feedback names no print, and a real session
+#: still holds the prompt that did.
+CONVERSATION_FILE = "conversation.txt"
 COUNTER_FILE = "turns.count"
 #: The model the responder is scripted to say it is.
 MOCK_MODEL = "mock-model"
@@ -65,7 +76,11 @@ ASSESSMENT: Assessment = {
     "did": "scripted",
     "why": "scripted",
     "escalating": False,
+    "disposition": "continue",
 }
+#: What a prompt held to the schema by its own words carries, in the engine's first
+#: instruction and in its feedback asking again alike.
+SCHEMA_INSTRUCTION = "JSON Schema"
 
 
 class ScriptedRun(TypedDict):
@@ -75,6 +90,9 @@ class ScriptedRun(TypedDict):
     #: What a run asked for no schema answers.
     reply: NotRequired[str]
     usage: NotRequired[dict[str, int]]
+    #: Each model call the run streams, by its usage; one carrying `usage` by default.
+    calls: NotRequired[list[dict[str, int]]]
+    disposition: NotRequired[Disposition]
     #: How long the turn takes beyond its commands, in seconds.
     stall_s: NotRequired[float]
     #: Files the turn opens with its file tool.
@@ -91,6 +109,16 @@ class Script(TypedDict):
     session: str
     responder: str
     turns: list[ScriptedRun]
+    #: How a compaction of the session goes, when the port asks for one.
+    compaction: NotRequired[Compaction]
+
+
+class Compaction(TypedDict):
+    """How a scripted compaction goes: the sizes it reports and how long it takes."""
+
+    before: NotRequired[int]
+    after: NotRequired[int]
+    stall_s: NotRequired[float]
 
 
 def _run_is_whole(run_of: object) -> bool:
@@ -108,6 +136,12 @@ def _run_is_whole(run_of: object) -> bool:
         and isinstance(run_of.get("reply", ""), str)
         and isinstance(run_of.get("usage", {}), dict)
         and all(isinstance(count, int) for count in run_of.get("usage", {}).values())
+        and isinstance(run_of.get("calls", []), list)
+        and all(
+            isinstance(call, dict) and all(isinstance(count, int) for count in call.values())
+            for call in run_of.get("calls", [])
+        )
+        and run_of.get("disposition", "continue") in {"continue", "watch", "stop"}
         and isinstance(run_of.get("compact", False), bool)
         and isinstance(run_of.get("unreadable", False), bool)
         and isinstance(run_of.get("streamed_twice", False), bool)
@@ -124,8 +158,26 @@ NEW_PRINT = "01900000-0000-7000-8000-000000000000"
 SHELL_RULE = re.compile(r"^Bash\((?P<prefix>[^:()*]+):\*\)$")
 
 
-def _prompt(arguments: list[str]) -> str:
-    """What the run was asked: the word after `-p`, which is where Claude Code reads it."""
+def _prompt(arguments: list[str], stdin: str) -> str:
+    """What the run was asked: its standard input, for a run naming an `--input-format`.
+
+    A stream-json input is one user frame whose text blocks are the prompt; a text
+    one is the prompt itself. A run naming none is asked on its argv, after `-p`.
+    """
+    if "--input-format" in arguments:
+        texts = []
+        for line in stdin.splitlines():
+            try:
+                frame = json.loads(line)
+            except ValueError:
+                continue
+            content = frame.get("message", {}).get("content") if isinstance(frame, dict) else None
+            texts.extend(
+                block["text"]
+                for block in (content if isinstance(content, list) else ())
+                if isinstance(block, dict) and isinstance(block.get("text"), str)
+            )
+        return "\n".join(texts) if texts else stdin
     if "-p" in arguments and arguments.index("-p") + 1 < len(arguments):
         return arguments[arguments.index("-p") + 1]
     return next((word for word in arguments if "printobserver context" in word), "")
@@ -156,7 +208,9 @@ def _allowed(line: str, prefixes: list[str] | None) -> bool:
 
 
 def _filled(word: str, prompt: str) -> str:
-    print_id = re.search(r"printobserver context --print-id (\S+)", prompt)
+    print_id = re.search(r"printobserver context --print-id (\S+)", prompt) or re.search(
+        r"You started the print (\S+) and follow it", prompt
+    )
     actor = re.search(r"--actor '([^']+)'", prompt)
     event = re.search(r'"id": "([^"]+)"', prompt)
     file = re.search(r"start the print (\S+),", prompt)
@@ -227,9 +281,94 @@ def _ran(command: list[str] | str, prompt: str, prefixes: list[str] | None) -> C
     return {"words": words, "status": status, "out": out, "err": err}
 
 
+def _looked(ran: list[CommandResult]) -> str | None:
+    """The frame the run's last look that answered named, if one did."""
+    for result in reversed(ran):
+        if result["status"] != 0 or result["words"][1:2] != ["look"]:
+            continue
+        try:
+            answered = json.loads(result["out"])
+        except ValueError:
+            continue
+        path = answered.get("image_path") if isinstance(answered, dict) else None
+        if isinstance(path, str):
+            return path
+    return None
+
+
+#: What a file a run reads is written as to stand for the frame its last look named.
+LOOKED = "{looked}"
+
+
+def _named_look(path: str, looked: str | None) -> str:
+    """A file the run reads, `{looked}` standing for the frame its last look named."""
+    if LOOKED not in path:
+        return path
+    if looked is None:
+        msg = f"the run reads {path} and no look of it named a frame"
+        raise ValueError(msg)
+    return path.replace(LOOKED, looked)
+
+
 def _line(command: list[str] | str) -> str:
     """A scripted command as the agent's shell call writes it."""
     return command if isinstance(command, str) else " ".join(command)
+
+
+#: Where each compaction a run was started for is written down, one per line.
+COMPACTIONS_FILE = "compactions.jsonl"
+
+
+def _compacted(script: Script, directory: Path, arguments: list[str]) -> int:
+    """Compact the session as Claude Code's `/compact` reports one, after `stall_s`.
+
+    The script's `compaction` says the size it leaves and how long it takes; the
+    session continues under a fork of its own.
+    """
+    compaction = script.get("compaction", {})
+    started = time.time()
+    time.sleep(compaction.get("stall_s", 0))
+    resumed = arguments[arguments.index("--resume") + 1] if "--resume" in arguments else ""
+    fork = f"{resumed}-compacted"
+    before, after = compaction.get("before", 150_000), compaction.get("after", 10_000)
+    lines = [
+        {"type": "system", "subtype": "status", "status": "compacting", "session_id": fork},
+        {
+            "type": "system",
+            "subtype": "status",
+            "status": None,
+            "compact_result": "success",
+            "session_id": fork,
+        },
+        {
+            "type": "system",
+            "subtype": "compact_boundary",
+            "session_id": fork,
+            "compact_metadata": {"trigger": "manual", "pre_tokens": before, "post_tokens": after},
+        },
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "result": "",
+            "session_id": fork,
+            "model_usage_since_last_result": {
+                MOCK_MODEL: {"inputTokens": 5, "outputTokens": 900, "cacheReadInputTokens": before}
+            },
+        },
+    ]
+    with (directory / COMPACTIONS_FILE).open("a", encoding="utf-8") as log:
+        log.write(json.dumps({"resumed": resumed, "started": started, "ended": time.time()}) + "\n")
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    return run(
+        [script["responder"], *arguments],
+        env={
+            **os.environ,
+            "MOCK_STDOUT": "\n".join(json.dumps(line) for line in lines),
+            "MOCK_PRESERVE_STDOUT": "1",
+        },
+        capture=False,
+    ).returncode
 
 
 def main(script_path: str, arguments: list[str]) -> int:
@@ -248,14 +387,27 @@ def main(script_path: str, arguments: list[str]) -> int:
     if not isinstance(script.get("session"), str) or not isinstance(script.get("responder"), str):
         print(f"{script_path} names no responder", file=sys.stderr)
         return 2
+    if "/compact" in arguments:
+        return _compacted(script, directory, arguments)
     counter = directory / COUNTER_FILE
     number = int(counter.read_text(encoding="utf-8")) if counter.is_file() else 0
     counter.write_text(str(number + 1), encoding="utf-8")
     scripted = script["turns"][min(number, len(script["turns"]) - 1)]
-    prompt = _prompt(arguments)
+    stdin = sys.stdin.read() if "--input-format" in arguments else ""
+    prompt = _prompt(arguments, stdin)
+    conversation = directory / CONVERSATION_FILE
+    if "printobserver context --print-id" in prompt:
+        conversation.write_text(prompt, encoding="utf-8")
+    held = conversation.read_text(encoding="utf-8") if conversation.is_file() else ""
+    filling = prompt if "printobserver context --print-id" in prompt else f"{prompt}\n{held}"
     prefixes = _allowed_prefixes(arguments)
-    ran = [_ran(command, prompt, prefixes) for command in scripted.get("commands", [])]
-    assessment: Assessment = {**ASSESSMENT, "summary": f"scripted run {number}"}
+    ran = [_ran(command, filling, prefixes) for command in scripted.get("commands", [])]
+    looked = _looked(ran)
+    assessment: Assessment = {
+        **ASSESSMENT,
+        "summary": f"scripted run {number}",
+        "disposition": scripted.get("disposition", "continue"),
+    }
     seen: Seen = {
         "turn": number,
         "prompt": prompt,
@@ -296,7 +448,7 @@ def main(script_path: str, arguments: list[str]) -> int:
                         "type": "tool_use",
                         "id": f"call-{number}-{index}",
                         "name": "Bash",
-                        "input": {"command": _filled(_line(command), prompt)},
+                        "input": {"command": _filled(_line(command), filling)},
                     }
                     for index, command in enumerate(scripted.get("commands", []))
                 ),
@@ -306,7 +458,7 @@ def main(script_path: str, arguments: list[str]) -> int:
                         "type": "tool_use",
                         "id": f"read-{number}-{index}",
                         "name": "Read",
-                        "input": {"file_path": _filled(path, prompt)},
+                        "input": {"file_path": _filled(_named_look(path, looked), filling)},
                     }
                     for index, path in enumerate(scripted.get("reads", []))
                 ),
@@ -320,7 +472,7 @@ def main(script_path: str, arguments: list[str]) -> int:
         {"result": "no answer in the shape asked for"}
         if scripted.get("unreadable")
         else {"result": json.dumps(assessment), "structured_output": assessment}
-        if "--json-schema" in arguments
+        if "--json-schema" in arguments or SCHEMA_INSTRUCTION in prompt
         else {"result": scripted.get("reply", "scripted reply")}
     )
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.
@@ -333,11 +485,28 @@ def main(script_path: str, arguments: list[str]) -> int:
         "modelUsage": {MOCK_MODEL: usage},
         **answer,
     }
+    stdout = json.dumps(result)
+    if "stream-json" in arguments:
+        # Claude Code streams one assistant message per model call before its result.
+        streamed = [
+            {
+                "type": "assistant",
+                "session_id": session,
+                "message": {
+                    "id": f"msg-{number}-{index}",
+                    "model": MOCK_MODEL,
+                    "content": [{"type": "text", "text": "scripted"}],
+                    "usage": call,
+                },
+            }
+            for index, call in enumerate(scripted.get("calls", [usage]))
+        ]
+        stdout = "\n".join(json.dumps(line) for line in [*streamed, result])
     responder = script["responder"]
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     return run(
         [responder, *arguments],
-        env={**os.environ, "MOCK_STDOUT": json.dumps(result)},
+        env={**os.environ, "MOCK_STDOUT": stdout},
         capture=False,
     ).returncode
 

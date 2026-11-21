@@ -17,7 +17,18 @@ from pathlib import Path
 
 import pytest
 from cases import is_start_case, read_case, read_start_case, replayed_case_names
-from replay import Replay, harness_token, kept_harness, refuse_a_pointer
+from outside import Outside
+from replay import (
+    IMAGE_PROBE_RECORD,
+    PROBE_RECORD,
+    Replay,
+    harness_token,
+    image_probe,
+    installer_compaction,
+    kept_harness,
+    probe,
+    refuse_a_pointer,
+)
 from repo_checks import expect
 from starts import StartsReplay
 
@@ -37,7 +48,10 @@ def test_the_agent_supervises_the_print(name: str) -> None:
         return
     case = read_case(name)
     replay = Replay(
-        case, [program], gcode=refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name)
+        case,
+        [program],
+        gcode=refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name),
+        outside=lambda replaying: Outside(replaying, [program]),
     )
     try:
         replayed = replay.run()
@@ -47,29 +61,74 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             ["claude-code"],
             describing=f"{name}'s one conversation",
         )
-        # A record with nothing in it is the harness's output or transcript having
-        # moved from where the replay reads them, which it must not pass over.
+        # A record with nothing in it is the harness's output, its transcript or
+        # the port's record of its calls having moved from where the replay reads
+        # them, which it must not pass over. A quiet check runs no command and
+        # opens no file, so neither is asked of a print that never needed one.
         for point in replayed.points:
             expect.truth(
-                point.usage and point.models,
-                describing=f"{point.moment.id}'s turn to report its usage and models",
+                point.usage and point.models and point.calls,
+                describing=f"{point.moment.id}'s turn to report its usage, models and calls",
             )
-        expect.truth(
-            any(point.commands for point in replayed.points),
-            describing="the transcript to say what the agent ran",
-        )
-        expect.truth(
-            any(point.opened for point in replayed.points),
-            describing="the transcript to say what the agent opened",
-        )
+        # A watch line asks for a look, so its conversation always ran a command.
+        for line in replayed.outside:
+            expect.truth(
+                line.report.usage and line.report.models and line.report.commands,
+                describing=f"{line.moment.id}'s conversation to report usage, models, commands",
+            )
         expect.equal(
             {session: [] for session in replayed.compound_commands()},
             replayed.compound_commands(),
             describing="each printobserver command run on its own",
         )
+        expect.equal(
+            replayed.configured,
+            installer_compaction(),
+            describing="the replay's compaction settings, as the installer writes them",
+        )
+        for turn in replayed.ledger["turns"]:
+            for compaction in replayed.ledger["compactions"]:
+                expect.truth(
+                    turn["ran_at"] <= compaction["started_at"]
+                    or compaction["ended_at"] <= turn.get("started_at", turn["ran_at"]),
+                    describing=f"no turn to run beside the compaction {compaction}",
+                )
         expect.truth(replayed.passed, describing=f"every decision point:\n{replayed.failures()}")
     finally:
         replay.clean_up()
+
+
+def test_the_supervisor_configuration_alone() -> None:
+    """One probe turn through the shipped configuration reports what each of its calls read."""
+    program = kept_harness()
+    if program is None:
+        pytest.fail("the shipped harness is not installed: no `claude` is on PATH")
+    if harness_token() is None:
+        pytest.fail("no credential for the harness: set CLAUDE_CODE_OAUTH_TOKEN, or sign in")
+    record = probe(program)
+    expect.truth(record["calls"], describing="the probe to report its calls")
+    if RUN_DIR:
+        directory = Path(RUN_DIR)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+
+def test_the_supervisor_configuration_with_one_check_image() -> None:
+    """The probe turn with one case's check image attached reports what each call read."""
+    program = kept_harness()
+    if program is None:
+        pytest.fail("the shipped harness is not installed: no `claude` is on PATH")
+    if harness_token() is None:
+        pytest.fail("no credential for the harness: set CLAUDE_CODE_OAUTH_TOKEN, or sign in")
+    record = image_probe(program)
+    expect.truth(record["calls"], describing="the image probe to report its calls")
+    expect.equal(
+        (record["width"], record["height"]), (1024, 1848), describing="the check image's size"
+    )
+    if RUN_DIR:
+        directory = Path(RUN_DIR)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / IMAGE_PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
 
 
 def _keep(name: str, record: object, transcript: list[dict[str, object]]) -> None:

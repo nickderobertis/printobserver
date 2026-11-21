@@ -186,6 +186,7 @@ fn assessment() -> AgentAssessment {
         did: "read the event, the picture and the print's context".to_owned(),
         why: "nothing in the picture is coming away from the bed".to_owned(),
         escalating: false,
+        disposition: printobserver_supervisor_api::Disposition::Continue,
     }
 }
 

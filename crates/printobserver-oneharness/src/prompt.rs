@@ -1,4 +1,4 @@
-//! The committed prompt template, and the five slots one turn fills.
+//! The committed prompt template, and the six slots one turn fills.
 //!
 //! The template is the whole of what a prompt may say. This module fills its
 //! slots and composes nothing beside them, which is why a rule about what the
@@ -12,28 +12,26 @@ pub const EVENT_SLOT: &str = "{{event}}";
 /// The slot what the supervisor knew about the moment the turn began is
 /// written into.
 pub const SITUATION_SLOT: &str = "{{situation}}";
-/// The slot the materialized path of the event's image is written into.
-pub const IMAGE_SLOT: &str = "{{image_path}}";
+/// The slot the print's facts — its context as it was when the turn began — are
+/// written into.
+pub const FACTS_SLOT: &str = "{{facts}}";
 /// The slot the command that reads the print's context is written into.
 pub const CONTEXT_COMMAND_SLOT: &str = "{{context_command}}";
 /// The slot the actor document the agent names itself by, in the session the
 /// turn runs in, is written into.
 pub const ACTOR_SLOT: &str = "{{actor}}";
+/// The slot the usage of each command the turn may run is written into.
+pub const COMMANDS_SLOT: &str = "{{commands}}";
 
 /// Every slot the template declares, and there is no other.
-pub const SLOTS: [&str; 5] = [
+pub const SLOTS: [&str; 6] = [
     EVENT_SLOT,
     SITUATION_SLOT,
-    IMAGE_SLOT,
+    FACTS_SLOT,
     CONTEXT_COMMAND_SLOT,
     ACTOR_SLOT,
+    COMMANDS_SLOT,
 ];
-
-/// What the image slot carries when the event arrived with no image.
-///
-/// The slot is filled either way, because a template with a slot left empty is
-/// a second prompt shape nobody reads.
-pub const NO_IMAGE: &str = "(this event arrived with no image)";
 
 /// Why a file is not the prompt template.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,7 +108,7 @@ impl PromptTemplate {
         Ok(Self { segments, order })
     }
 
-    /// The prompt for one turn: this template, with its five slots filled and
+    /// The prompt for one turn: this template, with its six slots filled and
     /// nothing else.
     ///
     /// Every slot is filled in one pass over the template's own segments, so
@@ -120,9 +118,10 @@ impl PromptTemplate {
         &self,
         event: &str,
         situation: &str,
-        image_path: &str,
+        facts: &str,
         context_command: &str,
         actor: &str,
+        commands: &str,
     ) -> String {
         let mut filled = String::new();
         for (index, segment) in self.segments.iter().enumerate() {
@@ -130,9 +129,10 @@ impl PromptTemplate {
             match self.order.get(index) {
                 Some(&EVENT_SLOT) => filled.push_str(event),
                 Some(&SITUATION_SLOT) => filled.push_str(situation),
-                Some(&IMAGE_SLOT) => filled.push_str(image_path),
+                Some(&FACTS_SLOT) => filled.push_str(facts),
                 Some(&CONTEXT_COMMAND_SLOT) => filled.push_str(context_command),
                 Some(&ACTOR_SLOT) => filled.push_str(actor),
+                Some(&COMMANDS_SLOT) => filled.push_str(commands),
                 Some(_) | None => {}
             }
         }

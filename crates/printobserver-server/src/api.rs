@@ -485,7 +485,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         return post(
             move |state: State<ApiState>,
                   caller: Extension<Caller>,
-                  print_id: Path<PrintId>,
+                  print_id: PrintPath,
                   body: Result<Json<ActionBody>, JsonRejection>| async move {
                 act(kind, state, caller, print_id, body).await
             },
@@ -543,6 +543,32 @@ pub(crate) fn refusal(status: StatusCode, detail: impl core::fmt::Display) -> Re
     answer(status, &ErrorAnswer::saying(detail))
 }
 
+/// What a print id that names no print is refused with, after what was wrong
+/// with it: what to pass instead.
+pub(crate) const PRINT_ID_REFUSED: &str = "a print is named by its id, a UUID, as `printobserver prints` \
+lists it; a start with no print open may name none, and is made under one minted for it";
+
+/// The print a route's path names, refused in this server's own error shape,
+/// saying what to pass, when the path names no print at all.
+pub(crate) struct PrintPath(pub(crate) PrintId);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for PrintPath {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        match Path::<PrintId>::from_request_parts(parts, state).await {
+            Ok(Path(print_id)) => Ok(Self(print_id)),
+            Err(rejected) => Err(refusal(
+                StatusCode::BAD_REQUEST,
+                format!("{}: {PRINT_ID_REFUSED}", rejected.body_text()),
+            )),
+        }
+    }
+}
+
 /// The status a store refusal is answered under.
 pub(crate) fn store_status(error: &StoreError) -> StatusCode {
     match error {
@@ -574,7 +600,7 @@ async fn act(
     kind: ActionKind,
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     body: Result<Json<ActionBody>, JsonRejection>,
 ) -> Response {
     if kind == ActionKind::StartPrint
@@ -1019,7 +1045,7 @@ async fn list_and_adopt_prints(State(state): State<ApiState>) -> Response {
 async fn status(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
@@ -1088,7 +1114,7 @@ async fn context_of(
 async fn context(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     Query(params): Query<ContextParams>,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
@@ -1132,7 +1158,7 @@ async fn context(
 async fn look(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     Query(params): Query<LookParams>,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
@@ -1235,7 +1261,7 @@ async fn image(
 async fn history(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     Query(params): Query<HistoryParams>,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
@@ -1258,7 +1284,7 @@ async fn history(
 async fn manifest_get(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
@@ -1291,7 +1317,7 @@ async fn manifest_get(
 async fn manifest_set(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     body: Result<Json<ManifestBody>, JsonRejection>,
 ) -> Response {
     if let Some(refused) =

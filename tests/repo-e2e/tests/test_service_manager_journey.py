@@ -81,6 +81,7 @@ from journey import (
     SKILL_DIRECTORY,
     clean_environment,
     install_the_skill,
+    listen_port,
     plain,
     pythonpath,
     run,
@@ -1468,17 +1469,11 @@ def manager(
             return Launchd(program, _stand_in_launchd(tmp_path, monkeypatch))
 
 
-#: Where the service is first told to listen: a port it chooses and binds
-#: itself, so no port is chosen by this journey and released for it to take.
-ITS_OWN_PORT = "127.0.0.1:0"
-
-
-def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> None:
+def _fill_in(manager: Manager, installed: Installed, octoprint: str, listen: str) -> None:
     """Fill the template in as an operator would, and install the skill.
 
     The operator's credential goes in as the verifier `credential issue` prints,
-    above the first table, and the service listens on a port of its own choosing
-    until `_pinned` reads which one it bound.
+    above the first table, and the service listens on `listen`.
     """
     template = manager.read(installed.configuration)
     truth(template is not None, describing="the installer to have written a configuration")
@@ -1489,40 +1484,28 @@ def _fill_in(manager: Manager, installed: Installed, octoprint: str) -> None:
         .replace('shared_secret = ""', 'shared_secret = "a-shared-secret"')
         # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
         .replace('url = "http://127.0.0.1:5000"', f'url = "{octoprint}"')
-        .replace('listen = "127.0.0.1:8420"', f'listen = "{ITS_OWN_PORT}"')
+        .replace('listen = "127.0.0.1:8420"', f'listen = "{listen}"')
     )
     manager.write(installed.configuration, filled)
     manager.lay_down_skill(installed)
 
 
-def _pinned(manager: Manager, installed: Installed) -> Served:
-    """Where the running service bound for itself, written back as where it listens.
+def _listening(manager: Manager, listen: str) -> Served:
+    """The running service, once its own process listens on `listen` and nowhere else.
 
-    The service the manager started holds the port it chose for as long as it
-    runs; writing that same address into its configuration is what makes the
-    process the manager brings back after a crash serve where this one does —
-    the same port across a restart, without this journey ever having chosen a
-    port and let it go.
+    `listen` is a port outside the host's dynamic range (`listen_port`): one the
+    host never hands an outgoing connection, so the process the manager brings
+    back after a crash finds it free to listen on again.
     """
     _eventually(manager, "the service running", manager.is_running)
     addresses: list[str] = []
 
     def bound() -> bool:
         addresses[:] = manager.listening_on(manager.main_pid())
-        return len(addresses) == 1
+        return addresses == [listen]
 
-    _eventually(manager, "the service listening on one port of its own", bound)
-    configuration = manager.read(installed.configuration) or ""
-    contains(
-        configuration,
-        f'listen = "{ITS_OWN_PORT}"',
-        describing="the configuration the service chose its own port under",
-    )
-    manager.write(
-        installed.configuration,
-        configuration.replace(f'listen = "{ITS_OWN_PORT}"', f'listen = "{addresses[0]}"'),
-    )
-    return Served(addresses[0], OPERATOR)
+    _eventually(manager, f"the service listening on {listen} alone", bound)
+    return Served(listen, OPERATOR)
 
 
 def _held_by_the_service(manager: Manager, served: Served) -> None:
@@ -1617,9 +1600,10 @@ def activated(manager: Manager, octoprint: str) -> Iterator[Activated]:
         truth(not manager.is_present(), describing="the host to carry no service of this name")
         installed = manager.install()
         truth(not manager.is_running(), describing="the installer to have started nothing")
-        _fill_in(manager, installed, octoprint)
+        listen = f"127.0.0.1:{listen_port()}"
+        _fill_in(manager, installed, octoprint, listen)
         manager.activate()
-        yield Activated(manager, installed, _pinned(manager, installed))
+        yield Activated(manager, installed, _listening(manager, listen))
     finally:
         manager.remove()
     equal(manager.leftovers(), [], describing="what the journey left on the host once removed")

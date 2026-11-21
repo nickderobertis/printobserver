@@ -69,6 +69,7 @@ fn a_turn() -> TurnRequest {
         },
         image_path: None,
         context_command: format!("printobserver context --print-id {print_id}"),
+        facts: None,
         situation: printobserver_supervisor_api::TurnSituation::default(),
     }
 }
@@ -139,6 +140,7 @@ async fn one_composed_turn(root: &Path) -> (Value, PathBuf, String) {
                     "did": "read the event",
                     "why": "the event carried nothing readable",
                     "escalating": false,
+                    "disposition": "continue",
                 })
                 .to_string(),
                 "session_id": "SID-SKILLED",
@@ -162,6 +164,15 @@ async fn one_composed_turn(root: &Path) -> (Value, PathBuf, String) {
     (recorded, installed, outcome.session.session_name)
 }
 
+/// The prompt the harness process was handed on its standard input.
+fn prompt_of(recorded: &Value) -> String {
+    recorded["stdin"]
+        .as_str()
+        .filter(|stdin| !stdin.is_empty())
+        .unwrap_or_else(|| panic!("the harness was handed no prompt: {recorded}"))
+        .to_owned()
+}
+
 /// The arguments the harness process was started with.
 fn arguments_of(recorded: &Value) -> Vec<String> {
     recorded["arguments"]
@@ -174,7 +185,8 @@ fn arguments_of(recorded: &Value) -> Vec<String> {
 
 /// The agent composed for a turn runs this program's commands and no other:
 /// the harness is started refusing every tool call no rule allows, with a
-/// shell and the three read tools only, and one rule per operation the server
+/// shell and file reading only, no skills list and no MCP server, and one rule
+/// per operation the server
 /// serves, spelled as the command-line program spells that operation's command.
 ///
 /// The arguments are the boundary this repository owns. Enforcing them is
@@ -189,8 +201,10 @@ async fn the_composed_agent_runs_this_programs_commands_and_no_other() {
 
     for expected in [
         ["--permission-mode", "dontAsk"].as_slice(),
-        ["--tools", "Read", "Grep", "Glob", "Bash"].as_slice(),
-        ["--allowedTools", "Read", "Grep", "Glob"].as_slice(),
+        ["--tools", "Bash", "Read"].as_slice(),
+        ["--allowedTools", "Read"].as_slice(),
+        ["--disable-slash-commands"].as_slice(),
+        ["--strict-mcp-config"].as_slice(),
     ] {
         assert!(
             arguments
@@ -257,21 +271,25 @@ async fn a_turns_path_leads_with_the_serving_programs_own_directory() {
     );
 }
 
-/// The assessment schema a turn is handed names no dialect, which Claude Code
-/// refuses to read, and is otherwise the checked-in schema exactly.
+/// The assessment schema a turn's answer is held to is the checked-in one less
+/// its dialect, carried in the prompt the harness process was handed, and no
+/// schema rides its arguments.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_schema_a_turn_is_handed_is_the_checked_in_one_without_its_dialect() {
+async fn the_schema_a_turn_is_held_to_is_the_checked_in_one_without_its_dialect() {
     let root = TempDir::new().expect("a journey's own root");
     let (recorded, _, _) = one_composed_turn(root.path()).await;
     let arguments = arguments_of(&recorded);
+    assert!(
+        !arguments.iter().any(|argument| argument == "--json-schema"),
+        "the harness was handed a schema natively: {arguments:?}"
+    );
 
-    let inline = arguments
-        .iter()
-        .position(|argument| argument == "--json-schema")
-        .and_then(|at| arguments.get(at + 1))
-        .unwrap_or_else(|| panic!("the harness was handed no schema: {arguments:?}"));
-    let handed: Value = printobserver_types::serde_json::from_str(inline)
-        .expect("the schema handed over is a document");
+    let prompt = prompt_of(&recorded);
+    let (_, inline) = prompt
+        .rsplit_once("JSON Schema: ")
+        .unwrap_or_else(|| panic!("the prompt carries no schema:\n{prompt}"));
+    let handed: Value = printobserver_types::serde_json::from_str(inline.trim())
+        .expect("the schema the prompt carries is a document");
     let mut checked_in: Value = printobserver_types::serde_json::from_str(
         &std::fs::read_to_string(
             Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -280,10 +298,9 @@ async fn the_schema_a_turn_is_handed_is_the_checked_in_one_without_its_dialect()
         .expect("the checked-in assessment schema reads"),
     )
     .expect("the checked-in assessment schema is a document");
-
     assert!(
         handed.get("$schema").is_none(),
-        "the schema handed to the harness names a dialect: {}",
+        "the schema a turn is held to names a dialect: {}",
         handed["$schema"]
     );
     assert!(
@@ -296,7 +313,7 @@ async fn the_schema_a_turn_is_handed_is_the_checked_in_one_without_its_dialect()
     );
     assert_eq!(
         handed, checked_in,
-        "the schema handed to the harness differs from the checked-in one by more than its dialect"
+        "the schema a turn is held to differs from the checked-in one by more than its dialect"
     );
 }
 
@@ -312,12 +329,7 @@ async fn the_schema_a_turn_is_handed_is_the_checked_in_one_without_its_dialect()
 async fn the_actor_a_turn_hands_the_agent_is_the_cores_agent_in_that_session() {
     let root = TempDir::new().expect("a journey's own root");
     let (recorded, _, session_name) = one_composed_turn(root.path()).await;
-    let arguments = arguments_of(&recorded);
-    let prompt = arguments
-        .iter()
-        .position(|argument| argument == "-p")
-        .and_then(|at| arguments.get(at + 1))
-        .unwrap_or_else(|| panic!("the harness was handed no prompt: {arguments:?}"));
+    let prompt = prompt_of(&recorded);
 
     let (_, after) = prompt
         .split_once("--actor '")
@@ -556,7 +568,9 @@ fn request_of(line: &str, print: &str, file: &str) -> (String, String, Value) {
     }
     (
         operation,
-        path_print.unwrap_or_else(|| panic!("`{line}` names no print")),
+        // A start naming no print is made under one minted for it, as the
+        // program mints one: `print` is that identifier.
+        path_print.unwrap_or_else(|| print.to_owned()),
         Value::Object(body),
     )
 }

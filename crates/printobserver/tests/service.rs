@@ -2208,9 +2208,15 @@ mount --bind "$CONFIG" /etc/printobserver/config.toml || refuse "the configurati
 mkfifo /mnt/server-stderr
 
 # The unit's restrictions. ProtectHome: every home is a directory nobody may
-# enter. ProtectSystem=strict with ReadWritePaths, and PrivateTmp made stricter:
-# every mount but the kernel's own is read-only, and the state directory alone
-# is written.
+# enter. ProtectSystem=strict with ReadWritePaths: every mount but the kernel's
+# own is read-only, and the state directory alone is written. PrivateTmp: the
+# unit's processes get an empty temporary directory of their own, which nothing
+# else sees. This journey's own root lives in the host's /tmp, so that directory
+# cannot be replaced here; the private one is a fresh tmpfs mounted after
+# everything else is made read-only, and handed to the unit's processes as
+# TMPDIR, which is where they look for one.
+PRIVATE_TMP=/mnt/private-tmp
+mkdir "$PRIVATE_TMP" || refuse "a private temporary directory could not be made"
 mount --bind "$STATE" "$STATE" || refuse "the state directory could not be bound"
 for hidden in /home /root /run/user; do
     if [ -d "$hidden" ]; then
@@ -2223,9 +2229,13 @@ awk '{print $5}' /proc/self/mountinfo | sort -u | while read -r point; do
         *) mount -o remount,bind,ro "$point" 2>/dev/null ;;
     esac
 done
+mount -t tmpfs -o mode=1777 tmpfs "$PRIVATE_TMP" ||
+    refuse "the private temporary directory could not be mounted"
+echo "private_tmp=$PRIVATE_TMP"
 as_service() {
     setpriv --reuid="$SERVICE_USER" --regid="$(id -g "$SERVICE_USER")" --init-groups \
-        --no-new-privs env -i "PATH=$ROOT/usr/local/bin:/usr/local/bin:/usr/bin:/bin" "$@"
+        --no-new-privs env -i "PATH=$ROOT/usr/local/bin:/usr/local/bin:/usr/bin:/bin" \
+        "TMPDIR=$PRIVATE_TMP" "$@"
 }
 
 # The audit, as the service user under those restrictions.
@@ -2234,7 +2244,7 @@ CANDIDATES=$(
         awk '{print $5}' /proc/self/mountinfo
         printf '%s\n' / /tmp /var/tmp /etc /dev/shm "$JOURNEY_UNDER" "$ROOT" \
             "$ROOT/etc/printobserver" "$ROOT/usr/local/bin" "$ROOT/usr/local/lib/printobserver" \
-            "$STATE" "$UNIT_HOME" "$PASSWD_HOME" "$JOURNEY_OPERATOR_HOME"
+            "$STATE" "$PRIVATE_TMP" "$UNIT_HOME" "$PASSWD_HOME" "$JOURNEY_OPERATOR_HOME"
     } | grep -v -e '^/proc' -e '^/sys' -e '^/dev$' -e '^/dev/pts' | sort -u
 )
 as_service "HOME=$UNIT_HOME" "CANDIDATES=$CANDIDATES" sh -c '
@@ -2275,7 +2285,7 @@ cd "$(directive WorkingDirectory)" || refuse "the unit's working directory could
 # itself rather than a subshell around it, and stopped however this ends.
 setpriv --reuid="$SERVICE_USER" --regid="$(id -g "$SERVICE_USER")" --init-groups \
     --no-new-privs env -i "PATH=$ROOT/usr/local/bin:/usr/local/bin:/usr/bin:/bin" \
-    "HOME=$UNIT_HOME" $START >/dev/null 2>/mnt/server-stderr &
+    "TMPDIR=$PRIVATE_TMP" "HOME=$UNIT_HOME" $START >/dev/null 2>/mnt/server-stderr &
 SERVER=$!
 trap 'kill "$SERVER" 2>/dev/null' EXIT
 exec 3</mnt/server-stderr
@@ -2571,9 +2581,15 @@ fn assert_the_audit(report: &[(String, String)], state: &str, service_user: &str
         writable.contains(&state),
         "the state directory is not writable to the service user"
     );
+    // The unit's own private temporary directory is the one other place it
+    // writes, and nothing outside the unit sees it.
+    let private_tmp = reported_once(report, "private_tmp");
     assert!(
-        writable.iter().all(|path| inside(path, state)),
-        "the service user can write outside the state directory: {writable:?}"
+        writable
+            .iter()
+            .all(|path| inside(path, state) || *path == private_tmp),
+        "the service user can write outside the state directory and its private \
+         temporary directory: {writable:?}"
     );
 }
 

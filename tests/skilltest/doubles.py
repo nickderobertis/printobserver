@@ -281,6 +281,15 @@ class FrameDue(NamedTuple):
     captured: datetime
 
 
+class Passing(NamedTuple):
+    """Where the job stands as it passes its first layer between two events, and its frame."""
+
+    position: int
+    #: The index of the recorded frame captured then, among the case's frames.
+    frame: int
+    at: datetime
+
+
 class CameraFrame(NamedTuple):
     """The bytes a camera answers a fetch with."""
 
@@ -347,6 +356,11 @@ class Timeline:
     heaters: Heaters = field(default_factory=Heaters)
     #: Every read of the job, in order.
     job_reads: list[JobRead] = field(default_factory=list)
+    #: Where the job stands as it passes its first layer, between two events.
+    passing: Passing | None = None
+    #: The event whose turn's exit moved the replay on, which a re-prompt of that turn
+    #: stands at again.
+    exited_from: int = 0
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -390,8 +404,19 @@ class Timeline:
         written.write_text(f"{int(self.offset.total_seconds() * 1000)}{ceiling}\n", "ascii")
         written.replace(self.clock)
 
+    def pass_at(self, passing: Passing) -> None:
+        """Stand where the job passed its first layer, between this event and the next.
+
+        Its recorded frame is what every fetch answers until the next event, and its
+        position what every job read does: what the printer watch saw as the layer
+        went down, which a replay jumping from one event to the next would skip.
+        """
+        self.passing = passing
+        self._set_clock(passing.at)
+
     def stand_at(self, index: int) -> None:
         """Stand at one event: its recorded time, and its frame next for a fetch to answer."""
+        self.passing = None
         self.index = index
         self.looked = False
         moment = self.case.moments[index]
@@ -421,7 +446,7 @@ class Timeline:
         """A second run within one turn, the engine's own re-prompt, is still that turn's."""
         with self.lock:
             if self.moved_at_exit and self.index > 0:
-                self.index -= 1
+                self.index = self.exited_from
                 self.owed_event_frame = False
             self.moved_at_exit = False
 
@@ -454,6 +479,10 @@ class Timeline:
         with self.lock:
             if self.finished:
                 return None
+            if self.passing is not None:
+                name = self.case.frames[self.passing.frame].file
+                self.fetches.append(name)
+                return FrameDue(name, self.frame_times[self.passing.frame])
             if self.owed_event_frame:
                 self.cursor = max(self.cursor, self.at_event_frame)
                 self.owed_event_frame = False
@@ -467,7 +496,13 @@ class Timeline:
             shown = max(self.cursor, 0)
             name = self.case.frames[shown].file
             self.fetches.append(name)
-            return FrameDue(name, self.frame_times[shown])
+            captured = self.frame_times[shown]
+            if self.moment.is_outside:
+                # A camera asked at a milestone answers a frame of that moment, which
+                # the recorded frame nearest after it stands for, or the recording's
+                # last frame where it ends before the milestone.
+                captured = min(captured, self.now())
+            return FrameDue(name, captured)
 
     def obico_printer(self) -> ObicoPrinterRecord:
         """Obico's record of the printer, from the case's own recorded detector state.
@@ -514,8 +549,11 @@ class Timeline:
     def position(self, at: datetime | None = None) -> int:
         """The job's file position at an instant, by default the replay's current time.
 
-        The event's own until a look has been taken, and short of the next event's.
+        The event's own until a look has been taken, and short of the next event's;
+        where the job passed its first layer while it stands there.
         """
+        if self.passing is not None:
+            return self.passing.position
         low = self.moment.file_position_bytes
         if not self.looked:
             return low
@@ -847,9 +885,18 @@ def health() -> ThreadingHTTPServer:
 
 
 def control(
-    started: Callable[[], str], exited: Callable[[], None], failed: Callable[[str], None]
+    started: Callable[[], str],
+    exited: Callable[[], None],
+    failed: Callable[[str], None],
+    *,
+    compaction: tuple[Callable[[], str], Callable[[], None]] | None = None,
 ) -> ThreadingHTTPServer:
-    """Where the launcher reports the harness's start and its exit, each answered when done with."""
+    """Where the launcher reports the harness's start and its exit, each answered when done with.
+
+    A harness started to compact a session rather than to take a turn is reported
+    on its own two paths, answered by `compaction`'s pair when one is given: a
+    compaction serves no replay entry, so its exit moves the replay nowhere.
+    """
 
     class Handler(_Quiet):
         def do_POST(self) -> None:
@@ -861,6 +908,11 @@ def control(
                         self.answer(200, started().encode(), "text/plain")
                     case "/exited":
                         exited()
+                        self.answer(200)
+                    case "/compaction-started" if compaction is not None:
+                        self.answer(200, compaction[0]().encode(), "text/plain")
+                    case "/compaction-exited" if compaction is not None:
+                        compaction[1]()
                         self.answer(200)
                     case _:
                         self.answer(404)

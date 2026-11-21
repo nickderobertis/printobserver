@@ -43,20 +43,27 @@ import os
 import re
 import secrets
 import shutil
-import socket
 import sqlite3
 import sys
 import tarfile
 import time
 import tomllib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NewType
 from urllib.parse import urlsplit
 
 import pytest
-from journey import DEBUG_BUILD, HERE, REPO_ROOT, clean_environment, install_the_skill, run
+from journey import (
+    DEBUG_BUILD,
+    HERE,
+    REPO_ROOT,
+    clean_environment,
+    install_the_skill,
+    listen_port,
+    run,
+)
 from release_artifacts.installing import powershell
 from release_artifacts.stand_in import stand_in_program
 from release_artifacts.world import (
@@ -926,14 +933,91 @@ def _await_recorded(state: Path) -> Recorded:
     return found[-1]
 
 
-def _eventually(what: str, ready: Callable[[], bool]) -> None:
+def _eventually(
+    what: str, ready: Callable[[], bool], explain: Callable[[], str] | None = None
+) -> None:
+    """Wait for `ready`, failing on the deadline with what `explain` reads then."""
     deadline = time.monotonic() + WITHIN_SECONDS
     while time.monotonic() < deadline:
         if ready():
             return
         time.sleep(0.5)
     message = f"{what} within {WITHIN_SECONDS}s"
+    if explain is not None:
+        message += f"\n{explain()}"
     raise AssertionError(message)
+
+
+def _task_state(task: str, program: Path, port: int, killed: Sequence[int] = ()) -> str:
+    """Task Scheduler's own account of one task, and every process around it, as a failure reads it.
+
+    The process Task Scheduler tracks for the running instance is its engine
+    PID; beside it, every process at the program's path, every process one of
+    them started, and the processes `killed` lists — the servers running when
+    one was killed, that one first — each with its parent, when it started and
+    its threads and handles; whether the killed one still exists, and what each
+    of its threads waits on if it does; and every socket on the listen `port`,
+    with the process that holds it.
+    """
+    ended = killed[0] if killed else 0
+    told = _powershell_answer(
+        f"$t = Get-ScheduledTask -TaskName {_quoted(task)} -TaskPath '\\'; "
+        "$i = $t | Get-ScheduledTaskInfo; "
+        "'state ' + $t.State; 'last run ' + $i.LastRunTime; "
+        "'last result ' + $i.LastTaskResult; 'missed runs ' + $i.NumberOfMissedRuns; "
+        "'next run ' + $i.NextRunTime; "
+        "$s = New-Object -ComObject Schedule.Service; $s.Connect(); "
+        f"@($s.GetRunningTasks(1)) | Where-Object {{ $_.Name -eq {_quoted(task)} }} | "
+        "ForEach-Object { 'running instance ' + $_.InstanceGuid + ' engine ' + $_.EnginePID }; "
+        "$all = @(Get-CimInstance Win32_Process); "
+        f"$ours = @($all | Where-Object {{ $_.ExecutablePath -eq {_quoted(str(program))} "
+        f"-or @({','.join(map(str, killed)) or '0'}) -contains $_.ProcessId }}); "
+        "$ids = @($ours | ForEach-Object { $_.ProcessId }); "
+        "@($ours) + @($all | Where-Object { $ids -contains $_.ParentProcessId }) | "
+        "ForEach-Object { 'process ' + $_.ProcessId + ' parent ' + $_.ParentProcessId + ' ' + "
+        "$_.Name + ' started ' + $_.CreationDate + ' threads ' + $_.ThreadCount + "
+        "' handles ' + $_.HandleCount + ': ' + $_.CommandLine }; "
+        f'$k = {ended}; $p = Get-CimInstance Win32_Process -Filter "ProcessId=$k"; '
+        "if (-not $k) { 'no server was killed' } elseif ($p) { "
+        "'killed ' + $k + ' still exists, with ' + $p.ThreadCount + ' threads and ' + "
+        "$p.HandleCount + ' handles'; "
+        "Get-CimInstance Win32_Thread -Filter \"ProcessHandle='$k'\" | ForEach-Object { "
+        "'killed thread ' + $_.Handle + ' state ' + $_.ThreadState + ' wait reason ' + "
+        "$_.ThreadWaitReason } } else { 'killed ' + $k + ' no longer exists' }; "
+        f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
+        "ForEach-Object { 'port ' + $_.LocalAddress + ':' + $_.LocalPort + ' ' + $_.State + "
+        "' to ' + $_.RemoteAddress + ':' + $_.RemotePort + ' held by ' + $_.OwningProcess + ' ' + "
+        "(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName }",
+        check=False,
+    )
+    return (
+        f"Task Scheduler says:\n{told}\n"
+        f"servers when one was killed: {list(killed)}\n"
+        f"servers running: {_servers(program)}"
+    )
+
+
+def _note_moment(moments: list[str], task: str, program: Path) -> None:
+    """Add Task Scheduler's account of `task` to `moments` when it differs from the last one.
+
+    Each launch that ends leaves its exit code as the task's last result, and an
+    instance that never ends leaves the task running with the same tracked
+    process, so the run of these, each with when it was first seen, is what the
+    task did after a kill.
+    """
+    told = _powershell_answer(
+        f"$t = Get-ScheduledTask -TaskName {_quoted(task)} -TaskPath '\\'; "
+        "$i = $t | Get-ScheduledTaskInfo; "
+        "$s = New-Object -ComObject Schedule.Service; $s.Connect(); "
+        f"$e = @(@($s.GetRunningTasks(1)) | Where-Object {{ $_.Name -eq {_quoted(task)} }} | "
+        "ForEach-Object { $_.EnginePID }) -join ','; "
+        "'state ' + $t.State + ', last run ' + $i.LastRunTime.ToString('HH:mm:ss') + "
+        "', last result ' + $i.LastTaskResult + ', tracking [' + $e + ']'",
+        check=False,
+    )
+    moment = f"{told}, servers {_servers(program)}"
+    if not moments or not moments[-1].endswith(moment):
+        moments.append(f"  {time.strftime('%H:%M:%S')} {moment}")
 
 
 @pytest.fixture
@@ -1312,13 +1396,6 @@ def _console_window_shown(pid: int, into: Path) -> str:
     return _powershell_answer(f"& {_quoted(str(probe))}").splitlines()[-1].strip()
 
 
-def _free_port() -> int:
-    """A port nothing listens on, for a configuration that names one."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
-
-
 def _serves(program: Path, port: int) -> bool:
     return _client(program, f"http://127.0.0.1:{port}", CREDENTIAL, "prints").code == 0
 
@@ -1412,7 +1489,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
 
         # The steps the installer printed, taken: the configuration filled in,
         # the skill laid down, and the documented restart.
-        port = _free_port()
+        port = listen_port()
         _fill_in(home.config, machine, CREDENTIAL, f"127.0.0.1:{port}")
         # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] see suppressions.toml.
         install_the_skill(home.config)
@@ -1439,11 +1516,22 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
             (shell_run(["taskkill.exe", "/F", "/PID", str(killed[0])], timeout=60).returncode, ""),
             describing="killing the server",
         )
+        moments: list[str] = []
+
+        def back() -> bool:
+            _note_moment(moments, task, home.program)
+            now = _servers(home.program)
+            return bool(now and now[0] != killed[0]) and _serves(home.program, port)
+
         _eventually(
             "the server back after it was killed",
-            lambda: (
-                bool((now := _servers(home.program)) and now[0] != killed[0])
-                and _serves(home.program, port)
+            back,
+            lambda: "\n".join(
+                [
+                    "what the task did after the kill:",
+                    *moments,
+                    _task_state(task, home.program, port, killed),
+                ]
             ),
         )
 
@@ -1472,7 +1560,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
         )
 
         # A configuration change, as the user, taken by the documented restart.
-        moved = _free_port()
+        moved = listen_port()
         home.config.write_text(
             home.config.read_text(encoding="utf-8")
             .replace(f'listen = "127.0.0.1:{port}"', f'listen = "127.0.0.1:{moved}"')
@@ -2347,7 +2435,7 @@ def test_on_windows_a_server_started_from_a_shell_keeps_the_shells_window(
     home = _home(tmp_path, "home-shell")
     ran = installing(home, releases(_version()))
     passing((ran.code, ran.said), describing="the per-user install, its task stood in")
-    port = _free_port()
+    port = listen_port()
     _fill_in(home.config, machine, CREDENTIAL, f"127.0.0.1:{port}")
     # llmlint: ignore[e2e_not_mocked, tests_mirror_real_usage] see suppressions.toml.
     install_the_skill(home.config)

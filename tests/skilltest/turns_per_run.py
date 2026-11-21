@@ -1,8 +1,10 @@
 """`skilltest-turns-per-run`: the real harness turns one full `just skilltest` run spends.
 
 One turn per event a test feeds, so the figure is the `replay` entries of every
-case on disk. A re-prompt the engine makes inside a turn is part of that turn, not
-another one, and this does not count it. It is counted fresh and runs no model. A
+case on disk, and the two probes of the supervisor configuration: alone, and with
+one check image. A re-prompt
+made inside a turn is part of that turn, not another one, and this does not
+count it. It is counted fresh and runs no model. A
 test that runs the replay holds the count here to the turns the harness actually
 received (`tests/skilltest-wiring`).
 """
@@ -16,6 +18,9 @@ from pathlib import Path
 from onebudgetspec_sdk import report
 
 CASES = Path(__file__).resolve().parents[2] / "tests" / "real-prints"
+#: The turns a full run spends on its probes of the supervisor configuration: the
+#: text-only one and the one carrying a check image.
+PROBE_TURNS = 2
 
 
 class UnreadableCaseError(Exception):
@@ -59,8 +64,8 @@ def main(arguments: list[str]) -> int:
     except (UnreadableCaseError, ValueError) as error:
         print(f"turns per full run: {error}", file=sys.stderr)
         return 1
-    total = sum(counted.values())
-    report(float(total), json.dumps({"turns_per_test": counted}))
+    total = sum(counted.values()) + PROBE_TURNS
+    report(float(total), json.dumps({"turns_per_test": counted, "probe_turns": PROBE_TURNS}))
     print(f"turns per full run: {total} ({counted})", file=sys.stderr)
     return 0
 

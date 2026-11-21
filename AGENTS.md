@@ -1493,15 +1493,23 @@ of them. One package rather than thirteen because release-plz tags and releases
 *per package*, in release order, and under the one name every package renders
 the second to publish dies creating a ref the first already created, leaving the
 rest unpublished. So `release-plz.toml` turns creation off under `[workspace]`
-and on for `printobserver` alone, keeping the name templates workspace-wide so
-that every entry of the program's answer still carries `v<version>` for `just
-release-answer` to fold into one. A `v<version>` tag left standing on the forge
-over unpublished crates is the quieter failure: release-plz skips every package
-whose tag exists *before* it asks the registry, so the next push releases
-nothing, exits 0, answers `released=`, and skips the artifacts. The repair is
-to delete the tag and the GitHub Release, never to move the version.
+and on for `printobserver` alone, which alone names its tag `v<version>`.
+
+Every other package renders release-plz's default `<package>-v<version>` and
+creates nothing under it. That name must stay its own: `release-pr` reads a
+package whose rendered tag exists as one the registry already serves, and
+stops the whole draft when it does not. Under a shared `v<version>`, every
+crate added after a release did exactly that, and `printobserver-panels` held
+up every release after `v0.13.1`. `just release-answer` folds each entry's
+name into the one `v<version>`, and `[changelog] body` links each
+section between `v<version>` tags rather than those names. A `v<version>` tag left standing on the forge
+over an unpublished `printobserver` is the quieter failure: release-plz skips a
+package whose tag exists *before* it asks the registry, so the program and its
+tag's release never follow. The repair is to delete the tag and the GitHub
+Release, never to move the version.
 `tests/repo-e2e-independent/tests/test_release_tag_journey.py` holds the configuration to
-this.
+this, and `tests/release-drafting` drafts a crate added after a release, over a
+fixture workspace behind an edge of its own.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as
@@ -1537,7 +1545,9 @@ same on every platform — one driving only this repository's own tooling,
 workflows and records — belongs to `tests/repo-e2e-independent`, whose project
 carries the `platform:independent` tag so CI may run it once; every other
 journey belongs to `tests/repo-e2e`, which runs on every platform.
-`test_end_to_end_projects.py` is the record of which file is whose. A gate that stops gating is not a silent failure: the next defective
+`test_end_to_end_projects.py` is the record of which file is whose. A journey
+over a fixture of its own rather than a copy of this tree takes a project of its
+own instead, edged to what it reads: `tests/release-drafting`. A gate that stops gating is not a silent failure: the next defective
 change exposes it, so we do not run whole gates over defect copies to test that
 the gate gates. Structural wiring has one deterministic proof instead:
 `repo_checks.checks_repo.recipe_set`, reached by `just check-repo`, requires

@@ -22,6 +22,12 @@ from repo_checks.gate_tier import PROJECTS_VARIABLE
 RAN = re.compile(r"^> nx run (?P<project>[^:\s]+):format-check", re.MULTILINE)
 
 
+#: The nested client suite runs whole: a caller's own `PYTEST_ADDOPTS` selection
+#: (`-k` over this file, say) would otherwise deselect every test it has and fail
+#: the run these journeys read the coverage of.
+UNSELECTED = {"PYTEST_ADDOPTS": ""}
+
+
 def as_a_clone(copy: GateCopy) -> GateCopy:
     """The copy with its linked `node_modules` ignored, as a clone's installed one is.
 
@@ -179,7 +185,7 @@ def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
 
 
 #: The projects carrying the end-to-end tier's target, by their directory.
-END_TO_END_PROJECTS = ("tests/repo-e2e", "tests/repo-e2e-independent")
+END_TO_END_PROJECTS = ("tests/repo-e2e", "tests/repo-e2e-independent", "tests/release-drafting")
 
 
 def standing_in_for_the_suite(copy: GateCopy) -> None:
@@ -187,7 +193,7 @@ def standing_in_for_the_suite(copy: GateCopy) -> None:
 
     The project graph's edges, and so which projects a change selects, are the
     copy's own and unchanged. Only what selection would then run is replaced,
-    in each of the tier's two projects: the suite, and any build it waits on,
+    in each of the tier's projects: the suite, and any build it waits on,
     which is a task-graph edge and selects nothing.
     """
     for directory in END_TO_END_PROJECTS:
@@ -291,7 +297,7 @@ def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
         ],
         copy.root,
         timeout=1800,
-        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET),
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET, **UNSELECTED),
     )
     passing(tested, describing="the Python client's own `test` target")
     reported = copy.just("coverage", environment=QUIET)
@@ -438,7 +444,7 @@ def test_each_side_of_a_split_test_tier_reports_its_own_ecosystem_of_the_change(
         ],
         copy.root,
         timeout=1800,
-        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET),
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET, **UNSELECTED),
     )
     passing(tested, describing="the crate's and the client's own `test` targets")
 

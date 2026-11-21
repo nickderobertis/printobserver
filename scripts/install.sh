@@ -331,6 +331,13 @@ skill_path = "$RUNTIME_STATE/skills/printobserver/SKILL.md"
 # whether or not the detector has alerted. Left out, every 120 seconds: an
 # eight-hour print is 240 turns. Raise it to spend less; zero is refused.
 $INTERVAL_LINE
+# The conversation size, in tokens, at or above which a print's session is
+# compacted while no turn of it runs, so each check stays near a fixed cost.
+# A new event cancels a compaction rather than waiting on it.
+idle_compact_tokens = 150000
+# The size at which the harness compacts a session on its own during a turn:
+# the backstop for one turn growing past the idle compaction.
+auto_compact_tokens = 200000
 
 [ingress]
 # FILL IN: the shared secret Obico's webhook notification plugin must carry.

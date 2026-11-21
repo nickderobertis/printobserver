@@ -539,13 +539,13 @@ check-repo:
     uv run -q python -m repo_checks all
 
 # The end-to-end tier: journeys that drive the real gate, checks and bootstrap,
-# over the tier's projects — `repo-e2e` and `repo-e2e-independent`, the two
-# projects carrying the target, which Nx runs one after the other — wherever
-# their edges or a file no project owns reach them.
+# over the tier's projects — `repo-e2e`, `repo-e2e-independent` and
+# `release-drafting`, the projects carrying the target, which Nx runs one after
+# the other — wherever their edges or a file no project owns reach them.
 #
 # release-plz first, by name: `repo-policy.toml` declares it `bootstrap = false`
 # — only this tier, `release-dry-run` and the release workflow run it — and the
-# three journeys that drive it skip where it is absent. Installing it here is what keeps those three
+# four journeys that drive it skip where it is absent. Installing it here is what keeps those four
 # from going silently skipped on a host, or a gate cell, that bootstrapped and
 # nothing more. The install downloads one verified prebuilt archive, and skips
 # even that where the held release is already on PATH.

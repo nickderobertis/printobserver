@@ -155,7 +155,7 @@ Reached at `GET /v1/prints/{print_id}/context`.
 - `--print-id` — the print this command is about (required).
 - `--since` — the newest event already read, which the last answer named as `newest_event`: only the events after it are answered (optional).
 
-**Output.** The print's context, each fact once and as it is now — the print's state, the heaters, the effective bounds, the active interventions, the failure detector's status, the recent events (each what happened and what it changed), the newest event's identifier and the slicer's plan — and the absolute path on the server's own host where the latest image was materialized.
+**Output.** The print's context, each fact once and as it is now — the print's state, the heaters, the effective bounds, the active interventions, the failure detector's status, the recent events (each what happened and what it changed), the newest event's identifier and the slicer's plan at the job's position, under `slicer`: the layer, counting the first as 1, its height and the last layer's, what the layer lays material as, and the slicer's own minutes left — and the absolute path on the server's own host where the latest image was materialized.
 
 **Failures.** `image-elsewhere` when that path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `refused` when `--since` names none of the print's events. `unreachable` and `refused` as for every command.
 
@@ -221,7 +221,7 @@ Reached at `GET /v1/prints/{print_id}/look`, and with no print named at
 - `--print-id` — the print this command is about (optional; without it the look is the printer's, belongs to no print, and waits on nothing a print's agent is owed).
 - `--wait-s` — how many seconds to wait first, at most 90, returning the moment an event arrives for the print's running turn; a look at the printer waits them out (optional; a longer wait is refused rather than shortened).
 
-**Output.** The look as it was written into the print's history — or the printer's, carrying no print — the events that arrived while it waited, the frame the camera gave and the absolute path on the server's own host it was stored at, the printer and the job as they are now, and whether the print is held by the detector's pause. A look at the printer carries nothing under `arrived` and is never paused by the detector. With no camera configured, or one that gave no frame, the frame and its path are absent. A camera answering a server error is asked again, three more times half a second apart, each answer written down as a `camera_retry`, before the look is answered without a frame.
+**Output.** The look as it was written into the print's history — or the printer's, carrying no print — the events that arrived while it waited, the frame the camera gave and the absolute path on the server's own host it was stored at, the printer and the job as they are now, and whether the print is held by the detector's pause. A look at the printer carries nothing under `arrived` and is never paused by the detector. With no camera configured, or one that gave no frame, the frame and its path are absent. A camera answering a server error is asked again, three more times half a second apart, each answer written down as a `camera_retry`, before the look is answered without a frame. `image_path` is the image to open and `image_note` says which it is and why. A look at a print is shown the three-panel check image when that image can be trusted: panel 1 is the frame with this layer's planned toolpath drawn where it sits in the camera's view, coloured by extrusion kind — lines that are the plan, never plastic, grey for the part layer under a layer laying only support — panel 2 a close-up of where the part should be, and panel 3 the previous check's view. It can be trusted when the server's configuration names the camera's calibration as `[camera] calibration`, the file `tools/camera-calibration` fits once per printer and again whenever the camera moves; the print's G-code names the layer and the object laid at the job's position; the print's first-layer alignment passed, the printed first layer landing where that calibration projects it; and the frame passes the composer's resolution, stream and drift checks. Otherwise, and for every look at the printer, it is shown the whole camera frame, scaled to fit 1280x720 and uncropped, and the note says why.
 
 **Failures.** `image-elsewhere` when the frame's path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `refused` for a wait over 90, and for a supervision turn's credential asking for a look at the printer, which is the operator's. `unreachable` and `refused` as for every command.
 
@@ -377,7 +377,7 @@ Reached at `POST /v1/prints/{print_id}/actions/start_print`.
 
 **Arguments.**
 
-- `--print-id` — the print this command is about (required).
+- `--print-id` — the print this command is about (optional): a first start names none, and is made under one this program mints.
 - `--actor` — who is asking (required).
 - `--actor-file` — the path of a file carrying that value instead (optional).
 - `--file-name` — the file to print, as the printer names it (required).

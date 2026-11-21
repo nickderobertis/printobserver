@@ -42,6 +42,11 @@ const LOG: &str = "PRINTOBSERVER_RESPONDER_LOG";
 /// ignored, and what it answered is written down like any other.
 const ACTIONS: &str = "PRINTOBSERVER_RESPONDER_ACTIONS";
 
+/// What a scripted action's body names the turn's own event by, replaced with
+/// the identifier of the event the turn's prompt names: what an acknowledgement
+/// the turn makes by command is about.
+const EVENT_PLACEHOLDER: &str = "{event_id}";
+
 /// The variable naming the file this responder writes what it was started with
 /// to: the directory it was run in and the system prompt it was handed, as one
 /// JSON object.
@@ -51,6 +56,32 @@ const ACTIONS: &str = "PRINTOBSERVER_RESPONDER_ACTIONS";
 /// witness of either that is not the run request this server built is the
 /// process that request started.
 const SEEN: &str = "PRINTOBSERVER_RESPONDER_SEEN";
+
+/// The variable naming a file this responder waits on, once its actions are
+/// issued, for as long as the file exists, and at most [`BOUND`]: a turn held
+/// open while a journey does what a person does during one.
+const HOLD: &str = "PRINTOBSERVER_RESPONDER_HOLD";
+
+/// The variable naming the file this responder appends one line to as a
+/// compaction it was started for begins: its process id and when it began.
+const COMPACT_LOG: &str = "PRINTOBSERVER_RESPONDER_COMPACT_LOG";
+
+/// The variable naming a file a compaction this responder was started for
+/// waits on, once it has begun, for as long as the file exists and at most
+/// [`BOUND`]: a compaction still running when the next event arrives.
+const COMPACT_HOLD: &str = "PRINTOBSERVER_RESPONDER_COMPACT_HOLD";
+
+/// The variable naming, comma-separated, the environment variables whose
+/// values this responder writes into what it records of a run: what the run's
+/// harness process was really handed, beside the request that asked for it.
+const SEEN_ENV: &str = "PRINTOBSERVER_RESPONDER_SEEN_ENV";
+
+/// The variable naming a directory whose every file this responder writes into
+/// what it records of a run, as it held them when the run's process started.
+const SEEN_STORE: &str = "PRINTOBSERVER_RESPONDER_SEEN_STORE";
+
+/// The prompt Claude Code is started with to compact a session.
+const COMPACT_PROMPT: &str = "/compact";
 
 /// The flags a Claude Code run is handed its system prompt under: inline, or
 /// as a file when the prompt is large enough to risk the argument ceiling.
@@ -80,6 +111,8 @@ struct Turn {
     credential: Credential,
     /// The print the turn is about.
     print: String,
+    /// The event the turn is about, as its prompt names it first.
+    event: Option<String>,
 }
 
 /// A credential this responder presents, held only once the server's own rule
@@ -110,12 +143,15 @@ fn from_the_environment(name: &str) -> Option<String> {
 /// The environment is where a turn is handed both — the address the server
 /// bound and the credential minted for this turn — and the context command it
 /// is told to run names neither, which is why the program a real turn runs
-/// reads them from there too. The prompt reaches the harness on its argv,
-/// which is where a real one reads it from. A turn that carries neither
+/// reads them from there too. The prompt reaches the harness on its argv or,
+/// for a run naming an `--input-format`, on its standard input, which is where
+/// a real one reads it from. A turn that carries neither
 /// variable, or whose prompt names no context command, is a turn this
 /// responder does not act on — it answers and nothing else.
-fn turn_from_the_prompt() -> Option<Turn> {
-    let prompt = std::env::args().find(|word| word.contains(CONTEXT_MARKER))?;
+fn turn_from_the_prompt(stdin: &str) -> Option<Turn> {
+    let prompt = std::env::args()
+        .chain(prompt_texts(stdin))
+        .find(|word| word.contains(CONTEXT_MARKER))?;
     let after = prompt.split(CONTEXT_MARKER).nth(1)?;
     let server = from_the_environment(printobserver_supervisor_api::SERVER_ENV)?
         .trim_end_matches('/')
@@ -129,11 +165,53 @@ fn turn_from_the_prompt() -> Option<Turn> {
         .nth(1)?
         .trim()
         .to_owned();
+    let event = prompt
+        .split_once("\"id\": \"")
+        .and_then(|(_, rest)| rest.split_once('"'))
+        .map(|(id, _)| id.to_owned());
     Some(Turn {
         server,
         credential,
         print,
+        event,
     })
+}
+
+/// Everything a run handed this responder on its standard input, read once and
+/// only for a run naming an `--input-format`: a run that names none writes no
+/// prompt there, and reading it would wait on input nobody sends. Input that
+/// cannot be read whole, or is no text, stops this responder saying so rather
+/// than acting on part of a prompt.
+fn standard_input() -> String {
+    if !std::env::args().any(|argument| argument == "--input-format") {
+        return String::new();
+    }
+    let mut read = String::new();
+    if let Err(error) = std::io::stdin().read_to_string(&mut read) {
+        eprintln!("printobserver-server-responder: its standard input could not be read: {error}");
+        std::process::exit(1);
+    }
+    read
+}
+
+/// The prompt texts standard input carries: each text block of a stream-json
+/// user frame, or the whole input when it is no frame.
+fn prompt_texts(stdin: &str) -> Vec<String> {
+    let mut texts = Vec::new();
+    for line in stdin.lines() {
+        let Ok(frame) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        for block in frame["message"]["content"].as_array().into_iter().flatten() {
+            if let Some(text) = block["text"].as_str() {
+                texts.push(text.to_owned());
+            }
+        }
+    }
+    if texts.is_empty() && !stdin.is_empty() {
+        texts.push(stdin.to_owned());
+    }
+    texts
 }
 
 /// One action this responder could not issue at all.
@@ -208,14 +286,40 @@ fn read_answer(answer: &str) -> serde_json::Value {
     serde_json::json!({ "status": status, "body": parsed })
 }
 
+/// Write down that a compaction began, and hold it while [`COMPACT_HOLD`]
+/// names a file that exists. What it answers is the published responder's.
+fn compacting() {
+    if let Ok(log) = std::env::var(COMPACT_LOG) {
+        let began = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_millis());
+        append(
+            &log,
+            &serde_json::json!({ "pid": std::process::id(), "began_ms": began }).to_string(),
+        );
+    }
+    let Some(held) = std::env::var_os(COMPACT_HOLD).map(std::path::PathBuf::from) else {
+        return;
+    };
+    let started = std::time::Instant::now();
+    while held.exists() && started.elapsed() < BOUND {
+        std::thread::sleep(core::time::Duration::from_millis(20));
+    }
+}
+
 /// Issue every action this turn was scripted with, and write down what happened.
 fn act() {
-    record_what_was_seen();
+    let stdin = standard_input();
+    record_what_was_seen(&stdin);
+    if std::env::args().any(|argument| argument == COMPACT_PROMPT) {
+        compacting();
+        return;
+    }
     let Ok(log) = std::env::var(LOG) else {
         return;
     };
     let scripted = std::env::var(ACTIONS).unwrap_or_default();
-    let Some(turn) = turn_from_the_prompt() else {
+    let Some(turn) = turn_from_the_prompt(&stdin) else {
         append(
             &log,
             &refused(
@@ -242,7 +346,10 @@ fn act() {
             );
         }
         let started = std::time::Instant::now();
-        let mut answered = issue(&turn, operation, &body.to_string());
+        let sent = body
+            .to_string()
+            .replace(EVENT_PLACEHOLDER, turn.event.as_deref().unwrap_or_default());
+        let mut answered = issue(&turn, operation, &sent);
         if let Some(object) = answered.as_object_mut() {
             object.insert("operation".to_owned(), serde_json::json!(operation));
             object.insert(
@@ -252,10 +359,23 @@ fn act() {
         }
         append(&log, &answered.to_string());
     }
+    hold();
 }
 
-/// Write down where this responder was run and the system prompt it was handed.
-fn record_what_was_seen() {
+/// Wait while the file [`HOLD`] names exists, and at most [`BOUND`].
+fn hold() {
+    let Some(held) = std::env::var_os(HOLD).map(std::path::PathBuf::from) else {
+        return;
+    };
+    let started = std::time::Instant::now();
+    while held.exists() && started.elapsed() < BOUND {
+        std::thread::sleep(core::time::Duration::from_millis(20));
+    }
+}
+
+/// Write down where this responder was run, the system prompt it was handed
+/// and what it was handed on its standard input.
+fn record_what_was_seen(stdin: &str) {
     let Ok(record) = std::env::var(SEEN) else {
         return;
     };
@@ -285,13 +405,53 @@ fn record_what_was_seen() {
         // Everything after the program's own name, and the search path the
         // turn's commands would be found on.
         "arguments": arguments.get(1..).unwrap_or_default(),
+        "stdin": stdin,
         "path": std::env::var("PATH").ok(),
+        "env": std::env::var(SEEN_ENV)
+            .unwrap_or_default()
+            .split(',')
+            .filter(|name| !name.is_empty())
+            .map(|name| (name.to_owned(), serde_json::json!(std::env::var(name).ok())))
+            .collect::<serde_json::Map<_, _>>(),
+        "store": std::env::var_os(SEEN_STORE).map(|root| {
+            let mut held = serde_json::Map::new();
+            held_files(std::path::Path::new(&root), std::path::Path::new(&root), &mut held);
+            held
+        }),
     });
     // A record nobody can read is a journey that cannot see what it asserts
     // on, so failing to write one ends the run rather than passing unseen.
     if let Err(error) = std::fs::write(&record, document.to_string()) {
         eprintln!("printobserver-server-responder: {record} could not be written: {error}");
         std::process::exit(1);
+    }
+    // Every run's record is kept too, one per line beside it, so a journey
+    // over several turns reads each turn's rather than only the last.
+    append(&format!("{record}.lines"), &document.to_string());
+}
+
+/// Every file under `directory`, keyed by its path below `root`, with what it
+/// holds.
+fn held_files(
+    root: &std::path::Path,
+    directory: &std::path::Path,
+    held: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    for entry in std::fs::read_dir(directory).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            held_files(root, &path, held);
+        } else {
+            let key = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            held.insert(
+                key,
+                serde_json::json!(std::fs::read_to_string(&path).unwrap_or_default()),
+            );
+        }
     }
 }
 

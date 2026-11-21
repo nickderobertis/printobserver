@@ -45,6 +45,18 @@ pub trait Clock: Send + Sync {
         let micros = self.now().as_utc().timestamp_micros();
         Duration::from_micros(u64::try_from(micros).unwrap_or_default())
     }
+
+    /// [`Clock::elapsed`] as the agent's minimum interval measures it.
+    ///
+    /// The same reading on every clock but [`SystemClock`] in the real-print
+    /// suite's own build, where it also counts the time that suite's replay
+    /// jumps between recorded events: the agent's changes to the machine at two
+    /// events recorded an hour apart are an hour apart. Every other duration stays
+    /// on [`Clock::elapsed`], because what it spaces — the detector's reads above
+    /// all — the server takes on its own schedule in real time.
+    fn paced(&self) -> Duration {
+        self.elapsed()
+    }
 }
 
 /// The system's own clock, which is what a running supervisor is given.
@@ -59,6 +71,10 @@ impl Clock for SystemClock {
     fn elapsed(&self) -> Duration {
         static ORIGIN: OnceLock<Instant> = OnceLock::new();
         ORIGIN.get_or_init(Instant::now).elapsed()
+    }
+
+    fn paced(&self) -> Duration {
+        Timestamp::on_replay_clock(self.elapsed())
     }
 }
 

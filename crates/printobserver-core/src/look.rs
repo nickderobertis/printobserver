@@ -103,6 +103,10 @@ pub struct Look {
     /// The absolute path the frame's bytes are at, on the supervisor's host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_path: Option<PathBuf>,
+    /// What the image at `image_path` is, and why it is that one, in one line;
+    /// absent with no image, or when what made it says nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_note: Option<String>,
     /// The printer's state now, absent when it could not be read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printer: Option<PrinterSnapshot>,
@@ -121,6 +125,11 @@ impl Sample for Look {
             arrived: vec![EventRecord::sample_full()],
             frame: Some(ImageRef::sample_full()),
             image_path: Some(PathBuf::from("/var/lib/printobserver/images/look.jpg")),
+            image_note: Some(
+                "the whole camera frame, scaled to fit 1280x720 and uncropped: no print is named, \
+                 so there is no plan to draw on it"
+                    .to_owned(),
+            ),
             printer: Some(PrinterSnapshot::sample_full()),
             job: Some(JobSnapshot::sample_full()),
             detector_paused: true,
@@ -133,6 +142,7 @@ impl Sample for Look {
             arrived: Vec::new(),
             frame: None,
             image_path: None,
+            image_note: None,
             printer: None,
             job: None,
             detector_paused: false,
@@ -255,8 +265,13 @@ impl Supervisor {
             && printer
                 .as_ref()
                 .is_some_and(|taken| taken.connection == PrinterState::Paused);
+        let plan = if print.ended_at.is_none() {
+            self.plan_position(&print, job.as_ref()).await
+        } else {
+            None
+        };
         Ok(self
-            .answered(event, arrived, printer, job, detector_paused)
+            .answered(event, arrived, printer, job, detector_paused, plan)
             .await)
     }
 
@@ -282,7 +297,9 @@ impl Supervisor {
         let event = self.write_with_frame(None, &payload, fetched).await?;
         let printer = self.read_snapshot().await.ok();
         let job = self.read_job().await.ok();
-        Ok(self.answered(event, Vec::new(), printer, job, false).await)
+        Ok(self
+            .answered(event, Vec::new(), printer, job, false, None)
+            .await)
     }
 
     /// The answer to one look, its frame's path read off the store.
@@ -293,17 +310,31 @@ impl Supervisor {
         printer: Option<PrinterSnapshot>,
         job: Option<JobSnapshot>,
         detector_paused: bool,
+        plan: Option<crate::check_image::PlanPosition>,
     ) -> Look {
         let frame = event.image.clone();
-        let image_path = match &frame {
-            Some(reference) => self.image_path(reference).await,
+        let shown = match &frame {
+            Some(reference) => {
+                let captured_at = crate::check_image::captured_at_of(&event, None);
+                self.shown_image_of(
+                    reference,
+                    event.print_id,
+                    captured_at,
+                    crate::check_image::ImageUse::Look,
+                    plan,
+                )
+                .await
+            }
             None => None,
         };
+        let (image_path, image_note) =
+            shown.map_or((None, None), |shown| (Some(shown.path), shown.note));
         Look {
             event,
             arrived,
             frame,
             image_path,
+            image_note,
             printer,
             job,
             detector_paused,

@@ -21,6 +21,7 @@ use crate::watch::{DetectorHealth, DetectorHealthStatus};
 use printobserver_printer_api::{
     HeaterSnapshot, JobError, JobSnapshot, PrinterSnapshot, PrinterState,
 };
+use printobserver_types::EventPayload;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
@@ -281,6 +282,96 @@ impl PrintContext {
             slicer: self.slicer.clone(),
         }
     }
+}
+
+/// The facts a supervision turn is handed up front: the context read as the
+/// turn began, as [`AgentContext`] answers it — and no field that answer does
+/// not carry — with its events cut to [`unseen_events`]: what happened that the
+/// agent has not been shown, which its own conversation does not hold.
+#[must_use]
+pub fn turn_facts(
+    context: &AgentContext,
+) -> Option<printobserver_types::serde_json::Map<String, Value>> {
+    let mut facts = context.clone();
+    facts.recent_events = unseen_events(&context.recent_events);
+    match printobserver_types::serde_json::to_value(facts) {
+        Ok(Value::Object(fields)) => Some(fields),
+        _ => None,
+    }
+}
+
+/// Of a print's events, newest first, those the agent has not been shown:
+/// every event newer than its last answer, and every one that arrived while
+/// the turn behind that answer ran — after the event that turn answered, which
+/// its acknowledgement names — and was not that turn's own doing: a person's
+/// resume taken as the agent answered, or the printer's own report. The turn's
+/// own requests, their outcomes and what it recorded of itself are left out. A
+/// print the agent has not answered on keeps every event; one whose answered
+/// event cannot be found keeps every event back to the answer before, its
+/// own aside, because one shown twice costs less than one never shown.
+#[must_use]
+pub fn unseen_events(events: &[AgentEvent]) -> Vec<AgentEvent> {
+    let is_answer = |event: &AgentEvent| {
+        event.kind.as_str() == <crate::kinds::AgentAssessmentPayload as EventPayload>::KIND
+    };
+    let Some(answered) = events.iter().position(is_answer) else {
+        return events.to_vec();
+    };
+    let (newer, older) = events.split_at(answered);
+    let older = &older[1..];
+    let turn = &older[..older.iter().position(is_answer).unwrap_or(older.len())];
+    let during = events
+        .iter()
+        .find_map(agents_acknowledged_event)
+        .and_then(|answered_event| turn.iter().position(|event| event.id == answered_event))
+        .map_or(turn, |at| &turn[..at]);
+    let own: Vec<&Value> = during
+        .iter()
+        .filter(|event| is_agents_request(event))
+        .filter_map(|event| event.payload.get("action_id"))
+        .collect();
+    let mut unseen = newer.to_vec();
+    unseen.extend(
+        during
+            .iter()
+            .filter(|event| {
+                !TURNS_OWN_KINDS.contains(&event.kind.as_str())
+                    && !event
+                        .payload
+                        .get("action_id")
+                        .is_some_and(|action| own.contains(&action))
+            })
+            .cloned(),
+    );
+    unseen
+}
+
+/// What a turn records of itself as it runs: the looks it took and the session
+/// it opened, which it already saw or has no use for.
+const TURNS_OWN_KINDS: [&str; 2] = [
+    <crate::kinds::CameraLookPayload as EventPayload>::KIND,
+    <printobserver_supervisor_api::SupervisionSessionOpenedPayload as EventPayload>::KIND,
+];
+
+/// Whether an event is a request the agent made.
+fn is_agents_request(event: &AgentEvent) -> bool {
+    event.kind.as_str() == <crate::kinds::ActionRequestedPayload as EventPayload>::KIND
+        && event
+            .payload
+            .get("actor")
+            .is_some_and(|actor| actor.get("agent").is_some())
+}
+
+/// The event an acknowledgement the agent asked for names, when this is one.
+fn agents_acknowledged_event(event: &AgentEvent) -> Option<EventId> {
+    if !is_agents_request(event) {
+        return None;
+    }
+    let action = event.payload.get("action")?;
+    if action.get("action")?.as_str()? != "acknowledge_failure" {
+        return None;
+    }
+    printobserver_types::serde_json::from_value(action.get("event_id")?.clone()).ok()
 }
 
 /// The events newer than `since`, newest first, when `events` — newest first —

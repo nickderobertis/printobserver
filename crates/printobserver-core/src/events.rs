@@ -22,6 +22,16 @@
 //! turn's event and situation still describe what prompted it; a look
 //! ([`crate::look`]) also takes a fresh camera frame.
 //!
+//! # Everything a check decides from is in its prompt
+//!
+//! A turn is handed its print's facts — the context read as it begins, its
+//! events cut to those since the agent last answered
+//! ([`crate::context::turn_facts`]) — and the check's image of the
+//! event's frame ([`crate::check_image`]), so a quiet check needs no command to
+//! decide. Its answer's disposition is its acknowledgement: a turn that
+//! acknowledged nothing by command has its event acknowledged from its answer,
+//! as the agent in that turn's session, with the answer's `why` as the reason.
+//!
 //! # One agent per print
 //!
 //! [`Supervisor::receive_event`] writes an event down and claims its print's
@@ -32,18 +42,23 @@
 //! took. A print that has ended starts no turn at all, and its inbox is
 //! released with whatever was still waiting in it.
 
-use crate::records::PrintRecord;
+use crate::records::{AcknowledgementDisposition, Actor, PrintAction, PrintRecord};
 use crate::store::{EventDraft, HistoryQuery, ImageLookup};
 use printobserver_printer_api::{JobSnapshot, PrinterState};
-use printobserver_supervisor_api::SessionPhase;
+use printobserver_supervisor_api::{AgentAssessment, Disposition, SessionPhase};
 use printobserver_supervisor_api::{SupervisionSessionOpenedPayload, TurnRequest, TurnSituation};
+use printobserver_types::EventId;
 use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, Timestamp};
 use printobserver_vision_api::NormalizedAlert;
 
+use crate::check_image::{ImageUse, captured_at_of};
 use crate::context::{AgentContext, PrintContext, Since, newer_than};
 use crate::error::CoreError;
 use crate::inbox::Arrival;
-use crate::kinds::{AgentAssessmentPayload, PortFailurePayload, PortFailureSite, system_source};
+use crate::kinds::{
+    AgentAssessmentPayload, AgentStopUnactedPayload, PortFailurePayload, PortFailureSite,
+    system_source,
+};
 use crate::listing::{self, ObservedJob, reached_reason};
 use crate::supervisor::Supervisor;
 use crate::watch::{concerns_its_end, noticed_of};
@@ -414,10 +429,10 @@ impl Supervisor {
         let terminal = printer_state
             .clone()
             .filter(|state| TERMINAL_STATES.contains(state));
-        let image_path = match &event.image {
-            Some(reference) => self.image_path(reference).await,
-            None => None,
-        };
+        let (image_path, image) = self
+            .check_image_for(print, arrival, context.job.as_ref())
+            .await;
+        let facts = crate::context::turn_facts(&context.for_agent(None));
         let situation = TurnSituation {
             printer_state,
             detector_warned: arrival.detection.map(|detection| detection.warning),
@@ -427,11 +442,20 @@ impl Supervisor {
             arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
             noticed: noticed_of(event),
             frame_captured_at: arrival.frame_captured_at,
+            image,
         };
         // The turn's credentials are bound to it from here, and revoked the
         // moment it returns — whatever it returned — and when this future is
         // abandoned, because dropping what was opened revokes too.
         let opened = self.open_turn(print.id);
+        self.forget_acknowledged_by_turn(print.id);
+        let running = situation.printer_state == Some(PrinterState::Printing);
+        self.forget_stop_asked(print.id);
+        let access = std::sync::Arc::new(StopAware {
+            inner: opened.access(),
+            print_id: print.id,
+            stops: std::sync::Arc::clone(&self.stopped_by_turn),
+        });
         let turn = self
             .agent()
             .run_turn(
@@ -440,35 +464,34 @@ impl Supervisor {
                     event: event.clone(),
                     image_path,
                     context_command: self.config().context_command_for(print.id),
+                    facts,
                     situation,
                 },
-                opened.access(),
+                access,
             )
             .await;
         opened.revoke();
+        let acknowledged_by_command = self.forget_acknowledged_by_turn(print.id);
+        let asked_to_stop = self.forget_stop_asked(print.id);
         drop(guard);
         match turn {
             Ok(outcome) => {
-                if outcome.phase == SessionPhase::Created {
-                    self.append_system_event(
-                        print.id,
-                        EventBody::of(&SupervisionSessionOpenedPayload {
-                            session_name: outcome.session.session_name.clone(),
-                            harness_identity: outcome.session.harness_identity.clone(),
-                        })?,
-                    )
+                // An answer of `stop` on a print that was running, from a turn
+                // that asked for no pause or cancel, stopped nothing.
+                let stop_unacted = (running
+                    && !asked_to_stop
+                    && outcome.assessment.disposition == Disposition::Stop)
+                    .then(|| {
+                        (
+                            outcome.session.session_name.clone(),
+                            outcome.assessment.summary.clone(),
+                        )
+                    });
+                self.record_answered(print.id, event.id, outcome, acknowledged_by_command)
                     .await?;
+                if let Some(said) = stop_unacted {
+                    self.record_unacted_stop(print.id, event.id, said).await?;
                 }
-                let session_name = outcome.session.session_name.clone();
-                self.stores().sessions.put_session(outcome.session).await?;
-                self.append_system_event(
-                    print.id,
-                    EventBody::of(&AgentAssessmentPayload {
-                        session_name,
-                        assessment: outcome.assessment,
-                    })?,
-                )
-                .await?;
             }
             Err(error) => {
                 self.record_port_failure(
@@ -486,6 +509,211 @@ impl Supervisor {
             Some(state) if !ended => Supervised::Terminal(state),
             _ => Supervised::Ran,
         })
+    }
+
+    /// Write down what an answered turn said — the session it opened, its
+    /// assessment — and acknowledge its event from the answer when the turn
+    /// acknowledged nothing by command.
+    async fn record_answered(
+        &self,
+        print_id: PrintId,
+        event_id: EventId,
+        outcome: printobserver_supervisor_api::TurnOutcome,
+        acknowledged_by_command: bool,
+    ) -> Result<(), CoreError> {
+        if outcome.phase == SessionPhase::Created {
+            self.append_system_event(
+                print_id,
+                EventBody::of(&SupervisionSessionOpenedPayload {
+                    session_name: outcome.session.session_name.clone(),
+                    harness_identity: outcome.session.harness_identity.clone(),
+                })?,
+            )
+            .await?;
+        }
+        let session_name = outcome.session.session_name.clone();
+        self.stores().sessions.put_session(outcome.session).await?;
+        let assessment = outcome.assessment;
+        self.append_system_event(
+            print_id,
+            EventBody::of(&AgentAssessmentPayload {
+                session_name: session_name.clone(),
+                assessment: assessment.clone(),
+            })?,
+        )
+        .await?;
+        if !acknowledged_by_command
+            && let Err(error) = self
+                .acknowledge_from_answer(print_id, event_id, session_name, &assessment)
+                .await
+        {
+            // The turn answered; an acknowledgement that could not be
+            // made is recorded against its event and ends nothing. Only a
+            // store failing mid-turn reaches here, which the real store can
+            // be made to do only by breaking its database under a running
+            // server; the core journey
+            // `an_acknowledgement_the_answer_cannot_make_is_recorded_and_supervision_goes_on`
+            // proves it over a store that fails its history read instead.
+            self.record_port_failure(
+                print_id,
+                event_id,
+                PortFailureSite::SupervisionTurn,
+                format!("the answer's acknowledgement could not be made: {error}"),
+            )
+            .await;
+        }
+        Ok(())
+    }
+
+    /// Write down that the agent answered a running print should stop and
+    /// stopped nothing, when the print is still open: its history is where a
+    /// refused pause is, which is what the person reading it reads.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when the print or its history could not
+    /// be read or written.
+    async fn record_unacted_stop(
+        &self,
+        print_id: PrintId,
+        event_id: EventId,
+        (session_name, summary): (String, String),
+    ) -> Result<(), CoreError> {
+        let open = self
+            .stores()
+            .prints
+            .print(print_id)
+            .await?
+            .is_some_and(|print| print.ended_at.is_none());
+        if !open {
+            return Ok(());
+        }
+        self.append_system_event(
+            print_id,
+            EventBody::of(&AgentStopUnactedPayload {
+                event_id,
+                session_name,
+                summary,
+            })?,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// The image a check of one arrival is shown and the line saying what it
+    /// is, made where the job stood in the print's own file: none when the
+    /// arrival carries no frame.
+    async fn check_image_for(
+        &self,
+        print: &PrintRecord,
+        arrival: &Arrival,
+        job: Option<&JobSnapshot>,
+    ) -> (Option<std::path::PathBuf>, Option<String>) {
+        let event = &arrival.event;
+        let Some(reference) = &event.image else {
+            return (None, None);
+        };
+        let plan = self.plan_position(print, job).await;
+        let captured_at = captured_at_of(event, arrival.frame_captured_at);
+        self.shown_image_of(
+            reference,
+            Some(print.id),
+            captured_at,
+            ImageUse::Check,
+            plan,
+        )
+        .await
+        .map_or((None, None), |shown| (Some(shown.path), shown.note))
+    }
+
+    /// Note that the running turn on one print asked to pause or cancel it,
+    /// whatever policy makes of the request: what an answer of `stop` is held
+    /// to.
+    pub(crate) fn note_stop_asked(&self, print_id: PrintId, action: &PrintAction) {
+        if action.actor().class() == crate::records::ActorClass::Agent
+            && matches!(
+                action,
+                PrintAction::Pause { .. } | PrintAction::Cancel { .. }
+            )
+        {
+            self.stopped_by_turn
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(print_id);
+        }
+    }
+
+    /// Forget whether a turn on one print asked to stop it, answering whether
+    /// one had.
+    fn forget_stop_asked(&self, print_id: PrintId) -> bool {
+        self.stopped_by_turn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&print_id)
+    }
+
+    /// Note that the running turn on one print acknowledged its event by
+    /// command.
+    pub(crate) fn note_acknowledged_by_turn(&self, print_id: PrintId) {
+        self.acknowledged_by_turn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(print_id);
+    }
+
+    /// Forget whether a turn on one print acknowledged by command, answering
+    /// whether one had.
+    fn forget_acknowledged_by_turn(&self, print_id: PrintId) -> bool {
+        self.acknowledged_by_turn
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&print_id)
+    }
+
+    /// Acknowledge the event a turn was about from the turn's answer, as the
+    /// agent in the session it answered in: the same request, through the same
+    /// policy, as the agent's own command would have made.
+    ///
+    /// A print that has ended by the time the turn answers is not
+    /// acknowledged: its record is closed, and nothing is left to carry on or
+    /// stop.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's own error when the request could not be recorded. A
+    /// refusal by policy is recorded with the request and is not an error.
+    async fn acknowledge_from_answer(
+        &self,
+        print_id: PrintId,
+        event_id: EventId,
+        session_name: String,
+        assessment: &AgentAssessment,
+    ) -> Result<(), CoreError> {
+        let open = self
+            .stores()
+            .prints
+            .print(print_id)
+            .await?
+            .is_some_and(|print| print.ended_at.is_none());
+        if !open {
+            return Ok(());
+        }
+        let disposition = match assessment.disposition {
+            Disposition::Continue => AcknowledgementDisposition::Continue,
+            Disposition::Watch => AcknowledgementDisposition::Watch,
+            Disposition::Stop => AcknowledgementDisposition::Stop,
+        };
+        self.request_action(
+            print_id,
+            PrintAction::AcknowledgeFailure {
+                event_id,
+                disposition,
+                reason: assessment.why.clone(),
+                actor: Actor::Agent { session_name },
+            },
+        )
+        .await?;
+        Ok(())
     }
 
     /// Gather the current context of one print, including while its
@@ -830,5 +1058,33 @@ impl Supervisor {
             return;
         };
         let _ = self.append_system_event_to(print_id, body).await;
+    }
+}
+
+/// One turn's access as its port is handed it, saying too whether the turn
+/// has asked for its print to be paused or cancelled.
+struct StopAware {
+    /// The turn's own issuer.
+    inner: std::sync::Arc<dyn printobserver_supervisor_api::TurnAccess>,
+    /// The print the turn is about.
+    print_id: PrintId,
+    /// The prints whose running turn has asked to stop them.
+    stops: std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<PrintId>>>,
+}
+
+impl printobserver_supervisor_api::TurnAccess for StopAware {
+    fn issue(
+        &self,
+        session: &printobserver_supervisor_api::TurnSession,
+    ) -> Result<printobserver_supervisor_api::TurnPass, printobserver_supervisor_api::SupervisorError>
+    {
+        self.inner.issue(session)
+    }
+
+    fn asked_to_stop(&self) -> bool {
+        self.stops
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&self.print_id)
     }
 }

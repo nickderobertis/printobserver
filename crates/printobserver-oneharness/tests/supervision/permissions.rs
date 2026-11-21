@@ -20,6 +20,7 @@
 
 use std::sync::Arc;
 
+use oneharness_core::domain::lean::ToolClass;
 use oneharness_core::domain::mode::PermissionMode;
 use printobserver_oneharness::{AgentCommand, ConfigError};
 use printobserver_supervisor_api::SupervisorPort;
@@ -50,6 +51,20 @@ fn one_turn(
     harness: &str,
     commands: Vec<AgentCommand>,
 ) -> (PermissionMode, Vec<String>, Vec<String>) {
+    let (request, started) = one_run(harness, commands);
+    (
+        request.mode.expect("the request names a mode"),
+        request.passthrough,
+        started,
+    )
+}
+
+/// The run request one turn was built as, and the arguments `OneHarness`
+/// started the harness process with.
+fn one_run(
+    harness: &str,
+    commands: Vec<AgentCommand>,
+) -> (oneharness_core::io::run::RunRequest, Vec<String>) {
     let schemas = schema_read_lock();
     let fixture = Fixture::new(&format!("permissions-{harness}-{}", commands.len()));
     let watch = Arc::new(Watch::default());
@@ -81,11 +96,22 @@ fn one_turn(
         .next()
         .expect("the run reported");
     let started = report.results.first().expect("one result").command.clone();
-    (
-        request.mode.expect("the request names a mode"),
-        request.passthrough,
-        started,
-    )
+    (request, started)
+}
+
+/// The tool names the harness was started with after `--tools`, in order,
+/// however the engine spells the one list.
+fn tools_started(started: &[String]) -> Vec<String> {
+    let at = started
+        .iter()
+        .position(|argument| argument == "--tools")
+        .unwrap_or_else(|| panic!("the harness was started with no tool list: {started:?}"));
+    started[at + 1..]
+        .iter()
+        .take_while(|argument| !argument.starts_with("--"))
+        .flat_map(|argument| argument.split(','))
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Whether `whole` carries `part` as consecutive arguments.
@@ -139,27 +165,17 @@ fn a_claude_code_turn_with_agent_commands_has_a_shell_narrowed_to_them() {
     assert_eq!(
         passthrough,
         [
-            "--tools",
-            "Read",
-            "Grep",
-            "Glob",
-            "Bash",
             "--allowedTools",
             "Read",
-            "Grep",
-            "Glob",
             "Bash(printobserver context:*)",
             "Bash(printobserver pause:*)",
         ]
     );
     for expected in [
         ["--permission-mode", "dontAsk"].as_slice(),
-        ["--tools", "Read", "Grep", "Glob", "Bash"].as_slice(),
         [
             "--allowedTools",
             "Read",
-            "Grep",
-            "Glob",
             "Bash(printobserver context:*)",
             "Bash(printobserver pause:*)",
         ]
@@ -176,6 +192,54 @@ fn a_claude_code_turn_with_agent_commands_has_a_shell_narrowed_to_them() {
             .any(|argument| argument == "bypassPermissions"),
         "a turn with a shell was started with every permission granted: {started:?}"
     );
+}
+
+/// Every turn is lean: its run request asks for the shell and file reading
+/// alone, no skills list and no MCP server, and passes no tool list of its own;
+/// the harness is started with `OneHarness`'s own translation of those settings.
+#[test]
+fn every_turn_loads_the_shell_and_file_reading_alone() {
+    for (harness, commands) in [
+        (HARNESS, allowed(&["printobserver context"])),
+        (HARNESS, Vec::new()),
+        (OTHER_HARNESS, allowed(&["printobserver context"])),
+    ] {
+        let (request, started) = one_run(harness, commands);
+        assert_eq!(
+            request.tool_set,
+            Some(vec![ToolClass::Shell, ToolClass::Read]),
+            "{harness}"
+        );
+        assert_eq!(request.load_skills, Some(false), "{harness}");
+        assert_eq!(request.load_mcp, Some(false), "{harness}");
+        assert!(
+            !request
+                .passthrough
+                .iter()
+                .any(|argument| argument == "--tools"),
+            "{harness} was handed a tool list of its own: {:?}",
+            request.passthrough
+        );
+        if harness == HARNESS && request.mode == Some(PermissionMode::Default) {
+            let mut tools = tools_started(&started);
+            tools.sort();
+            assert_eq!(tools, ["Bash", "Read"], "{started:?}");
+            for switch in ["--disable-slash-commands", "--strict-mcp-config"] {
+                assert!(
+                    started.iter().any(|argument| argument == switch),
+                    "the harness was not started with {switch}: {started:?}"
+                );
+            }
+            assert_eq!(
+                started
+                    .iter()
+                    .filter(|argument| *argument == "--tools")
+                    .count(),
+                1,
+                "the harness was started with a second tool list: {started:?}"
+            );
+        }
+    }
 }
 
 /// With no agent commands, or on a harness the rules are not written for, a

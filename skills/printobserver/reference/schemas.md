@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-206 types. The set is every type any crate declares under
+209 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -7354,6 +7354,26 @@ Declared by `printobserver-supervisor-api`.
           "type": "string"
         }
       ]
+    },
+    "Disposition": {
+      "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "The print should stop.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -7367,6 +7387,10 @@ Declared by `printobserver-supervisor-api`.
     "did": {
       "description": "What the agent did.",
       "type": "string"
+    },
+    "disposition": {
+      "$ref": "#/$defs/Disposition",
+      "description": "What the turn's event is acknowledged with, when the turn acknowledged\nnothing by command."
     },
     "escalating": {
       "description": "Whether the agent is escalating to a person.",
@@ -7391,7 +7415,8 @@ Declared by `printobserver-supervisor-api`.
     "should_continue",
     "did",
     "why",
-    "escalating"
+    "escalating",
+    "disposition"
   ],
   "title": "AgentAssessment",
   "type": "object"
@@ -7417,6 +7442,10 @@ Declared by `printobserver-core`.
           "description": "What the agent did.",
           "type": "string"
         },
+        "disposition": {
+          "$ref": "#/$defs/Disposition",
+          "description": "What the turn's event is acknowledged with, when the turn acknowledged\nnothing by command."
+        },
         "escalating": {
           "description": "Whether the agent is escalating to a person.",
           "type": "boolean"
@@ -7440,7 +7469,8 @@ Declared by `printobserver-core`.
         "should_continue",
         "did",
         "why",
-        "escalating"
+        "escalating",
+        "disposition"
       ],
       "type": "object"
     },
@@ -7460,6 +7490,26 @@ Declared by `printobserver-core`.
         {
           "const": "high",
           "description": "Sure.",
+          "type": "string"
+        }
+      ]
+    },
+    "Disposition": {
+      "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "The print should stop.",
           "type": "string"
         }
       ]
@@ -8516,6 +8566,49 @@ Declared by `printobserver-core`.
   },
   "title": "AgentPrinter",
   "type": "object"
+}
+```
+
+### AgentStopUnactedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "EventId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one event.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "EventId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The agent answered that a running print should stop, and asked for no\npause or cancel \u2014 not even when asked again \u2014 so nothing stopped it.\n\nAn answer records a judgement and does not act: acting is a request that\npolicy rules on. Written to the print's history, where a refused pause is,\nso the person reading it is told the print the agent judged should stop is\nstill running.",
+  "properties": {
+    "event_id": {
+      "$ref": "#/$defs/EventId",
+      "description": "The event the turn was about."
+    },
+    "session_name": {
+      "description": "The session the turn ran in.",
+      "type": "string"
+    },
+    "summary": {
+      "description": "What the agent said it saw, as its answer's summary put it.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "session_name",
+    "summary"
+  ],
+  "title": "AgentStopUnactedPayload",
+  "type": "object",
+  "x-event-kind": "agent_stop_unacted"
 }
 ```
 
@@ -10580,6 +10673,35 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "DetectorStatus"
+}
+```
+
+### Disposition
+
+Declared by `printobserver-supervisor-api`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+  "oneOf": [
+    {
+      "const": "continue",
+      "description": "Carry on printing.",
+      "type": "string"
+    },
+    {
+      "const": "watch",
+      "description": "Carry on printing, watched more closely.",
+      "type": "string"
+    },
+    {
+      "const": "stop",
+      "description": "The print should stop.",
+      "type": "string"
+    }
+  ],
+  "title": "Disposition"
 }
 ```
 
@@ -14392,6 +14514,13 @@ Declared by `printobserver-core`.
         }
       ],
       "description": "The frame the camera gave, absent when no camera is configured or it\ngave none \u2014 which the history records as a port failure."
+    },
+    "image_note": {
+      "description": "What the image at `image_path` is, and why it is that one, in one line;\nabsent with no image, or when what made it says nothing.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "image_path": {
       "description": "The absolute path the frame's bytes are at, on the supervisor's host.",
@@ -23942,6 +24071,159 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "PrintAction"
+}
+```
+
+### PrintAlignment
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "AlignmentFailure": {
+      "description": "Why a print's alignment failed.",
+      "oneOf": [
+        {
+          "description": "The printed first layer lies further from its projection than the\ncalibration allows.",
+          "properties": {
+            "failure": {
+              "const": "offset",
+              "type": "string"
+            },
+            "offset_px": {
+              "description": "How far, in calibration pixels.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "failure",
+            "offset_px"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The camera's frames are not the calibration's resolution.",
+          "properties": {
+            "expected": {
+              "description": "The calibration's, `[width, height]`.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "failure": {
+              "const": "resolution",
+              "type": "string"
+            },
+            "got": {
+              "description": "The frame's.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "required": [
+            "failure",
+            "expected",
+            "got"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The camera configured is not the stream the calibration was fitted on.",
+          "properties": {
+            "failure": {
+              "const": "stream",
+              "type": "string"
+            }
+          },
+          "required": [
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One print's first-layer alignment verdict, as it is kept under the state\ndirectory \u2014 which the real-print suite's record reads.",
+  "oneOf": [
+    {
+      "description": "Nothing can be checked: no calibration is configured, or the print's\nG-code lays no object.",
+      "properties": {
+        "verdict": {
+          "const": "unavailable",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "The first object layer is not down yet, or no frame of it has been\njudged.",
+      "properties": {
+        "verdict": {
+          "const": "pending",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "The projected first layer lands on the printed one.",
+      "properties": {
+        "offset_px": {
+          "description": "How far it lies from it, in calibration pixels.",
+          "format": "double",
+          "type": "number"
+        },
+        "verdict": {
+          "const": "passed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "offset_px"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "It does not, or the frames cannot be judged against the calibration.",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/AlignmentFailure",
+          "description": "Why."
+        },
+        "verdict": {
+          "const": "failed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "reason"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "PrintAlignment"
 }
 ```
 
@@ -42573,6 +42855,10 @@ Declared by `printobserver-supervisor-api`.
           "description": "What the agent did.",
           "type": "string"
         },
+        "disposition": {
+          "$ref": "#/$defs/Disposition",
+          "description": "What the turn's event is acknowledged with, when the turn acknowledged\nnothing by command."
+        },
         "escalating": {
           "description": "Whether the agent is escalating to a person.",
           "type": "boolean"
@@ -42596,7 +42882,8 @@ Declared by `printobserver-supervisor-api`.
         "should_continue",
         "did",
         "why",
-        "escalating"
+        "escalating",
+        "disposition"
       ],
       "type": "object"
     },
@@ -42616,6 +42903,26 @@ Declared by `printobserver-supervisor-api`.
         {
           "const": "high",
           "description": "Sure.",
+          "type": "string"
+        }
+      ]
+    },
+    "Disposition": {
+      "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "The print should stop.",
           "type": "string"
         }
       ]
@@ -42950,6 +43257,13 @@ Declared by `printobserver-supervisor-api`.
           ],
           "description": "When the frame an alert brought was captured, which its source says or the\nmoment it answered; absent when the event says so itself or has no frame."
         },
+        "image": {
+          "description": "What the image attached to the prompt is, and why it is that one, in\none line; absent when no image is attached or what made it says\nnothing.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "noticed": {
           "default": null,
           "description": "What the printer watch noticed that prompted this turn \u2014 how the print\nended, what the printer did on its own after it, that the camera gave\nno usable frame, that the failure detector stopped answering \u2014 in\nwords beginning with the event's kind; null when the turn was prompted\nby anything else.",
@@ -42985,6 +43299,14 @@ Declared by `printobserver-supervisor-api`.
     "event": {
       "$ref": "#/$defs/EventRecord",
       "description": "The event that prompted the turn."
+    },
+    "facts": {
+      "additionalProperties": true,
+      "description": "The print's context as the context command answered it when the turn\nbegan, its events cut to those since the agent last answered: what the\nturn decides from without running a command. Absent when no context\ncould be read.\n\nA document rather than the context's own type, because that type is the\nsupervision core's, which this port may not depend on: the core builds\nit from its own context answer and nothing else.",
+      "type": [
+        "object",
+        "null"
+      ]
     },
     "image_path": {
       "description": "The absolute path of the image to look at, when there is one.",
@@ -43241,6 +43563,13 @@ Declared by `printobserver-supervisor-api`.
         }
       ],
       "description": "When the frame an alert brought was captured, which its source says or the\nmoment it answered; absent when the event says so itself or has no frame."
+    },
+    "image": {
+      "description": "What the image attached to the prompt is, and why it is that one, in\none line; absent when no image is attached or what made it says\nnothing.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "noticed": {
       "default": null,
