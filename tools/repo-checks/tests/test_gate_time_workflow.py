@@ -77,7 +77,8 @@ MOVED = {
 #: split out of `repo-checks`, and `release-artifacts-independent`, the release
 #: tooling's host-independent suites split out of `release-artifacts`, and the
 #: camera panels: the `printobserver-panels` crate, its recorded-frame suite and
-#: the `camera-calibration` tool.
+#: the `camera-calibration` tool, and `release-drafting`, the release-pr drafting
+#: journey over a fixture workspace.
 ADDED = {
     "gate (macos-aarch64)": {
         ("skilltest", "budgets"),
@@ -97,6 +98,10 @@ ADDED = {
         ("real-prints-lfs", "lint"),
         ("real-prints-lfs", "test"),
         ("real-prints-lfs", "typecheck"),
+        ("release-drafting", "format-check"),
+        ("release-drafting", "lint"),
+        ("release-drafting", "test-e2e"),
+        ("release-drafting", "typecheck"),
         ("repo-e2e-independent", "format-check"),
         ("repo-e2e-independent", "lint"),
         ("repo-e2e-independent", "test-e2e"),
