@@ -1,5 +1,7 @@
 # Temporary probe: what Task Scheduler tracks for the per-user task, and what survives a kill.
 $ErrorActionPreference = 'Stop'
+Start-Process -FilePath python -ArgumentList "$PSScriptRoot\machine.py" -WindowStyle Hidden
+Start-Sleep -Seconds 3
 $task = 'poprobe'
 $env:PRINTOBSERVER_TASK_NAME = $task
 & "$PSScriptRoot\..\..\scripts\install.ps1"
@@ -33,11 +35,11 @@ function Until([string]$what, [scriptblock]$ok, [int]$seconds) {
 $failures = 0
 for ($n = 1; $n -le [int]$env:PROBE_ROUNDS; $n++) {
     Stop-ScheduledTask -TaskName $task; Start-ScheduledTask -TaskName $task
-    [void](Until 'serving' { Listening } 120)
+    if (-not (Until 'serving' { Listening } 120)) { Get-ChildItem -Recurse (Join-Path $env:LOCALAPPDATA 'printobserver') -Filter *.log | ForEach-Object { Get-Content -Tail 20 $_.FullName }; State; exit 1 }
     Stop-ScheduledTask -TaskName $task
-    [void](Until 'stopped' { (Servers).Count -eq 0 } 120)
+    (Until 'stopped' { (Servers).Count -eq 0 } 120)
     Start-ScheduledTask -TaskName $task
-    [void](Until 'serving again' { Listening } 120)
+    (Until 'serving again' { Listening } 120)
     Start-Sleep -Seconds ([int]$env:PROBE_SETTLE)
     $s = Servers
     Write-Output "round $n before kill: servers=$($s.ProcessId -join ',') $(State) running=[$(Running)]"
