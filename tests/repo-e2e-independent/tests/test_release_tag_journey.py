@@ -33,6 +33,7 @@ import re
 import secrets
 import shutil
 import struct
+import subprocess
 import threading
 import tomllib
 import urllib.error
@@ -902,6 +903,16 @@ class Stage:
         )
         return Released(result.returncode, result.stdout, output(result))
 
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason.
+    def drafted(self, repository: str) -> subprocess.CompletedProcess[str]:
+        """Drive the drafting computation `release-pr` runs over the copy, against the stand-in."""
+        return capture(
+            ["release-plz", "update", "--registry", STANDIN, "--repo-url", repository],
+            self.copy.root,
+            timeout=RELEASE_TIMEOUT_SECONDS,
+            env=self.environment(),
+        )
+
     def answered(self, stdout: str, into: Path) -> tuple[int, str]:
         """What `just release-answer` says over the answer the program wrote.
 
@@ -1131,12 +1142,7 @@ def test_a_crate_added_after_a_release_is_drafted_rather_than_wedging_the_draft(
         stage.seed(*publishable_crates())
         add_crate_after_the_release(stage)
 
-        result = capture(
-            ["release-plz", "update", "--registry", STANDIN, "--repo-url", repository],
-            stage.copy.root,
-            timeout=RELEASE_TIMEOUT_SECONDS,
-            env=stage.environment(),
-        )
+        result = stage.drafted(repository)
         said = output(result)
         drafted = drafted_links(stage.copy.root)
         tags = set(shell_run(["git", "tag", "--list"], cwd=stage.copy.root).stdout.split())
