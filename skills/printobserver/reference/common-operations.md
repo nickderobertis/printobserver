@@ -1382,5 +1382,5 @@ image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3c
 ```
 
 Asking for nothing is the outcome of a frame that shows nothing wrong. What a
-frame shows wrong is the operator's to act on as every other action is, in
-[the intervention policy](intervention-policy.md).
+frame shows wrong is the operator's to act on, under the same intervention
+policy as every other action.
