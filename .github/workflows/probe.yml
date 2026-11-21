@@ -1,0 +1,23 @@
+name: probe
+on:
+  push:
+    branches: [probe/task-kill]
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, windows-11-arm]
+        settle: ["0", "20"]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        env:
+          PROBE_ROUNDS: "12"
+          PROBE_SETTLE: ${{ matrix.settle }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+          & .github/probe/task-kill-probe.ps1
