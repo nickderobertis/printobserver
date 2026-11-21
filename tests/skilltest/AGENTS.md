@@ -73,3 +73,11 @@ The rules the real-print suite is held to, and why.
   carried. A pipe only into read-only filters, such as `printobserver context | grep
   x`, is not one: the Claude Code release the suite runs runs it under the rule
   allowing the command before it, and `shell_lines.READ_ONLY_FILTERS` names them.
+- **A watch line is an outside supervisor's message, not a supervision turn.**
+  `outside.py` hands each `outside_supervision` entry to one `oneharness run
+  --session outside-<case>` conversation through the operator's agent of
+  `starts.py`, while printobserver's turn before it still holds the print, so no
+  scheduled check fires before it is answered. Its frame is the case's nearest
+  after its position, stated as captured at that moment, as a camera asked then
+  would. It passes on a look at the printer with no `--print-id` whose stored frame
+  was opened, no look naming the print, and nothing asked that acts.

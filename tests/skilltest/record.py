@@ -64,8 +64,9 @@ OPTIONAL_FIELDS = {"facts_bytes", "image", "wait", "follows_compaction"}
 TOKEN_SIDE_PX = 28
 #: The whole camera frame a check is shown when it is not shown the composite.
 WHOLE_FRAME_PX = (1280, 720)
-#: The trigger a start request's decision point is recorded under, which is no check.
-START_REQUEST = "start_request"
+#: The triggers of the decision points an operator's agent's conversation answers, each
+#: a start request or a watch line an outside supervisor is handed, which are no checks.
+CONVERSATION_TRIGGERS = {"start_request", "outside_supervision"}
 
 
 class Detail(TypedDict):
@@ -114,12 +115,12 @@ def _is_usage(usage: object) -> bool:
 
 
 def _check_is_readable(point: dict[str, Any]) -> bool:
-    """Whether a supervision check says its calls and its class; a start request says neither.
+    """Whether a supervision check says its calls and its class; a conversation says neither.
 
     A check that passed made at least one call: one that reports none measured
     nothing, and would fold into the figures as a check that cost nothing.
     """
-    if point.get("trigger") == START_REQUEST:
+    if point.get("trigger") in CONVERSATION_TRIGGERS:
         return True
     return (
         isinstance(point.get("calls"), list)
@@ -294,7 +295,7 @@ def checks_of(tests: list[TestRecord], base: int | None) -> list[Check]:
     for test in tests:
         previous: list[CallUsage] | None = None
         for point in test["decision_points"]:
-            if point["trigger"] == START_REQUEST:
+            if point["trigger"] in CONVERSATION_TRIGGERS:
                 continue
             calls = point["calls"]
             raw = sum(call_input(call) for call in calls)

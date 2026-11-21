@@ -294,6 +294,22 @@ def subcommands(line: str) -> list[str]:
     return found
 
 
+def program_commands(line: str) -> list[tuple[str, list[str]]]:
+    """Each `printobserver` command a line runs: its subcommand, and the words after the program.
+
+    A command naming no subcommand, and a command of another program, is left out.
+    """
+    found = []
+    for words in commands(line):
+        if not runs_the_program(words):
+            continue
+        given = _named(words)[1:]
+        named = _subcommand(given)
+        if named:
+            found.append((named[0], given))
+    return found
+
+
 #: The global options that take a value, which is never the subcommand.
 VALUED_OPTIONS = {"--config"}
 

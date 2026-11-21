@@ -56,6 +56,16 @@ class Trigger(StrEnum):
     SYNTHETIC_ALERT = "synthetic_alert"
     PERIODIC_OBSERVATION = "periodic_observation"
     START_REQUEST = "start_request"
+    OUTSIDE_SUPERVISION = "outside_supervision"
+
+
+class Milestone(StrEnum):
+    """The point of a print an outside supervisor takes its own frame at, as the schema names it."""
+
+    FIRST_LAYER = "first_layer"
+    FIRST_OVERHANG = "first_overhang"
+    FIRST_SUPPORT = "first_support"
+    END = "end"
 
 
 class MachineState(StrEnum):
@@ -163,6 +173,13 @@ class Moment:
     summary: str
     #: The frames the recorded turn's looks answered, the last a replay's last event reaches.
     looks: tuple[str, ...] = ()
+    #: The milestone an outside supervisor's watch line reports, on that trigger alone.
+    milestone: Milestone | None = None
+
+    @property
+    def is_outside(self) -> bool:
+        """Whether an outside supervisor is handed this entry, rather than printobserver's agent."""
+        return self.trigger is Trigger.OUTSIDE_SUPERVISION
 
     @property
     def is_alert(self) -> bool:
@@ -410,6 +427,9 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
             never=tuple(_step(step) for step in scenarios[entry]["never"]),
             summary=scenarios[entry]["summary"],
             looks=tuple(look["image"] for look in scenarios[entry]["looks"]),
+            milestone=Milestone(scenarios[entry]["milestone"])
+            if "milestone" in scenarios[entry]
+            else None,
         )
         for entry in (replay if replay is not None else document["assertions"].get("replay", ()))
     )

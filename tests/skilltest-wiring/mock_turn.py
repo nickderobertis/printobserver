@@ -14,7 +14,8 @@ scripts the usage of each model call the run streams, one by default carrying it
 `usage`, and `"disposition"` what its assessment answers with. In a command's
 words, `{print}`, `{actor}` and `{event}` stand for what the prompt named, and in an
 operator's message `{file}` and `{frame}` for the file it asks to start and the frame
-it hands over; `{new_print}` is an identifier no print holds. A command is a list of
+it hands over; `{new_print}` is an identifier no print holds, and a file a run reads may
+be `{looked}`, the frame its last look named. A command is a list of
 words, run as written, or one string, which is a shell line as the agent wrote it.
 
 The shell is the harness's to refuse, so a run started with permission rules takes
@@ -207,7 +208,9 @@ def _allowed(line: str, prefixes: list[str] | None) -> bool:
 
 
 def _filled(word: str, prompt: str) -> str:
-    print_id = re.search(r"printobserver context --print-id (\S+)", prompt)
+    print_id = re.search(r"printobserver context --print-id (\S+)", prompt) or re.search(
+        r"You started the print (\S+) and follow it", prompt
+    )
     actor = re.search(r"--actor '([^']+)'", prompt)
     event = re.search(r'"id": "([^"]+)"', prompt)
     file = re.search(r"start the print (\S+),", prompt)
@@ -276,6 +279,35 @@ def _ran(command: list[str] | str, prompt: str, prefixes: list[str] | None) -> C
     done = run(argv, timeout=TIMEOUT_S)
     status, out, err = done.returncode, done.stdout, done.stderr
     return {"words": words, "status": status, "out": out, "err": err}
+
+
+def _looked(ran: list[CommandResult]) -> str | None:
+    """The frame the run's last look that answered named, if one did."""
+    for result in reversed(ran):
+        if result["status"] != 0 or result["words"][1:2] != ["look"]:
+            continue
+        try:
+            answered = json.loads(result["out"])
+        except ValueError:
+            continue
+        path = answered.get("image_path") if isinstance(answered, dict) else None
+        if isinstance(path, str):
+            return path
+    return None
+
+
+#: What a file a run reads is written as to stand for the frame its last look named.
+LOOKED = "{looked}"
+
+
+def _named_look(path: str, looked: str | None) -> str:
+    """A file the run reads, `{looked}` standing for the frame its last look named."""
+    if LOOKED not in path:
+        return path
+    if looked is None:
+        msg = f"the run reads {path} and no look of it named a frame"
+        raise ValueError(msg)
+    return path.replace(LOOKED, looked)
 
 
 def _line(command: list[str] | str) -> str:
@@ -370,6 +402,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     filling = prompt if "printobserver context --print-id" in prompt else f"{prompt}\n{held}"
     prefixes = _allowed_prefixes(arguments)
     ran = [_ran(command, filling, prefixes) for command in scripted.get("commands", [])]
+    looked = _looked(ran)
     assessment: Assessment = {
         **ASSESSMENT,
         "summary": f"scripted run {number}",
@@ -425,7 +458,7 @@ def main(script_path: str, arguments: list[str]) -> int:
                         "type": "tool_use",
                         "id": f"read-{number}-{index}",
                         "name": "Read",
-                        "input": {"file_path": _filled(path, filling)},
+                        "input": {"file_path": _filled(_named_look(path, looked), filling)},
                     }
                     for index, path in enumerate(scripted.get("reads", []))
                 ),

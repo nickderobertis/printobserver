@@ -50,6 +50,7 @@ from cases import (
     replayed_case_names,
 )
 from mock_turn import ScriptedRun, Seen
+from outside import Outside
 from replay import (
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
@@ -126,6 +127,9 @@ REPLAYS = {
     "fan-cut-bridge": ["carry-on-healthy-before-fault", "bridge-sagging-uncooled"],
     "jar-top-petg-healthy": [
         "carry-on-004-other",
+        "outside-first-layer",
+        "outside-first-support",
+        "outside-first-overhang",
         "carry-on-013-other",
         "carry-on-024-support",
         "carry-on-028-bridge",
@@ -133,6 +137,22 @@ REPLAYS = {
         "carry-on-042-other",
         "carry-on-049-support",
         "carry-on-059-other",
+        "outside-end",
+    ],
+}
+#: The watch lines each healthy case hands its outside supervisor, by case, in order.
+WATCH_LINES = {
+    "bubbler-guard-and-pad-pla-healthy": [
+        "outside-first-layer",
+        "outside-first-support",
+        "outside-first-overhang",
+        "outside-end",
+    ],
+    "jar-top-petg-healthy": [
+        "outside-first-layer",
+        "outside-first-support",
+        "outside-first-overhang",
+        "outside-end",
     ],
 }
 #: The start requests section 2 of the start replays fixes, by case: every request of
@@ -251,12 +271,14 @@ def mock_replay(
         ),
         encoding="utf-8",
     )
+    target = [sys.executable, str(MOCK_TURN), str(script)]
     replay = Replay(
         case,
-        [sys.executable, str(MOCK_TURN), str(script)],
+        target,
         picture=stamped,
         gcode=gcode,
         real_waits=real_waits,
+        outside=lambda replaying: Outside(replaying, target),
     )
     try:
         replayed = replay.run()
@@ -277,6 +299,37 @@ def mock_replay(
 def scratch(tmp_path: Path) -> Path:
     """Where a mock turn keeps what it saw."""
     return tmp_path
+
+
+def turns_of(name: str) -> Case:
+    """One case, its replay cut to printobserver's own turns: no watch line in it."""
+    return read_case(
+        name, replay=tuple(moment.id for moment in read_case(name).moments if not moment.is_outside)
+    )
+
+
+#: An outside supervisor's run that does what a watch line asks: a look of its own at
+#: the printer, with no print named, and the frame it named opened.
+PRINTER_LOOK = ["printobserver", "look", "--json"]
+OUTSIDE_LOOKS: ScriptedRun = {"commands": [PRINTER_LOOK], "reads": ["{looked}"]}
+
+
+def scripted_for(case: Case, turns: list[ScriptedRun]) -> list[ScriptedRun]:
+    """A script for every harness run of a case, its own turns' first and its watch lines'.
+
+    The runs are counted over the replay's entries in order; printobserver's turns take
+    `turns` in turn, the last standing for every later one, and each watch line's run
+    does what the line asks.
+    """
+    scripted: list[ScriptedRun] = []
+    taken = 0
+    for moment in case.moments:
+        if moment.is_outside:
+            scripted.append(OUTSIDE_LOOKS)
+        else:
+            scripted.append(turns[min(taken, len(turns) - 1)])
+            taken += 1
+    return scripted
 
 
 def test_the_suites_vocabularies_are_the_contracts() -> None:
@@ -316,7 +369,13 @@ def test_the_cases_carry_exactly_the_replays_the_suite_was_given() -> None:
     for name, replay in REPLAYS.items():
         equal([moment.id for moment in read_case(name).moments], replay, describing=name)
     bubbler = read_case("bubbler-guard-and-pad-pla-healthy")
-    equal(len(bubbler.moments), 32)
+    equal(len(bubbler.moments), 36)
+    for name, lines in WATCH_LINES.items():
+        equal(
+            [moment.id for moment in read_case(name).moments if moment.is_outside],
+            lines,
+            describing=f"{name}'s watch lines",
+        )
     equal(
         [moment.at for moment in bubbler.moments],
         sorted(moment.at for moment in bubbler.moments),
@@ -704,7 +763,7 @@ def test_a_look_after_the_last_replayed_event_stops_short_of_the_recordings_next
     name: str, scratch: Path
 ) -> None:
     """More recording follows the list's end: the job moves on, and never jumps to it."""
-    case = read_case(name)
+    case = turns_of(name)
     event = case.moments[-1]
     later = case.next_recorded_after(event.at)
     if later is None:
@@ -726,7 +785,7 @@ def test_however_long_a_last_turn_runs_nothing_passes_the_next_recorded_moment(
     name: str, scratch: Path
 ) -> None:
     """Hours of waiting at the list's end still read as just short of what comes next."""
-    case = read_case(name)
+    case = turns_of(name)
     later = case.next_recorded_after(case.moments[-1].at)
     if later is None:
         pytest.fail(f"{name} has no recording after its last event")
@@ -1020,7 +1079,7 @@ def test_the_watch_sees_the_job_pass_its_first_layer_between_two_events(scratch:
     frame past that layer records, and the camera answers that frame, before the
     next event stands as it always does — with one turn per event.
     """
-    case = read_case("jar-top-petg-healthy")
+    case = turns_of("jar-top-petg-healthy")
     ends = 10_000
     first, second = case.moments[:2]
     layer = b";LAYER_CHANGE\n;Z:0.2\nM83\n;TYPE:Perimeter\nG1 X1 Y1 E1\n"
@@ -1084,7 +1143,7 @@ def test_a_timeline_passing_its_first_layer_answers_that_until_the_next_event(
     tmp_path: Path,
 ) -> None:
     """While passing, every job read and camera fetch answers the passing frame; then not."""
-    case = read_case("jar-top-petg-healthy")
+    case = turns_of("jar-top-petg-healthy")
     timeline = doubles.Timeline(case=case, picture=stamped, clock=tmp_path / "clock")
     when = case.frame_times()[6]
     timeline.pass_at(doubles.Passing(22_555, 6, when))
@@ -2687,7 +2746,7 @@ def test_an_idle_compaction_runs_between_checks_and_the_next_scheduled_check_wai
     }
     done = mock_replay(
         case,
-        [{"commands": [CONTEXT], "calls": [large]}, {"commands": [CONTEXT]}],
+        scripted_for(case, [{"commands": [CONTEXT], "calls": [large]}, {"commands": [CONTEXT]}]),
         scratch,
         compaction={"before": 150_203, "after": 9_000, "stall_s": 8},
     )
