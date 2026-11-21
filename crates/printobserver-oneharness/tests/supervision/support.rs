@@ -260,6 +260,8 @@ pub fn config<Mode>(
         harness_env: env,
         agent_commands: Vec::new(),
         command_usage: Vec::new(),
+        auto_compact_tokens: None,
+        idle_compact_tokens: None,
     }
 }
 

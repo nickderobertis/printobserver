@@ -54,9 +54,14 @@ from replay import (
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     Assessment,
+    CallUsage,
+    CheckClass,
     Confidence,
     DecisionPoint,
+    DecisionRecord,
     Disposition,
+    LedgerCompaction,
+    LedgerTurn,
     Replay,
     Replayed,
     ReplayError,
@@ -64,10 +69,12 @@ from replay import (
     alignment_of,
     calibration_copy,
     check_image,
+    check_wait,
     composed_check_image,
     delivered,
     first_layer_end,
     harness_token,
+    installer_compaction,
     is_event,
     is_held_print,
     kept_harness,
@@ -77,6 +84,7 @@ from replay import (
     service_config,
 )
 from replay import Secrets as Minted
+from replay import TestRecord as RecordedTest
 from repo_checks.__main__ import main as repo_check
 from repo_checks.checks_real_prints import POSITIONED_TRIGGERS, printed_gcode, stored_size
 from repo_checks.checks_real_prints import Trigger as RepoCheckTrigger
@@ -228,6 +236,7 @@ def mock_replay(
     gcode: bytes | None = None,
     *,
     real_waits: bool = False,
+    compaction: mock_turn.Compaction | None = None,
 ) -> Scripted:
     """Run one case's whole replay, its turns scripted, and read back what happened."""
     script = scratch / "script.json"
@@ -237,6 +246,7 @@ def mock_replay(
                 "session": case.name,
                 "responder": str(program("printobserver-server-responder")),
                 "turns": turns,
+                **({"compaction": compaction} if compaction is not None else {}),
             }
         ),
         encoding="utf-8",
@@ -306,7 +316,7 @@ def test_the_cases_carry_exactly_the_replays_the_suite_was_given() -> None:
     for name, replay in REPLAYS.items():
         equal([moment.id for moment in read_case(name).moments], replay, describing=name)
     bubbler = read_case("bubbler-guard-and-pad-pla-healthy")
-    equal(len(bubbler.moments), 18)
+    equal(len(bubbler.moments), 32)
     equal(
         [moment.at for moment in bubbler.moments],
         sorted(moment.at for moment in bubbler.moments),
@@ -2091,9 +2101,21 @@ def test_the_record_carries_every_turns_usage_with_the_compaction_marked(
     written = record.folded(run_directory, "a-commit")
     equal(
         written["figures"],
-        {"turns": 2, "quiet_check_model_calls": 1.0, "acting_check_model_calls": 1.0},
+        {
+            "turns": 2,
+            "quiet_check_model_calls": 1.0,
+            "acting_check_model_calls": 1.0,
+            "compaction_delayed_checks": 0.0,
+        },
     )
     detail = written["detail"]
+    equal(
+        detail["compaction"],
+        {"idle_compact_tokens": 150_000, "auto_compact_tokens": 200_000},
+        describing="the replays run with the installer's compaction settings",
+    )
+    equal(detail["compaction"], installer_compaction())
+    equal(detail["idle_compactions"], 0)
     equal(detail["commit"], "a-commit")
     equal(detail["harness"], "claude-code")
     equal(detail["models"], ["mock-model"])
@@ -2641,3 +2663,216 @@ def test_the_global_options_taking_a_value_are_the_programs_own() -> None:
     truth(bool(globals_said), describing="the help to name the global options")
     valued = set(re.findall(r"(--[a-z-]+) <", globals_said))
     equal(valued, shell_lines.VALUED_OPTIONS)
+
+
+#: A case whose replay is periodic observations alone, enough of them to compact between.
+COMPACTING_CASE = "jar-top-petg-healthy"
+
+
+def test_an_idle_compaction_runs_between_checks_and_the_next_scheduled_check_waits_for_it(
+    scratch: Path, tmp_path: Path
+) -> None:
+    """A check leaving the conversation at the threshold is followed by an idle compaction.
+
+    The replay's server runs with the installer's settings; the compaction runs
+    between the two checks, serves no replay entry, and the scheduled check that
+    comes due while it runs waits for it and then runs, its wait in the record.
+    """
+    case = read_case(COMPACTING_CASE)
+    large = {
+        "input_tokens": 3,
+        "cache_read_input_tokens": 149_000,
+        "cache_creation_input_tokens": 1_000,
+        "output_tokens": 200,
+    }
+    done = mock_replay(
+        case,
+        [{"commands": [CONTEXT], "calls": [large]}, {"commands": [CONTEXT]}],
+        scratch,
+        compaction={"before": 150_203, "after": 9_000, "stall_s": 8},
+    )
+    replayed = done.replayed
+    equal(len(done.turns), len(case.moments), describing="a compaction was taken for a turn")
+    compactions = replayed.ledger["compactions"]
+    equal([compaction["ended"] for compaction in compactions], ["completed"])
+    compaction = compactions[0]
+    equal(compaction["size_before"], 150_203)
+    equal(compaction.get("reported_after"), 9_000)
+    turns = replayed.ledger["turns"]
+    truth(
+        turns[0]["ran_at"] <= compaction["started_at"]
+        and compaction["ended_at"] <= turns[1]["started_at"],
+        describing="the compaction ran in the gap between the first two checks",
+    )
+    points = replayed.points
+    equal([point.follows_compaction for point in points][:3], [False, True, False])
+    second = points[1].wait
+    truth(second is not None, describing="the second check's wait is recorded")
+    if second is not None:
+        waited = second["waited_for_compaction_ms"]
+        truth(
+            waited is not None and waited > 0,
+            describing=f"the scheduled check waited for the compaction: {second}",
+        )
+        equal(second["delayed"], False)
+    equal(replayed.passed, True, describing=replayed.failures())
+
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+    (run_directory / f"{case.name}.json").write_text(
+        json.dumps(replayed.as_record()), encoding="utf-8"
+    )
+    written = record.folded(run_directory, "a-commit")
+    equal(written["figures"]["compaction_delayed_checks"], 0.0)
+    equal(written["detail"]["idle_compactions"], 1)
+
+
+def _call(input_tokens: int, output: int, cached: int = 0) -> CallUsage:
+    return {"input_tokens": input_tokens, "output_tokens": output, "cache_read_tokens": cached}
+
+
+def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define() -> None:
+    """The projections and the delayed count, worked out by hand from scripted checks.
+
+    Base 4,000; quiet checks with no history read 7,000; each quiet check grows the
+    conversation by 4,000; an acting check makes 2 calls; a completed compaction leaves
+    10,000 and reads 150,000. One cancelled compaction runs beside the acting check's
+    event, and one completed compaction beside the last check's, which is the one
+    check delayed.
+    """
+    stamp = "2026-10-31T16:{:02}:00Z".format
+    ledger_turns: list[LedgerTurn] = [
+        {"session_name": "s", "started_at": stamp(minute), "ran_at": stamp(minute + 1)}
+        for minute in (1, 3, 5, 7, 9, 11)
+    ]
+    compactions: list[LedgerCompaction] = [
+        {
+            "session_name": "s",
+            "started_at": stamp(4),
+            "ended_at": stamp(5),
+            "ended": "cancelled",
+            "size_before": 152_000,
+            "usage": {},
+        },
+        {
+            "session_name": "s",
+            "started_at": stamp(6),
+            "ended_at": stamp(7),
+            "ended": "completed",
+            "size_before": 152_000,
+            "reported_after": 10_000,
+            "usage": {"input_tokens": 5, "cache_read_tokens": 149_995},
+            "scheduled_check_waited_ms": 2_500,
+        },
+        {
+            "session_name": "s",
+            "started_at": stamp(10),
+            "ended_at": stamp(11),
+            "ended": "completed",
+            "size_before": 152_000,
+            "reported_after": 10_000,
+            "usage": {"input_tokens": 5, "cache_read_tokens": 149_995},
+        },
+    ]
+    scripted: list[tuple[CheckClass, list[CallUsage]]] = [
+        ("quiet", [_call(7_000, 1_000)]),
+        ("quiet", [_call(3_000, 1_000, cached=8_000)]),
+        ("acting", [_call(15_000, 500), _call(16_000, 1_000)]),
+        ("quiet", [_call(13_000, 1_000)]),
+        ("quiet", [_call(17_000, 1_000)]),
+        ("quiet", [_call(21_000, 1_000)]),
+    ]
+    arrivals = [stamp(1), stamp(3), "2026-10-31T16:04:30Z", stamp(7), stamp(9), stamp(10)]
+    points: list[DecisionRecord] = []
+    previous: str | None = None
+    for number, ((check_class, calls), turn, arrived) in enumerate(
+        zip(scripted, ledger_turns, arrivals, strict=True)
+    ):
+        wait, follows = check_wait(arrived, turn, previous, compactions)
+        previous = turn["ran_at"]
+        points.append(
+            {
+                "scenario": f"check-{number}",
+                "at": arrived,
+                "trigger": "periodic_observation",
+                "passed": True,
+                "why_not": None,
+                "requests": [],
+                "commands": [],
+                "opened": [],
+                "assessment": None,
+                "looks": 0,
+                "usage": None,
+                "models": [],
+                "compacted": False,
+                "calls": calls,
+                "check_class": check_class,
+                "wait": wait,
+                "follows_compaction": follows,
+            }
+        )
+    equal(
+        [point["follows_compaction"] for point in points],
+        [False, False, False, True, False, True],
+    )
+    tests: list[RecordedTest] = [
+        {
+            "test": "scripted",
+            "passed": True,
+            "turns": len(points),
+            "sessions": ["s"],
+            "compound_commands": {},
+            "decision_points": points,
+            "compactions": compactions,
+        }
+    ]
+    figures, detail = record.compaction_figures(
+        record.checks_of(tests, 4_000), 4_000, compactions, 150_000
+    )
+
+    # By hand: the conversation starts at 4,000 and grows 4,000 a check; check c of the
+    # first cycle reads 7,000 + 4,000c. It passes 150,000 after the 37th check (index
+    # 36), is compacted (150,000) and restarts at 10,000; check j of a later cycle reads
+    # 13,000 + 4,000j and the cycle compacts after 35 checks. Acting checks, at indexes
+    # 9, 28, 47 and 66 of 76, make a second call at what they read.
+    def cycle(first: int, count: int) -> int:
+        return count * first + 4_000 * count * (count - 1) // 2
+
+    def reads(index: int) -> int:
+        return 7_000 + 4_000 * index if index <= 36 else 13_000 + 4_000 * ((index - 37) % 35)
+
+    typical = (
+        cycle(7_000, 37)
+        + 150_000
+        + cycle(13_000, 35)
+        + 150_000
+        + cycle(13_000, 4)
+        + sum(reads(index) for index in (9, 28, 47, 66))
+    )
+    equal(figures["tokens_per_print"], float(typical))
+    equal(detail["tokens_per_print"]["projected_compactions"], 2)
+    long_acting = [((2 * index + 1) * 281) // 30 for index in range(15)]
+    later = 281 - 37
+    long = (
+        cycle(7_000, 37)
+        + 150_000
+        + (later // 35) * (cycle(13_000, 35) + 150_000)
+        + cycle(13_000, later % 35)
+        + sum(reads(index) for index in long_acting)
+    )
+    equal(figures["tokens_per_long_plate"], float(long))
+    equal(detail["tokens_per_long_plate"]["projected_compactions"], 1 + later // 35)
+    rates = detail["tokens_per_print"]["rates"]
+    equal(
+        (rates["quiet"], rates["growth"], rates["acting_calls"]),
+        (7_000.0, 4_000.0, 2.0),
+    )
+    equal((rates["after_compaction"], rates["compaction_input"]), (10_000.0, 150_000.0))
+
+    # The acting check's event arrived while the cancelled compaction ran, and the last
+    # check's while a compaction ran that then completed: only that one is delayed.
+    equal(figures["compaction_delayed_checks"], 1.0)
+    delayed = detail["compaction_delayed_checks"]
+    equal((delayed["started"], delayed["completed"], delayed["cancelled"]), (3, 2, 1))
+    equal(delayed["longest_wait_while_cancelling_ms"], 30_000)
+    equal(delayed["longest_scheduled_wait_ms"], 2_500)

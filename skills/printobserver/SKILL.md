@@ -63,9 +63,9 @@ Reading frames:
   absent from an earlier frame included, or out of place; off the part, on a rail, screw or frame,
   not.
 - **Position.** Judge growth only against the frame the plan's rise names, never by Z or how
-  tall parts look: by the top's height then and the rise since, what should show, not proof it
-  did: compare the tallest printing part's top then and now. Short of the rise, likely, unsure or
-  unclear is not printing: a clear defect, never watched.
+  tall parts look; the rise is what should show, not proof it did: compare the tallest printing
+  part's top then and now. Risen less than the rise, likely, unsure or unclear is not printing:
+  a clear defect, never watched.
   A part off the bed, a first layer not sticking, or one off its own place, left empty, has
   moved: run pause now, before any look; no later frame undoes it. The facts' X and Y are the
   bed's, placing nothing in a frame.

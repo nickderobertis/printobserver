@@ -444,6 +444,8 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
         // shell, so the turn keeps the read-only mode.
         agent_commands: Vec::new(),
         command_usage: Vec::new(),
+        auto_compact_tokens: None,
+        idle_compact_tokens: None,
     })
     .expect("the supervising agent is built")
 }

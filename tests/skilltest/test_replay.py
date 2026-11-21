@@ -23,6 +23,7 @@ from replay import (
     Replay,
     harness_token,
     image_probe,
+    installer_compaction,
     kept_harness,
     probe,
     refuse_a_pointer,
@@ -70,6 +71,18 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             replayed.compound_commands(),
             describing="each printobserver command run on its own",
         )
+        expect.equal(
+            replayed.configured,
+            installer_compaction(),
+            describing="the replay's compaction settings, as the installer writes them",
+        )
+        for turn in replayed.ledger["turns"]:
+            for compaction in replayed.ledger["compactions"]:
+                expect.truth(
+                    turn["ran_at"] <= compaction["started_at"]
+                    or compaction["ended_at"] <= turn.get("started_at", turn["ran_at"]),
+                    describing=f"no turn to run beside the compaction {compaction}",
+                )
         expect.truth(replayed.passed, describing=f"every decision point:\n{replayed.failures()}")
     finally:
         replay.clean_up()

@@ -568,7 +568,9 @@ fn request_of(line: &str, print: &str, file: &str) -> (String, String, Value) {
     }
     (
         operation,
-        path_print.unwrap_or_else(|| panic!("`{line}` names no print")),
+        // A start naming no print is made under one minted for it, as the
+        // program mints one: `print` is that identifier.
+        path_print.unwrap_or_else(|| print.to_owned()),
         Value::Object(body),
     )
 }

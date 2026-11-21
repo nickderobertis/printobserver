@@ -73,7 +73,10 @@ pub use config::{
     AgentCommand, AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName,
     RunReportObserver, RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
 };
-pub use ledger::{CallUsage, LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, SessionName};
+pub use ledger::{
+    CallUsage, CompactionEnd, LedgerFormat, RecordedCompaction, RecordedTurn, SESSIONS_DIRECTORY,
+    SessionName,
+};
 pub use prompt::{
     ACTOR_SLOT, COMMANDS_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT, PromptTemplate,
     SITUATION_SLOT, SLOTS, TemplateError,

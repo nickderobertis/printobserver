@@ -77,6 +77,8 @@ mod durations;
 mod failures;
 #[path = "journeys/finding.rs"]
 mod finding;
+#[path = "journeys/first_starting.rs"]
+mod first_starting;
 #[path = "journeys/formats.rs"]
 mod formats;
 #[path = "journeys/looking.rs"]
@@ -140,6 +142,18 @@ fn the_operators_word_that_the_bed_is_clear_is_honoured_until_a_print_starts() {
     let world = World::open(world::STOOD_IN);
 
     bed_clearing::the_operators_word_is_honoured_until_a_print_starts(&world);
+}
+
+/// A first start names no print and is made under one this program mints, and
+/// a start naming something that is no print is refused saying what to pass.
+///
+/// A world of its own, because the journey starts the print every other
+/// journey here would otherwise find open.
+#[test]
+fn a_first_start_names_no_print_and_a_wrong_one_is_refused_saying_what_to_pass() {
+    let world = World::open(world::STOOD_IN);
+
+    first_starting::a_first_start_names_no_print(&world);
 }
 
 /// A turn reads a print's context, then only what came after the newest

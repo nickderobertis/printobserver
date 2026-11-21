@@ -487,9 +487,10 @@ Start a print of a named file, bounded by a manifest. Valid only while the
 printer is operational. A start opens a print of its own when no print is open,
 so `record.print_id` names the print the job runs under and its manifest is
 attached to: act on that print afterwards. The examples below this one do.
-With no print open the start opens its own whichever print it names, so any
-identifier `prints` lists serves as `--print-id`, and with none listed, a UUID
-version 7 of your own.
+With no print open the start opens its own, so a first start names no
+`--print-id`: the program makes the call under an identifier it mints, and
+`record.print_id` names the print to act on next. A `--print-id` that is no
+print's identifier is refused, saying what to pass.
 The manifest's `sheet` names the build sheet that is down; a start naming none
 is refused. `--override-material-check true` and `--override-sheet-check true`
 start one the material or sheet check refused, as the operator alone.
@@ -499,7 +500,7 @@ the one made when that frame shows a clear bed and the smooth PEI sheet, and the
 spool loaded is PLA, which that sheet suits.
 
 ```console
-$ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "the camera's frame shows a clear bed and the smooth PEI sheet, which suits the loaded PLA"
+$ printobserver start-print --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "the camera's frame shows a clear bed and the smooth PEI sheet, which suits the loaded PLA"
 record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID

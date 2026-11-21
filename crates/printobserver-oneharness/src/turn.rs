@@ -1,7 +1,9 @@
 //! The port itself: one supervision turn, and the closing of a session.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
+use std::thread::JoinHandle;
 
 use oneharness_core::domain::harness::HarnessIdentity as EngineIdentity;
 use oneharness_core::domain::lean::ToolClass;
@@ -10,6 +12,8 @@ use oneharness_core::domain::report::{OutputFormat, RunReport, RunResult, Sessio
 use oneharness_core::domain::session::SessionPhase as HarnessPhase;
 use oneharness_core::domain::structured::{self, Schema};
 use oneharness_core::errors::OneharnessError;
+use oneharness_core::io::cancel::CancelToken;
+use oneharness_core::io::compact::{CompactRequest, compact_session};
 use oneharness_core::io::run::{RunControls, RunOutcome, RunRequest, run_supervised};
 use oneharness_core::io::runner::ProcessSupervisor;
 use printobserver_supervisor_api::AgentAssessment;
@@ -22,7 +26,9 @@ use printobserver_types::serde_json::Value;
 use printobserver_types::{PrintId, Timestamp};
 
 use crate::config::{HarnessIdentity, SupervisorConfig, TurnSeam};
-use crate::ledger::{CallUsage, PrintLedger, RecordedTurn, SessionName};
+use crate::ledger::{
+    CallUsage, CompactionEnd, PrintLedger, RecordedCompaction, RecordedTurn, SessionName,
+};
 use crate::prompt::PromptTemplate;
 use crate::skill::skill_prose;
 
@@ -82,7 +88,46 @@ pub struct OneharnessSupervisor {
     /// The committed prompt template, read from the tree when this port was
     /// built.
     template: PromptTemplate,
+    /// The idle compaction running for each print, while one runs. Held only
+    /// to cancel it: what a compaction did is written to the print's ledger.
+    compacting: Mutex<HashMap<PrintId, Compacting>>,
 }
+
+/// One idle compaction under way: what cancels it, what says it has ended,
+/// and the thread that writes its end down once its harness process has
+/// exited.
+#[derive(Debug)]
+struct Compacting {
+    /// Cancels the compaction's harness process.
+    cancel: CancelToken,
+    /// Where a scheduled check waits for its end.
+    ending: Arc<Ending>,
+    /// The thread running it, which returns once its end is written down.
+    thread: JoinHandle<()>,
+}
+
+/// Whether an idle compaction has ended, and since when a scheduled check has
+/// waited for it.
+#[derive(Debug, Default)]
+struct Ending {
+    /// What has happened so far.
+    state: Mutex<EndingState>,
+    /// Signalled once the compaction's end is written down.
+    ended: Condvar,
+}
+
+/// What has happened to an idle compaction so far.
+#[derive(Debug, Default)]
+struct EndingState {
+    /// When a scheduled check began to wait for it, if one has.
+    waited_since: Option<std::time::Instant>,
+    /// Whether its end is written down.
+    ended: bool,
+}
+
+/// How much longer than a compaction's own timeout a scheduled check waits for
+/// it: the margin for writing its end down once its harness process is gone.
+const ENDING_MARGIN: std::time::Duration = std::time::Duration::from_secs(30);
 
 impl OneharnessSupervisor {
     /// Build the port, reading the skill and the prompt template from the tree.
@@ -118,7 +163,109 @@ impl OneharnessSupervisor {
             seam,
             skill,
             template,
+            compacting: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Every idle compaction recorded for one print, in order, read from the
+    /// state directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SupervisorError::Unavailable`] when the ledger cannot be read.
+    pub fn recorded_compactions(
+        &self,
+        print_id: &PrintId,
+    ) -> Result<Vec<RecordedCompaction>, SupervisorError> {
+        Ok(self.ledger(print_id)?.compactions().to_vec())
+    }
+
+    /// Wait, while an idle compaction of one print's session runs, until it
+    /// ends, and at most its own timeout and [`ENDING_MARGIN`]; answer at once
+    /// when none runs. The wait is written down with the compaction's end.
+    fn wait_for_compaction(&self, print_id: &PrintId) {
+        let ending = self
+            .compacting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(print_id)
+            .map(|running| Arc::clone(&running.ending));
+        let Some(ending) = ending else {
+            return;
+        };
+        let bound =
+            std::time::Duration::from_secs(self.config.turn_timeout.seconds()) + ENDING_MARGIN;
+        let mut state = ending.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state
+            .waited_since
+            .get_or_insert_with(std::time::Instant::now);
+        // However it ends — completed, cancelled, failed or timed out — the
+        // check runs then, and past the bound it runs regardless.
+        let _ = ending
+            .ended
+            .wait_timeout_while(state, bound, |state| !state.ended)
+            .unwrap_or_else(PoisonError::into_inner);
+    }
+
+    /// End the idle compaction of one print's session, if one is running: it
+    /// is cancelled, and this returns once its harness process has exited and
+    /// its end is written down. A session is never compacted while a turn of
+    /// it runs, and a turn never waits for a compaction to finish.
+    fn settle(&self, print_id: &PrintId) {
+        let running = self
+            .compacting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(print_id);
+        if let Some(running) = running {
+            running.cancel.cancel();
+            // A compaction thread that panicked wrote nothing down; the turn
+            // goes on in the session as it was.
+            let _ = running.thread.join();
+        }
+    }
+
+    /// Compact a print's session in the background when the turn that just
+    /// ended left its conversation at or above the idle threshold.
+    ///
+    /// A conversation's size is its last model call's whole input and output,
+    /// which is what the next call re-reads. A cancelled compaction leaves the
+    /// conversation as large as it was, so the next turn's end starts it again.
+    fn compact_when_due(&self, print_id: &PrintId, session: &SessionName, calls: &[CallUsage]) {
+        let Some(threshold) = self.config.idle_compact_tokens else {
+            return;
+        };
+        let Some(size) = calls.last().and_then(CallUsage::conversation_tokens) else {
+            return;
+        };
+        if size < threshold.get() {
+            return;
+        }
+        let cancel = CancelToken::new();
+        let ending = Arc::new(Ending::default());
+        let compaction = IdleCompaction {
+            config: self.config.clone(),
+            seam: self.seam.clone(),
+            print_id: *print_id,
+            session: session.clone(),
+            size,
+            cancel: cancel.clone(),
+            ending: Arc::clone(&ending),
+        };
+        // A thread of this process, not a child process: the compaction's own
+        // harness is started by `OneHarness`, as a turn's is.
+        let thread = std::thread::spawn(move || compaction.run());
+        self.compacting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(
+                *print_id,
+                Compacting {
+                    cancel,
+                    ending,
+                    thread,
+                },
+            );
     }
 
     /// Run one prompt in a fresh session through exactly the run request a turn
@@ -160,6 +307,11 @@ impl OneharnessSupervisor {
             None,
             by_prompt.as_ref(),
         );
+        // A probe is no supervision turn, so it carries no compaction setting.
+        let request = RunRequest {
+            auto_compact_tokens: None,
+            ..request
+        };
         let outcome = self.run(&request).map_err(|error| unavailable(&error))?;
         let [result] = <[RunResult; 1]>::try_from(outcome.report.results).map_err(|results| {
             SupervisorError::Unavailable {
@@ -387,6 +539,7 @@ impl OneharnessSupervisor {
                 .then(|| self.config.assessment_schema.path().to_path_buf()),
             output_format: by_prompt.map(|_| OutputFormat::StreamJson),
             timeout: Some(self.config.turn_timeout.seconds()),
+            auto_compact_tokens: self.config.auto_compact_tokens,
             cwd: Some(self.config.working_dir.clone()),
             env,
             mode: Some(mode),
@@ -447,6 +600,8 @@ impl OneharnessSupervisor {
         access: &dyn TurnAccess,
     ) -> Result<TurnOutcome, SupervisorError> {
         let print_id = &request.print_id;
+        self.settle(print_id);
+        let started_at = Timestamp::now();
         let mut ledger = self.ledger(print_id)?;
         let mut session = ledger.session_for_next_turn();
         let images: Vec<PathBuf> = request.image_path.iter().cloned().collect();
@@ -499,7 +654,7 @@ impl OneharnessSupervisor {
             self.held_to_the_schema(schema, &mut reported, access);
             self.held_to_its_stop(request, schema, &mut reported, access);
         }
-        self.record(&mut ledger, print_id, &reported)
+        self.record(&mut ledger, print_id, &reported, started_at)
     }
 
     /// Hold a turn's answer to the assessment schema by its prompt, as the
@@ -608,6 +763,7 @@ impl OneharnessSupervisor {
         ledger: &mut PrintLedger,
         print_id: &PrintId,
         reported: &TurnReport,
+        started_at: Timestamp,
     ) -> Result<TurnOutcome, SupervisorError> {
         let at = Timestamp::now();
         let session = ledger.record_session(
@@ -618,21 +774,170 @@ impl OneharnessSupervisor {
         );
         let answer = assessment(&reported.result);
         let failure = answer.as_ref().err().map(ToString::to_string);
-        let calls = reported
+        let calls: Vec<CallUsage> = reported
             .result
             .calls
             .iter()
             .flatten()
             .map(CallUsage::of)
             .collect();
-        ledger.record_turn(&reported.name, at, failure.as_deref(), calls);
+        ledger.record_turn(
+            &reported.name,
+            (started_at, at),
+            failure.as_deref(),
+            calls.clone(),
+        );
         self.save(ledger, print_id)?;
+        self.compact_when_due(print_id, &reported.name, &calls);
 
         Ok(TurnOutcome {
             session,
             phase: reported.phase(),
             assessment: answer?,
         })
+    }
+}
+
+impl Drop for OneharnessSupervisor {
+    /// A port going away leaves no compaction running behind it.
+    fn drop(&mut self) {
+        let running: Vec<PrintId> = self
+            .compacting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .keys()
+            .copied()
+            .collect();
+        for print_id in running {
+            self.settle(&print_id);
+        }
+    }
+}
+
+/// One idle compaction of a print's session, owning everything it needs so it
+/// runs on a thread of its own while the port takes other prints' turns.
+struct IdleCompaction {
+    /// How the agent is reached and where its sessions live.
+    config: SupervisorConfig,
+    /// Where a caller watches the processes it creates.
+    seam: TurnSeam,
+    /// The print whose session it compacts.
+    print_id: PrintId,
+    /// The session it compacts.
+    session: SessionName,
+    /// The conversation's size when it was started.
+    size: u64,
+    /// What an event for the print cancels it through.
+    cancel: CancelToken,
+    /// Where a scheduled check waits for its end.
+    ending: Arc<Ending>,
+}
+
+impl IdleCompaction {
+    /// Compact the session through `OneHarness`, and write down how it ended.
+    fn run(self) {
+        let started_at = Timestamp::now();
+        let (ended, reported_before, reported_after, usage, error) = match self.compact() {
+            Ok(outcome) => (
+                CompactionEnd::of(outcome.status),
+                outcome.context_tokens_before,
+                outcome.context_tokens_after,
+                CallUsage::of(&outcome.usage),
+                outcome.error,
+            ),
+            Err(error) => (
+                CompactionEnd::Failed,
+                None,
+                None,
+                CallUsage::default(),
+                Some(error),
+            ),
+        };
+        // Held while the end is written down, so a scheduled check that began
+        // to wait is either counted here or finds it ended.
+        let mut state = self
+            .ending
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let compaction = RecordedCompaction {
+            session_name: self.session.clone(),
+            started_at,
+            ended_at: Timestamp::now(),
+            ended,
+            size_before: self.size,
+            reported_before,
+            reported_after,
+            usage,
+            error,
+            scheduled_check_waited_ms: state
+                .waited_since
+                .map(|since| u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)),
+        };
+        // A ledger that cannot be read or written loses this record alone; the
+        // next turn reads the same ledger and is refused naming why.
+        if let Ok(mut ledger) = PrintLedger::read(&self.config.state_dir, &self.print_id) {
+            ledger.record_compaction(compaction);
+            let _ = ledger.write(&self.config.state_dir);
+        }
+        state.ended = true;
+        drop(state);
+        self.ending.ended.notify_all();
+    }
+
+    /// The compaction itself, in the session store and the working directory
+    /// a turn of the session runs with, under the harness's own environment.
+    fn compact(&self) -> Result<oneharness_core::domain::compact::CompactOutcome, String> {
+        let harness = self
+            .config
+            .harness
+            .as_str()
+            .parse::<EngineIdentity>()
+            .map_err(|error| error.to_string())?;
+        let session = oneharness_core::domain::sdk::NonEmptyString::try_from(self.session.as_str())
+            .map_err(|error| error.to_string())?;
+        let request = CompactRequest {
+            harness: Some(harness),
+            session,
+            session_dir: Some(self.config.state_dir.join(HARNESS_SESSIONS_DIRECTORY)),
+            cwd: Some(self.config.working_dir.clone()),
+            // No pass: a compaction runs no command of this program.
+            env: self
+                .config
+                .harness_env
+                .iter()
+                .map(ToString::to_string)
+                .filter(|assigned| {
+                    ![SERVER_ENV, CREDENTIAL_ENV]
+                        .iter()
+                        .any(|name| assigned.starts_with(&format!("{name}=")))
+                })
+                .collect(),
+            model: self.config.model.as_ref().map(ToString::to_string),
+            bin: self
+                .config
+                .harness_bin
+                .iter()
+                .map(|path| format!("{}={}", self.config.harness, path.display()))
+                .collect(),
+            config: Vec::new(),
+            no_config: true,
+            timeout: Some(self.config.turn_timeout.seconds()),
+        };
+        let supervisor: Option<&dyn ProcessSupervisor> = self
+            .seam
+            .processes
+            .as_ref()
+            .map(|processes| Arc::as_ref(processes) as &dyn ProcessSupervisor);
+        compact_session(
+            &request,
+            RunControls {
+                cancel: self.cancel.clone(),
+                ..RunControls::default()
+            },
+            supervisor,
+        )
+        .map_err(|error| error.to_string())
     }
 }
 
@@ -842,6 +1147,13 @@ fn assessment(result: &RunResult) -> Result<AgentAssessment, SupervisorError> {
 }
 
 impl SupervisorPort for OneharnessSupervisor {
+    fn idle_work_ended(&self, print_id: PrintId) -> BoxFuture<'_, Result<(), SupervisorError>> {
+        Box::pin(async move {
+            self.wait_for_compaction(&print_id);
+            Ok(())
+        })
+    }
+
     fn run_turn(
         &self,
         request: TurnRequest,
@@ -856,6 +1168,7 @@ impl SupervisorPort for OneharnessSupervisor {
         close_reason: String,
     ) -> BoxFuture<'_, Result<(), SupervisorError>> {
         Box::pin(async move {
+            self.settle(&print_id);
             let mut ledger = self.ledger(&print_id)?;
             ledger.close_current(&close_reason, Timestamp::now());
             self.save(&ledger, &print_id)

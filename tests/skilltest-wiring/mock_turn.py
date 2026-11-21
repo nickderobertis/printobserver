@@ -108,6 +108,16 @@ class Script(TypedDict):
     session: str
     responder: str
     turns: list[ScriptedRun]
+    #: How a compaction of the session goes, when the port asks for one.
+    compaction: NotRequired[Compaction]
+
+
+class Compaction(TypedDict):
+    """How a scripted compaction goes: the sizes it reports and how long it takes."""
+
+    before: NotRequired[int]
+    after: NotRequired[int]
+    stall_s: NotRequired[float]
 
 
 def _run_is_whole(run_of: object) -> bool:
@@ -273,6 +283,62 @@ def _line(command: list[str] | str) -> str:
     return command if isinstance(command, str) else " ".join(command)
 
 
+#: Where each compaction a run was started for is written down, one per line.
+COMPACTIONS_FILE = "compactions.jsonl"
+
+
+def _compacted(script: Script, directory: Path, arguments: list[str]) -> int:
+    """Compact the session as Claude Code's `/compact` reports one, after `stall_s`.
+
+    The script's `compaction` says the size it leaves and how long it takes; the
+    session continues under a fork of its own.
+    """
+    compaction = script.get("compaction", {})
+    started = time.time()
+    time.sleep(compaction.get("stall_s", 0))
+    resumed = arguments[arguments.index("--resume") + 1] if "--resume" in arguments else ""
+    fork = f"{resumed}-compacted"
+    before, after = compaction.get("before", 150_000), compaction.get("after", 10_000)
+    lines = [
+        {"type": "system", "subtype": "status", "status": "compacting", "session_id": fork},
+        {
+            "type": "system",
+            "subtype": "status",
+            "status": None,
+            "compact_result": "success",
+            "session_id": fork,
+        },
+        {
+            "type": "system",
+            "subtype": "compact_boundary",
+            "session_id": fork,
+            "compact_metadata": {"trigger": "manual", "pre_tokens": before, "post_tokens": after},
+        },
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "result": "",
+            "session_id": fork,
+            "model_usage_since_last_result": {
+                MOCK_MODEL: {"inputTokens": 5, "outputTokens": 900, "cacheReadInputTokens": before}
+            },
+        },
+    ]
+    with (directory / COMPACTIONS_FILE).open("a", encoding="utf-8") as log:
+        log.write(json.dumps({"resumed": resumed, "started": started, "ended": time.time()}) + "\n")
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    return run(
+        [script["responder"], *arguments],
+        env={
+            **os.environ,
+            "MOCK_STDOUT": "\n".join(json.dumps(line) for line in lines),
+            "MOCK_PRESERVE_STDOUT": "1",
+        },
+        capture=False,
+    ).returncode
+
+
 def main(script_path: str, arguments: list[str]) -> int:
     """Take one turn of the script, and answer through the published responder."""
     directory = Path(script_path).parent
@@ -289,6 +355,8 @@ def main(script_path: str, arguments: list[str]) -> int:
     if not isinstance(script.get("session"), str) or not isinstance(script.get("responder"), str):
         print(f"{script_path} names no responder", file=sys.stderr)
         return 2
+    if "/compact" in arguments:
+        return _compacted(script, directory, arguments)
     counter = directory / COUNTER_FILE
     number = int(counter.read_text(encoding="utf-8")) if counter.is_file() else 0
     counter.write_text(str(number + 1), encoding="utf-8")

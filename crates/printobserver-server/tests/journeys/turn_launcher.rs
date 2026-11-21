@@ -27,7 +27,7 @@ fn control(record: &Path) -> (String, mpsc::Receiver<String>) {
             let read = connection.read(&mut request).expect("a request");
             let text = String::from_utf8_lossy(&request[..read]).into_owned();
             let path = text.split_whitespace().nth(1).unwrap_or("").to_owned();
-            let body = if path == "/started" {
+            let body = if path == "/started" || path == "/compaction-started" {
                 record.clone()
             } else {
                 String::new()
@@ -125,6 +125,31 @@ fn the_harness_runs_exactly_as_it_was_asked_and_its_output_is_kept() {
     assert!(handed.contains("--a-harness-argument"), "{handed}");
     assert_eq!(heard.recv().expect("a report"), "/started");
     assert_eq!(heard.recv().expect("a report"), "/exited");
+}
+
+/// A harness started to compact a session is reported as a compaction, on its
+/// own two paths, so the replay moves to the next event at a turn's exit alone;
+/// its output still reaches the caller and the record.
+#[test]
+fn a_compaction_is_reported_as_one_and_its_output_is_kept() {
+    let scratch = TempDir::new().expect("a directory");
+    let record = scratch.path().join("record");
+    let (address, heard) = control(&record);
+    let launcher = installed(scratch.path(), &address, &responder());
+    let answer = "{\"type\":\"result\",\"result\":\"\"}";
+    let mut command = Command::new(&launcher);
+    command
+        .args(["-p", "/compact", "--resume", "SID"])
+        .stdin(Stdio::null())
+        .env("MOCK_STDOUT", answer)
+        .env("MOCK_PRESERVE_STDOUT", "1");
+    let output = when_not_busy(|| command.output()).expect("the launcher starts");
+    let said = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{said}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), answer);
+    assert_eq!(std::fs::read_to_string(&record).expect("kept"), answer);
+    assert_eq!(heard.recv().expect("a report"), "/compaction-started");
+    assert_eq!(heard.recv().expect("a report"), "/compaction-exited");
 }
 
 /// The harness's input and error streams are the caller's, and its output arrives

@@ -42,6 +42,8 @@ mod bed_clear;
 mod binding;
 #[path = "journeys/coherent_ledger.rs"]
 mod coherent_ledger;
+#[path = "journeys/compacting.rs"]
+mod compacting;
 #[path = "journeys/composite_checks.rs"]
 mod composite_checks;
 #[path = "journeys/configuration.rs"]

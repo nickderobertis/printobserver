@@ -30,14 +30,19 @@ pub enum LedgerFormat {
     /// Still read: it is [`LedgerFormat::V2`] with every turn's calls unknown.
     #[serde(rename = "1")]
     V1,
-    /// The shape this build writes: [`LedgerFormat::V1`], each turn carrying
-    /// the usage of every model call it made.
+    /// [`LedgerFormat::V1`], each turn carrying the usage of every model call
+    /// it made. Still read: it is [`LedgerFormat::V3`] with no compaction and
+    /// no turn's start known.
     #[serde(rename = "2")]
     V2,
+    /// The shape this build writes: [`LedgerFormat::V2`], each turn carrying
+    /// when it started, beside every idle compaction of the print's sessions.
+    #[serde(rename = "3")]
+    V3,
 }
 
 /// The shape this build writes.
-const LEDGER_FORMAT: LedgerFormat = LedgerFormat::V2;
+const LEDGER_FORMAT: LedgerFormat = LedgerFormat::V3;
 
 /// The name of the session watching one print, at one point in its sequence.
 ///
@@ -127,6 +132,25 @@ pub struct CallUsage {
 }
 
 impl CallUsage {
+    /// The size of the conversation this call leaves: its whole input, cache
+    /// read and written included, and its output. `None` when the harness
+    /// reported none of the four.
+    #[must_use]
+    pub fn conversation_tokens(&self) -> Option<u64> {
+        let counts = [
+            self.input_tokens,
+            self.cache_read_tokens,
+            self.cache_write_tokens,
+            self.output_tokens,
+        ];
+        counts.iter().any(Option::is_some).then(|| {
+            counts
+                .iter()
+                .flatten()
+                .fold(0_u64, |sum, count| sum.saturating_add(*count))
+        })
+    }
+
     /// One call's usage, as `OneHarness` reports it.
     #[must_use]
     pub const fn of(usage: &oneharness_core::domain::signals::Usage) -> Self {
@@ -145,8 +169,13 @@ impl CallUsage {
 pub struct RecordedTurn {
     /// The session the turn ran in.
     pub session_name: SessionName,
-    /// When it ran.
+    /// When it ended.
     pub ran_at: Timestamp,
+    /// When it started: after any compaction of its session it cancelled had
+    /// ended, and before its first run. Absent from a turn an earlier shape
+    /// recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<Timestamp>,
     /// Why the turn produced no assessment, when it produced none. A turn that
     /// failed is written down and the loop carries on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -155,6 +184,69 @@ pub struct RecordedTurn {
     /// harness reported no per-call usage.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub calls: Vec<CallUsage>,
+}
+
+/// How an idle compaction ended, in `OneHarness`'s words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionEnd {
+    /// The session continues from the compacted conversation.
+    Completed,
+    /// An event for the print cancelled it; the session is as it was.
+    Cancelled,
+    /// The harness has no compaction `OneHarness` can drive.
+    Unsupported,
+    /// The harness did not complete it; the session is as it was.
+    Failed,
+}
+
+impl CompactionEnd {
+    /// The end `OneHarness` reported.
+    #[must_use]
+    pub const fn of(status: oneharness_core::domain::compact::CompactStatus) -> Self {
+        use oneharness_core::domain::compact::CompactStatus;
+        match status {
+            CompactStatus::Completed => Self::Completed,
+            CompactStatus::Cancelled => Self::Cancelled,
+            CompactStatus::Unsupported => Self::Unsupported,
+            CompactStatus::Failed => Self::Failed,
+        }
+    }
+}
+
+/// One compaction of a print's session, taken while no turn ran.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordedCompaction {
+    /// The session compacted.
+    pub session_name: SessionName,
+    /// When it started.
+    pub started_at: Timestamp,
+    /// When its harness process had exited and its end was known.
+    pub ended_at: Timestamp,
+    /// How it ended.
+    pub ended: CompactionEnd,
+    /// The conversation's size when it was started: the last turn's last
+    /// call's input, cache included, and its output.
+    pub size_before: u64,
+    /// The context size before, as the harness reported it, when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reported_before: Option<u64>,
+    /// The context size after, as the harness reported it, when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reported_after: Option<u64>,
+    /// The compaction's own model usage, each count absent where the harness
+    /// reported none.
+    #[serde(default)]
+    pub usage: CallUsage,
+    /// Why it did not complete, when the harness said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// How long a scheduled check waited for it to end, in milliseconds, when
+    /// one did: the one event that lets an idle compaction end rather than
+    /// cancelling it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduled_check_waited_ms: Option<u64>,
 }
 
 /// One print's sessions and turns.
@@ -170,6 +262,10 @@ pub(crate) struct PrintLedger {
     sessions: Vec<SupervisionSession>,
     /// Every turn that ran, in order.
     turns: Vec<RecordedTurn>,
+    /// Every idle compaction of the print's sessions, in order. Absent from
+    /// a ledger an earlier shape wrote, which is a print never compacted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    compactions: Vec<RecordedCompaction>,
 }
 
 impl PrintLedger {
@@ -234,6 +330,7 @@ impl PrintLedger {
                     print_id: *print_id,
                     sessions: Vec::new(),
                     turns: Vec::new(),
+                    compactions: Vec::new(),
                 })
             }
             Err(error) => Err(error),
@@ -266,15 +363,24 @@ impl PrintLedger {
                 ));
             }
         }
-        for turn in &self.turns {
-            if !self
-                .sessions
+        let opened = |name: &SessionName| {
+            self.sessions
                 .iter()
-                .any(|session| session.session_name == turn.session_name.as_str())
-            {
+                .any(|session| session.session_name == name.as_str())
+        };
+        for turn in &self.turns {
+            if !opened(&turn.session_name) {
                 return Err(format!(
                     "a turn is recorded against session `{}`, which this print has never opened",
                     turn.session_name
+                ));
+            }
+        }
+        for compaction in &self.compactions {
+            if !opened(&compaction.session_name) {
+                return Err(format!(
+                    "a compaction is recorded against session `{}`, which this print has never opened",
+                    compaction.session_name
                 ));
             }
         }
@@ -292,7 +398,14 @@ impl PrintLedger {
             fs::create_dir_all(parent)?;
         }
         let text = serde_json::to_string_pretty(self).map_err(io::Error::other)?;
-        fs::write(path, text)
+        // Written beside it and moved over it, so a reader never sees a ledger
+        // half-written: an idle compaction writes its end on a thread of its
+        // own while the print's history is read.
+        let mut written = path.clone().into_os_string();
+        written.push(".writing");
+        let written = PathBuf::from(written);
+        fs::write(&written, text)?;
+        fs::rename(&written, &path)
     }
 
     /// Every session opened for this print, in order.
@@ -303,6 +416,16 @@ impl PrintLedger {
     /// Every turn recorded for this print, in order.
     pub(crate) fn turns(&self) -> &[RecordedTurn] {
         &self.turns
+    }
+
+    /// Every idle compaction recorded for this print, in order.
+    pub(crate) fn compactions(&self) -> &[RecordedCompaction] {
+        &self.compactions
+    }
+
+    /// Write down one idle compaction.
+    pub(crate) fn record_compaction(&mut self, compaction: RecordedCompaction) {
+        self.compactions.push(compaction);
     }
 
     /// The session a turn arriving now runs in: the current one while it is
@@ -377,13 +500,14 @@ impl PrintLedger {
     pub(crate) fn record_turn(
         &mut self,
         session_name: &SessionName,
-        at: Timestamp,
+        (started_at, at): (Timestamp, Timestamp),
         failure: Option<&str>,
         calls: Vec<CallUsage>,
     ) {
         self.turns.push(RecordedTurn {
             session_name: session_name.clone(),
             ran_at: at,
+            started_at: Some(started_at),
             failure: failure.map(ToOwned::to_owned),
             calls,
         });

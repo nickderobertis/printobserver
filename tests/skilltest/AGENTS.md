@@ -28,6 +28,13 @@ The rules the real-print suite is held to, and why.
   `set-*`, else quiet; its requests run until the next harness run starts, because
   a turn that acknowledged nothing by command is acknowledged from its answer once
   its harness exits. A check that runs `look` after acting fails.
+- **The replays run the installer's compaction settings,** `idle_compact_tokens`
+  and `auto_compact_tokens`, which the record states. A compaction's harness is
+  reported to the replay on its own paths and serves no entry, so it moves the
+  replay nowhere; the scheduled check due while it runs waits for it to end, by
+  manager ruling, so the live run proves the wait and the Rust journeys the
+  cancel. Each check's wait, from its event's arrival to its turn's start, and
+  every compaction are read from the port's ledger.
 - **The probe is one turn of the shipped configuration alone,** through
   `printobserver-server-probe`, with no image; its first call's input is the base
   context every check's input figure is held free of history against. The image

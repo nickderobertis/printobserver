@@ -18,6 +18,7 @@ left out of `figures`, which `telemetry_budget` refuses by name.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import statistics
@@ -31,9 +32,12 @@ from replay import (
     PROBE_RECORD,
     REPORTED_COUNTS,
     CallUsage,
+    CheckWait,
+    Compaction,
     DecisionRecord,
     ImageKind,
     ImageProbeRecord,
+    LedgerCompaction,
     ProbeRecord,
     TestRecord,
     is_assessment,
@@ -55,7 +59,7 @@ def commit() -> str:
 #: The decision points of a supervision check carry these beside a start request's.
 CHECK_FIELDS = {"calls", "check_class"}
 #: The fields a decision point may leave out: what a record kept before they existed lacks.
-OPTIONAL_FIELDS = {"facts_bytes", "image"}
+OPTIONAL_FIELDS = {"facts_bytes", "image", "wait", "follows_compaction"}
 #: The side of the square Anthropic's rule counts one image token for, in pixels.
 TOKEN_SIDE_PX = 28
 #: The whole camera frame a check is shown when it is not shown the composite.
@@ -72,6 +76,10 @@ class Detail(TypedDict):
     models: list[str]
     turns_the_cases_count: int
     compactions: int
+    #: The compaction settings every replay's server ran with.
+    compaction: Compaction | None
+    #: Every idle compaction the run's replays made.
+    idle_compactions: int
     passed: bool
     tests: list[TestRecord]
     probe: ProbeRecord | None
@@ -268,6 +276,16 @@ class Check(TypedDict):
     history: int | None
     #: `raw_input - calls x (history - base)`, when there is a base.
     input: int | None
+    #: The conversation its last call leaves: that call's input, cache included, and output.
+    size: int | None
+    #: Its calls' input not read from the prompt cache.
+    uncached_input: int
+    #: Its calls' input read from the prompt cache.
+    cached_input: int
+    #: Whether an idle compaction of its session completed since the previous check.
+    follows_compaction: bool
+    #: How its event waited for its turn, when the record says.
+    wait: CheckWait | None
 
 
 def checks_of(tests: list[TestRecord], base: int | None) -> list[Check]:
@@ -298,6 +316,14 @@ def checks_of(tests: list[TestRecord], base: int | None) -> list[Check]:
                     "input": None
                     if base is None or history is None
                     else raw - len(calls) * (history - base),
+                    "size": conversation_size(calls[-1]) if calls else None,
+                    "uncached_input": sum(
+                        call.get("input_tokens", 0) + call.get("cache_write_tokens", 0)
+                        for call in calls
+                    ),
+                    "cached_input": sum(call.get("cache_read_tokens", 0) for call in calls),
+                    "follows_compaction": bool(point.get("follows_compaction", False)),
+                    "wait": point.get("wait"),
                 }
             )
             previous = calls
@@ -306,6 +332,182 @@ def checks_of(tests: list[TestRecord], base: int | None) -> list[Check]:
 
 def _median(values: list[int]) -> float:
     return float(statistics.median(values))
+
+
+def conversation_size(usage: CallUsage) -> int:
+    """The conversation one call leaves: its input, cache included, and its output."""
+    return call_input(usage) + usage.get("output_tokens", 0)
+
+
+class Workload(TypedDict):
+    """One print's conversation a projection is made over."""
+
+    checks: int
+    acting: int
+
+
+#: A typical 2.5 h print checked every 120 s.
+TYPICAL_PRINT: Workload = {"checks": 76, "acting": 4}
+#: The long plate: 9 h 21 min checked every 120 s.
+LONG_PLATE: Workload = {"checks": 281, "acting": 15}
+
+
+class Rates(TypedDict):
+    """What the projection is made from, each from the run's own per-call figures."""
+
+    #: The base context per call: the text probe's first-call input.
+    base: int
+    #: The median history-free input of a quiet check.
+    quiet: float
+    #: The median growth in conversation size per quiet check.
+    growth: float
+    #: The median model calls per acting check.
+    acting_calls: float
+    #: The median conversation size after an idle compaction.
+    after_compaction: float
+    #: The median input of an idle compaction.
+    compaction_input: float
+    #: The idle compaction threshold the replays ran with.
+    threshold: int
+
+
+def projected(workload: Workload, rates: Rates) -> tuple[float, int]:
+    """The input one print's conversation reads, and the idle compactions it makes.
+
+    Each check's calls read the conversation it carries plus what the check adds
+    to a call with no history (`quiet - base`); the conversation starts at the
+    base and grows by `growth` per check, and once it reaches the threshold it
+    is compacted, which reads `compaction_input`, and restarts at
+    `after_compaction`. An acting check makes `acting_calls` calls, the quiet
+    ones one; the acting checks are spread evenly over the print.
+    """
+    checks, acting = workload["checks"], workload["acting"]
+    acting_at = {((index * 2 + 1) * checks) // (acting * 2) for index in range(acting)}
+    added = rates["quiet"] - rates["base"]
+    carried = float(rates["base"])
+    total = 0.0
+    compactions = 0
+    for check in range(checks):
+        calls = rates["acting_calls"] if check in acting_at else 1.0
+        total += calls * (carried + added)
+        carried += rates["growth"]
+        if carried >= rates["threshold"]:
+            total += rates["compaction_input"]
+            carried = rates["after_compaction"]
+            compactions += 1
+    return total, compactions
+
+
+def _growth(checks: list[Check]) -> list[int]:
+    """How much each quiet check grew its test's conversation over the check before it."""
+    grown = []
+    for previous, check in itertools.pairwise(checks):
+        if (
+            previous["test"] == check["test"]
+            and check["check_class"] == "quiet"
+            and not check["follows_compaction"]
+            and previous["size"] is not None
+            and check["size"] is not None
+        ):
+            grown.append(check["size"] - previous["size"])
+    return grown
+
+
+def _rates(
+    checks: list[Check],
+    base: int | None,
+    compactions: list[LedgerCompaction],
+    threshold: int | None,
+) -> Rates | None:
+    """The projection's rates, when the run measured every one of them."""
+    quiet = [check["input"] for check in checks if check["check_class"] == "quiet"]
+    quiet = [figure for figure in quiet if figure is not None]
+    acting = [check["calls"] for check in checks if check["check_class"] == "acting"]
+    grown = _growth(checks)
+    completed = [compaction for compaction in compactions if compaction["ended"] == "completed"]
+    after = [
+        compaction["reported_after"] for compaction in completed if "reported_after" in compaction
+    ]
+    read = [call_input(compaction.get("usage", {})) for compaction in completed]
+    if base is None or threshold is None or not (quiet and acting and grown and after and read):
+        return None
+    return {
+        "base": base,
+        "quiet": _median(quiet),
+        "growth": _median(grown),
+        "acting_calls": _median(acting),
+        "after_compaction": _median(after),
+        "compaction_input": _median(read),
+        "threshold": threshold,
+    }
+
+
+def compaction_figures(
+    checks: list[Check],
+    base: int | None,
+    compactions: list[LedgerCompaction],
+    threshold: int | None,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    """The token projections and the delayed-check count, and what each was worked out from."""
+    figures: dict[str, float] = {}
+    detail: dict[str, Any] = {}
+    rates = _rates(checks, base, compactions, threshold)
+    if rates is not None:
+        typical, typical_compactions = projected(TYPICAL_PRINT, rates)
+        long, long_compactions = projected(LONG_PLATE, rates)
+        figures["tokens_per_print"] = typical
+        figures["tokens_per_long_plate"] = long
+        read = sum(check["cached_input"] for check in checks)
+        detail["tokens_per_print"] = {
+            "workload": TYPICAL_PRINT,
+            "rates": rates,
+            "projected_compactions": typical_compactions,
+            "compactions_observed": compactions,
+            "long_plate": {"workload": LONG_PLATE, "tokens": long},
+            "checks": [
+                {
+                    "test": check["test"],
+                    "scenario": check["scenario"],
+                    "calls": check["calls"],
+                    "uncached_input": check["uncached_input"],
+                }
+                for check in checks
+            ],
+        }
+        detail["tokens_per_long_plate"] = {
+            "workload": LONG_PLATE,
+            "rates": rates,
+            "projected_compactions": long_compactions,
+            "cache_read_share": read / max(1, read + sum(c["uncached_input"] for c in checks)),
+        }
+    waits = [(check, check["wait"]) for check in checks if check["wait"] is not None]
+    if waits:
+        cancelling = [
+            wait["wait_ms"]
+            for _, wait in waits
+            if wait["wait_ms"] is not None
+            and any(compaction["ended"] == "cancelled" for compaction in wait["compactions"])
+        ]
+        figures["compaction_delayed_checks"] = float(sum(1 for _, wait in waits if wait["delayed"]))
+        detail["compaction_delayed_checks"] = {
+            "started": len(compactions),
+            "completed": sum(1 for c in compactions if c["ended"] == "completed"),
+            "cancelled": sum(1 for c in compactions if c["ended"] == "cancelled"),
+            "longest_wait_while_cancelling_ms": max(cancelling) if cancelling else None,
+            "longest_scheduled_wait_ms": max(
+                (
+                    wait["waited_for_compaction_ms"]
+                    for _, wait in waits
+                    if wait["waited_for_compaction_ms"] is not None
+                ),
+                default=None,
+            ),
+            "each": [
+                {"test": check["test"], "scenario": check["scenario"], **wait}
+                for check, wait in waits
+            ],
+        }
+    return figures, detail
 
 
 class CheckCalls(TypedDict):
@@ -520,22 +722,44 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
             msg = f"{test['test']} is no case with a replay of those decision points"
             raise UnreadableRunError(msg)
     base = call_input(probe["calls"][0]) if probe is not None else None
-    figures, figured = figures_of(checks_of(tests, base), probe, image_probe)
+    checks = checks_of(tests, base)
+    figures, figured = figures_of(checks, probe, image_probe)
+    configured = _configured(tests)
+    compactions = [compaction for test in tests for compaction in test.get("compactions", [])]
+    compacted, compacted_detail = compaction_figures(
+        checks,
+        base,
+        compactions,
+        configured["idle_compact_tokens"] if configured is not None else None,
+    )
     return {
-        "figures": {"turns": len(points), **figures},
+        "figures": {"turns": len(points), **figures, **compacted},
         "detail": {
             "commit": commit_id,
             "harness": HARNESS,
             "models": sorted({model for point in points for model in point["models"]}),
             "turns_the_cases_count": sum(len(replayed[test["test"]]) for test in tests),
             "compactions": sum(1 for point in points if point["compacted"]),
+            "compaction": configured,
+            "idle_compactions": len(compactions),
             "passed": all(test["passed"] for test in tests),
             "tests": tests,
             "probe": probe,
             "image_probe": image_probe,
-            "figures": figured,
+            "figures": {**figured, **compacted_detail},
         },
     }
+
+
+def _configured(tests: list[TestRecord]) -> Compaction | None:
+    """The compaction settings every replay ran with, refused when two replays differ."""
+    found = [test["configured"] for test in tests if test.get("configured") is not None]
+    if not found:
+        return None
+    if any(each != found[0] for each in found):
+        msg = f"the replays ran with different compaction settings: {found}"
+        raise UnreadableRunError(msg)
+    return found[0]
 
 
 def main(arguments: list[str]) -> int:

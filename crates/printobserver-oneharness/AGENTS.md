@@ -99,6 +99,25 @@ of the sequence rather than resuming the closed one. None of that reaches the
 caller as a failure: closing and reopening is ordinary supervision, and a caller
 that had to handle it would be handling OneHarness's session model.
 
+## A session is compacted while idle, and a turn never waits on it
+
+Once a turn leaves its conversation at or above `idle_compact_tokens` — its
+last call's whole input and output — the session is compacted through
+`OneHarness`'s `compact_session` on a thread of its own, and every turn
+carries `auto_compact_tokens` as the harness's own backstop. Any turn of the
+print cancels the compaction through `RunControls::cancel` and starts once its
+harness process has exited; the next turn's end tries again. A turn and a
+compaction of one session never run at once, and the ledger records each
+compaction's end.
+
+**The scheduled check is the one exception, by manager ruling.** It waits for
+a running compaction to end, bounded by the compaction's own timeout
+(`SupervisorPort::idle_work_ended`), because it is what continues the session
+on its cadence, and cancelling it would leave every gap shorter than one
+compaction. The wait is recorded on the compaction. An alert or a print's end
+still cancels it at once. An operator request claims no turn, so it neither
+waits on a compaction nor cancels one.
+
 ## What cannot be valid is not representable
 
 A configuration reaches this port already narrowed — an empty harness identity

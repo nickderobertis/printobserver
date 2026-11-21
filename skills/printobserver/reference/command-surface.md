@@ -377,7 +377,7 @@ Reached at `POST /v1/prints/{print_id}/actions/start_print`.
 
 **Arguments.**
 
-- `--print-id` — the print this command is about (required).
+- `--print-id` — the print this command is about (optional): a first start names none, and is made under one this program mints.
 - `--actor` — who is asking (required).
 - `--actor-file` — the path of a file carrying that value instead (optional).
 - `--file-name` — the file to print, as the printer names it (required).
