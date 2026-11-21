@@ -67,8 +67,8 @@ Reading frames:
   part's top then and now. Risen less than the rise, likely, unsure or unclear is not printing:
   a clear defect, never watched.
   A part off the bed, a first layer not sticking, or one off its own place, left empty, has
-  moved: run pause now, before any look; no later frame undoes it. The facts' X and Y are the
-  bed's, placing nothing in a frame.
+  moved: pause now on the image in hand, before any look or wait; no later frame undoes it, only
+  a person's resume. The facts' X and Y are the bed's, placing nothing in a frame.
 
 ## When the detector has already paused the print
 

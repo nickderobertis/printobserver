@@ -1142,7 +1142,7 @@ install = "uv run -q python -m repo_checks install-powershell {version}"
 # refuses a link to a document that is not there, and refuses a skill that omits
 # a link to one of the documents declared below.
 skill = "skills/printobserver/SKILL.md"
-skill_max_characters = 6057
+skill_max_characters = 6106
 skill_max_lines = 150
 
 # The generated artifacts the documentation checks read the things they

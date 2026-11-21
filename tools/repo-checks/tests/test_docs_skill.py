@@ -29,5 +29,5 @@ def test_the_check_enforces_the_bounds_this_repository_declares(committed: Repo)
     """
     policy = docs_policy(committed)
 
-    equal(policy.skill_max_characters, 6057, describing="the character bound")
+    equal(policy.skill_max_characters, 6106, describing="the character bound")
     equal(policy.skill_max_lines, 150, describing="the line bound")
