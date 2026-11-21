@@ -954,9 +954,12 @@ def _task_state(task: str, program: Path, port: int, killed: Sequence[int] = ())
     The process Task Scheduler tracks for the running instance is its engine
     PID; beside it, every process at the program's path, every process one of
     them started, and the processes `killed` lists — the servers running when
-    one was killed, that one first — each with its parent and when it started;
-    and every socket on the listen `port`, with the process that holds it.
+    one was killed, that one first — each with its parent, when it started and
+    its threads and handles; whether the killed one still exists, and what each
+    of its threads waits on if it does; and every socket on the listen `port`,
+    with the process that holds it.
     """
+    ended = killed[0] if killed else 0
     told = _powershell_answer(
         f"$t = Get-ScheduledTask -TaskName {_quoted(task)} -TaskPath '\\'; "
         "$i = $t | Get-ScheduledTaskInfo; "
@@ -972,7 +975,15 @@ def _task_state(task: str, program: Path, port: int, killed: Sequence[int] = ())
         "$ids = @($ours | ForEach-Object { $_.ProcessId }); "
         "@($ours) + @($all | Where-Object { $ids -contains $_.ParentProcessId }) | "
         "ForEach-Object { 'process ' + $_.ProcessId + ' parent ' + $_.ParentProcessId + ' ' + "
-        "$_.Name + ' started ' + $_.CreationDate + ': ' + $_.CommandLine }; "
+        "$_.Name + ' started ' + $_.CreationDate + ' threads ' + $_.ThreadCount + "
+        "' handles ' + $_.HandleCount + ': ' + $_.CommandLine }; "
+        f'$k = {ended}; $p = Get-CimInstance Win32_Process -Filter "ProcessId=$k"; '
+        "if (-not $k) { 'no server was killed' } elseif ($p) { "
+        "'killed ' + $k + ' still exists, with ' + $p.ThreadCount + ' threads and ' + "
+        "$p.HandleCount + ' handles'; "
+        "Get-CimInstance Win32_Thread -Filter \"ProcessHandle='$k'\" | ForEach-Object { "
+        "'killed thread ' + $_.Handle + ' state ' + $_.ThreadState + ' wait reason ' + "
+        "$_.ThreadWaitReason } } else { 'killed ' + $k + ' no longer exists' }; "
         f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | "
         "ForEach-Object { 'port ' + $_.LocalAddress + ':' + $_.LocalPort + ' ' + $_.State + "
         "' to ' + $_.RemoteAddress + ':' + $_.RemotePort + ' held by ' + $_.OwningProcess + ' ' + "
