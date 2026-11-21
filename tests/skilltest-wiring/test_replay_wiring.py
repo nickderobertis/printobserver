@@ -38,6 +38,7 @@ from cases import (
     REPO,
     Case,
     MachineState,
+    Milestone,
     Moment,
     Request,
     ScenarioId,
@@ -50,7 +51,7 @@ from cases import (
     replayed_case_names,
 )
 from mock_turn import ScriptedRun, Seen
-from outside import Outside
+from outside import MILESTONE_WORDS, Outside
 from replay import (
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
@@ -343,6 +344,9 @@ def test_the_suites_vocabularies_are_the_contracts() -> None:
     declared = schema["$defs"]["Scenario"]["properties"]["trigger"]["enum"]
     equal(sorted(trigger.value for trigger in Trigger), sorted(declared))
     equal(sorted(get_args(RepoCheckTrigger)), sorted(declared))
+    milestones = schema["$defs"]["Scenario"]["properties"]["milestone"]["enum"]
+    equal(sorted(milestone.value for milestone in Milestone), sorted(milestones))
+    equal(set(MILESTONE_WORDS), set(Milestone), describing="a watch line's words for each")
     assessment = json.loads(
         (REPO / "schemas/printobserver-supervisor-api/AgentAssessment.json").read_text("utf-8")
     )
