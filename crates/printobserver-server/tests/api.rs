@@ -42,8 +42,14 @@ mod bed_clear;
 mod binding;
 #[path = "journeys/coherent_ledger.rs"]
 mod coherent_ledger;
+// The responder binary this journey runs is built only under the feature this
+// crate's own test target is run with.
+#[cfg(feature = "test-responder")]
 #[path = "journeys/compacting.rs"]
 mod compacting;
+// The responder binary this journey runs is built only under the feature this
+// crate's own test target is run with.
+#[cfg(feature = "test-responder")]
 #[path = "journeys/composite_checks.rs"]
 mod composite_checks;
 #[path = "journeys/configuration.rs"]
