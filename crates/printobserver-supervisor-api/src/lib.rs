@@ -274,4 +274,22 @@ pub trait SupervisorPort: Send + Sync {
         print_id: PrintId,
         close_reason: String,
     ) -> BoxFuture<'_, Result<(), SupervisorError>>;
+
+    /// Answer once no idle work of this port on one print's session is under
+    /// way: at once when there is none, and otherwise when it ends.
+    ///
+    /// What the periodic observation awaits before it claims the print, so a
+    /// scheduled check does not cancel a compaction of the session it is about
+    /// to continue; every other event's turn starts at once. A port does all
+    /// its work inside a turn unless it says otherwise, which is why this
+    /// answers at once by default.
+    ///
+    /// # Errors
+    ///
+    /// None this default answers; a port whose wait could not be taken answers
+    /// [`SupervisorError::Unavailable`], and the check runs regardless.
+    fn idle_work_ended(&self, print_id: PrintId) -> BoxFuture<'_, Result<(), SupervisorError>> {
+        let _ = print_id;
+        Box::pin(core::future::ready(Ok(())))
+    }
 }

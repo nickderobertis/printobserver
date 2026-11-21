@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread::JoinHandle;
 
 use oneharness_core::domain::harness::HarnessIdentity as EngineIdentity;
@@ -93,15 +93,41 @@ pub struct OneharnessSupervisor {
     compacting: Mutex<HashMap<PrintId, Compacting>>,
 }
 
-/// One idle compaction under way: what cancels it, and the thread that writes
-/// its end down once its harness process has exited.
+/// One idle compaction under way: what cancels it, what says it has ended,
+/// and the thread that writes its end down once its harness process has
+/// exited.
 #[derive(Debug)]
 struct Compacting {
     /// Cancels the compaction's harness process.
     cancel: CancelToken,
+    /// Where a scheduled check waits for its end.
+    ending: Arc<Ending>,
     /// The thread running it, which returns once its end is written down.
     thread: JoinHandle<()>,
 }
+
+/// Whether an idle compaction has ended, and since when a scheduled check has
+/// waited for it.
+#[derive(Debug, Default)]
+struct Ending {
+    /// What has happened so far.
+    state: Mutex<EndingState>,
+    /// Signalled once the compaction's end is written down.
+    ended: Condvar,
+}
+
+/// What has happened to an idle compaction so far.
+#[derive(Debug, Default)]
+struct EndingState {
+    /// When a scheduled check began to wait for it, if one has.
+    waited_since: Option<std::time::Instant>,
+    /// Whether its end is written down.
+    ended: bool,
+}
+
+/// How much longer than a compaction's own timeout a scheduled check waits for
+/// it: the margin for writing its end down once its harness process is gone.
+const ENDING_MARGIN: std::time::Duration = std::time::Duration::from_secs(30);
 
 impl OneharnessSupervisor {
     /// Build the port, reading the skill and the prompt template from the tree.
@@ -154,6 +180,33 @@ impl OneharnessSupervisor {
         Ok(self.ledger(print_id)?.compactions().to_vec())
     }
 
+    /// Wait, while an idle compaction of one print's session runs, until it
+    /// ends, and at most its own timeout and [`ENDING_MARGIN`]; answer at once
+    /// when none runs. The wait is written down with the compaction's end.
+    fn wait_for_compaction(&self, print_id: &PrintId) {
+        let ending = self
+            .compacting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(print_id)
+            .map(|running| Arc::clone(&running.ending));
+        let Some(ending) = ending else {
+            return;
+        };
+        let bound =
+            std::time::Duration::from_secs(self.config.turn_timeout.seconds()) + ENDING_MARGIN;
+        let mut state = ending.state.lock().unwrap_or_else(PoisonError::into_inner);
+        state
+            .waited_since
+            .get_or_insert_with(std::time::Instant::now);
+        // However it ends — completed, cancelled, failed or timed out — the
+        // check runs then, and past the bound it runs regardless.
+        let _ = ending
+            .ended
+            .wait_timeout_while(state, bound, |state| !state.ended)
+            .unwrap_or_else(PoisonError::into_inner);
+    }
+
     /// End the idle compaction of one print's session, if one is running: it
     /// is cancelled, and this returns once its harness process has exited and
     /// its end is written down. A session is never compacted while a turn of
@@ -189,6 +242,7 @@ impl OneharnessSupervisor {
             return;
         }
         let cancel = CancelToken::new();
+        let ending = Arc::new(Ending::default());
         let compaction = IdleCompaction {
             config: self.config.clone(),
             seam: self.seam.clone(),
@@ -196,6 +250,7 @@ impl OneharnessSupervisor {
             session: session.clone(),
             size,
             cancel: cancel.clone(),
+            ending: Arc::clone(&ending),
         };
         // A thread that could not be started compacts nothing; the next turn's
         // end asks again.
@@ -208,7 +263,14 @@ impl OneharnessSupervisor {
         self.compacting
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(*print_id, Compacting { cancel, thread });
+            .insert(
+                *print_id,
+                Compacting {
+                    cancel,
+                    ending,
+                    thread,
+                },
+            );
     }
 
     /// Run one prompt in a fresh session through exactly the run request a turn
@@ -772,6 +834,8 @@ struct IdleCompaction {
     size: u64,
     /// What an event for the print cancels it through.
     cancel: CancelToken,
+    /// Where a scheduled check waits for its end.
+    ending: Arc<Ending>,
 }
 
 impl IdleCompaction {
@@ -794,6 +858,13 @@ impl IdleCompaction {
                 Some(error),
             ),
         };
+        // Held while the end is written down, so a scheduled check that began
+        // to wait is either counted here or finds it ended.
+        let mut state = self
+            .ending
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let compaction = RecordedCompaction {
             session_name: self.session.clone(),
             started_at,
@@ -804,6 +875,9 @@ impl IdleCompaction {
             reported_after,
             usage,
             error,
+            scheduled_check_waited_ms: state
+                .waited_since
+                .map(|since| u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)),
         };
         // A ledger that cannot be read or written loses this record alone; the
         // next turn reads the same ledger and is refused naming why.
@@ -811,6 +885,9 @@ impl IdleCompaction {
             ledger.record_compaction(compaction);
             let _ = ledger.write(&self.config.state_dir);
         }
+        state.ended = true;
+        drop(state);
+        self.ending.ended.notify_all();
     }
 
     /// The compaction itself, in the session store and the working directory
@@ -1075,6 +1152,13 @@ fn assessment(result: &RunResult) -> Result<AgentAssessment, SupervisorError> {
 }
 
 impl SupervisorPort for OneharnessSupervisor {
+    fn idle_work_ended(&self, print_id: PrintId) -> BoxFuture<'_, Result<(), SupervisorError>> {
+        Box::pin(async move {
+            self.wait_for_compaction(&print_id);
+            Ok(())
+        })
+    }
+
     fn run_turn(
         &self,
         request: TurnRequest,

@@ -22,7 +22,7 @@ use printobserver_octoprint::OctoPrintPrinter;
 use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
 use printobserver_oneharness::{
     CompactionEnd, EnvAssignment, OneharnessSupervisor, RecordedCompaction, RecordedTurn,
-    RunRequestObserver, SESSIONS_DIRECTORY, TurnSeam,
+    RunRequestObserver, SESSIONS_DIRECTORY, TurnSeam, TurnTimeout,
 };
 use printobserver_server::{Ports, Running, Server, ServerConfig, agent_config};
 use printobserver_store_sqlite::SqliteStore;
@@ -143,7 +143,7 @@ fn translated(tokens: u64) -> Vec<(String, String)> {
 struct Compacting {
     root: TempDir,
     server: Running,
-    _octoprint: ScriptedOctoPrint,
+    octoprint: ScriptedOctoPrint,
     camera: crate::http_host::Host,
     agent: Arc<OneharnessSupervisor>,
     requests: Arc<Requests>,
@@ -153,7 +153,17 @@ struct Compacting {
 impl Compacting {
     /// A server configured from `installer`'s template, as `edit` leaves it,
     /// whose harness answers `steps` in order and quietly from then on.
-    async fn open(installer: &str, edit: fn(&mut String), steps: &[Step]) -> Self {
+    async fn open(installer: &str, edit: fn(&mut toml::Value), steps: &[Step]) -> Self {
+        Self::open_timed(installer, edit, steps, None).await
+    }
+
+    /// The same, each turn and compaction given `timeout` when one is named.
+    async fn open_timed(
+        installer: &str,
+        edit: fn(&mut toml::Value),
+        steps: &[Step],
+        timeout: Option<TurnTimeout>,
+    ) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         let state = root.path().join("state");
         copy_tree(
@@ -167,13 +177,15 @@ impl Compacting {
         let camera = crate::http_host::image_host(marked_frame()).await;
 
         let path = configured(installer, &root, &octoprint, &camera.url(), 3_600);
-        let mut text = std::fs::read_to_string(&path).expect("the configuration reads");
-        edit(&mut text);
-        std::fs::write(&path, text).expect("the configuration is writable");
+        let text = std::fs::read_to_string(&path).expect("the configuration reads");
+        let mut document: toml::Value = toml::from_str(&text).expect("it is a document");
+        edit(&mut document);
+        std::fs::write(&path, toml::to_string(&document).expect("it renders"))
+            .expect("the configuration is writable");
         let config = ServerConfig::load(&path)
             .unwrap_or_else(|error| panic!("{installer}'s configuration reads: {error}"));
 
-        let (agent, requests) = scripted(&config, root.path(), steps);
+        let (agent, requests) = scripted(&config, root.path(), steps, timeout);
         let agent = Arc::new(agent);
         let server = Server::start_with(
             config.clone(),
@@ -191,7 +203,7 @@ impl Compacting {
         Self {
             root,
             server,
-            _octoprint: octoprint,
+            octoprint,
             camera,
             agent,
             requests,
@@ -297,8 +309,12 @@ fn scripted(
     config: &ServerConfig,
     root: &Path,
     steps: &[Step],
+    timeout: Option<TurnTimeout>,
 ) -> (OneharnessSupervisor, Arc<Requests>) {
     let mut composed = agent_config(config).expect("the agent is composed");
+    if let Some(timeout) = timeout {
+        composed.turn_timeout = timeout;
+    }
     composed.harness_bin = Some(PathBuf::from(env!(
         "CARGO_BIN_EXE_printobserver-server-responder"
     )));
@@ -352,17 +368,39 @@ fn scripted(
 }
 
 /// The configuration as the template writes it.
-fn as_written(_: &mut String) {}
+fn as_written(_: &mut toml::Value) {}
 
 /// The configuration with neither compaction key.
-fn without_compaction(text: &mut String) {
-    *text = text
-        .lines()
-        .filter(|line| {
-            !line.starts_with("auto_compact_tokens") && !line.starts_with("idle_compact_tokens")
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+fn without_compaction(document: &mut toml::Value) {
+    let supervisor = document["supervisor"]
+        .as_table_mut()
+        .expect("a supervisor table");
+    supervisor.remove("auto_compact_tokens");
+    supervisor.remove("idle_compact_tokens");
+}
+
+/// The configuration checking every second, and reading the printer as
+/// often as it admits.
+fn checking_every_second(document: &mut toml::Value) {
+    crate::world::set(
+        document,
+        "supervisor.observation_interval_s",
+        toml::Value::Integer(1),
+    );
+    crate::world::set(
+        document,
+        "supervisor.printer_poll_s",
+        toml::Value::Integer(5),
+    );
+}
+
+/// The configuration reading the printer as often as it admits.
+fn polling_often(document: &mut toml::Value) {
+    crate::world::set(
+        document,
+        "supervisor.printer_poll_s",
+        toml::Value::Integer(5),
+    );
 }
 
 /// Whether a harness process was started for a compaction.
@@ -630,6 +668,217 @@ async fn an_event_during_a_compaction_cancels_it_and_its_turn_goes_first() {
         "the cancelled compaction changed the session's stored files"
     );
     assert_eq!(journey.compactions_begun().len(), 2);
+    journey.server.stop().await;
+}
+
+/// A scheduled check that comes due while a compaction runs waits for it, and
+/// runs once it ends: the compaction completes, and the check's turn starts
+/// after it, the wait written down with the compaction.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_scheduled_check_waits_for_a_running_compaction_and_then_runs() {
+    let journey = Compacting::open(
+        INSTALLERS[0],
+        checking_every_second,
+        &[
+            Step::Turn(sized(IDLE_COMPACT + 5_000)),
+            Step::Compaction,
+            Step::Turn(sized(AFTER + 4_000)),
+        ],
+    )
+    .await;
+    let hold = journey.path("compact-hold");
+    std::fs::write(&hold, "held").expect("the hold is writable");
+    let print = journey.active().await;
+    journey
+        .until("the first scheduled check's turn ended", || {
+            !journey.turns(&print).is_empty()
+        })
+        .await;
+    journey
+        .until("the compaction began", || {
+            journey.compactions_begun().len() == 1
+        })
+        .await;
+    // Several rounds of a one-second check come due while it holds.
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    assert_eq!(
+        journey.turns(&print).len(),
+        1,
+        "a scheduled check ran while the compaction did"
+    );
+    assert!(
+        journey.compactions(&print).is_empty(),
+        "it is still running"
+    );
+
+    std::fs::remove_file(&hold).expect("the hold is released");
+    journey
+        .until("the waiting check's turn ended", || {
+            journey.turns(&print).len() >= 2
+        })
+        .await;
+
+    let turns = journey.turns(&print);
+    let compactions = journey.compactions(&print);
+    assert_eq!(compactions.len(), 1, "{compactions:?}");
+    let compaction = &compactions[0];
+    assert_eq!(compaction.ended, CompactionEnd::Completed, "{compaction:?}");
+    let waited = compaction
+        .scheduled_check_waited_ms
+        .expect("the waiting check is written down");
+    assert!(waited >= 3_000, "the check waited {waited} ms");
+    assert!(
+        compaction.ended_at <= turns[1].started_at.expect("a start"),
+        "the scheduled check's turn started before the compaction ended"
+    );
+    none_overlap(&turns, &compactions);
+    let observed = journey
+        .get(&format!("/prints/{print}/history?limit=1000"))
+        .await["events"]
+        .as_array()
+        .expect("events")
+        .iter()
+        .filter(|event| event["kind"] == "periodic_observation")
+        .count();
+    assert!(observed >= 2, "the second turn was not a scheduled check's");
+    journey.server.stop().await;
+}
+
+/// A compaction that hangs past its own timeout is ended there, and releases
+/// the scheduled check waiting on it, which then runs in the session as it was.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_compaction_hung_past_its_timeout_releases_the_waiting_check() {
+    let timeout = 3;
+    let journey = Compacting::open_timed(
+        INSTALLERS[0],
+        checking_every_second,
+        &[
+            Step::Turn(sized(IDLE_COMPACT + 5_000)),
+            Step::Turn(sized(AFTER + 4_000)),
+        ],
+        Some(TurnTimeout::new(timeout).expect("a bound")),
+    )
+    .await;
+    std::fs::write(journey.path("compact-hold"), "held for good").expect("the hold is writable");
+    let print = journey.active().await;
+    journey
+        .until("the waiting check's turn ended", || {
+            journey.turns(&print).len() >= 2
+        })
+        .await;
+
+    let turns = journey.turns(&print);
+    let compactions = journey.compactions(&print);
+    assert_eq!(compactions.len(), 1, "{compactions:?}");
+    let compaction = &compactions[0];
+    assert_eq!(compaction.ended, CompactionEnd::Failed, "{compaction:?}");
+    assert!(
+        compaction.scheduled_check_waited_ms.is_some(),
+        "no scheduled check waited on it: {compaction:?}"
+    );
+    assert!(
+        compaction.ended_at <= turns[1].started_at.expect("a start"),
+        "the waiting check ran before the hung compaction was ended"
+    );
+    let ran = journey.compactions_begun().len();
+    assert_eq!(ran, 1, "the hung compaction was not the only one");
+    none_overlap(&turns, &compactions);
+    journey.server.stop().await;
+}
+
+/// The printer pushing a reset that ends the print, while its session is
+/// compacting, cancels the compaction at once rather than waiting on it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_print_ending_during_a_compaction_cancels_it() {
+    let journey = Compacting::open(
+        INSTALLERS[0],
+        polling_often,
+        &[Step::Turn(sized(IDLE_COMPACT + 5_000))],
+    )
+    .await;
+    std::fs::write(journey.path("compact-hold"), "held").expect("the hold is writable");
+    let print = journey.active().await;
+    journey.turn(&print, 1).await;
+    journey
+        .until("the compaction began", || {
+            journey.compactions_begun().len() == 1
+        })
+        .await;
+
+    journey.octoprint.pushes_event("PrinterReset", &json!({}));
+    journey.octoprint.reports(
+        "Operational",
+        JobScript {
+            file: Some((FILE.to_owned(), i64::try_from(SLICE.len()).expect("a size"))),
+            ..JobScript::idle()
+        },
+    );
+    journey
+        .until("the compaction ended", || {
+            !journey.compactions(&print).is_empty()
+        })
+        .await;
+    let compaction = &journey.compactions(&print)[0];
+    assert_eq!(compaction.ended, CompactionEnd::Cancelled, "{compaction:?}");
+    assert_eq!(compaction.scheduled_check_waited_ms, None);
+    journey.server.stop().await;
+}
+
+/// A person's request while the print's session is compacting claims no turn,
+/// so it is answered without waiting on the compaction, and leaves it running
+/// to complete.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_operator_request_during_a_compaction_neither_waits_nor_cancels() {
+    let journey = Compacting::open(
+        INSTALLERS[0],
+        as_written,
+        &[Step::Turn(sized(IDLE_COMPACT + 5_000)), Step::Compaction],
+    )
+    .await;
+    let hold = journey.path("compact-hold");
+    std::fs::write(&hold, "held").expect("the hold is writable");
+    let print = journey.active().await;
+    journey.turn(&print, 1).await;
+    journey
+        .until("the compaction began", || {
+            journey.compactions_begun().len() == 1
+        })
+        .await;
+
+    let path = printobserver_server::operation("set_fan_percent")
+        .expect("`set_fan_percent` is served")
+        .path
+        .replace("{print_id}", &print.to_string());
+    let asked = tokio::time::timeout(
+        Duration::from_secs(10),
+        journey
+            .client
+            .post(format!("{}{path}", journey.server.base_url()))
+            .json(&json!({
+                "percent": 80.0,
+                "reason": "a person turned the fan up",
+                "actor": "operator",
+            }))
+            .send(),
+    )
+    .await
+    .expect("the request waited on the compaction")
+    .expect("the server answers");
+    assert!(asked.status().is_success(), "{}", asked.status());
+    assert!(
+        journey.compactions(&print).is_empty(),
+        "the person's request ended the compaction"
+    );
+    assert_eq!(journey.turns(&print).len(), 1, "the request claimed a turn");
+
+    std::fs::remove_file(&hold).expect("the hold is released");
+    journey
+        .until("the compaction ended", || {
+            !journey.compactions(&print).is_empty()
+        })
+        .await;
+    let compaction = &journey.compactions(&print)[0];
+    assert_eq!(compaction.ended, CompactionEnd::Completed, "{compaction:?}");
     journey.server.stop().await;
 }
 

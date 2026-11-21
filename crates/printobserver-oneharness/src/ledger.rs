@@ -242,6 +242,11 @@ pub struct RecordedCompaction {
     /// Why it did not complete, when the harness said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// How long a scheduled check waited for it to end, in milliseconds, when
+    /// one did: the one event that lets an idle compaction end rather than
+    /// cancelling it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduled_check_waited_ms: Option<u64>,
 }
 
 /// One print's sessions and turns.
