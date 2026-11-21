@@ -157,7 +157,7 @@ def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
 
 
 #: The projects carrying the end-to-end tier's target, by their directory.
-END_TO_END_PROJECTS = ("tests/repo-e2e", "tests/repo-e2e-independent")
+END_TO_END_PROJECTS = ("tests/repo-e2e", "tests/repo-e2e-independent", "tests/release-drafting")
 
 
 def standing_in_for_the_suite(copy: GateCopy) -> None:
@@ -165,7 +165,7 @@ def standing_in_for_the_suite(copy: GateCopy) -> None:
 
     The project graph's edges, and so which projects a change selects, are the
     copy's own and unchanged. Only what selection would then run is replaced,
-    in each of the tier's two projects: the suite, and any build it waits on,
+    in each of the tier's projects: the suite, and any build it waits on,
     which is a task-graph edge and selects nothing.
     """
     for directory in END_TO_END_PROJECTS:

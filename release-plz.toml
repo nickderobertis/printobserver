@@ -55,8 +55,8 @@ semver_check = true
 # the git tag v<version> exists", which is what stopped every draft after
 # `printobserver-panels` landed on top of v0.13.1. A name nothing creates is
 # never found, so a new crate is drafted and published at the group's version
-# like any other; `tests/repo-e2e-independent/tests/test_release_tag_journey.py`
-# holds this by drafting over a crate added after a tagged release.
+# like any other; `tests/release-drafting` holds this by drafting, under this
+# file, a fixture workspace that gains a crate after a tagged release.
 #
 # Creation is off here and on for one package below because release-plz tags
 # and releases PER PACKAGE, in release order, and under a shared name the second

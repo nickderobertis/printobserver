@@ -1521,7 +1521,8 @@ package whose tag exists *before* it asks the registry, so the program and its
 tag's release never follow. The repair is to delete the tag and the GitHub
 Release, never to move the version.
 `tests/repo-e2e-independent/tests/test_release_tag_journey.py` holds the configuration to
-this, a crate added after a release included.
+this, and `tests/release-drafting` drafts a crate added after a release, over a
+fixture workspace behind an edge of its own.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as
@@ -1557,7 +1558,9 @@ same on every platform — one driving only this repository's own tooling,
 workflows and records — belongs to `tests/repo-e2e-independent`, whose project
 carries the `platform:independent` tag so CI may run it once; every other
 journey belongs to `tests/repo-e2e`, which runs on every platform.
-`test_end_to_end_projects.py` is the record of which file is whose. A gate that stops gating is not a silent failure: the next defective
+`test_end_to_end_projects.py` is the record of which file is whose. A journey
+over a fixture of its own rather than a copy of this tree takes a project of its
+own instead, edged to what it reads: `tests/release-drafting`. A gate that stops gating is not a silent failure: the next defective
 change exposes it, so we do not run whole gates over defect copies to test that
 the gate gates. Structural wiring has one deterministic proof instead:
 `repo_checks.checks_repo.recipe_set`, reached by `just check-repo`, requires

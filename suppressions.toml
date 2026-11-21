@@ -855,12 +855,6 @@ site = "def released"
 reason = "The same ground the entries for this rule at `tests/repo-e2e/project.json` and `tests/repo-e2e-independent/tests/test_release_path_journey.py` state: this repository's end-to-end tier is one project by design, `AGENTS.md` places this coverage there, and no per-project end-to-end target exists for a narrower edge to hang from. What the journey costs — eleven real `cargo publish` uploads to a loopback registry, about a minute — is already bounded by `--no-verify` and by seeding with a real publish rather than a build; the remaining cost is the release program doing the thing under test."
 
 [[suppression]]
-rule = "expensive_tests_stay_behind_their_own_edge"
-file = "tests/repo-e2e-independent/tests/test_release_tag_journey.py"
-site = "def drafted"
-reason = "The same ground the entry for this rule at `def released` in this file states: this repository's end-to-end tier is one project by design, and no per-project end-to-end target exists for a narrower edge to hang from. `drafted` is the drafting half of the same release path `released` drives — the `release-plz update` computation the workflow's `release-pr` step runs — over the same stand-in registry, which forwards reads of crates that are not this workspace's to crates.io. Driving it for real is the only proof that a crate added after a release is drafted rather than stopping the whole draft, which is the failure that held up every release after `v0.13.1`."
-
-[[suppression]]
 rule = "e2e_not_mocked"
 file = "tests/repo-e2e-independent/tests/test_release_workflow_journey.py"
 site = "def driven("

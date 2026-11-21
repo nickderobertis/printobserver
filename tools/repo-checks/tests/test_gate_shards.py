@@ -366,8 +366,12 @@ def test_a_shard_stops_at_its_first_failing_tier_with_its_exit(tree: Callable[[]
     )
 
 
-#: The test directories of the end-to-end tier's two projects.
-END_TO_END_SUITES = ("tests/repo-e2e/tests", "tests/repo-e2e-independent/tests")
+#: The test directories of the end-to-end tier's projects.
+END_TO_END_SUITES = (
+    "tests/repo-e2e/tests",
+    "tests/repo-e2e-independent/tests",
+    "tests/release-drafting/tests",
+)
 
 
 def collected(part: str, *selection: str) -> tuple[int, list[str]]:
