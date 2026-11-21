@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from cases import is_start_case, read_case, read_start_case, replayed_case_names
+from outside import Outside
 from replay import (
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
@@ -47,7 +48,10 @@ def test_the_agent_supervises_the_print(name: str) -> None:
         return
     case = read_case(name)
     replay = Replay(
-        case, [program], gcode=refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name)
+        case,
+        [program],
+        gcode=refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name),
+        outside=lambda replaying: Outside(replaying, [program]),
     )
     try:
         replayed = replay.run()
@@ -65,6 +69,12 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             expect.truth(
                 point.usage and point.models and point.calls,
                 describing=f"{point.moment.id}'s turn to report its usage, models and calls",
+            )
+        # A watch line asks for a look, so its conversation always ran a command.
+        for line in replayed.outside:
+            expect.truth(
+                line.report.usage and line.report.models and line.report.commands,
+                describing=f"{line.moment.id}'s conversation to report usage, models, commands",
             )
         expect.equal(
             {session: [] for session in replayed.compound_commands()},

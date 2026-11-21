@@ -24,6 +24,9 @@ from cases import Milestone, Moment, Request
 from replay import REQUESTED, OutsidePoint, PrintId, Replay, neutral_environment
 from starts import OPERATOR, OperatorAgent, SessionName
 
+#: Where the server writes the images it shows, beside the frames it stores.
+CHECK_IMAGES = "check-images"
+
 #: What the watch's line says the print has reached, by milestone.
 MILESTONE_WORDS = {
     Milestone.FIRST_LAYER: "its first layer",
@@ -80,8 +83,17 @@ class Outside:
         }
 
     def _stored(self) -> set[str]:
-        """The name of every frame and image the server has stored."""
-        return {path.name for path in (self.replay.state / "images").glob("*/*") if path.is_file()}
+        """The name of every frame the server has stored, and of every image it has shown.
+
+        A look answers the image it shows: the stored frame, or the scaled copy of a
+        frame larger than a check is shown, which it writes beside the stored ones.
+        """
+        state = self.replay.state
+        return {
+            path.name
+            for path in [*state.glob("images/*/*"), *state.glob(f"{CHECK_IMAGES}/*")]
+            if path.is_file()
+        }
 
     def _requests(self) -> list[Request]:
         """Every action the operator asked of the print, oldest first."""

@@ -46,6 +46,29 @@ LOOKS_AND_OPENS: ScriptedRun = {"commands": [CONTEXT, PRINTER_LOOK], "reads": ["
 QUIET: ScriptedRun = {"commands": [CONTEXT]}
 #: The words a watch line opens with, which tell its run from a check's.
 WATCH_LINE = "You started the print "
+#: A real camera frame at the camera's own size, which a look shows scaled: a plain
+#: copy the panels crate's tests commit.
+FULL_SIZE_FRAME = (
+    REPO
+    / "crates/printobserver-panels/tests/fixtures/frames/jar-top-petg-healthy"
+    / "agent-001-obs-120024-p00.0.jpg"
+).read_bytes()
+#: Where the server writes the images it shows, beside the frames it stores.
+SHOWN = "check-images"
+
+
+def full_size(name: str) -> bytes:
+    """The full-size frame, stamped with the name of the frame it stands for.
+
+    The stamp is a comment segment after the frame's own leading ones, so it is the
+    last a reader of them finds, as `frame_name` reads a stamp.
+    """
+    at = 2
+    while FULL_SIZE_FRAME[at : at + 2] == b"\xff\xfe":
+        at += 2 + int.from_bytes(FULL_SIZE_FRAME[at + 2 : at + 4], "big")
+    comment = name.encode()
+    segment = b"\xff\xfe" + (len(comment) + 2).to_bytes(2, "big") + comment
+    return FULL_SIZE_FRAME[:at] + segment + FULL_SIZE_FRAME[at:]
 
 
 @dataclass(frozen=True)
@@ -113,15 +136,21 @@ def milestone_layer(layers: list[Layer], milestone: Milestone) -> Layer:
 
 
 def plain_gcode(case: Case) -> bytes:
-    """The case's G-code, from the plain copy whose digest its LFS pointer names."""
+    """The case's G-code, from the plain copy whose digest is the case's own.
+
+    The case's file is the LFS pointer a checkout leaves, naming its object's
+    digest, or that object itself once the real-print suite has fetched it.
+    """
     gcode = printed_gcode(case.directory)
-    held = pointer(gcode.read_bytes()[:2048]) if gcode is not None else None
-    if held is None:
-        pytest.fail(f"{case.name}'s G-code is no LFS pointer to compare the plain copy with")
+    if gcode is None:
+        pytest.fail(f"{case.name} carries no G-code")
+    held = gcode.read_bytes()
+    stands_for = pointer(held[:2048])
+    digest = stands_for.oid if stands_for is not None else hashlib.sha256(held).hexdigest()
     plain = PLAIN_GCODE[case.name].read_bytes()
     equal(
         hashlib.sha256(plain).hexdigest(),
-        held.oid,
+        digest,
         describing=f"{PLAIN_GCODE[case.name].name} to be {case.name}'s G-code byte for byte",
     )
     return plain
@@ -180,14 +209,21 @@ def test_each_watch_line_stands_in_its_milestones_layer_as_the_servers_index_rea
     read through the real `context`, names the layer there, which is the milestone's
     by a reading of the slice apart from that index. Its frame is the case's first
     after that position, or its last where the recording ends before it, and that is
-    the frame the supervisor's own look is answered.
+    the frame the supervisor's own look is answered: at the camera's own size, so the
+    look shows a scaled copy, which is what the supervisor opens.
     """
     case = read_case(name)
     gcode = plain_gcode(case)
     layers = layers_of(gcode)
     cut = around_the_lines(case)
     lines = [moment for moment in cut.moments if moment.is_outside]
-    done = mock_replay(cut, scripted(cut, [LOOKS_AND_OPENS] * len(lines)), scratch, gcode=gcode)
+    done = mock_replay(
+        cut,
+        scripted(cut, [LOOKS_AND_OPENS] * len(lines)),
+        scratch,
+        gcode=gcode,
+        picture=full_size,
+    )
     times = case.frame_times()
     runs = watch_runs(done.turns)
     equal(len(runs), len(lines), describing="one run per watch line")
@@ -219,9 +255,14 @@ def test_each_watch_line_stands_in_its_milestones_layer_as_the_servers_index_rea
             describing=f"{moment.id}'s look to belong to no print",
         )
         equal(
-            done.images.get(Path(looked["image_path"]).name),
+            done.images.get(looked["frame"]["sha256"]),
             moment.event_image,
             describing=f"the frame {moment.id}'s look was answered",
+        )
+        equal(
+            Path(looked["image_path"]).parent.name,
+            SHOWN,
+            describing=f"{moment.id}'s look to show a scaled copy of the full-size frame",
         )
     equal(
         [point.why_not for point in done.replayed.outside],

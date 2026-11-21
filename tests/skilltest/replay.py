@@ -923,7 +923,7 @@ class OutsidePoint:
     failure: str | None
     #: What the operator asked of the print while the conversation ran.
     requests: list[Request]
-    #: The name of each frame the server stored while the conversation ran.
+    #: The name of each frame the server stored, and image it showed, while it ran.
     stored: list[str]
     #: How many frames the camera answered while it ran.
     looks: int

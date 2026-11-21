@@ -257,8 +257,13 @@ def mock_replay(
     *,
     real_waits: bool = False,
     compaction: mock_turn.Compaction | None = None,
+    picture: Callable[[str], bytes] = stamped,
 ) -> Scripted:
-    """Run one case's whole replay, its turns scripted, and read back what happened."""
+    """Run one case's whole replay, its turns scripted, and read back what happened.
+
+    Each frame is `picture`'s bytes for its name, by default the plain fixture
+    stamped with it.
+    """
     script = scratch / "script.json"
     script.write_text(
         json.dumps(
@@ -275,7 +280,7 @@ def mock_replay(
     replay = Replay(
         case,
         target,
-        picture=stamped,
+        picture=picture,
         gcode=gcode,
         real_waits=real_waits,
         outside=lambda replaying: Outside(replaying, target),
