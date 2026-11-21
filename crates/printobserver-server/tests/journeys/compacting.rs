@@ -55,6 +55,20 @@ const SESSION: &str = "SID-COMPACT";
 /// The session id a completed compaction's fork answers under.
 const FORK: &str = "SID-COMPACT-FORK";
 
+/// The most an arriving event's turn may be held up by cancelling a running
+/// compaction: from the event's arrival to its turn's start.
+const CANCEL_BOUND: Duration = Duration::from_secs(5);
+
+/// How long after `from` a turn started, by the ledger's own clock.
+fn after(from: Timestamp, turn: &RecordedTurn) -> Duration {
+    let started = turn
+        .started_at
+        .expect("a turn this build recorded has a start");
+    (*started.as_utc() - *from.as_utc())
+        .to_std()
+        .expect("the turn started after the event arrived")
+}
+
 /// The context size the scripted compaction reports it left.
 const AFTER: u64 = 12_000;
 
@@ -154,7 +168,7 @@ impl Compacting {
     /// A server configured from `installer`'s template, as `edit` leaves it,
     /// whose harness answers `steps` in order and quietly from then on.
     async fn open(installer: &str, edit: fn(&mut toml::Value), steps: &[Step]) -> Self {
-        Self::open_timed(installer, edit, steps, None).await
+        Self::open_as(installer, edit, steps, None, Harness::AsPublished).await
     }
 
     /// The same, each turn and compaction given `timeout` when one is named.
@@ -163,6 +177,17 @@ impl Compacting {
         edit: fn(&mut toml::Value),
         steps: &[Step],
         timeout: Option<TurnTimeout>,
+    ) -> Self {
+        Self::open_as(installer, edit, steps, timeout, Harness::AsPublished).await
+    }
+
+    /// The same, its harness processes started as `harness` says.
+    async fn open_as(
+        installer: &str,
+        edit: fn(&mut toml::Value),
+        steps: &[Step],
+        timeout: Option<TurnTimeout>,
+        harness: Harness,
     ) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         let state = root.path().join("state");
@@ -185,7 +210,7 @@ impl Compacting {
         let config = ServerConfig::load(&path)
             .unwrap_or_else(|error| panic!("{installer}'s configuration reads: {error}"));
 
-        let (agent, requests) = scripted(&config, root.path(), steps, timeout);
+        let (agent, requests) = scripted(&config, root.path(), steps, timeout, harness);
         let agent = Arc::new(agent);
         let server = Server::start_with(
             config.clone(),
@@ -310,14 +335,17 @@ fn scripted(
     root: &Path,
     steps: &[Step],
     timeout: Option<TurnTimeout>,
+    harness: Harness,
 ) -> (OneharnessSupervisor, Arc<Requests>) {
     let mut composed = agent_config(config).expect("the agent is composed");
     if let Some(timeout) = timeout {
         composed.turn_timeout = timeout;
     }
-    composed.harness_bin = Some(PathBuf::from(env!(
-        "CARGO_BIN_EXE_printobserver-server-responder"
-    )));
+    composed.harness_bin = Some(match harness {
+        Harness::AsPublished => responder(),
+        #[cfg(unix)]
+        Harness::IgnoringTerm => ignoring_term(root),
+    });
     let watched: Vec<String> = translated(AUTO_COMPACT)
         .into_iter()
         .map(|(name, _)| name)
@@ -365,6 +393,43 @@ fn scripted(
     )
     .expect("the agent opens");
     (agent, requests)
+}
+
+/// How a journey's harness processes are started.
+#[derive(Clone, Copy)]
+enum Harness {
+    /// The responder over the published mock harness, as it is: a process
+    /// asked to exit with `SIGTERM` does.
+    AsPublished,
+    /// The same responder started with `SIGTERM` ignored, so a compaction asked
+    /// to exit never does, and holds until it is killed.
+    #[cfg(unix)]
+    IgnoringTerm,
+}
+
+/// The responder over the published mock harness.
+fn responder() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_printobserver-server-responder"))
+}
+
+/// A program under `root` that starts [`responder`] with `SIGTERM` ignored: an
+/// ignored signal stays ignored across `exec`, so the responder inherits it
+/// from the shell that starts it.
+#[cfg(unix)]
+fn ignoring_term(root: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    let wrapper = root.join("ignoring-term.sh");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/bin/sh\ntrap '' TERM\nexec '{}' \"$@\"\n",
+            responder().display()
+        ),
+    )
+    .expect("the wrapper is writable");
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))
+        .expect("the wrapper is executable");
+    wrapper
 }
 
 /// The configuration as the template writes it.
@@ -593,10 +658,11 @@ async fn a_configuration_without_the_keys_carries_nothing() {
     journey.server.stop().await;
 }
 
-/// An event that arrives while a compaction runs cancels it: that event's turn
-/// is issued once the compaction's harness process has exited and before any
-/// compaction of the session completes, in the session as it was, and the
-/// compaction is tried again after that turn and completes.
+/// An event that arrives while a compaction runs cancels it: the compaction's
+/// harness process exits promptly, and that event's turn is issued once it has,
+/// inside the bound and before any compaction of the session completes, in the
+/// session as it was, and the compaction is tried again after that turn and
+/// completes.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_event_during_a_compaction_cancels_it_and_its_turn_goes_first() {
     // The cancelled compaction's process is ended while it holds, before the
@@ -632,6 +698,7 @@ async fn an_event_during_a_compaction_cancels_it_and_its_turn_goes_first() {
         "it is still running"
     );
 
+    let arrived = Timestamp::now();
     journey.turn(&print, 2).await;
     std::fs::remove_file(&hold).expect("the hold is released");
     journey
@@ -651,6 +718,12 @@ async fn an_event_during_a_compaction_cancels_it_and_its_turn_goes_first() {
     assert_eq!(retried.size_before, IDLE_COMPACT + 9_000);
 
     let second = turns[1].started_at.expect("a start");
+    let delay = after(arrived, &turns[1]);
+    eprintln!("from the event's arrival to its turn's start: {delay:?}");
+    assert!(
+        delay < CANCEL_BOUND,
+        "cancelling the compaction held the event's turn up {delay:?}"
+    );
     assert!(
         cancelled.ended_at <= second,
         "the event's turn started before the compaction's harness process had exited"
@@ -668,6 +741,71 @@ async fn an_event_during_a_compaction_cancels_it_and_its_turn_goes_first() {
         "the cancelled compaction changed the session's stored files"
     );
     assert_eq!(journey.compactions_begun().len(), 2);
+    journey.server.stop().await;
+}
+
+/// An alert that arrives while a compaction runs whose harness process ignores
+/// `SIGTERM` and never exits on its own: cancelling the compaction kills it,
+/// and the alert's turn starts once its process has exited and inside the
+/// bound, in the session as it was, its answer accepted.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_compaction_that_ignores_the_request_to_exit_is_killed_and_the_alert_goes_first() {
+    let journey = Compacting::open_as(
+        INSTALLERS[0],
+        as_written,
+        &[
+            Step::Turn(sized(IDLE_COMPACT + 5_000)),
+            Step::Turn(sized(AFTER + 4_000)),
+        ],
+        None,
+        Harness::IgnoringTerm,
+    )
+    .await;
+    // Held for the journey's whole length: the compaction cannot end on its own.
+    let hold = journey.path("compact-hold");
+    std::fs::write(&hold, "held for good").expect("the hold is writable");
+    let print = journey.active().await;
+
+    journey.turn(&print, 1).await;
+    journey
+        .until("the compaction began", || {
+            journey.compactions_begun().len() == 1
+        })
+        .await;
+    let store = journey.seen().last().expect("the compaction's process")["store"].clone();
+    let arrived = Timestamp::now();
+    journey.turn(&print, 2).await;
+
+    let turns = journey.turns(&print);
+    let compactions = journey.compactions(&print);
+    assert_eq!(compactions.len(), 1, "{compactions:?}");
+    let killed = &compactions[0];
+    assert_eq!(killed.ended, CompactionEnd::Cancelled, "{killed:?}");
+    assert!(
+        hold.exists(),
+        "the compaction was released rather than killed"
+    );
+    let second = &turns[1];
+    assert!(
+        killed.ended_at <= second.started_at.expect("a start"),
+        "the alert's turn started before the compaction's harness process had exited"
+    );
+    let delay = after(arrived, second);
+    eprintln!("from the alert's arrival to its turn's start: {delay:?}");
+    assert!(
+        delay < CANCEL_BOUND,
+        "killing the compaction held the alert's turn up {delay:?}"
+    );
+    assert_eq!(second.failure, None, "the alert's turn failed: {second:?}");
+    none_overlap(&turns, &compactions);
+
+    let seen = journey.seen();
+    let turned: Vec<&Value> = seen.iter().filter(|seen| !is_compaction(seen)).collect();
+    assert_eq!(
+        turned[1]["store"], store,
+        "the killed compaction changed the session's stored files"
+    );
     journey.server.stop().await;
 }
 
