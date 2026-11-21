@@ -4785,6 +4785,12 @@ reason = "The variable Claude Code reads its configuration directory from has no
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/outside.py"
+site = "\"CLAUDE_CONFIG_DIR\": str(self.agent.config_dir),"
+reason = "The variable Claude Code reads its configuration directory from has no published contract; it is the one `starts.py`'s operator's agent and the supervisor port's sign-in table name. A move of it puts the outside supervisor's skill and transcripts where the harness does not look, which `test_replay.py` fails on as each watch line's conversation reporting no usage, models or commands."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest-wiring/mock_turn.py"
 site = "def _allowed(line: str, prefixes: list[str] | None) -> bool:"
 reason = "This stands in for Claude Code's permission enforcement, which publishes no contract to reconcile with: the mock only has to refuse what a rule plainly does not allow, splitting a line with the suite's own `shell_lines`. The drift gate is the live suite, which runs the real harness under the same arguments and fails any conversation that ran a compound command, refused or not."
