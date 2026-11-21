@@ -499,7 +499,8 @@ class Timeline:
             captured = self.frame_times[shown]
             if self.moment.is_outside:
                 # A camera asked at a milestone answers a frame of that moment, which
-                # the recorded frame nearest after it stands for.
+                # the recorded frame nearest after it stands for, or the recording's
+                # last frame where it ends before the milestone.
                 captured = min(captured, self.now())
             return FrameDue(name, captured)
 

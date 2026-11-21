@@ -175,6 +175,9 @@ class Moment:
     looks: tuple[str, ...] = ()
     #: The milestone an outside supervisor's watch line reports, on that trigger alone.
     milestone: Milestone | None = None
+    #: On an end milestone whose recording ends before the last layer, how many layers
+    #: before it the case's last frame, which it is handed, was taken.
+    frame_layers_before_milestone: int | None = None
 
     @property
     def is_outside(self) -> bool:
@@ -430,6 +433,7 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
             milestone=Milestone(scenarios[entry]["milestone"])
             if "milestone" in scenarios[entry]
             else None,
+            frame_layers_before_milestone=scenarios[entry].get("frame_layers_before_milestone"),
         )
         for entry in (replay if replay is not None else document["assertions"].get("replay", ()))
     )

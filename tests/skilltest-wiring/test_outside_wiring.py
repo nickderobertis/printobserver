@@ -14,13 +14,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 import record
-from cases import REPO, Case, Milestone, read_case
+from cases import REPO, Case, Milestone, Moment, read_case
 from mock_turn import ScriptedRun, Seen
 from outside import SESSION_PREFIX
 from replay import OutsidePoint
@@ -73,27 +73,30 @@ def full_size(name: str) -> bytes:
 
 @dataclass(frozen=True)
 class Layer:
-    """One layer of a slice: where it starts and ends, and what it lays material as."""
+    """One layer of a slice: where it starts and ends, its height, and what it lays."""
 
     number: int
     start: int
     end: int
     types: tuple[str, ...]
+    z_mm: float | None = None
 
 
 def layers_of(gcode: bytes) -> list[Layer]:
     """Every layer of a slice, read apart from the server's own index.
 
-    A layer opens at its `;LAYER_CHANGE` line, counting the first as 1, and lays
-    material as each `;TYPE:` under which one of its moves feeds filament while it
-    travels.
+    A layer opens at its `;LAYER_CHANGE` line, counting the first as 1, stands at the
+    height its `;Z:` line names, and lays material as each `;TYPE:` under which one
+    of its moves feeds filament while it travels.
     """
     found: list[dict[str, Any]] = []
     offset, kind, relative, last_e = 0, b"", True, 0.0
     for line in gcode.splitlines(keepends=True):
         text = line.split(b";", 1)[0].strip()
         if line.startswith(b";LAYER_CHANGE"):
-            found.append({"start": offset, "types": []})
+            found.append({"start": offset, "types": [], "z_mm": None})
+        elif line.startswith(b";Z:") and found:
+            found[-1]["z_mm"] = float(line[len(b";Z:") :])
         elif line.startswith(b";TYPE:"):
             kind = line[len(b";TYPE:") :].strip()
         elif text in {b"M83", b"M82"}:
@@ -117,6 +120,7 @@ def layers_of(gcode: bytes) -> list[Layer]:
             start=layer["start"],
             end=found[number]["start"] if number < len(found) else len(gcode),
             types=tuple(layer["types"]),
+            z_mm=layer["z_mm"],
         )
         for number, layer in enumerate(found, start=1)
     ]
@@ -133,6 +137,54 @@ def milestone_layer(layers: list[Layer], milestone: Milestone) -> Layer:
             return next(layer for layer in layers if set(layer.types) & set(SUPPORT_TYPES))
         case Milestone.END:
             return layers[-1]
+
+
+def recorded_layer(case: Case, frame: str, layers: list[Layer]) -> Layer:
+    """The layer a frame shows printing, by the height the case recorded for it."""
+    document = json.loads((case.directory / "case.json").read_text("utf-8"))
+    height = next(raw["z_mm"] for raw in document["frames"] if raw["file"] == frame)
+    return next(layer for layer in reversed(layers) if layer.z_mm == height)
+
+
+def frame_owed(case: Case, moment: Moment, layers: list[Layer]) -> str | None:
+    """Why a watch line's frame is not the one its milestone owes, or None when it is.
+
+    A milestone owes the case's first frame taken at or after the line's position, so
+    the supervisor's own look shows the layer it reports and never one before it. One
+    exception stands, by a maintainer's ruling, until a healthy print is recorded with
+    a frame of its last layer: an `end` line over a recording that ends before that
+    layer is handed the recording's last frame, and names how many layers before the
+    last layer that frame was taken. Any earlier frame, a gap that is not that frame's,
+    or a gap named where a frame at or after the milestone exists, is refused.
+    """
+    times = case.frame_times()
+    positions = [case.position_at(when) for when in times]
+    at_or_after = next(
+        (
+            frame.file
+            for frame, position in zip(case.frames, positions, strict=True)
+            if position >= moment.file_position_bytes
+        ),
+        None,
+    )
+    if at_or_after is not None:
+        if moment.event_image != at_or_after:
+            return f"handed {moment.event_image}, not {at_or_after}, the first frame at or after it"
+        if moment.frame_layers_before_milestone is not None:
+            return "names a layer gap though a frame at or after its milestone exists"
+        return None
+    last = case.frames[-1].file
+    if moment.milestone is not Milestone.END:
+        return f"handed a frame before its milestone, which only an end line may be: {last}"
+    if moment.event_image != last:
+        return f"handed {moment.event_image}, earlier than {last}, the recording's last frame"
+    gap = layers[-1].number - recorded_layer(case, last, layers).number
+    if moment.frame_layers_before_milestone != gap:
+        return (
+            f"names a gap of {moment.frame_layers_before_milestone} layers where {last} "
+            f"was taken {gap} before the last layer"
+        )
+    return None
 
 
 def plain_gcode(case: Case) -> bytes:
@@ -207,10 +259,10 @@ def test_each_watch_line_stands_in_its_milestones_layer_as_the_servers_index_rea
 
     Its position is where the job stands as the line is handed; the server's index,
     read through the real `context`, names the layer there, which is the milestone's
-    by a reading of the slice apart from that index. Its frame is the case's first
-    after that position, or its last where the recording ends before it, and that is
-    the frame the supervisor's own look is answered: at the camera's own size, so the
-    look shows a scaled copy, which is what the supervisor opens.
+    by a reading of the slice apart from that index. Its frame is the one
+    `frame_owed` holds it to, and that is the frame the supervisor's own look is
+    answered: at the camera's own size, so the look shows a scaled copy, which is
+    what the supervisor opens.
     """
     case = read_case(name)
     gcode = plain_gcode(case)
@@ -224,7 +276,6 @@ def test_each_watch_line_stands_in_its_milestones_layer_as_the_servers_index_rea
         gcode=gcode,
         picture=full_size,
     )
-    times = case.frame_times()
     runs = watch_runs(done.turns)
     equal(len(runs), len(lines), describing="one run per watch line")
     for moment, seen in zip(lines, runs, strict=True):
@@ -240,15 +291,7 @@ def test_each_watch_line_stands_in_its_milestones_layer_as_the_servers_index_rea
         equal(set(slicer["types"]), set(layer.types), describing=f"what {moment.id}'s layer lays")
         if moment.milestone is Milestone.END:
             equal(slicer["z_mm"], slicer["final_z_mm"], describing="the last layer's height")
-        nearest = next(
-            (
-                frame.file
-                for frame, when in zip(case.frames, times, strict=True)
-                if case.position_at(when) >= moment.file_position_bytes
-            ),
-            case.frames[-1].file,
-        )
-        equal(moment.event_image, nearest, describing=f"{moment.id}'s frame")
+        equal(frame_owed(case, moment, layers), None, describing=f"{moment.id}'s frame")
         looked = json.loads(seen["ran"][1]["out"])
         truth(
             looked["event"].get("print_id") is None,
@@ -269,6 +312,47 @@ def test_each_watch_line_stands_in_its_milestones_layer_as_the_servers_index_rea
         [None] * len(lines),
         describing=done.replayed.failures(),
     )
+
+
+@pytest.mark.parametrize("name", sorted(PLAIN_GCODE))
+def test_a_watch_lines_frame_is_never_one_from_before_its_milestone(name: str) -> None:
+    """Every frame a line is handed is at or after its milestone, but for the one exception.
+
+    The committed lines hold to it; each healthy case's end line is that exception,
+    over a recording that ends before its last layer, and is refused once handed any
+    earlier frame or a gap that is not its frame's. A line before the end handed a
+    frame from before its milestone is refused, and so is a gap named on it.
+    """
+    case = read_case(name)
+    layers = layers_of(plain_gcode(case))
+    lines = {moment.milestone: moment for moment in case.moments if moment.is_outside}
+    for moment in lines.values():
+        equal(frame_owed(case, moment, layers), None, describing=f"{moment.id}'s frame")
+    end = lines[Milestone.END]
+    truth(
+        end.frame_layers_before_milestone is not None,
+        describing=f"{name}'s end line to name how far before the last layer its frame is",
+    )
+    equal(end.event_image, case.frames[-1].file, describing=f"{end.id} to use the last frame")
+    earlier = replace(end, event_image=case.frames[-2].file)
+    contains(frame_owed(case, earlier, layers) or "", "earlier than")
+    wrong_gap = replace(
+        end, frame_layers_before_milestone=(end.frame_layers_before_milestone or 0) + 1
+    )
+    contains(frame_owed(case, wrong_gap, layers) or "", "names a gap of")
+    first = lines[Milestone.FIRST_OVERHANG]
+    files = [frame.file for frame in case.frames]
+    before = files[files.index(first.event_image) - 1]
+    contains(
+        frame_owed(case, replace(first, event_image=before), layers) or "",
+        "the first frame at or after it",
+    )
+    contains(
+        frame_owed(case, replace(first, frame_layers_before_milestone=1), layers) or "",
+        "names a layer gap",
+    )
+    beyond = replace(first, file_position_bytes=end.file_position_bytes)
+    contains(frame_owed(case, beyond, layers) or "", "only an end line may be")
 
 
 def _bubbler_lines(scratch: Path) -> tuple[list[OutsidePoint], list[Seen], dict[str, Any]]:

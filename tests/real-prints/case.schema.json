@@ -129,8 +129,13 @@
           ]
         },
         "milestone": {
-          "description": "Present exactly when the trigger is outside_supervision: the point of the print the watch's line reports, at which the outside supervisor takes its own frame. `first_layer`, the first layer laying the part; `first_overhang`, the first layer laying an overhang perimeter; `first_support`, the first layer laying support material; `end`, the print's last layer. Its `event_image` is the case's frame nearest after `file_position_bytes`, or its last frame where the recording ends before it.",
+          "description": "Present exactly when the trigger is outside_supervision: the point of the print the watch's line reports, at which the outside supervisor takes its own frame. `first_layer`, the first layer laying the part; `first_overhang`, the first layer laying an overhang perimeter; `first_support`, the first layer laying support material; `end`, the print's last layer. Its `event_image` is the case's first frame at or after `file_position_bytes`. An `end` scenario whose recording holds no frame at or after the last layer instead uses the case's last recorded frame and says so in `frame_layers_before_milestone`.",
           "enum": ["first_layer", "first_overhang", "first_support", "end"]
+        },
+        "frame_layers_before_milestone": {
+          "description": "Present only on an `end` scenario whose recording holds no frame at or after the print's last layer: how many layers before that layer the case's last recorded frame, its `event_image`, was taken. The end check is then judged on that frame, by a maintainer's ruling that relaxes the frame-at-or-after rule for such a recording until a healthy print is recorded with a frame of its last layer.",
+          "type": "integer",
+          "minimum": 1
         },
         "event_id": {
           "description": "Present exactly when the trigger is recorded_alert: the id of an obico_failure_alert event in this case's printobserver-history.json.",
@@ -185,6 +190,10 @@
           "if": { "properties": { "trigger": { "const": "outside_supervision" } } },
           "then": { "required": ["milestone"] },
           "else": { "not": { "required": ["milestone"] } }
+        },
+        {
+          "if": { "not": { "properties": { "milestone": { "const": "end" } }, "required": ["milestone"] } },
+          "then": { "not": { "required": ["frame_layers_before_milestone"] } }
         },
         {
           "if": { "properties": { "trigger": { "const": "recorded_alert" } } },
