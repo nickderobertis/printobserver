@@ -251,7 +251,7 @@ budgets:
       checked every 120 s, 76 checks in one conversation, about 4 acting,
       each carrying its facts on the lean harness and, once the first-layer
       alignment passes, the 1024x1848 composite (the whole 1280x720 frame
-      before), on `claude-code` and claude-opus-5-5 as measured; the long
+      before), on `claude-code` and claude-sonnet-5-5, the model a production turn runs as the suite's record names it; the long
       plate's 281 checks over 9 h 21 min are in the detail. Measurement
       source: telemetry, read from the record `just skilltest-record` writes.
       Check runtime approximately 3 seconds.
@@ -287,7 +287,7 @@ budgets:
       min in one conversation, about 15 acting, each carrying its facts on the
       lean harness and, once the first-layer alignment passes, the 1024x1848
       composite (the whole 1280x720 frame before), on `claude-code` and
-      claude-opus-5-5 as measured. Measurement source: telemetry. Check
+      claude-sonnet-5-5, the model a production turn runs as the suite's record names it. Measurement source: telemetry. Check
       runtime approximately 3 seconds.
     measure: reported
     command:
