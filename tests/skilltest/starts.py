@@ -453,6 +453,177 @@ class Conversation:
     transcript: list[dict[str, Any]] = field(default_factory=list)
     ended: bool = False
 
+    def lines(self) -> list[dict[str, Any]]:
+        """Everything the run wrote: its transcript, then its result document."""
+        answered = (
+            _json_lines(self.record.read_text("utf-8", "replace")) if self.record.is_file() else []
+        )
+        return [*self.transcript, *answered]
+
+
+def _suffix() -> str:
+    """What this host's programs are named with after their name."""
+    return platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+
+
+class OperatorAgent:
+    """An operator's own agent: its harness's home with the skill installed, and its runs.
+
+    Each message is one `oneharness run --session <name>`, on the shipped harness, the
+    messages of one name continuing one conversation. The harness is started through
+    the replay's launcher, which reports each run's start and exit to this agent's own
+    control double and keeps its output where that answers.
+    """
+
+    def __init__(
+        self,
+        *,
+        home: Path,
+        agent_bin: Path,
+        records: Path,
+        conversations: Path,
+        target: list[str],
+        environment: Callable[[], dict[str, str]],
+        failed: Callable[[str], None],
+    ) -> None:
+        """Lay nothing out yet: [`OperatorAgent.install`] does, once the control answers."""
+        self.home = home
+        self.agent_bin = agent_bin
+        self.records = records
+        self.conversations = conversations
+        self.target = target
+        self.environment = environment
+        self.runs: list[Conversation] = []
+        self.control = doubles.control(self._started, self._exited, failed)
+
+    @property
+    def config_dir(self) -> Path:
+        """Where the agent's harness keeps its configuration, its skills among it."""
+        return self.home / ".claude"
+
+    def install(self) -> None:
+        """The launcher in front of the harness, and the skill where Claude Code finds one."""
+        for directory in (self.home, self.agent_bin, self.records):
+            directory.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            program("printobserver-server-turn-launcher"), self.agent_bin / f"claude{_suffix()}"
+        )
+        (self.agent_bin / "launch.json").write_text(
+            json.dumps(
+                {
+                    "control": doubles.address(self.control).removeprefix("http://"),
+                    "program": self.target[0],
+                    "arguments": self.target[1:],
+                }
+            ),
+            encoding="utf-8",
+        )
+        # Where Claude Code finds an Agent Skill a person installed for themselves.
+        shutil.copytree(SKILL, self.config_dir / "skills" / "printobserver")
+
+    def _started(self) -> str:
+        record = self.records / f"{len(self.runs):04}.json"
+        self.runs.append(Conversation(record, self._transcript_sizes()))
+        return str(record)
+
+    def _exited(self) -> None:
+        conversation = self.runs[-1]
+        for path in self._transcripts():
+            with path.open("rb") as transcript:
+                transcript.seek(conversation.transcript_sizes.get(path, 0))
+                conversation.transcript.extend(
+                    _json_lines(transcript.read().decode("utf-8", "replace"))
+                )
+        conversation.ended = True
+
+    def _transcripts(self) -> list[Path]:
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+        return sorted(self.config_dir.glob("projects/*/*.jsonl"))
+
+    def _transcript_sizes(self) -> dict[Path, int]:
+        return {path: path.stat().st_size for path in self._transcripts()}
+
+    def converse(self, session: SessionName, message: str) -> Conversed:
+        """One message of one conversation, and what its harness runs said."""
+        before = len(self.runs)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        done = run(
+            [
+                str(program("printobserver-server-oneharness")),
+                "run",
+                "--harness",
+                "claude-code",
+                "--bin",
+                f"claude-code={self.agent_bin / f'claude{_suffix()}'}",
+                "--session",
+                session,
+                "--session-dir",
+                str(self.conversations),
+                "--mode",
+                "default",
+                "--no-config",
+                "--no-history",
+                "--cwd",
+                str(self.home),
+                "--timeout",
+                str(TURN_DEADLINE_S),
+                "--compact",
+                "--prompt",
+                message,
+                "--",
+                *harness_arguments(),
+            ],
+            env=self.environment(),
+            timeout=TURN_DEADLINE_S + 60,
+        )
+        try:
+            report = json.loads(done.stdout)
+        except ValueError:
+            report = None
+        if not is_harness_report(report):
+            msg = f"oneharness answered {done.returncode} with no report: {done.stderr}"
+            raise ReplayError(msg)
+        held = cast("HarnessReport", report)
+        mine = self.runs[before:]
+        taken = RunReport()
+        for conversation in mine:
+            taken.take(conversation.lines())
+        result = held["results"][0]
+        failure = None
+        if not mine:
+            failure = f"the harness never ran: {result['error']}"
+        elif done.returncode != 0 or result["status"] != "ok":
+            said = result["error"] or result["stderr"][-2000:]
+            failure = f"the run ended {result['status']}: {said}"
+        return Conversed(
+            report=taken,
+            reply=result["text"],
+            failure=failure,
+            phase=held["session"]["phase"],
+        )
+
+    def transcript(self) -> list[dict[str, Any]]:
+        """Everything every run of the agent wrote, in order."""
+        return [line for conversation in self.runs for line in conversation.lines()]
+
+    def stop(self) -> None:
+        """Stop the control double."""
+        self.control.shutdown()
+        self.control.server_close()
+
+
+@dataclass(frozen=True)
+class Conversed:
+    """What one message of a conversation came to."""
+
+    report: RunReport
+    #: What the agent answered in words.
+    reply: str | None
+    #: Why the run failed, when it did.
+    failure: str | None
+    #: `create` for a message opening the conversation, `continue` for one carrying it on.
+    phase: str
+
 
 class StartsReplay:
     """One running replay of one case of start requests."""
@@ -481,14 +652,21 @@ class StartsReplay:
             clock=self.bin / "clock",
         )
         self.errors: list[str] = []
-        self.runs: list[Conversation] = []
         self.servers = [
             doubles.bench_octoprint(self.bench, self.minted.octoprint_key),
             doubles.camera(self.bench),
             doubles.health(),
             doubles.control(self._no_turn, self._no_turn_exit, self.errors.append),
-            doubles.control(self._started, self._exited, self.errors.append),
         ]
+        self.agent = OperatorAgent(
+            home=self.home,
+            agent_bin=self.operator_bin,
+            records=self.records,
+            conversations=self.root / "conversations",
+            target=target,
+            environment=self._environment,
+            failed=self.errors.append,
+        )
         self.port = _free_port()
         self.server: subprocess.Popen[str] | None = None
         self.loaded: LoadedSpool | None = None
@@ -504,57 +682,31 @@ class StartsReplay:
     def _no_turn_exit(self) -> None:
         pass
 
-    def _started(self) -> str:
-        record = self.records / f"{len(self.runs):04}.json"
-        self.runs.append(Conversation(record, self._transcript_sizes()))
-        return str(record)
-
-    def _exited(self) -> None:
-        conversation = self.runs[-1]
-        for path in self._transcripts():
-            with path.open("rb") as transcript:
-                transcript.seek(conversation.transcript_sizes.get(path, 0))
-                conversation.transcript.extend(
-                    _json_lines(transcript.read().decode("utf-8", "replace"))
-                )
-        conversation.ended = True
-
     @property
     def config_dir(self) -> Path:
         """Where the operator's harness keeps its configuration, its skills among it."""
-        return self.home / ".claude"
-
-    def _transcripts(self) -> list[Path]:
-        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
-        return sorted(self.config_dir.glob("projects/*/*.jsonl"))
-
-    def _transcript_sizes(self) -> dict[Path, int]:
-        return {path: path.stat().st_size for path in self._transcripts()}
+        return self.agent.config_dir
 
     def _suffix(self) -> str:
-        return platforms.host(Repo(REPO)).program.removeprefix("printobserver")
+        return _suffix()
 
     def _install(self) -> Path:
         """The server as the installer lays it out, and the operator's agent beside it."""
         suffix = self._suffix()
         shutil.copy2(program("printobserver"), self.bin / f"printobserver{suffix}")
-        for directory, control in ((self.bin, 3), (self.operator_bin, 4)):
-            shutil.copy2(
-                program("printobserver-server-turn-launcher"), directory / f"claude{suffix}"
-            )
-            (directory / "launch.json").write_text(
-                json.dumps(
-                    {
-                        "control": doubles.address(self.servers[control]).removeprefix("http://"),
-                        "program": self.target[0],
-                        "arguments": self.target[1:],
-                    }
-                ),
-                encoding="utf-8",
-            )
+        shutil.copy2(program("printobserver-server-turn-launcher"), self.bin / f"claude{suffix}")
+        (self.bin / "launch.json").write_text(
+            json.dumps(
+                {
+                    "control": doubles.address(self.servers[3]).removeprefix("http://"),
+                    "program": self.target[0],
+                    "arguments": self.target[1:],
+                }
+            ),
+            encoding="utf-8",
+        )
         shutil.copytree(SKILL, self.state / "skills" / "printobserver")
-        # Where Claude Code finds an Agent Skill a person installed for themselves.
-        shutil.copytree(SKILL, self.config_dir / "skills" / "printobserver")
+        self.agent.install()
         config = self.root / "config.toml"
         config.write_text(
             service_config(
@@ -681,48 +833,6 @@ class StartsReplay:
             raise ReplayError(msg)
         return len(events)
 
-    def _converse(self, session: SessionName, message: str) -> tuple[HarnessReport, int]:
-        """One message of one conversation, through `oneharness run --session`."""
-        suffix = self._suffix()
-        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-        done = run(
-            [
-                str(program("printobserver-server-oneharness")),
-                "run",
-                "--harness",
-                "claude-code",
-                "--bin",
-                f"claude-code={self.operator_bin / f'claude{suffix}'}",
-                "--session",
-                session,
-                "--session-dir",
-                str(self.root / "conversations"),
-                "--mode",
-                "default",
-                "--no-config",
-                "--no-history",
-                "--cwd",
-                str(self.home),
-                "--timeout",
-                str(TURN_DEADLINE_S),
-                "--compact",
-                "--prompt",
-                message,
-                "--",
-                *harness_arguments(),
-            ],
-            env=self._environment(),
-            timeout=TURN_DEADLINE_S + 60,
-        )
-        try:
-            report = json.loads(done.stdout)
-        except ValueError:
-            report = None
-        if not is_harness_report(report):
-            msg = f"oneharness answered {done.returncode} with no report: {done.stderr}"
-            raise ReplayError(msg)
-        return cast("HarnessReport", report), done.returncode
-
     def _wait_for_server(self) -> None:
         deadline = time.monotonic() + START_DEADLINE_S
         while time.monotonic() < deadline:
@@ -757,18 +867,7 @@ class StartsReplay:
                 case=self.case,
                 points=points,
                 sessions=sessions,
-                transcript=[
-                    line
-                    for conversation in self.runs
-                    for line in [
-                        *conversation.transcript,
-                        *(
-                            _json_lines(conversation.record.read_text("utf-8", "replace"))
-                            if conversation.record.is_file()
-                            else []
-                        ),
-                    ]
-                ],
+                transcript=self.agent.transcript(),
             )
         finally:
             self.stop()
@@ -785,38 +884,23 @@ class StartsReplay:
         if session not in sessions:
             sessions.append(session)
         looked_before = len(self.bench.fetches)
-        before = len(self.runs)
         begun = self.bench.now()
-        report, status = self._converse(session, message_for(name, material, frame))
+        conversed = self.agent.converse(session, message_for(name, material, frame))
         ended = self.bench.now()
         if self.errors:
             raise ReplayError("; ".join(self.errors))
-        mine = self.runs[before:]
-        taken = RunReport()
-        for conversation in mine:
-            lines = [*conversation.transcript]
-            if conversation.record.is_file():
-                lines.extend(_json_lines(conversation.record.read_text("utf-8", "replace")))
-            taken.take(lines)
-        result = report["results"][0]
-        failure = None
-        if not mine:
-            failure = f"the harness never ran: {result['error']}"
-        elif status != 0 or result["status"] != "ok":
-            said = result["error"] or result["stderr"][-2000:]
-            failure = f"the run ended {result['status']}: {said}"
         return StartPoint(
             request=request,
             session=session,
             requests=[
                 recorded.request for recorded in self._actions() if begun <= recorded.at <= ended
             ],
-            report=taken,
-            reply=result["text"],
-            failure=failure,
+            report=conversed.report,
+            reply=conversed.reply,
+            failure=conversed.failure,
             looks=len(self.bench.fetches) - looked_before,
             started=self._starts(begun, ended),
-            phase=report["session"]["phase"],
+            phase=conversed.phase,
         )
 
     def stop(self) -> None:
@@ -834,6 +918,7 @@ class StartsReplay:
         for server in self.servers:
             server.shutdown()
             server.server_close()
+        self.agent.stop()
 
     def clean_up(self) -> None:
         """Remove the install, once what a test reads from it has been read."""

@@ -105,13 +105,13 @@
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$"
         },
         "file_position_bytes": {
-          "description": "How far into the case's G-code the job had read when this event happened. Required on every periodic_observation, recorded_alert and synthetic_alert scenario of a case that carries its G-code, which `checks_real_prints` holds because only it can see the case's files; it must lie inside that G-code.",
+          "description": "How far into the case's G-code the job had read when this event happened. Required on every periodic_observation, recorded_alert, synthetic_alert and outside_supervision scenario of a case that carries its G-code, which `checks_real_prints` holds because only it can see the case's files; it must lie inside that G-code.",
           "type": "integer",
           "minimum": 0
         },
         "file_position_source": {
-          "description": "Where `file_position_bytes` came from: `recorded`, the job snapshot in this scenario's recorded event; or `progress`, the frame's progress times the G-code's size.",
-          "enum": ["recorded", "progress"]
+          "description": "Where `file_position_bytes` came from: `recorded`, the job snapshot in this scenario's recorded event; `progress`, the frame's progress times the G-code's size; or `milestone`, for an outside_supervision scenario, the first position inside its milestone's layer the job reaches after the replay entry before it.",
+          "enum": ["recorded", "progress", "milestone"]
         },
         "summary": {
           "description": "One sentence: what the agent is shown and what it should do.",
@@ -119,8 +119,23 @@
           "minLength": 1
         },
         "trigger": {
-          "description": "What starts the turn: an Obico alert this case's history recorded, an alert a test synthesises because none was raised, the supervisor's periodic observation of an active print, or a request to start a print.",
-          "enum": ["recorded_alert", "synthetic_alert", "periodic_observation", "start_request"]
+          "description": "What starts the turn: an Obico alert this case's history recorded, an alert a test synthesises because none was raised, the supervisor's periodic observation of an active print, a request to start a print, or the watch's line reaching an outside supervisor that follows the print, at one of its milestones.",
+          "enum": [
+            "recorded_alert",
+            "synthetic_alert",
+            "periodic_observation",
+            "start_request",
+            "outside_supervision"
+          ]
+        },
+        "milestone": {
+          "description": "Present exactly when the trigger is outside_supervision: the point of the print the watch's line reports, at which the outside supervisor takes its own frame. `first_layer`, the first layer laying the part; `first_overhang`, the first layer laying an overhang perimeter; `first_support`, the first layer laying support material; `end`, the print's last layer. Its `event_image` is the case's first frame at or after `file_position_bytes`. An `end` scenario whose recording holds no frame at or after the last layer instead uses the case's last recorded frame and says so in `frame_layers_before_milestone`.",
+          "enum": ["first_layer", "first_overhang", "first_support", "end"]
+        },
+        "frame_layers_before_milestone": {
+          "description": "Present only on an `end` scenario whose recording holds no frame at or after the print's last layer: how many layers before that layer the case's last recorded frame, its `event_image`, was taken. The end check is then judged on that frame, by a maintainer's ruling that relaxes the frame-at-or-after rule for such a recording until a healthy print is recorded with a frame of its last layer.",
+          "type": "integer",
+          "minimum": 1
         },
         "event_id": {
           "description": "Present exactly when the trigger is recorded_alert: the id of an obico_failure_alert event in this case's printobserver-history.json.",
@@ -172,13 +187,24 @@
           "then": { "not": { "required": ["file_position_bytes"] } }
         },
         {
+          "if": { "properties": { "trigger": { "const": "outside_supervision" } } },
+          "then": { "required": ["milestone"] },
+          "else": { "not": { "required": ["milestone"] } }
+        },
+        {
+          "if": { "not": { "properties": { "milestone": { "const": "end" } }, "required": ["milestone"] } },
+          "then": { "not": { "required": ["frame_layers_before_milestone"] } }
+        },
+        {
           "if": { "properties": { "trigger": { "const": "recorded_alert" } } },
           "then": { "required": ["event_id"] },
           "else": { "not": { "required": ["event_id"] } }
         },
         {
           "if": {
-            "properties": { "trigger": { "enum": ["start_request", "periodic_observation"] } }
+            "properties": {
+              "trigger": { "enum": ["start_request", "periodic_observation", "outside_supervision"] }
+            }
           },
           "then": {
             "properties": {

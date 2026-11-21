@@ -41,6 +41,8 @@ mod machine;
 mod proxy;
 #[path = "support/scripted.rs"]
 mod scripted;
+#[path = "support/slicing.rs"]
+mod slicing;
 #[path = "support/standalone.rs"]
 mod standalone;
 #[path = "support/traced.rs"]
@@ -97,6 +99,8 @@ mod spooling;
 mod starting;
 #[path = "journeys/streaming.rs"]
 mod streaming;
+#[path = "journeys/supervising_outside.rs"]
+mod supervising_outside;
 #[path = "journeys/tainting.rs"]
 mod tainting;
 #[path = "journeys/tier.rs"]
@@ -454,6 +458,15 @@ fn every_documented_example_prints_what_the_document_shows() {
 
     documenting::accepts_the_committed_documentation(&world);
     drop(detector);
+}
+
+/// Every example the outside supervisor's section of the reference shows, run
+/// over a print whose machine reads a real slice into the layers they are
+/// about; `PRINTOBSERVER_DOCS=write` rewrites what each shows, as the walk
+/// above does.
+#[test]
+fn every_documented_example_of_supervising_from_outside_runs_over_a_print_at_its_milestones() {
+    supervising_outside::runs_over_a_print_at_its_milestones();
 }
 
 /// The documented operator workflow, carried out from the documentation alone,

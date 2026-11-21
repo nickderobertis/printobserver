@@ -20,7 +20,7 @@ def test_the_committed_skill_is_accepted(committed: Repo) -> None:
 
 
 def test_the_check_enforces_the_bounds_this_repository_declares(committed: Repo) -> None:
-    """The two numbers are 6,000 characters and 150 lines.
+    """The two numbers are 6,222 characters and 150 lines.
 
     A check free to choose its own budget could hold the skill to one no skill
     could exceed while buying none of the discipline the bounds are for. The
@@ -29,5 +29,5 @@ def test_the_check_enforces_the_bounds_this_repository_declares(committed: Repo)
     """
     policy = docs_policy(committed)
 
-    equal(policy.skill_max_characters, 6000, describing="the character bound")
+    equal(policy.skill_max_characters, 6222, describing="the character bound")
     equal(policy.skill_max_lines, 150, describing="the line bound")

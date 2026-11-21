@@ -358,6 +358,9 @@ class Timeline:
     job_reads: list[JobRead] = field(default_factory=list)
     #: Where the job stands as it passes its first layer, between two events.
     passing: Passing | None = None
+    #: The event whose turn's exit moved the replay on, which a re-prompt of that turn
+    #: stands at again.
+    exited_from: int = 0
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -443,7 +446,7 @@ class Timeline:
         """A second run within one turn, the engine's own re-prompt, is still that turn's."""
         with self.lock:
             if self.moved_at_exit and self.index > 0:
-                self.index -= 1
+                self.index = self.exited_from
                 self.owed_event_frame = False
             self.moved_at_exit = False
 
@@ -493,7 +496,13 @@ class Timeline:
             shown = max(self.cursor, 0)
             name = self.case.frames[shown].file
             self.fetches.append(name)
-            return FrameDue(name, self.frame_times[shown])
+            captured = self.frame_times[shown]
+            if self.moment.is_outside:
+                # A camera asked at a milestone answers a frame of that moment, which
+                # the recorded frame nearest after it stands for, or the recording's
+                # last frame where it ends before the milestone.
+                captured = min(captured, self.now())
+            return FrameDue(name, captured)
 
     def obico_printer(self) -> ObicoPrinterRecord:
         """Obico's record of the printer, from the case's own recorded detector state.

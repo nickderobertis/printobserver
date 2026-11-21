@@ -254,8 +254,13 @@ layout it depends on is checked on every platform inside the gate.
 each real print under `tests/real-prints` accepts, at every decision point. Each
 case with a `replay` is one test that feeds its events in time order through the
 real server and supervisor port, on the harness and model production runs, as one
-continued conversation. OctoPrint, the camera and Obico are doubled, and nothing
-else; the judging reads the server's own record of what the agent requested. Its
+continued conversation. A request to start a print is instead one message of an
+operator's agent's conversation, and a case's watch lines — each a milestone of
+the print and the agent's latest verdict, handed to an outside supervisor that
+follows the print — one message each of an outside supervisor's conversation
+beside the print's, which passes on a look of its own at the printer, its frame
+opened. OctoPrint, the camera and Obico are doubled, and nothing else; the
+judging reads the server's own record of what each agent requested. Its
 deterministic half, the replay machinery with OneHarness's published mock harness
 answering in place of the model, is the `skilltest-wiring` project's `test` target,
 and the gate runs it.

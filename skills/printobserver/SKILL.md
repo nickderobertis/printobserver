@@ -67,8 +67,8 @@ Reading frames:
   part's top then and now. Risen less than the rise, likely, unsure or unclear is not printing:
   a clear defect, never watched.
   A part off the bed, a first layer not sticking, or one off its own place, left empty, has
-  moved: run pause now, before any look; no later frame undoes it. The facts' X and Y are the
-  bed's, placing nothing in a frame.
+  moved: pause now on the image in hand, before any look or wait; no later frame undoes it, only
+  a person's resume. The facts' X and Y are the bed's, placing nothing in a frame.
 
 ## When the detector has already paused the print
 
@@ -86,7 +86,9 @@ with that pause standing; a look settles nothing on a paused print: an uncertain
 Open the camera's current frame first. Start only on a clear bed, naming in the
 manifest the sheet it shows: textured-pei, bronze or gold, or smooth-pei, grey or
 dark, each labelled. Never PLA on textured or PETG on smooth, per the spool and
-the file. Lines, logo and glare are no debris; a strand, part or blob is. Any
+the file. Lines, logo and glare are no debris; a strand, part or blob is. A flat
+mark in the sheet, with no height, shadow, loose end or filament colour, is wear;
+anything raised is debris. Any
 of the sheet an object could sit on hidden, as behind a beam,
 stops a start; its rim past the frame or under a beam or head does
 not. Not starting, ask nothing; tell a person what stops it. Never set an
@@ -111,3 +113,4 @@ must check.
 [API](reference/api-and-clients.md), [policy](reference/intervention-policy.md),
 [schemas](reference/schemas.md), [architecture](reference/architecture.md),
 [testing](reference/testing.md).
+An outside supervisor takes its own frames: [see](reference/common-operations.md).

@@ -32,7 +32,7 @@ from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import Any, Literal, NewType, NotRequired, TextIO, TypedDict, cast, get_args
+from typing import Any, Literal, NewType, NotRequired, Protocol, TextIO, TypedDict, cast, get_args
 
 import doubles
 from cases import REPO, Case, Moment, Request, instant, read_case
@@ -42,7 +42,7 @@ from repo_checks.checks_real_prints import pointer
 from repo_checks.docs import skill_prose
 from repo_checks.model import Repo
 from repo_checks.shell import run, start
-from shell_lines import is_compound, subcommands
+from shell_lines import is_compound, program_commands, subcommands
 
 INSTALLER = REPO / "scripts" / "install.sh"
 SKILL = REPO / "skills" / "printobserver"
@@ -94,6 +94,22 @@ SITUATION_HEADING = "## The situation when this turn began"
 def acts(operation: str) -> bool:
     """Whether a request or a command by this name changes what the machine is doing."""
     return operation in ACTING or operation.startswith("set-")
+
+
+#: The option naming the print a command is about.
+PRINT_OPTION = "--print-id"
+
+
+def looks_in(commands: list[str]) -> list[list[str]]:
+    """Every `look` a command trace runs, each as the words after the program."""
+    return [
+        words for command in commands for named, words in program_commands(command) if named == LOOK
+    ]
+
+
+def names_a_print(words: list[str]) -> bool:
+    """Whether a command's words name the print it is about."""
+    return any(word == PRINT_OPTION or word.startswith(f"{PRINT_OPTION}=") for word in words)
 
 
 def looked_after_acting(commands: list[str]) -> str | None:
@@ -526,6 +542,28 @@ class DecisionRecord(TypedDict):
     follows_compaction: NotRequired[bool]
 
 
+class OutsideRecord(TypedDict):
+    """One line an outside supervisor was handed, as `results/latest.json` carries it."""
+
+    scenario: str
+    at: str
+    trigger: str
+    milestone: str
+    passed: bool
+    why_not: str | None
+    requests: list[str]
+    commands: list[str]
+    opened: list[str]
+    assessment: None
+    looks: int
+    usage: dict[str, Any] | None
+    models: list[str]
+    compacted: bool
+    session: str
+    session_phase: str
+    reply: str | None
+
+
 #: How an idle compaction may end, in the port's words.
 CompactionEnd = Literal["completed", "cancelled", "failed", "unsupported"]
 
@@ -624,6 +662,7 @@ class TestRecord(TypedDict):
     sessions: list[str]
     #: Each `printobserver` command a conversation ran beside another, by conversation.
     compound_commands: dict[str, list[str]]
+    #: A conversation's point is an `OutsideRecord`, which its trigger tells apart.
     decision_points: list[DecisionRecord]
     #: Its print's first-layer alignment verdict, when the server decided one.
     alignment: NotRequired[Alignment | None]
@@ -866,6 +905,102 @@ class DecisionPoint:
 
 
 @dataclass
+class OutsidePoint:
+    """One watch line an outside supervisor was handed, and what it did with it.
+
+    It passes when the supervisor took a look of its own at the printer, naming no
+    print, opened the frame the server stored for it, took no look naming the print
+    — which would wait on what printobserver's agent is owed — and asked for nothing
+    that changes what the machine is doing.
+    """
+
+    moment: Moment
+    session: str
+    #: `create` for the line opening the conversation, `continue` for one carrying it on.
+    phase: str
+    report: RunReport
+    reply: str | None
+    failure: str | None
+    #: What the operator asked of the print while the conversation ran.
+    requests: list[Request]
+    #: The name of each frame the server stored, and image it showed, while it ran.
+    stored: list[str]
+    #: How many frames the camera answered while it ran.
+    looks: int
+
+    @property
+    def why_not(self) -> str | None:
+        """Why this line's decision failed, or nothing when it passed."""
+        if self.failure:
+            return f"the conversation failed: {self.failure}"
+        reasons = [self.moment.verdict(self.requests)]
+        reasons.extend(
+            f"it asked for {request.describe()}, which changes what the machine is doing"
+            for request in self.requests
+            if acts(request.operation)
+        )
+        looked = looks_in(self.report.commands)
+        if not any(not names_a_print(words) for words in looked):
+            reasons.append("it took no look of its own at the printer, with no print named")
+        named = [" ".join(words) for words in looked if names_a_print(words)]
+        if named:
+            reasons.append(
+                f"it looked with the print named ({named[0]}), which waits on and takes what "
+                "printobserver's agent is owed"
+            )
+        if looked and not set(self.report.opened) & set(self.stored):
+            reasons.append(f"it opened none of the frames its looks named ({self.stored})")
+        return "; ".join(reason for reason in reasons if reason) or None
+
+    def as_record(self) -> OutsideRecord:
+        """The line as `results/latest.json` carries it."""
+        return {
+            "scenario": self.moment.id,
+            "at": self.moment.at,
+            "trigger": self.moment.trigger,
+            "milestone": str(self.moment.milestone),
+            "passed": self.why_not is None,
+            "why_not": self.why_not,
+            "requests": [request.describe() for request in self.requests],
+            "commands": self.report.commands,
+            "opened": self.report.opened,
+            "assessment": None,
+            "looks": self.looks,
+            "usage": self.report.usage,
+            "models": self.report.models,
+            "compacted": self.report.compacted,
+            "session": self.session,
+            "session_phase": self.phase,
+            "reply": self.reply,
+        }
+
+
+class OutsideSupervisor(Protocol):
+    """An outside supervisor's one conversation, beside printobserver's agent.
+
+    It started the print and follows `printobserver watch`; each milestone hands it
+    the watch's latest line, as the next message of the same conversation.
+    """
+
+    @property
+    def session(self) -> str:
+        """The conversation's name."""
+        ...
+
+    def supervise(self, moment: Moment, print_id: PrintId) -> OutsidePoint:
+        """Hand it the watch's line at one milestone, and judge what it did."""
+        ...
+
+    def transcript(self) -> list[dict[str, Any]]:
+        """Everything its harness runs wrote."""
+        ...
+
+    def stop(self) -> None:
+        """Stop whatever it started."""
+        ...
+
+
+@dataclass
 class Replayed:
     """A finished replay: its decision points, and what the port wrote down."""
 
@@ -878,19 +1013,33 @@ class Replayed:
     alignment: Alignment | None = None
     #: The compaction settings the server was configured with.
     configured: Compaction | None = None
+    #: Each watch line an outside supervisor was handed, in order.
+    outside: list[OutsidePoint] = field(default_factory=list)
+    #: The outside supervisor's conversation, when the case hands it any line.
+    outside_session: str | None = None
 
     @property
     def passed(self) -> bool:
         """Whether every decision point passed, which is what passing the test is."""
-        return all(point.why_not is None for point in self.points)
+        return all(point.why_not is None for point in [*self.points, *self.outside])
 
     def failures(self) -> str:
         """Each decision point that failed, for a test's message."""
         return "\n".join(
-            f"{point.moment.id} ({point.moment.summary}): {point.why_not}\n"
-            f"  it requested: {[request.describe() for request in point.requests]}"
-            for point in self.points
-            if point.why_not
+            [
+                *(
+                    f"{point.moment.id} ({point.moment.summary}): {point.why_not}\n"
+                    f"  it requested: {[request.describe() for request in point.requests]}"
+                    for point in self.points
+                    if point.why_not
+                ),
+                *(
+                    f"{point.moment.id} ({point.moment.summary}): {point.why_not}\n"
+                    f"  it ran: {point.report.commands}\n  it said: {point.reply}"
+                    for point in self.outside
+                    if point.why_not
+                ),
+            ]
         )
 
     def compound_commands(self) -> dict[str, list[str]]:
@@ -910,17 +1059,45 @@ class Replayed:
             found.setdefault(session, []).extend(
                 command for command in point.commands if is_compound(command)
             )
+        if self.outside_session is not None:
+            found[self.outside_session] = [
+                command
+                for point in self.outside
+                for command in point.report.commands
+                if is_compound(command)
+            ]
         return found
+
+    def sessions(self) -> list[str]:
+        """Each conversation of the replay: the print's, then the outside supervisor's."""
+        found = [session["session_name"] for session in self.ledger["sessions"]]
+        return [*found, self.outside_session] if self.outside_session is not None else found
+
+    def decision_records(self) -> list[DecisionRecord]:
+        """Every decision point as the record carries it, in the case's own replay order.
+
+        A watch line's is an `OutsideRecord`, carrying no check's calls or class, which
+        the record tells apart by its trigger as it does a start request's.
+        """
+        order = {moment.id: index for index, moment in enumerate(self.case.moments)}
+        ranked: list[tuple[int, DecisionRecord]] = [
+            *((order[point.moment.id], point.as_record()) for point in self.points),
+            *(
+                (order[point.moment.id], cast("DecisionRecord", point.as_record()))
+                for point in self.outside
+            ),
+        ]
+        return [record for _, record in sorted(ranked, key=lambda ranked: ranked[0])]
 
     def as_record(self) -> TestRecord:
         """The replay as `results/latest.json` carries it."""
         return {
             "test": self.case.name,
             "passed": self.passed,
-            "turns": len(self.points),
-            "sessions": [session["session_name"] for session in self.ledger["sessions"]],
+            "turns": len(self.points) + len(self.outside),
+            "sessions": self.sessions(),
             "compound_commands": self.compound_commands(),
-            "decision_points": [point.as_record() for point in self.points],
+            "decision_points": self.decision_records(),
             "alignment": self.alignment,
             "compactions": self.ledger["compactions"],
             "configured": self.configured,
@@ -1152,14 +1329,19 @@ class Replay:
         gcode: bytes | None = None,
         *,
         real_waits: bool = False,
+        outside: Callable[[Replay], OutsideSupervisor] | None = None,
     ) -> None:
         """Lay the install out and start the doubles; nothing runs until [`Replay.run`].
 
         A look's wait passes on the replay's clock at once; `real_waits` has the
         server wait it out in real time instead, which is what a jumped replay is
-        compared against.
+        compared against. `outside` makes the outside supervisor a case's watch lines
+        are handed to, once the install is laid out.
         """
         self.case = case
+        self.make_outside = outside
+        self.outside: OutsideSupervisor | None = None
+        self.outside_points: list[OutsidePoint] = []
         self.real_waits = real_waits
         self.target = target
         self.root = Path(tempfile.mkdtemp())
@@ -1242,9 +1424,17 @@ class Replay:
             calibration=self.calibration,
         )
 
+    def _agents_before(self, index: int) -> int:
+        """How many of the replay's entries before one are printobserver's agent's turns."""
+        return sum(1 for moment in self.case.moments[:index] if not moment.is_outside)
+
+    def _agent_turns(self) -> int:
+        """How many of the replay's entries are printobserver's agent's turns."""
+        return self._agents_before(len(self.case.moments))
+
     def _harness_started(self) -> str:
         """Note one harness run, and say where its output is to be kept."""
-        if self._trigger_count() <= self.timeline.index:
+        if self._trigger_count() <= self._agents_before(self.timeline.index):
             self.timeline.harness_started()
         else:
             self.timeline.moved_at_exit = False
@@ -1390,8 +1580,21 @@ class Replay:
                 self.alignment = found
 
     def _next_event(self) -> None:
+        """Stand at the next turn's event, handing the outside supervisor each line before it.
+
+        A line comes between two of printobserver's turns, so it is handed while the
+        turn that ended still holds the print, and no scheduled check can fire before
+        the conversation has answered it.
+        """
         timeline = self.timeline
+        exited_from = timeline.index
         following = timeline.index + 1
+        while following < len(self.case.moments) and self.case.moments[following].is_outside:
+            self._pass_the_first_layer(self.case.moments[following])
+            with timeline.lock:
+                timeline.stand_at(following)
+            self._hand_the_line(self.case.moments[following])
+            following += 1
         if following >= len(self.case.moments):
             with timeline.lock:
                 timeline.finished = True
@@ -1403,8 +1606,16 @@ class Replay:
         with timeline.lock:
             timeline.stand_at(following)
             timeline.moved_at_exit = True
+            timeline.exited_from = exited_from
         if upcoming.is_alert:
             self._deliver_alert(upcoming)
+
+    def _hand_the_line(self, moment: Moment) -> None:
+        """Hand the outside supervisor the watch's line at one milestone, and keep its point."""
+        if self.outside is None:
+            msg = f"{moment.id} is a watch line, and this replay has no outside supervisor"
+            raise ReplayError(msg)
+        self.outside_points.append(self.outside.supervise(moment, self._print_id()))
 
     def _operator_resumes(self) -> None:
         """The person who was told takes it from there, as the record of the real print has it."""
@@ -1520,6 +1731,10 @@ class Replay:
             raise ReplayError(msg)
         return cast("list[HistoryEvent]", list(reversed(events)))
 
+    def history(self) -> list[HistoryEvent]:
+        """The print's whole history, oldest first, as the operator reads it."""
+        return self._events()
+
     def _trigger_count(self) -> int:
         return sum(1 for event in self._events() if event["kind"] in TRIGGERS)
 
@@ -1562,7 +1777,7 @@ class Replay:
 
     def _wait_for_every_turn(self) -> None:
         deadline = time.monotonic() + TURN_DEADLINE_S * len(self.case.moments)
-        wanted = len(self.case.moments)
+        wanted = self._agent_turns()
         while True:
             said = self.bin / "launcher.log"
             if said.is_file():
@@ -1595,7 +1810,15 @@ class Replay:
 
     def run(self) -> Replayed:
         """Feed every event in order, and judge each decision point from the server's record."""
+        if self.case.moments[0].is_outside:
+            msg = f"{self.case.moments[0].id} is a watch line before printobserver's first verdict"
+            raise ReplayError(msg)
         config = self._install()
+        if any(moment.is_outside for moment in self.case.moments):
+            if self.make_outside is None:
+                msg = f"{self.case.name} hands watch lines, and this replay supervises from nowhere"
+                raise ReplayError(msg)
+            self.outside = self.make_outside(self)
         self._decide_before_the_first_event()
         self.server = self._started(config)
         try:
@@ -1623,9 +1846,14 @@ class Replay:
                 ledger=ledger,
                 fetches=list(self.timeline.fetches),
                 state=self.state,
-                transcript=[line for harness_run in self.runs for line in _lines_of(harness_run)],
+                transcript=[
+                    *(line for harness_run in self.runs for line in _lines_of(harness_run)),
+                    *(self.outside.transcript() if self.outside is not None else []),
+                ],
                 alignment=self.alignment,
                 configured=configured_compaction(config),
+                outside=list(self.outside_points),
+                outside_session=self.outside.session if self.outside is not None else None,
             )
         finally:
             self.stop()
@@ -1645,8 +1873,13 @@ class Replay:
         """
         triggers = [event for event in events if event["kind"] in TRIGGERS]
         points = []
-        for number, moment in enumerate(self.case.moments):
-            runs = [harness_run for harness_run in self.runs if harness_run.moment_index == number]
+        turns = [
+            (index, moment)
+            for index, moment in enumerate(self.case.moments)
+            if not moment.is_outside
+        ]
+        for number, (index, moment) in enumerate(turns):
+            runs = [harness_run for harness_run in self.runs if harness_run.moment_index == index]
             if number >= len(triggers) or not runs:
                 msg = f"the server recorded no event, or the harness no run, for {moment.id}"
                 raise ReplayError(msg)
@@ -1657,7 +1890,7 @@ class Replay:
                 (
                     harness_run.started_at
                     for harness_run in self.runs
-                    if harness_run.moment_index > number
+                    if harness_run.moment_index > index
                 ),
                 None,
             )
@@ -1729,9 +1962,11 @@ class Replay:
         )
 
     def stop(self) -> None:
-        """Stop the server and every double."""
+        """Stop the server, the outside supervisor and every double."""
         self.timeline.stopped.set()
         self.stop_server()
+        if self.outside is not None:
+            self.outside.stop()
         for server in self.servers:
             server.shutdown()
             server.server_close()

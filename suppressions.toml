@@ -580,6 +580,12 @@ reason = "Proving replacement of stale committed examples requires a corrupted d
 
 [[suppression]]
 rule = "changed_behavior_has_e2e"
+file = "crates/printobserver/tests/journeys/documenting.rs"
+site = "rewrite(&root, section.document, &produced);"
+reason = "The section's write mode writes back the same captured steps its assertion compares, which the outside-supervision journey runs against a real server. Proving the rewrite would need a stale copy of a committed document and a process-wide environment switch flipped inside a parallel test binary."
+
+[[suppression]]
+rule = "changed_behavior_has_e2e"
 file = "justfile"
 site = "docs-generate:"
 reason = "Proving repair of an incomplete generated documentation set requires forbidden tree surgery. The real schema-writing CLI test, runtime surface comparison and real-server documented-example journey remain."
@@ -4782,6 +4788,12 @@ rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest/starts.py"
 site = "\"CLAUDE_CONFIG_DIR\": str(self.config_dir),"
 reason = "The variable Claude Code reads its configuration directory from has no published contract; it is the same one the supervisor port's sign-in table names. A move of it puts the skill and the transcripts where the harness does not look, which `test_replay.py` fails on as commands and usage reported empty."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest/outside.py"
+site = "\"CLAUDE_CONFIG_DIR\": str(self.agent.config_dir),"
+reason = "The variable Claude Code reads its configuration directory from has no published contract; it is the one `starts.py`'s operator's agent and the supervisor port's sign-in table name. A move of it puts the outside supervisor's skill and transcripts where the harness does not look, which `test_replay.py` fails on as each watch line's conversation reporting no usage, models or commands."
 
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"

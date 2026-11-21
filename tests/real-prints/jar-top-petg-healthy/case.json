@@ -1357,7 +1357,7 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
-    "replay": ["carry-on-004-other", "carry-on-013-other", "carry-on-024-support", "carry-on-028-bridge", "carry-on-031-other", "carry-on-042-other", "carry-on-049-support", "carry-on-059-other"],
+    "replay": ["carry-on-004-other", "outside-first-layer", "outside-first-support", "outside-first-overhang", "carry-on-013-other", "carry-on-024-support", "carry-on-028-bridge", "carry-on-031-other", "carry-on-042-other", "carry-on-049-support", "carry-on-059-other", "outside-end"],
     "scenarios": [
       {
         "id": "carry-on-004-other",
@@ -1862,6 +1862,179 @@
             "args": {
               "disposition": "stop"
             }
+          }
+        ]
+      },
+      {
+        "id": "outside-first-layer",
+        "at": "2026-10-30T12:06:36",
+        "file_position_bytes": 2601,
+        "file_position_source": "milestone",
+        "summary": "The outside supervisor that started the print is handed the watch's line saying it reached its first layer and that printobserver's agent still calls it clean: it takes and opens its own frame of the printer, with no print named, and asks for nothing.",
+        "trigger": "outside_supervision",
+        "milestone": "first_layer",
+        "event_image": "agent-005-look-120816.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "set-fan-percent"
+          }
+        ]
+      },
+      {
+        "id": "outside-first-support",
+        "at": "2026-10-30T12:06:37",
+        "file_position_bytes": 2687,
+        "file_position_source": "milestone",
+        "summary": "The outside supervisor that started the print is handed the watch's line saying it reached the first layer that prints support and that printobserver's agent still calls it clean: it takes and opens its own frame of the printer, with no print named, and asks for nothing.",
+        "trigger": "outside_supervision",
+        "milestone": "first_support",
+        "event_image": "agent-005-look-120816.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "set-fan-percent"
+          }
+        ]
+      },
+      {
+        "id": "outside-first-overhang",
+        "at": "2026-10-30T12:15:47",
+        "file_position_bytes": 219500,
+        "file_position_source": "milestone",
+        "summary": "The outside supervisor that started the print is handed the watch's line saying it reached the first layer that prints an overhang and that printobserver's agent still calls it clean: it takes and opens its own frame of the printer, with no print named, and asks for nothing.",
+        "trigger": "outside_supervision",
+        "milestone": "first_overhang",
+        "event_image": "agent-009-look-121648.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "set-fan-percent"
+          }
+        ]
+      },
+      {
+        "id": "outside-end",
+        "at": "2026-10-30T14:25:12",
+        "file_position_bytes": 5590138,
+        "file_position_source": "milestone",
+        "summary": "The outside supervisor that started the print is handed the watch's line saying it reached its last layer and that printobserver's agent still calls it clean: it takes and opens its own frame of the printer, with no print named, and asks for nothing. Its frame is the last this recording holds, taken 3 layers before the last layer, because the recording has no frame at or after that layer.",
+        "trigger": "outside_supervision",
+        "milestone": "end",
+        "frame_layers_before_milestone": 3,
+        "event_image": "agent-074-obs-142205-p97.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "set-fan-percent"
           }
         ]
       }
