@@ -51,32 +51,43 @@ function Events([datetime]$since) {
         Where-Object { $_.Message -match $task } | Sort-Object TimeCreated |
         ForEach-Object { "    ev {0} {1:HH:mm:ss.fff} {2}" -f $_.Id, $_.TimeCreated, (($_.Message -replace '\s+', ' ') -replace '^(.{0,170}).*', '$1') }
 }
-foreach ($lead in $env:PROBE_LEADS -split ',') {
-    for ($n = 1; $n -le [int]$env:PROBE_ROUNDS; $n++) {
-        Stop-ScheduledTask -TaskName $task
-        Until 'stopped' { (Servers).Count -eq 0 } 120
-        $since = Get-Date
-        Start-ScheduledTask -TaskName $task
-        Until 'serving' { Listening } 120
-        # Kill `lead` seconds before the next minute's start, as the failing run's kill fell.
-        $next = NextRun
-        if ($next -lt (Get-Date).AddSeconds([int]$lead + 1)) { $next = $next.AddMinutes(1) }
-        $wait = ($next.AddSeconds(-[int]$lead) - (Get-Date)).TotalMilliseconds
-        if ($wait -gt 0) { Start-Sleep -Milliseconds $wait }
-        $killed = (Servers)[0].ProcessId
-        Write-Output ("[lead {0}s {1}] kill {2} at {3:HH:mm:ss.fff}, next run {4:HH:mm:ss}: {5}" -f $lead, $n, $killed, (Get-Date), (NextRun), (State))
-        $at = Get-Date
-        & taskkill.exe /F /PID $killed | Out-Null
-        $last = ''
-        $back = $false
-        while (((Get-Date) - $at).TotalSeconds -lt 200) {
-            $now = Servers
-            $line = "servers=$($now.ProcessId -join ',') $(State) next=$((NextRun).ToString('HH:mm:ss')) running=[$(Running)]"
-            if ($line -ne $last) { Write-Output ("  +{0,5:N1}s {1}" -f ((Get-Date) - $at).TotalSeconds, $line); $last = $line }
-            if ($now.Count -ge 1 -and $now[0].ProcessId -ne $killed -and (Listening)) { $back = $true; break }
-            Start-Sleep -Milliseconds 1000
-        }
-        Write-Output ("[lead {0}s {1}] {2} after {3:N1}s" -f $lead, $n, $(if ($back) { 'BACK' } else { 'NOT BACK' }), ((Get-Date) - $at).TotalSeconds)
-        Events $at.AddSeconds(-2)
+function Said {
+    $j = Start-Job { param($p, $c) & $p server --config $c 2>&1 } -ArgumentList $program, $config
+    Start-Sleep -Seconds 12; $out = Receive-Job $j; Stop-Job $j; Remove-Job $j -Force
+    $out | Select-Object -Last 3 | ForEach-Object { "    server says: $_" }
+}
+foreach ($hold in $env:PROBE_HOLDS -split ',') {
+    Stop-ScheduledTask -TaskName $task
+    Until 'stopped' { (Servers).Count -eq 0 } 120
+    Start-ScheduledTask -TaskName $task
+    Until 'serving' { Listening } 120
+    $killed = (Servers)[0].ProcessId
+    $at = Get-Date
+    & taskkill.exe /F /PID $killed | Out-Null
+    Until 'killed gone' { (Servers).Count -eq 0 } 30
+    # Something else takes 127.0.0.1:8420 as a source port, as any outgoing
+    # loopback connection handed that ephemeral port does.
+    $client = $null
+    if ($hold -ne 'none') {
+        $client = New-Object System.Net.Sockets.Socket([System.Net.Sockets.AddressFamily]::InterNetwork, [System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Tcp)
+        $client.Bind((New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Loopback, 8420)))
+        $client.Connect('127.0.0.1', 5000)
+        if ($hold -eq 'timewait') { $client.Shutdown('Both'); $client.Close(); $client = $null }
+        Get-NetTCPConnection -LocalPort 8420 -ErrorAction SilentlyContinue | ForEach-Object { "    port 8420: $($_.LocalAddress):$($_.LocalPort) -> $($_.RemoteAddress):$($_.RemotePort) $($_.State)" }
     }
+    Write-Output ("[hold {0}] killed {1} at {2:HH:mm:ss}; next run {3:HH:mm:ss}" -f $hold, $killed, $at, (NextRun))
+    $back = $false
+    $saidOnce = $false
+    while (((Get-Date) - $at).TotalSeconds -lt 170) {
+        if ((Servers).Count -ge 1 -and (Listening)) { $back = $true; break }
+        if (-not $saidOnce -and ((Get-Date) - $at).TotalSeconds -gt 75) { Said; $saidOnce = $true }
+        Start-Sleep -Milliseconds 1000
+    }
+    Write-Output ("[hold {0}] {1} after {2:N1}s: {3}" -f $hold, $(if ($back) { 'BACK' } else { 'NOT BACK' }), ((Get-Date) - $at).TotalSeconds, (State))
+    Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-TaskScheduler/Operational'; StartTime = $at.AddSeconds(-2) } -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -match $task -and $_.Id -in 100, 102, 129, 201, 322, 329, 101, 103 } | Sort-Object TimeCreated |
+        ForEach-Object { "    ev {0} {1:HH:mm:ss} {2}" -f $_.Id, $_.TimeCreated, ((($_.Message -replace '\s+', ' ') -replace '.*(return code \S+|process ID \S+|already running|instance of the).*', '$1')) }
+    if ($client) { $client.Close() }
+    Until 'back once released' { (Servers).Count -ge 1 -and (Listening) } 150
+    Write-Output "    after release: $(State) servers=$((Servers).ProcessId -join ',')"
 }

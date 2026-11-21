@@ -24,7 +24,6 @@ jobs:
         run: wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
       - shell: pwsh
         env:
-          PROBE_LEADS: "30,45,10,55"
-          PROBE_ROUNDS: "2"
+          PROBE_HOLDS: "none,held,timewait"
           GH_TOKEN: ${{ github.token }}
         run: .github/probe/task-kill-probe.ps1
