@@ -32,13 +32,13 @@ tiers = [
 ]
 # The one spelling of the project tag a project's `project.json` carries to
 # declare that its `test` or `test-e2e` target exercises no platform-dependent
-# behaviour, so CI may run it once, on linux-x86_64, instead of on every
-# supported platform. A
-# project without it runs on every platform, as before. The owner of a project's
-# tests decides whether it carries the tag. Nothing selects by it yet: `just
-# check-repo`'s `project-tags` accepts it and refuses any other tag in the
-# `platform:` dimension, so a misspelling cannot silently keep a suite on every
-# platform, and every reader takes the spelling from here.
+# behaviour, so CI runs it once, in the `lint` job on linux-x86_64 (`just
+# ci-lint`), instead of in every supported platform's `test` job (`just
+# ci-test`), which runs every project without it. The owner of a project's
+# tests decides whether it carries the tag. `just check-repo`'s `project-tags`
+# accepts it, refuses any other tag in the `platform:` dimension, so a
+# misspelling cannot silently keep a suite on every platform, and holds the
+# justfile's one spelling of it, `PLATFORM_INDEPENDENT`, to this one.
 platform_independent_tag = "platform:independent"
 
 [gate.coverage]
@@ -851,10 +851,9 @@ action_pin_pattern = '^[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@v[0-9]+(\.[0-9]+\.[0-9]+
 # that may carry a platform matrix. A job's kind is what its own steps run, not
 # what it is called. `just check-repo` holds these to AGENTS.md's
 # supported-platform list and refuses a platform matrix on any other job.
-# A shard job of a sharded gate runs the gate's work and is a `gate` job, its
-# cells one platform's shards; the aggregating job reporting that platform's
-# context carries no matrix, and AGENTS.md's unmatrixed-jobs record says why.
-platform_dependent_kinds = ["gate", "integration", "install", "artifact"]
+# A `warm` job compiles one platform's `test` job's work into the cache that job
+# restores, so its cells are held to exactly the gate job's own.
+platform_dependent_kinds = ["gate", "integration", "install", "artifact", "warm"]
 # The install scripts behind the install-path section's third route, one per
 # family of platform — the shell one for Linux and macOS, the PowerShell one
 # for Windows — and the paths that route's fetch commands may name. The service
@@ -905,10 +904,10 @@ waived_report = "GITHUB_STEP_SUMMARY"
 # consolidated macOS lanes" is the prose half.
 [[workflows.carried]]
 platform = "macos-aarch64"
-jobs = ["integration"]
-carrier = "ci.yml:integration-macos"
-runs = ["just bootstrap", "just octoprint-up", "just test-integration", "just octoprint-down"]
-reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS printer integration tier runs as a job of its own beside the macOS gate job, owed only where the classifier says so, and reports `integration (macos-aarch64)` itself"
+jobs = ["test"]
+carrier = "ci.yml:test-macos"
+runs = ["just bootstrap", "just ci-test", "just octoprint-up", "just test-integration", "just octoprint-down"]
+reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS `test` cell runs as a job of its own, whose condition leaves it off release automation's version/changelog pull request without taking a runner, and reports `test (macos-aarch64)` itself"
 
 [[workflows.carried]]
 platform = "macos-aarch64"
@@ -1089,11 +1088,11 @@ version = "3.8.1"
 provided_by = ["git-lfs"]
 install = "uv run -q python -m repo_checks install-git-lfs {version}"
 
-# onebudgetspec, which checks the root `budgets.yaml`'s `gate-time` in the
-# `gate-time` step of every required gate and integration job, and which
-# `repo_checks gate_time_budget` reports that figure through. Held at the
+# onebudgetspec, which checks the root `budgets.yaml`'s `ci-check-time` and
+# `ci-job-count` in `ci.yml`'s `budgets` job, and which `repo_checks
+# ci_budgets` reports those figures through. Held at the
 # release the budget was registered on, 2026-10-25. The `dev` dependency group
-# pins `onebudgetspec-sdk` at this same release — `test_gate_time_budget.py`
+# pins `onebudgetspec-sdk` at this same release — `test_ci_budgets.py`
 # holds the two together — and that SDK requires `onebudgetspec-cli` at its
 # own release, whose wheel puts this binary in the environment `uv run` gives
 # every recipe; where a host's PATH carries no copy at all, `install` puts this

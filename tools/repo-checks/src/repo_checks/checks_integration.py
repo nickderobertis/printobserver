@@ -61,6 +61,10 @@ PATH_FILTERS = ("paths", "paths-ignore")
 # check reports on the commit, so the draft's run already answers for it.
 PULL_REQUEST_TYPES = ("opened", "synchronize", "reopened")
 BRANCH_FILTERS = ("branches", "branches-ignore")
+#: The one condition the job may carry: it runs on every pull request, and a
+#: push to the base branch is the merge of a pull request whose own run ran the
+#: tier on the merge of its head into that branch.
+PULL_REQUEST_ONLY = "github.event_name == 'pull_request'"
 
 
 def integration_tier(repo: Repo, base: str | None = None) -> list[str]:
@@ -328,7 +332,7 @@ def _trigger_findings(
                 f"({', '.join(named) or branches}), so {where} does not run on every change"
             )
 
-    if "if" in job:
+    if "if" in job and str(job["if"]).strip() != PULL_REQUEST_ONLY:
         findings.append(
             f"{where} carries the condition `{job['if']}`, which skips it for some changes"
         )

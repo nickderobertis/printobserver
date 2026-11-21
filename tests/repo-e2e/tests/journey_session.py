@@ -6,26 +6,23 @@ drive only this repository's own tooling, workflows and records — and each
 project's `conftest.py` takes its hooks and fixtures from here, so the two
 sessions are one tier's sessions rather than two that drift apart.
 
-A hook here is made for one project's directory: pytest calls a conftest's
-collection hooks with every item of the session, so a session collecting both
-directories, as the shard planner's own test does, has each project's conftest
-rule on its own files alone.
+A hook here is made for one project's directory, so a session collecting both
+directories has each project's conftest rule on its own files alone.
 """
 
 from __future__ import annotations
 
-import os
 from collections import defaultdict
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 from journey import REPO_ROOT, GateCopy
-from repo_checks import gate_shards, windows_lint, workers
+from repo_checks import gate_tier, windows_lint, workers
 from repo_checks.tree_lock import TreeLock
 
-#: How many tests the part's own deselection took out of this session.
-LEFT_TO_ANOTHER_PART = pytest.StashKey[int]()
+#: The tier's own target, the suite `repo_checks.workers` chooses a worker count for.
+END_TO_END = "test-e2e"
 
 #: How many test files the per-file summary names, slowest first.
 SLOWEST_FILES = 25
@@ -45,62 +42,9 @@ def worker_count(project: str) -> Callable[[pytest.Config], int]:
 
     def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
         del config
-        return workers.chosen(workers.Suite(project, gate_shards.END_TO_END), REPO_ROOT)
+        return workers.chosen(workers.Suite(project, END_TO_END), REPO_ROOT)
 
     return pytest_xdist_auto_num_workers
-
-
-def _part() -> gate_shards.Shard | None:
-    """The part of this tier's test files a sharded gate asked this run to collect."""
-    named = os.environ.get(gate_shards.END_TO_END_PART_VARIABLE, "")
-    return gate_shards.Shard.named(named) if named else None
-
-
-def other_parts_deselected(
-    directory: Path,
-) -> Callable[[pytest.Config, list[pytest.Item]], None]:
-    """The `pytest_collection_modifyitems` hook deselecting `directory`'s files another part runs.
-
-    A gate split across runners runs this tier in parts, each named in
-    `PRINTOBSERVER_E2E_PART`, and `repo_checks.gate_shards` decides which test
-    file each part collects, by its name, so every test is collected by exactly
-    one part. Items outside `directory` are another project's, and left to it.
-    """
-
-    def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-        part = _part()
-        if part is None:
-            return
-        kept: list[pytest.Item] = []
-        dropped: list[pytest.Item] = []
-        for item in items:
-            ours = item.path.is_relative_to(directory)
-            elsewhere = gate_shards.end_to_end_part(item.path.name, part.count) != part.index
-            (dropped if ours and elsewhere else kept).append(item)
-        config.stash[LEFT_TO_ANOTHER_PART] = config.stash.get(LEFT_TO_ANOTHER_PART, 0) + len(
-            dropped
-        )
-        if dropped:
-            config.hook.pytest_deselected(items=dropped)
-            items[:] = kept
-
-    return pytest_collection_modifyitems
-
-
-def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """A part whose share of the selection is empty ran what it was asked to.
-
-    The tier's second invocation selects the `alone` journeys, which one part's
-    files carry and the other's do not, so that other part leaves every test
-    the marker selected to the part that runs it. That is its share of the
-    selection rather than a selection matching nothing; a part that collected
-    nothing at all is still the failure it was.
-    """
-    if (
-        exitstatus == pytest.ExitCode.NO_TESTS_COLLECTED
-        and session.config.stash.get(LEFT_TO_ANOTHER_PART, 0) > 0
-    ):
-        session.exitstatus = pytest.ExitCode.OK
 
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
@@ -149,10 +93,9 @@ def no_ambient_gate_base(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.delenv("NX_BASE", raising=False)
     monkeypatch.delenv("NX_HEAD", raising=False)
-    # The part of this tier a sharded gate collects is read at collection, and
-    # a tier a journey drives in a copy is never one of its parts.
-    for name in gate_shards.PARTS:
-        monkeypatch.delenv(name, raising=False)
+    # The side of a project tag the `ci-measured` recipe narrows its tiers to:
+    # a tier a journey drives in a copy is never narrowed by the run around it.
+    monkeypatch.delenv(gate_tier.PROJECTS_VARIABLE, raising=False)
 
 
 @pytest.fixture

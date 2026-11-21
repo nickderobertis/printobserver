@@ -1,10 +1,11 @@
-"""Which projects a gate tier reaches, and which tier a CI run of the gate is for.
+"""Which projects a gate tier reaches, and which tier a CI run is for.
 
 The base is resolved by real git over real repositories built here, and the
 selection is read through the real `just gate-tier` recipe fed the event a
 forge run would carry. The committed workflow is parsed for the half only a
-forge can run: that the gate job asks the selector, and that nothing it adds
-can leave a required context unreported on a pull request.
+forge can run: that its `lint` and `test` jobs run their halves of the gate at
+the affected tier against an explicitly derived base, and that no condition or
+`needs` edge can leave a required context unreported on a pull request.
 """
 
 from __future__ import annotations
@@ -16,10 +17,16 @@ from pathlib import Path
 
 import pytest
 from repo_checks.checks_ci import status_contexts
-from repo_checks.checks_shards import is_shard_job
 from repo_checks.expect import contains, equal, failing, truth
 from repo_checks.fixture_repository import init_repository
-from repo_checks.gate_tier import AFFECTED, ALL, TierError, resolve, select
+from repo_checks.gate_tier import (
+    AFFECTED,
+    ALL,
+    TierError,
+    release_branch_prefix,
+    resolve,
+    select,
+)
 from repo_checks.gate_tier import main as gate_tier_main
 from repo_checks.model import Repo
 from repo_checks.parsing import jobs_of, load_workflow, marker_block, run_commands, steps_of
@@ -236,7 +243,7 @@ def gate_tier(event: str, head: str = "") -> str:
 
 
 def test_the_release_pull_request_selects_the_sweep() -> None:
-    """Releases are batched behind it, so it is the one point every release is swept at."""
+    """What `just budgets-release-pr` tells the release pull request apart by."""
     equal(gate_tier("pull_request", RELEASE_BRANCH), ALL)
 
 
@@ -246,7 +253,7 @@ def test_an_ordinary_pull_request_selects_the_affected_tier() -> None:
 
 
 def test_a_push_to_the_base_branch_selects_the_affected_tier() -> None:
-    """Merge-to-main stays affected: the release pull request is where the sweep runs."""
+    """A push to `main` is never the release pull request, so it is never told apart as one."""
     equal(gate_tier("push"), AFFECTED)
 
 
@@ -277,75 +284,85 @@ def test_a_release_configuration_naming_no_prefix_is_refused(tree: Callable[[], 
         select(copy.repo, {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_HEAD_REF": RELEASE_BRANCH})
 
 
-@pytest.mark.parametrize(
-    ("key", "command"),
-    [
-        ("gate", 'just check "$(just gate-tier)"'),
-        ("gate-shard-linux-x86_64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
-        ("gate-shard-windows-x86_64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
-        ("gate-shard-windows-aarch64", 'just check-shard "$(just gate-tier)" "$GATE_SHARD"'),
-    ],
-)
-def test_the_gate_job_runs_check_at_the_selected_tier_against_a_derived_base(
-    key: str, command: str
+#: Each `ci.yml` job running a half of the gate, and the recipe it runs it with.
+GATE_HALVES = {"lint": "ci-lint", "test": "ci-test", "test-macos": "ci-test"}
+
+
+@pytest.mark.parametrize(("key", "recipe"), sorted(GATE_HALVES.items()))
+def test_each_half_of_the_gate_runs_at_the_affected_tier_against_a_derived_base(
+    key: str, recipe: str
 ) -> None:
     """The half of the selection only a forge runs, read off the committed workflow.
 
-    A shard of a sharded gate is held to it as the unsharded gate is.
+    The job names no tier, so the recipe runs at its own default, which the real
+    `just` answers is `affected` — the release pull request's included: the
+    sweep is `just check all`, run by hand rather than by any job.
     """
-    gate = jobs_of(load_workflow(REPO_ROOT / ".github/workflows/ci.yml"))[key]
-    uses = [str(step.get("uses", "")) for step in steps_of(gate)]
+    job = jobs_of(load_workflow(REPO_ROOT / ".github/workflows/ci.yml"))[key]
+    commands = run_commands(job)
+    uses = [str(step.get("uses", "")) for step in steps_of(job)]
 
-    contains(run_commands(gate), command)
+    equal(
+        [command for command in commands if command.split()[:2] == ["just", recipe]],
+        [f"just {recipe}"],
+        describing=f"`{key}`'s run of `just {recipe}`, naming no tier",
+    )
+    truth(
+        not any("gate-tier" in command for command in commands),
+        describing=f"`{key}` asking the selector for no tier, in {commands}",
+    )
+    dry = run(["just", "--dry-run", recipe], cwd=REPO_ROOT, timeout=300)
+    equal(dry.returncode, 0, describing=f"`just --dry-run {recipe}`: {dry.stderr}")
+    contains(dry.stderr, "'affected'", describing=f"what `just {recipe}` runs at its default")
+    truth("'all'" not in dry.stderr, describing=f"`just {recipe}` sweeping nothing: {dry.stderr}")
     truth(
         any(action.startswith("nrwl/nx-set-shas@") for action in uses),
-        describing=f"the gate job deriving NX_BASE explicitly; it uses {uses}",
+        describing=f"`{key}` deriving NX_BASE explicitly; it uses {uses}",
     )
     checkout = next(
-        step for step in steps_of(gate) if str(step.get("uses")).startswith("actions/checkout@")
+        step for step in steps_of(job) if str(step.get("uses")).startswith("actions/checkout@")
     )
-    equal(checkout.get("with", {}).get("fetch-depth"), 0, describing="the gate's checkout depth")
-    equal(gate.get("permissions", {}).get("actions"), "read", describing="what nx-set-shas reads")
+    equal(checkout.get("with", {}).get("fetch-depth"), 0, describing=f"`{key}`'s checkout depth")
+    equal(job.get("permissions", {}).get("actions"), "read", describing="what nx-set-shas reads")
 
 
 def test_an_empty_tier_from_a_selector_that_failed_is_refused_by_the_gate() -> None:
-    """`just check "$(just gate-tier)"` fails closed when the selector answers nothing."""
+    """A tier recipe handed the empty tier a failed `$(just gate-tier)` answers fails closed."""
     ran = run(["just", "format-check", ""], cwd=REPO_ROOT, timeout=600)
 
     failing(ran, naming="unknown tier ''")
 
 
-#: The one condition a required macOS job runs under: the lane is owed, or a pull
-#: request's classification could not be read, since unknown is never omission.
-MACOS_OWED = (
-    "!cancelled() && (needs.classify.outputs.macos-required == 'true' || "
-    "(github.event_name == 'pull_request' && needs.classify.result != 'success'))"
-)
+#: The one condition every job of `ci.yml` but `test-macos` and `budgets` runs under.
+PULL_REQUEST_ONLY = "github.event_name == 'pull_request'"
 
-#: The one condition the real-print suite runs under: it is owed, or that could not be read.
-SKILLTEST_OWED = (
-    "!cancelled() && (needs.skilltest-classify.outputs.owed == 'true' || "
-    "needs.skilltest-classify.result != 'success')"
-)
+
+def macos_owed(prefix: str) -> str:
+    """The condition `test-macos` runs under: every pull request but release automation's own."""
+    return (
+        f"{PULL_REQUEST_ONLY} && !(github.event.pull_request.head.repo.full_name == "
+        f"github.repository && startsWith(github.head_ref, '{prefix}'))"
+    )
+
 
 #: The status contexts a pull request to the base branch must always report,
 #: whatever the affected set reaches — the fixed contract this repository's
-#: protection names, as the plan read it.
+#: protection names.
 FIXED_CONTEXTS = (
-    "pr-title",
-    "gate (linux-x86_64)",
-    "gate (linux-aarch64)",
-    "gate (macos-aarch64)",
-    "gate (windows-x86_64)",
-    "gate (windows-aarch64)",
-    "integration (linux-x86_64)",
-    "integration (linux-aarch64)",
-    "integration (macos-aarch64)",
-    "integration (windows-x86_64)",
-    "integration (windows-aarch64)",
-    "llmlint",
+    "lint",
+    "test (linux-x86_64)",
+    "test (linux-aarch64)",
+    "test (macos-aarch64)",
+    "test (windows-x86_64)",
+    "test (windows-aarch64)",
+    "budgets",
     "skilltest",
 )
+
+
+def condition_of(job: dict[str, object]) -> str:
+    """A job's `if`, with the whitespace a folded YAML scalar leaves collapsed."""
+    return " ".join(str(job.get("if")).split())
 
 
 def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
@@ -353,9 +370,12 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
 
     Each context is traced to the job reporting it, and that job's workflow and
     its own declaration are read for anything that could keep it from running
-    on a pull request to the base branch whatever the affected set is.
+    on a pull request to the base branch whatever the affected set is. The one
+    job that may be skipped is `test-macos`, on release automation's own pull
+    request, and a job its condition skips reports its context as a success.
     """
-    reported = {context.name: context for context in status_contexts(Repo(REPO_ROOT))}
+    repo = Repo(REPO_ROOT)
+    reported = {context.name: context for context in status_contexts(repo)}
     for name in FIXED_CONTEXTS:
         contains(set(reported), name, describing="the contexts the committed workflows report")
         context = reported[name]
@@ -375,60 +395,45 @@ def test_every_fixed_context_is_reported_on_every_pull_request() -> None:
             )
         jobs = jobs_of(workflow)
         job = jobs[context.job]
-        condition = job.get("if")
         needs = job.get("needs")
-        if needs == "classify":
-            # A macOS lane's job runs where the classifier owes the lane, and on
-            # a pull request it could not classify; where it is not owed the
-            # job is skipped, which the forge reports as a passing context.
-            equal(
-                " ".join(str(condition).split()),
-                MACOS_OWED,
-                describing=f"`{context.job}`'s condition, waiting on the classifier",
-            )
-            continue
-        if needs == "skilltest-classify":
-            # The real-print suite runs where the diff owes it and where the
-            # classifier could not say; otherwise it is skipped, which passes.
-            equal(
-                " ".join(str(condition).split()),
-                SKILLTEST_OWED,
-                describing=f"`{context.job}`'s condition, waiting on its classifier",
-            )
-            continue
         if needs is not None:
-            # A carrier of a consolidated lane, or the aggregator of a sharded
-            # context, waits on the jobs doing the work and reports whatever
-            # they ended as: `always()` is what no result can skip. A shard it
-            # waits on is held to running on every pull request instead — but
-            # the macOS gate's, which runs where the classifier owes the lane,
-            # and whose aggregator is skipped exactly where they all were.
-            waited = [needs] if isinstance(needs, str) else needs
-            owed = [key for key in waited if jobs[key].get("needs") == "classify"]
-            equal(
-                " ".join(str(condition).split()),
-                f"always() && needs.{owed[0]}.result != 'skipped'" if owed else "always()",
-                describing=f"`{context.job}`'s condition, waiting on {needs}",
-            )
-            for key in owed:
-                equal(
-                    " ".join(str(jobs[key].get("if")).split()),
-                    MACOS_OWED,
-                    describing=f"`{key}`'s condition, waiting on the classifier",
-                )
-            for key in waited:
-                if not is_shard_job(jobs[key]) or key in owed:
-                    continue
+            # The one job that waits on others reports however they ended:
+            # `always()` is what no result of theirs can skip, and each job it
+            # waits on is held to its own condition here as a context is.
+            equal(condition_of(job), "always()", describing=f"`{context.job}`'s condition")
+            for key in [needs] if isinstance(needs, str) else needs:
                 equal(jobs[key].get("needs"), None, describing=f"what `{key}` waits on")
                 truth(
-                    jobs[key].get("if") in (None, "github.event_name == 'pull_request'"),
+                    condition_of(jobs[key])
+                    in (PULL_REQUEST_ONLY, macos_owed(release_branch_prefix(repo))),
                     describing=f"`{key}`'s condition, {jobs[key].get('if')!r}",
                 )
             continue
-        truth(
-            condition in (None, "github.event_name == 'pull_request'"),
-            describing=f"`{context.job}`'s condition, {condition!r}, holding on a pull request",
+        if context.job == "test-macos":
+            # Off release automation's version/changelog pull request alone,
+            # told apart by the prefix `release-plz.toml` names.
+            equal(
+                condition_of(job),
+                macos_owed(release_branch_prefix(repo)),
+                describing="`test-macos`'s condition",
+            )
+            continue
+        equal(
+            condition_of(job),
+            PULL_REQUEST_ONLY,
+            describing=f"`{context.job}`'s condition, holding on a pull request",
         )
+
+
+def test_the_budgets_job_waits_on_every_other_job_of_the_run() -> None:
+    """It measures the run once every other job has ended, so it waits on all of them."""
+    jobs = jobs_of(load_workflow(REPO_ROOT / ".github/workflows/ci.yml"))
+
+    equal(
+        sorted(jobs["budgets"].get("needs", [])),
+        sorted(key for key in jobs if key != "budgets"),
+        describing="the jobs `budgets` waits on",
+    )
 
 
 def test_the_required_checks_record_is_the_fixed_contract_in_full() -> None:

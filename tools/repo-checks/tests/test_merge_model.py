@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from closures import closure
-from repo_checks.checks_ci import merge_model, status_contexts
+from repo_checks.checks_ci import JobKind, merge_model, status_contexts
 from repo_checks.expect import absent, accepted, contains, equal, refused, refused_naming, truth
 from repo_checks.model import Repo
 from repo_checks.parsing import marker_block
@@ -27,9 +27,18 @@ CLOSURE = closure("merge-model")
 BLOCK_START = "[//]: # (BEGIN required-checks)"
 BLOCK_END = "[//]: # (END required-checks)"
 CI = ".github/workflows/ci.yml"
-QUALIFIED = "    name: gate (${{ matrix.platform.id }})\n"
-# The two contexts the gate reports, which is what the record has to name.
-GATE_CELLS = ("gate (linux-x86_64)", "gate (linux-aarch64)")
+QUALIFIED = "    name: test (${{ matrix.platform.id }})\n"
+# Two of the contexts the gate job reports, which is what the record has to name.
+GATE_CELLS = ("test (linux-x86_64)", "test (linux-aarch64)")
+#: The five contexts the gate reports: four from the `test` matrix and
+#: `macos-aarch64`'s from `test-macos`, which carries that cell.
+TEST_CONTEXTS = [
+    "test (linux-aarch64)",
+    "test (linux-x86_64)",
+    "test (macos-aarch64)",
+    "test (windows-aarch64)",
+    "test (windows-x86_64)",
+]
 
 
 def _required(repo: Repo) -> list[str]:
@@ -60,18 +69,17 @@ def test_every_required_name_is_a_context_the_workflows_report(committed: Repo) 
 def test_the_gate_is_required_once_per_platform_it_runs_on(committed: Repo) -> None:
     """One cell per platform, distinguishable contexts, and the record names every one."""
     required = _required(committed)
-    gate = [name for name in required if name.startswith("gate")]
+    gate = [name for name in required if name.startswith("test")]
 
+    equal(sorted(gate), TEST_CONTEXTS, describing="the gate entries of the required record")
+
+
+def test_the_whole_record_is_the_new_job_set(committed: Repo) -> None:
+    """Five platform contexts of the gate, the lint job, the budgets and the suite."""
     equal(
-        sorted(gate),
-        [
-            "gate (linux-aarch64)",
-            "gate (linux-x86_64)",
-            "gate (macos-aarch64)",
-            "gate (windows-aarch64)",
-            "gate (windows-x86_64)",
-        ],
-        describing="the gate entries of the required record",
+        sorted(_required(committed)),
+        sorted([*TEST_CONTEXTS, "lint", "budgets", "skilltest"]),
+        describing="the required record",
     )
 
 
@@ -80,21 +88,25 @@ def test_the_judged_tier_is_required_once_under_a_name_carrying_no_platform(
 ) -> None:
     """One roll of the judge, one status context, and the record names exactly it."""
     required = _required(committed)
-    judged = [name for name in required if name.startswith("llmlint")]
+    judged = [
+        context.name
+        for context in status_contexts(committed)
+        if context.kind == JobKind.LLMLINT and context.name in required
+    ]
 
-    equal(judged, ["llmlint"], describing="the judged-lint entries of the required record")
+    equal(judged, ["lint"], describing="the judged-lint entries of the required record")
     for platform in ("linux-x86_64", "linux-aarch64", "ubuntu-24.04"):
         absent(judged[0], platform, describing="the judged-lint required check's name")
 
 
 def test_a_stale_bare_matrix_job_name_is_refused(tree: Callable[[], Tree]) -> None:
-    """`gate` is the job's key; the cells report under names carrying the platform."""
+    """`test` is the job's key; the cells report under names carrying the platform."""
     broken = tree()
-    _replace_required(broken, ["gate", "llmlint", "pr-title"])
+    _replace_required(broken, ["test", "lint", "budgets"])
 
     findings = merge_model(broken.repo)
 
-    refused_naming(findings, "`gate` as a required check", "reports a status context")
+    refused_naming(findings, "`test` as a required check", "reports a status context")
 
 
 def test_a_record_naming_only_one_of_a_jobs_cells_is_refused(
@@ -102,11 +114,11 @@ def test_a_record_naming_only_one_of_a_jobs_cells_is_refused(
 ) -> None:
     """A tier required on one platform is a merge path the other never blocked."""
     broken = tree()
-    _replace_required(broken, ["integration (linux-x86_64)", "llmlint", "pr-title"])
+    _replace_required(broken, ["test (linux-x86_64)", "lint", "budgets"])
 
     findings = merge_model(broken.repo)
 
-    refused_naming(findings, "some but not all", "integration (linux-aarch64)")
+    refused_naming(findings, "some but not all", "test (linux-aarch64)")
 
 
 def test_the_integration_job_is_required_once_per_platform_under_its_id_alone(
@@ -119,28 +131,17 @@ def test_the_integration_job_is_required_once_per_platform_under_its_id_alone(
     until somebody edits the protection. So the committed job interpolates the
     platform id into its own name, and the record names exactly those contexts.
     """
-    # The macOS context is carried from Linux by `integration-macos`, under the
-    # same platform-qualified name the matrix cell reported before it.
+    # The integration tier runs in the `test` job, and the macOS context is
+    # carried by `test-macos` under the same platform-qualified name.
     reported = sorted(
         context.name
         for context in status_contexts(committed)
-        if context.job in {"integration", "integration-macos"}
+        if context.job in {"test", "test-macos"}
     )
-    required = sorted(name for name in _required(committed) if name.startswith("integration"))
-    platform_qualified = [
-        "integration (linux-aarch64)",
-        "integration (linux-x86_64)",
-        "integration (macos-aarch64)",
-        "integration (windows-aarch64)",
-        "integration (windows-x86_64)",
-    ]
+    required = sorted(name for name in _required(committed) if name.startswith("test"))
 
-    equal(
-        reported,
-        platform_qualified,
-        describing="the contexts the committed integration job reports",
-    )
-    equal(required, platform_qualified, describing="the integration entries of the required record")
+    equal(reported, TEST_CONTEXTS, describing="the contexts the committed test jobs report")
+    equal(required, TEST_CONTEXTS, describing="the test entries of the required record")
 
 
 def test_a_record_still_naming_the_runner_qualified_integration_contexts_is_refused(
@@ -150,15 +151,15 @@ def test_a_record_still_naming_the_runner_qualified_integration_contexts_is_refu
     stale = tree()
     stale.edit(
         "AGENTS.md",
-        "- `integration (linux-x86_64)`\n",
-        "- `integration (linux-x86_64, ubuntu-24.04)`\n",
+        "- `test (linux-x86_64)`\n",
+        "- `test (linux-x86_64, ubuntu-24.04)`\n",
     )
 
     findings = merge_model(stale.repo)
 
     refused_naming(
         findings,
-        "`integration (linux-x86_64, ubuntu-24.04)` as a required check",
+        "`test (linux-x86_64, ubuntu-24.04)` as a required check",
         "reports a status context",
     )
 
@@ -170,31 +171,27 @@ def test_unqualifying_a_matrix_job_has_github_append_the_whole_cell(
 
     GitHub appends the cell's whole matrix entry to such a name, runner and all,
     so the two rules are different and moving between them is a rename: dropping
-    the integration job's qualifier does not tidy its contexts — it replaces them
+    the `test` job's qualifier does not tidy its contexts — it replaces them
     with ones carrying the runner, stranding whatever required the old ones.
     """
     renamed = tree()
-    renamed.edit(
-        CI,
-        "    name: integration (${{ matrix.platform.id }})\n",
-        "    name: integration\n",
-    )
+    renamed.edit(CI, QUALIFIED, "    name: test\n")
 
     reported = sorted(
-        context.name for context in status_contexts(renamed.repo) if context.job == "integration"
+        context.name for context in status_contexts(renamed.repo) if context.job == "test"
     )
 
     equal(
         reported,
         [
-            "integration (linux-aarch64, ubuntu-24.04-arm)",
-            "integration (linux-x86_64, ubuntu-24.04)",
-            "integration (windows-aarch64, windows-11-arm)",
-            "integration (windows-x86_64, windows-2025)",
+            "test (linux-aarch64, ubuntu-24.04-arm)",
+            "test (linux-x86_64, ubuntu-24.04)",
+            "test (windows-aarch64, windows-11-arm)",
+            "test (windows-x86_64, windows-2025)",
         ],
-        describing="the contexts an unqualified integration job reports",
+        describing="the contexts an unqualified test job reports",
     )
-    refused_naming(merge_model(renamed.repo), "`integration (linux-x86_64)` as a required check")
+    refused_naming(merge_model(renamed.repo), "`test (linux-x86_64)` as a required check")
 
 
 def test_a_matrix_job_whose_cells_share_one_name_is_refused(
@@ -213,11 +210,11 @@ def test_a_matrix_job_whose_cells_share_one_name_is_refused(
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n"
         "          - id: linux-x86_64\n            runner: ubuntu-24.04-arm\n",
     )
-    _replace_required(broken, [*GATE_CELLS, "llmlint", "pr-title"])
+    _replace_required(broken, [*GATE_CELLS, "lint", "budgets"])
 
     findings = merge_model(broken.repo)
 
-    refused_naming(findings, "2 matrix cells of job `gate`", "which of them was green")
+    refused_naming(findings, "2 matrix cells of job `test`", "which of them was green")
 
 
 def test_an_appended_field_no_name_can_be_built_from_is_refused(
@@ -225,7 +222,7 @@ def test_an_appended_field_no_name_can_be_built_from_is_refused(
 ) -> None:
     """GitHub appends something for that field, so deriving nothing for it would lie."""
     broken = tree()
-    broken.edit(CI, QUALIFIED, "    name: gate\n")
+    broken.edit(CI, QUALIFIED, "    name: test\n")
     broken.edit(
         CI,
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
@@ -242,7 +239,7 @@ def test_a_name_interpolating_a_field_the_cells_do_not_carry_is_refused(
 ) -> None:
     """An empty substitution would derive a context nothing reports."""
     broken = tree()
-    broken.edit(CI, QUALIFIED, "    name: gate (${{ matrix.platform.arch }})\n")
+    broken.edit(CI, QUALIFIED, "    name: test (${{ matrix.platform.arch }})\n")
 
     findings = merge_model(broken.repo)
 
@@ -275,7 +272,7 @@ def test_the_derived_contexts_follow_the_names_the_workflow_declares(
     reported = {context.name for context in status_contexts(renamed.repo)}
 
     contains(reported, "build-linux-aarch64", describing="the derived contexts")
-    absent(reported, "gate (linux-aarch64)", describing="the derived contexts")
+    absent(reported, "test (linux-aarch64)", describing="the derived contexts")
 
 
 def _replace_required(tree: Tree, names: list[str]) -> None:
@@ -291,7 +288,7 @@ def test_a_required_name_with_no_job_behind_it_is_refused(
 ) -> None:
     """A required context nothing reports blocks every pull request forever."""
     broken = tree()
-    _replace_required(broken, [*GATE_CELLS, "llmlint", "pr-title", "smoke"])
+    _replace_required(broken, [*GATE_CELLS, "lint", "budgets", "smoke"])
 
     findings = merge_model(broken.repo)
 
@@ -311,7 +308,7 @@ def test_a_record_naming_no_required_job_is_refused(tree: Callable[[], Tree]) ->
 def test_a_record_omitting_the_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
     """The complete-gate job is one of the two the gate is made of."""
     broken = tree()
-    _replace_required(broken, ["llmlint", "pr-title"])
+    _replace_required(broken, ["lint", "budgets"])
 
     findings = merge_model(broken.repo)
 
@@ -323,7 +320,7 @@ def test_a_record_omitting_the_judged_lint_job_is_refused(
 ) -> None:
     """So is the judged-lint job."""
     broken = tree()
-    _replace_required(broken, [*GATE_CELLS, "pr-title"])
+    _replace_required(broken, [*TEST_CONTEXTS, "budgets"])
 
     findings = merge_model(broken.repo)
 

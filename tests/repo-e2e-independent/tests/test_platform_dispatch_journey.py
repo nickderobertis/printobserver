@@ -10,14 +10,11 @@ running the committed workflow under the forge's rules (`actions.py`) as a
     script over the copy, and its answer is the runner the `run` job lands on;
   * `run` runs the real `just dispatch-run`, which runs the source job's own
     `run:` steps off the copy's committed source workflow;
-  * `just gate-tier`, which only reads the event the run was started with, is
-    run for real too, so the gate's step reaches the tier a dispatched cell
-    takes;
-  * every OTHER recipe those steps reach — `just bootstrap`, the OctoPrint
-    bring-up, the tier, the bring-down, the gate — is written to a record
-    rather than run, because the question is which commands the dispatch runs
-    and where, and running the printer tier to answer it would prove nothing
-    more.
+  * every OTHER recipe those steps reach — `just bootstrap`, the `test` job's
+    half of the gate, the OctoPrint bring-up, the tier, the bring-down, a
+    registry proof — is written to a record rather than run, because the
+    question is which commands the dispatch runs and where, and running the
+    printer tier to answer it would prove nothing more.
 
 A pair naming a platform the supported-platform list does not name is then
 dispatched the same way, and refused at `select` with nothing run.
@@ -36,13 +33,14 @@ from repo_checks.parsing import jobs_of, load_workflow
 
 WORKFLOW = ".github/workflows/platform-dispatch.yml"
 CI = ".github/workflows/ci.yml"
+INSTALL = ".github/workflows/install-path.yml"
 
 # llmlint: ignore[e2e_not_mocked] suppressions.toml has the reason.
 JUST_STANDIN = """#!/bin/sh
-# The real `just` for the two dispatch recipes and the tier selection; every
-# other recipe is written to DISPATCH_STANDIN_RECORD instead of run.
+# The real `just` for the two dispatch recipes; every other recipe is written
+# to DISPATCH_STANDIN_RECORD instead of run.
 case "$1" in
-  dispatch-resolve|dispatch-run|gate-tier) exec "$DISPATCH_STANDIN_REAL_JUST" "$@" ;;
+  dispatch-resolve|dispatch-run) exec "$DISPATCH_STANDIN_REAL_JUST" "$@" ;;
 esac
 printf 'just %s\\n' "$*" >> "$DISPATCH_STANDIN_RECORD"
 """
@@ -85,13 +83,13 @@ def dispatched(
     return run, record.read_text(encoding="utf-8").splitlines()
 
 
-def source_commands(job: str) -> list[str]:
-    """The `run:` commands the committed `ci.yml` job carries, in order, as `just` is run.
+def source_commands(workflow: str, job: str) -> list[str]:
+    """The `run:` commands a committed workflow's job carries, in order, as `just` is run.
 
     A step appending a recipe's answer to `GITHUB_OUTPUT` runs that recipe; the
     redirect is the shell's, and `just` is never handed it.
     """
-    steps = jobs_of(load_workflow(REPO_ROOT / CI))[job]["steps"]
+    steps = jobs_of(load_workflow(REPO_ROOT / workflow))[job]["steps"]
     return [
         str(step["run"]).strip().removesuffix(OUTPUT_REDIRECT).strip()
         for step in steps
@@ -102,8 +100,8 @@ def source_commands(job: str) -> list[str]:
 def test_a_dispatch_runs_exactly_that_job_on_that_platforms_runner(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
-    """The integration tier on Apple silicon: its four commands, on `macos-15`, and nothing else."""
-    run, reached = dispatched(gate_copy, tmp_path, "integration", "macos-aarch64")
+    """`test` on Apple silicon: the gate's half and the printer tier, on `macos-15`, alone."""
+    run, reached = dispatched(gate_copy, tmp_path, "test", "macos-aarch64")
 
     equal(run.result("select"), Result.SUCCESS, describing="the resolving job")
     equal(
@@ -115,7 +113,7 @@ def test_a_dispatch_runs_exactly_that_job_on_that_platforms_runner(
     equal(run.jobs["run"].runners, ["macos-15"], describing="the runner `run` landed on")
     equal(
         reached,
-        source_commands("integration"),
+        source_commands(CI, "test"),
         describing="every recipe the dispatch reached, against the source job's own commands",
     )
     equal(
@@ -128,24 +126,26 @@ def test_a_dispatch_runs_exactly_that_job_on_that_platforms_runner(
 def test_a_dispatch_of_another_job_runs_that_job_alone(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
-    """The gate on Linux ARM: the gate's commands on its runner, none of the integration tier's.
+    """A registry proof on Linux ARM: that job's command on its runner, none of `test`'s.
 
-    A dispatched cell is no pull request and no push, so the tier it selects is
-    the full sweep.
+    The job is `install-path.yml`'s rather than `ci.yml`'s, so the source the
+    command is read off is the workflow the pair named, not the first one carrying
+    a platform matrix.
     """
-    run, reached = dispatched(gate_copy, tmp_path, "gate", "linux-aarch64")
+    job = "prove-registry-client-python"
+    run, reached = dispatched(gate_copy, tmp_path, job, "linux-aarch64")
 
+    equal(run.result("run"), Result.SUCCESS, describing=f"the running job: {run.jobs['run'].steps}")
     equal(run.jobs["run"].runners, ["ubuntu-24.04-arm"], describing="the runner `run` landed on")
-    swept = [command.replace('"$(just gate-tier)"', "all") for command in source_commands("gate")]
-    contains(" ".join(source_commands("gate")), "$(just gate-tier)", describing="the gate's step")
-    equal(reached, swept, describing="every recipe the dispatch reached")
+    equal(reached, [f"just {job}"], describing="every recipe the dispatch reached")
+    equal(reached, source_commands(INSTALL, job), describing="the source job's own commands")
 
 
 def test_an_unknown_pair_is_refused_before_anything_runs(
     gate_copy: Callable[..., GateCopy], tmp_path: Path
 ) -> None:
     """A platform the list does not name fails `select`, skips `run`, and reaches nothing."""
-    run, reached = dispatched(gate_copy, tmp_path, "gate", "linux-riscv64")
+    run, reached = dispatched(gate_copy, tmp_path, "test", "linux-riscv64")
 
     equal(run.result("select"), Result.FAILURE, describing="the resolving job")
     contains(

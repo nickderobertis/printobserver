@@ -1,0 +1,125 @@
+# The caches every pull request's `ci.yml` jobs restore, saved from `main`.
+#
+# A cache a pull request saves is scoped to its merge ref, which no other run
+# restores, so `ci.yml` saves none; this workflow is the only saver of the caches
+# its `test` jobs restore. One leg per platform of `ci.yml`'s `test` matrix
+# compiles what that platform's `test` job compiles — `just ci-warm` — and the
+# release program its integration tier runs, under the keys that job looks up,
+# and saves each where its key missed. The `linux-x86_64` leg compiles the
+# `lint` job's lints too, which restores the same cache.
+#
+# `macos-aarch64` has no leg: the account's few macOS slots are shared with
+# other repositories, and `.github/budgets.yaml` holds one change to two runs
+# that start a macOS job, which a leg on every push to `main` would exceed. Its
+# `test` job compiles cold.
+#
+# The `linux-x86_64` leg also keeps the real-print suite's LFS store: it
+# restores it on every push to `main`, which keeps the entry from the forge's
+# 7-day eviction, and where the cases' objects changed it fetches only what the
+# prefix-restored older store lacks and saves the store under its new key.
+# `.github/tests/caches.test.mjs` holds every cache step here to this.
+
+name: warm
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: warm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    name: warm (${{ matrix.platform.id }})
+    timeout-minutes: 60
+    env:
+      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
+      # The real-print cases' LFS store is the `linux-x86_64` leg's alone.
+      REAL_PRINTS_STORE: ${{ matrix.platform.id == 'linux-x86_64' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
+          - id: linux-aarch64
+            runner: ubuntu-24.04-arm
+          - id: windows-x86_64
+            runner: windows-2025
+          - id: windows-aarch64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.platform.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: ${{ matrix.platform.id }}
+          cache-save-if: true
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: true
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: steps.bun-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
+      - run: just runner-temp
+      - run: just bootstrap
+      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
+      - run: just ci-warm
+      - id: release-program
+        run: just release-program-key >> "$GITHUB_OUTPUT"
+      - id: release-program-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .release-program
+          key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
+      - run: just release-program
+      - if: steps.release-program-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .release-program
+          key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
+      # The steps `tests/real-prints-lfs/ci-steps.yml` holds, verbatim, on the
+      # `linux-x86_64` leg alone.
+      - id: real-prints-key
+        if: env.REAL_PRINTS_STORE == 'true'
+        run: just real-prints-cache-key >> "$GITHUB_OUTPUT"
+      - id: real-prints-cache
+        if: env.REAL_PRINTS_STORE == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.real-prints-key.outputs.key }}
+          restore-keys: real-prints-lfs-
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
+        run: just real-prints-fetch
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ steps.real-prints-key.outputs.key }}
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit == 'true'
+        run: just real-prints-checkout
+      - if: always()
+        run: just runner-temp cleanup

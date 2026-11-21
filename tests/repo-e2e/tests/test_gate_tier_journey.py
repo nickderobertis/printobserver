@@ -12,6 +12,7 @@ import json
 import os
 import re
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from journey import QUIET, GateCopy, capture, clean_environment, plain
@@ -123,14 +124,36 @@ EXERCISED_BY_THE_E2E_TIER = {
 SELECTED = "> nx run repo-e2e:test-e2e"
 
 
+@pytest.fixture(scope="module")
+def stood_in_clone(tmp_path_factory: pytest.TempPathFactory, shared_venv: Path) -> GateCopy:
+    """One clone, with the end-to-end suites stood in, that each selection case branches.
+
+    The cases differ only in the branch they commit, so they share the clone a
+    contributor would have, each starting its branch afresh from `main` — and
+    each run after the first reads the project graph Nx kept in it, as a run in
+    that contributor's clone does, rather than paying for a copy and a cold
+    graph of its own.
+    """
+    copy = as_a_clone(GateCopy(tmp_path_factory.mktemp("selection") / "copy", shared_venv))
+    standing_in_for_the_suite(copy)
+    return copy
+
+
+def afresh_from_main(copy: GateCopy, relative: str) -> None:
+    """Commit a change to `relative` on a `change` branch started again from `main`."""
+    copy.git("checkout", "-q", "main")
+    if copy.git("branch", "--list", "change"):
+        copy.git("branch", "-q", "-D", "change")
+    branch_with_a_change(copy, relative)
+
+
 @pytest.mark.parametrize("changed", sorted(EXERCISED_BY_THE_E2E_TIER.values()))
 def test_a_change_to_what_the_end_to_end_tier_exercises_selects_it(
-    gate_copy: Callable[..., GateCopy], changed: str
+    stood_in_clone: GateCopy, changed: str
 ) -> None:
     """`just test-e2e` at the affected tier runs the tier for a change it can be broken by."""
-    copy = as_a_clone(gate_copy())
-    standing_in_for_the_suite(copy)
-    branch_with_a_change(copy, changed)
+    copy = stood_in_clone
+    afresh_from_main(copy, changed)
 
     result = copy.just("test-e2e", environment=QUIET)
 
@@ -140,12 +163,11 @@ def test_a_change_to_what_the_end_to_end_tier_exercises_selects_it(
 
 
 def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
-    gate_copy: Callable[..., GateCopy],
+    stood_in_clone: GateCopy,
 ) -> None:
     """The scheduled Obico tier's environment is no journey's, so a change there runs none."""
-    copy = as_a_clone(gate_copy())
-    standing_in_for_the_suite(copy)
-    branch_with_a_change(copy, "tools/obico-env/obico_env.py")
+    copy = stood_in_clone
+    afresh_from_main(copy, "tools/obico-env/obico_env.py")
 
     result = copy.just("test-e2e", environment=QUIET)
 
@@ -387,10 +409,13 @@ def test_each_side_of_a_split_test_tier_reports_its_own_ecosystem_of_the_change(
 
     The changed crate's and the client's own `test` targets are run, so each
     ecosystem has measurements to read, and `just coverage` is run once per side
-    of `lang:rust` as a sharded gate runs it. At the affected tier, through the
-    real graph's own answer, the Rust side reports the crate and rules on no
-    Python source, and the other side reports the client and rules on no crate,
-    so the two sides' floors together rule on what one unsharded report does.
+    of a project tag, as `just ci-lint` and `just ci-test` run it once per side
+    of `platform:independent`. The tag here is `lang:rust`, which splits this
+    change by ecosystem, so which side reported what can be read off the
+    reports. At the affected tier, through the real graph's own answer, the Rust
+    side reports the crate and rules on no Python source, and the other side
+    reports the client and rules on no crate, so the two sides' floors together
+    rule on what one report over every project does.
     """
     copy = as_a_clone(gate_copy())
     branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")

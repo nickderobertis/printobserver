@@ -196,21 +196,24 @@ pub(crate) async fn events_of(watch: &Watch, print_id: &str, kind: &str) -> Vec<
 /// A turn held open about a print the scripted printer is running, answering
 /// that print's identifier and a client presenting the turn's credential; the
 /// printer then goes idle, so a start is valid from its state.
+///
+/// The print is the one the watch adopts once it reads the job running, and
+/// the alert attaches to it, as an alert about a running job does. A record
+/// written into the store beside the watch instead is one a read begun before
+/// the printer was running can still find over, and close, after it is written.
 async fn held_turn(watch: &Watch) -> (String, reqwest::Client) {
     watch.octoprint.reports(
         "Printing",
         JobScript::printing(PLA_FILE, 450_468, 4_000, 60),
     );
-    let print = watch
-        .prints
-        .open_print(Some(OBICO_PRINT), Some(PLA_FILE.to_owned()))
-        .await
-        .expect("the store opens a print");
+    let print = adopted(watch, PLA_FILE).await;
     watch.agent.hold_turns();
+    let mut alert = failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg");
+    alert["print"]["filename"] = json!(PLA_FILE);
     let status = reqwest::Client::new()
         .post(format!("{}?token={SECRET}", watch.server.ingress_url()))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg").to_string())
+        .body(alert.to_string())
         .send()
         .await
         .expect("the ingress answers")
@@ -225,6 +228,28 @@ async fn held_turn(watch: &Watch) -> (String, reqwest::Client) {
         .expect("one pass");
     watch.octoprint.reports("Operational", JobScript::idle());
     (print.id.to_string(), presenting(&pass.credential))
+}
+
+/// The open print the watch adopted for `file`'s running job, once it has.
+///
+/// # Panics
+///
+/// Panics when no read has adopted it inside half a minute.
+async fn adopted(watch: &Watch, file: &str) -> printobserver_core::records::PrintRecord {
+    let deadline = tokio::time::Instant::now() + core::time::Duration::from_secs(30);
+    loop {
+        let open = watch.prints.open_prints().await.expect("the store reads");
+        if let Some(print) = open.into_iter().find(|print| {
+            print.file_name.as_deref() == Some(file) && print.job_started_at.is_some()
+        }) {
+            return print;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "no read adopted the running {file}"
+        );
+        tokio::time::sleep(core::time::Duration::from_millis(20)).await;
+    }
 }
 
 /// Release the held turn and wait until its handling has finished.

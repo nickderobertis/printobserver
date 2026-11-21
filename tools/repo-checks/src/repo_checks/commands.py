@@ -394,6 +394,17 @@ def _exempt(repo: Repo, floors: Mapping[str, object], stderr: str) -> Exemption:
 
 #: What `pyproject.toml`'s coverage report reads the platform it is made on off.
 COVERAGE_HOST = "PRINTOBSERVER_COVERAGE_HOST"
+#: Where a CI job keeps its Python coverage data rather than ruling on it: the
+#: file `coverage` writes it to, which the `budgets` job combines.
+COVERAGE_KEEP = "PRINTOBSERVER_COVERAGE_KEEP"
+#: The name a `lint` job keeps its data under, beside each platform's.
+LINT_DATA = "lint"
+#: The record beside a kept half naming the sources it reported over, and what
+#: that record holds for every source.
+INCLUDED_SUFFIX = ".include"
+ANY_SOURCE = "*\n"
+#: What `sys.platform` a report is made for, by a supported platform's family.
+HOSTS = (("linux-", "linux"), ("macos-", "darwin"), ("windows-", "win32"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -435,10 +446,10 @@ def measured_for(repo: Repo, tier: str) -> Measured:
     the affected projects drops whole files and never a test that reached one.
 
     Narrowed to one side of a tag by `PRINTOBSERVER_GATE_PROJECTS`, as the test
-    tier beside it was, the report is over that side's projects alone. A sharded
-    gate splits on `lang:rust`, which every Rust crate carries and no Python
-    source's project does, so each side's report holds one ecosystem's whole
-    figure at its own floor, measured by the only tests that measure it.
+    tier beside it was, the report is over that side's projects alone, each
+    ecosystem at its own floor. The CI jobs split on `platform:independent`
+    (`just ci-measured`): `lint` reports the tagged projects' sources, which
+    their own tests measure, and each `test` job every other project's.
 
     Raises:
         TierError: If the tier or the base it is resolved against is refused,
@@ -482,7 +493,7 @@ def measured_sources(repo: Repo, graph: list[checks_graph.Project]) -> tuple[str
     )
 
 
-def coverage(repo: Repo, measured: Measured | None = None) -> int:
+def coverage(repo: Repo, measured: Measured | None = None, keep: Path | None = None) -> int:
     """Fail the build below the line-coverage floors `repo-policy.toml` records.
 
     Pass or fail, each ecosystem's per-file table is printed before the floor is
@@ -494,6 +505,14 @@ def coverage(repo: Repo, measured: Measured | None = None) -> int:
 
     `measured` scopes the report to the projects an affected run's tests
     reached, at the same floors; absent, it is over every project.
+
+    `keep` is where a CI job keeps its combined Python data instead of ruling
+    on it: the source a project owns and the tests measuring it can sit on two
+    sides of the `platform:independent` tag, so neither job's half measures the
+    whole of it, and the `budgets` job combines the halves and rules on the
+    floor (`coverage_combine`). The Python figure is still printed, as one
+    half's; the Rust floor is ruled on here, because every crate's tests are
+    in this half.
     """
     scope = Measured() if measured is None else measured
     floors = repo.policy["gate"]["coverage"]
@@ -534,6 +553,15 @@ def coverage(repo: Repo, measured: Measured | None = None) -> int:
                 failed = True
 
     python_total = "not measured: this run's tests reached no Python source"
+    if keep is not None:
+        # Which sources this half reported over, beside its data, so the
+        # combined report is over what the two halves' tests reached and no
+        # more: an affected run's report leaves out what it did not reach.
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        _included_path(keep).write_text(
+            ANY_SOURCE if scope.python is None else "".join(f"{one}\n" for one in scope.python),
+            encoding="utf-8",
+        )
     if scope.python != ():
         python = run(["uv", "run", "-q", "coverage", "combine"], cwd=repo.root)
         if python.returncode not in (0, 1):
@@ -544,6 +572,12 @@ def coverage(repo: Repo, measured: Measured | None = None) -> int:
         # <platform>` — is not counted here, and stays counted on every platform
         # whose hosts reach it.
         included = scope.python_included()
+        if keep is not None:
+            data = repo.root / ".coverage"
+            if not data.is_file():
+                print(f"coverage: no Python data to keep at {data}", file=sys.stderr)
+                return 1
+            shutil.copyfile(data, keep)
         report = run(
             [
                 "uv",
@@ -551,7 +585,7 @@ def coverage(repo: Repo, measured: Measured | None = None) -> int:
                 "-q",
                 "coverage",
                 "report",
-                f"--fail-under={floors['python']}",
+                *([] if keep is not None else [f"--fail-under={floors['python']}"]),
                 *([f"--include={included}"] if included else []),
             ],
             cwd=repo.root,
@@ -559,6 +593,11 @@ def coverage(repo: Repo, measured: Measured | None = None) -> int:
         )
         print(report.stdout, end="")
         python_total = _total_of(report.stdout, -1)
+        if keep is not None:
+            python_total = (
+                f"{python_total} over this half's tests, kept at {keep} for the `budgets` "
+                f"job's combined report, which rules on the floor"
+            )
         if report.returncode != 0:
             print(
                 f"Python line coverage is below the {floors['python']}% floor. Add tests "
@@ -571,4 +610,175 @@ def coverage(repo: Repo, measured: Measured | None = None) -> int:
         f"coverage: rust lines {rust_total} (floor {floors['rust']}%), "
         f"python lines {python_total} (floor {floors['python']}%)"
     )
+    return 1 if failed else 0
+
+
+def _included_path(data: Path) -> Path:
+    """Where the sources a kept half reported over are written, beside its data."""
+    return data.with_name(f"{data.name}{INCLUDED_SUFFIX}")
+
+
+def _included(repo: Repo, data: Path) -> tuple[str, ...] | None:
+    """The sources a kept half reported over, none for every source.
+
+    Each must be one `pyproject.toml` declares, so a record can only name what a
+    report is over, never narrow it to something else; and a half naming any
+    must have kept the data measuring them.
+
+    Raises:
+        ValueError: If the half kept no such record, names a source no
+            configuration declares, or names sources and kept no data.
+    """
+    record = _included_path(data)
+    if not record.is_file():
+        msg = f"{record} is absent, so which sources that half reached is unknown"
+        raise ValueError(msg)
+    text = record.read_text(encoding="utf-8")
+    if text == ANY_SOURCE:
+        named: tuple[str, ...] | None = None
+    else:
+        named = tuple(line for line in text.splitlines() if line)
+        declared = set(_declared_sources(repo))
+        unknown = [one for one in named if one not in declared]
+        if unknown:
+            msg = (
+                f"{record} names {', '.join(unknown)}, which `pyproject.toml` declares no "
+                f"coverage source"
+            )
+            raise ValueError(msg)
+    if named != () and not data.is_file():
+        msg = f"{record} names the sources that half reached, and it kept no data at {data}"
+        raise ValueError(msg)
+    return named
+
+
+def _declared_sources(repo: Repo) -> list[str]:
+    """Every coverage source `pyproject.toml` declares."""
+    sources = repo.read_toml("pyproject.toml")["tool"]["coverage"]["run"]["source"]
+    return [one for one in sources if isinstance(one, str)] if isinstance(sources, list) else []
+
+
+def _host_of(repo: Repo, platform: str) -> str | None:
+    """The `sys.platform` the hosts of `platform` report, or none unless the list names it.
+
+    The whole identifier is held to `AGENTS.md`'s supported-platform list, so a
+    file named for no platform there — `linux-nonsense` as surely as
+    `solaris-sparc` — is refused rather than reported under its family.
+    """
+    from repo_checks.platforms import supported
+
+    if platform not in {one.id for one in supported(repo)}:
+        return None
+    return next((host for prefix, host in HOSTS if platform.startswith(prefix)), None)
+
+
+def coverage_combine(repo: Repo, directory: Path) -> int:
+    """Rule on the Python floor over each platform's whole gate, from the halves CI kept.
+
+    `directory` holds the data the `lint` job kept, under `lint`, and the data
+    each platform's `test` job kept, under that platform's id. For every
+    platform present, its data and `lint`'s are combined and reported at the
+    floor `repo-policy.toml` records, over every source `pyproject.toml`
+    declares, with that platform's `# pragma: unreached on <platform>` lines
+    left out as its own report would — which is the report the gate made on
+    that platform when it ran every project's tests. Any platform below the
+    floor fails, and so does a directory holding no `lint` data or no
+    platform's at all, or a file naming no supported platform.
+    """
+    floor = repo.policy["gate"]["coverage"]["python"]
+    lint = directory / LINT_DATA
+    # A half is named by its data or by its record of what it reached, so one
+    # that recorded sources and lost its data is refused rather than unseen.
+    platforms = (
+        sorted(
+            {
+                path.name.removesuffix(INCLUDED_SUFFIX)
+                for path in directory.iterdir()
+                if path.is_file() and not path.name.startswith(".")
+            }
+            - {LINT_DATA}
+        )
+        if directory.is_dir()
+        else []
+    )
+    if not _included_path(lint).is_file():
+        print(
+            f"coverage-combine: refused: no `{LINT_DATA}` data under {directory}", file=sys.stderr
+        )
+        return 1
+    if not platforms:
+        print(f"coverage-combine: refused: no platform's data under {directory}", file=sys.stderr)
+        return 1
+    failed = False
+    totals: list[str] = []
+    for platform in platforms:
+        host = _host_of(repo, platform)
+        if host is None:
+            print(
+                f"coverage-combine: refused: `{platform}` under {directory} names no supported "
+                f"platform, so no report could leave out the lines its hosts never reach",
+                file=sys.stderr,
+            )
+            failed = True
+            continue
+        halves = (lint, directory / platform)
+        try:
+            reached = [_included(repo, half) for half in halves]
+        except ValueError as error:
+            print(f"coverage-combine: refused: {error}", file=sys.stderr)
+            failed = True
+            continue
+        sources = (
+            None
+            if any(one is None for one in reached)
+            else sorted({source for one in reached for source in one or ()})
+        )
+        if sources == []:
+            totals.append(f"{platform} not measured: neither half's tests reached a source")
+            continue
+        present = [half for half in halves if half.is_file()]
+        combined = directory / f".combined-{platform}"
+        combined.unlink(missing_ok=True)
+        merged = run(
+            [
+                "uv",
+                "run",
+                "-q",
+                "coverage",
+                "combine",
+                "--keep",
+                f"--data-file={combined}",
+                *(str(half) for half in present),
+            ],
+            cwd=repo.root,
+        )
+        if merged.returncode != 0:
+            print(f"{merged.stdout}{merged.stderr}", file=sys.stderr)
+            failed = True
+            continue
+        report = run(
+            [
+                "uv",
+                "run",
+                "-q",
+                "coverage",
+                "report",
+                f"--data-file={combined}",
+                f"--fail-under={floor}",
+                *([] if sources is None else [f"--include={','.join(f'{s}/*' for s in sources)}"]),
+            ],
+            cwd=repo.root,
+            env={**os.environ, COVERAGE_HOST: host},
+        )
+        print(f"coverage-combine: {platform} with lint\n{report.stdout}", end="")
+        totals.append(f"{platform} {_total_of(report.stdout, -1)}")
+        if report.returncode != 0:
+            print(report.stderr, file=sys.stderr, end="")
+            print(
+                f"Python line coverage on {platform} is below the {floor}% floor. Add tests "
+                f"that drive the uncovered lines.",
+                file=sys.stderr,
+            )
+            failed = True
+    print(f"coverage-combine: python lines {', '.join(totals)} (floor {floor}%)")
     return 1 if failed else 0
