@@ -26,10 +26,16 @@ function Tree([int]$root) {
         ForEach-Object { "  pid=$($_.ProcessId) ppid=$($_.ParentProcessId) $($_.Name) created=$($_.CreationDate) cmd=$($_.CommandLine)" }
 }
 function State { $t = Get-ScheduledTask -TaskName $task; $i = $t | Get-ScheduledTaskInfo; "state=$($t.State) lastrun=$($i.LastRunTime) result=$($i.LastTaskResult)" }
+function Said {
+    Write-Output "  foreground run says:"
+    $j = Start-Job { param($p, $c) & $p server --config $c 2>&1 } -ArgumentList $program, $config
+    Start-Sleep -Seconds 15; Receive-Job $j | ForEach-Object { "    $_" }; Stop-Job $j
+    Get-NetTCPConnection -LocalPort 8420 -ErrorAction SilentlyContinue | ForEach-Object { "  port: $($_.State) owner=$($_.OwningProcess)" }
+}
 function Until([string]$what, [scriptblock]$ok, [int]$seconds) {
     $deadline = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $deadline) { if (& $ok) { return $true }; Start-Sleep -Milliseconds 500 }
-    Write-Output "TIMEOUT $what"; return $false
+    Write-Output "TIMEOUT $what $(State)"; Said; return $false
 }
 
 $failures = 0
