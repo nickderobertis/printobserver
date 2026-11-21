@@ -150,10 +150,16 @@ VERSION_FIELD = "version"
 #: version they already serve.
 RELEASED_FIELD = "released"
 
-#: The tag release automation writes — `release-plz.toml`'s `git_tag_name` is
-#: `v{{ version }}` — and so the only tag the release program's answer may
-#: carry. Narrower than `SUPPORTED` on purpose: a version is not a tag.
+#: The tag release automation writes — the `printobserver` package's
+#: `git_tag_name` in `release-plz.toml` is `v{{ version }}` — and so the only
+#: tag the release program's answer is read as. Narrower than `SUPPORTED` on
+#: purpose: a version is not a tag.
 TAG = re.compile(r"^v\d+\.\d+\.\d+$")
+
+#: The name every OTHER package renders and creates nothing under — the
+#: workspace's `git_tag_name`, `{{ package }}-v{{ version }}` — so its entry in
+#: the answer names that, and is read as the one `TAG` its version was cut under.
+PACKAGE_TAG = re.compile(r"^[a-z0-9][a-z0-9_-]*-v\d+\.\d+\.\d+$")
 
 #: What `release-plz release --output json` answers, as this repository has it
 #: on record: one `releases` list with an entry per package released, each
@@ -542,8 +548,9 @@ def released_by(answer: str) -> tuple[str, ...]:
 
     That answer is the shape `RELEASE_ANSWER_SAMPLE` records, with an empty
     `releases` list where the run released nothing. A workspace releasing
-    twelve crates under one version names one tag twelve times, so what is
-    answered is the distinct tags, each once.
+    twelve crates under one version cuts one tag, so what is answered is the
+    distinct tags, each once: an entry naming its own package's tag name is
+    read as the `v<version>` that version was cut under.
 
     Raises:
         RegistryError: If the answer is not one that program writes. An answer
@@ -571,12 +578,17 @@ def released_by(answer: str) -> tuple[str, ...]:
 
 
 def _tag_of(release: object) -> str:
-    """The tag one entry of the release program's answer names, once it is one it writes.
+    """The release tag one entry of the release program's answer was cut under.
+
+    That is the entry's own tag where it is `v<version>`, and `v<version>`
+    where the entry names its package's own tag name, `<package_name>-v<version>`,
+    which no package creates: the `printobserver` package's `v<version>` is the
+    one tag that version is released under.
 
     Raises:
         RegistryError: If the entry is not the shape `RELEASE_ANSWER_SAMPLE`
-            records — the fields it carries, and a tag that is the version
-            release automation writes, `v` included. Narrowed HERE because the
+            records — the fields it carries, and a tag that is one of those two
+            names for its own version, `v` included. Narrowed HERE because the
             tag reaches a job output file that is read a line at a time as
             `name=value`, so one carrying a newline would write a second output
             nothing named.
@@ -598,14 +610,17 @@ def _tag_of(release: object) -> str:
         )
         raise RegistryError(msg)
     tag = str(release["tag"])
-    if not TAG.match(tag) or tag != f"v{release['version']}":
+    cut = f"v{release['version']}"
+    own = f"{release['package_name']}-{cut}"
+    if not (TAG.match(tag) and tag == cut) and not (PACKAGE_TAG.match(tag) and tag == own):
         msg = (
             f"a release in the release program's answer names the tag {tag!r} for version "
             f"{release['version']!r}; release automation writes `v<major>.<minor>.<patch>`, "
-            f"and this is not that"
+            f"or `<package>-v<major>.<minor>.<patch>` for every package but the one cutting "
+            f"that tag, and this is not that"
         )
         raise RegistryError(msg)
-    return tag
+    return cut
 
 
 def dispatched(root: Path, tag: str, ref: str, base_branch: str) -> str:
