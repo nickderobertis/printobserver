@@ -151,7 +151,7 @@ def frame_owed(case: Case, moment: Moment, layers: list[Layer]) -> str | None:
 
     A milestone owes the case's first frame taken at or after the line's position, so
     the supervisor's own look shows the layer it reports and never one before it. One
-    exception stands, by a maintainer's ruling, until a healthy print is recorded with
+    exception stands, by manager ruling a28, until a healthy print is recorded with
     a frame of its last layer: an `end` line over a recording that ends before that
     layer is handed the recording's last frame, and names how many layers before the
     last layer that frame was taken. Any earlier frame, a gap that is not that frame's,
