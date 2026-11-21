@@ -997,6 +997,29 @@ def _task_state(task: str, program: Path, port: int, killed: Sequence[int] = ())
     )
 
 
+def _note_moment(moments: list[str], task: str, program: Path) -> None:
+    """Add Task Scheduler's account of `task` to `moments` when it differs from the last one.
+
+    Each launch that ends leaves its exit code as the task's last result, and an
+    instance that never ends leaves the task running with the same tracked
+    process, so the run of these, each with when it was first seen, is what the
+    task did after a kill.
+    """
+    told = _powershell_answer(
+        f"$t = Get-ScheduledTask -TaskName {_quoted(task)} -TaskPath '\\'; "
+        "$i = $t | Get-ScheduledTaskInfo; "
+        "$s = New-Object -ComObject Schedule.Service; $s.Connect(); "
+        f"$e = @(@($s.GetRunningTasks(1)) | Where-Object {{ $_.Name -eq {_quoted(task)} }} | "
+        "ForEach-Object { $_.EnginePID }) -join ','; "
+        "'state ' + $t.State + ', last run ' + $i.LastRunTime.ToString('HH:mm:ss') + "
+        "', last result ' + $i.LastTaskResult + ', tracking [' + $e + ']'",
+        check=False,
+    )
+    moment = f"{told}, servers {_servers(program)}"
+    if not moments or not moments[-1].endswith(moment):
+        moments.append(f"  {time.strftime('%H:%M:%S')} {moment}")
+
+
 @pytest.fixture
 def machine() -> Iterator[Machine]:
     """An OctoPrint answering on a real socket, holding one printing job."""
@@ -1493,13 +1516,23 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
             (shell_run(["taskkill.exe", "/F", "/PID", str(killed[0])], timeout=60).returncode, ""),
             describing="killing the server",
         )
+        moments: list[str] = []
+
+        def back() -> bool:
+            _note_moment(moments, task, home.program)
+            now = _servers(home.program)
+            return bool(now and now[0] != killed[0]) and _serves(home.program, port)
+
         _eventually(
             "the server back after it was killed",
-            lambda: (
-                bool((now := _servers(home.program)) and now[0] != killed[0])
-                and _serves(home.program, port)
+            back,
+            lambda: "\n".join(
+                [
+                    "what the task did after the kill:",
+                    *moments,
+                    _task_state(task, home.program, port, killed),
+                ]
             ),
-            lambda: _task_state(task, home.program, port, killed),
         )
 
         # An image and the turn records, read as the user.
