@@ -49,7 +49,7 @@ import sys
 import tarfile
 import time
 import tomllib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NewType
@@ -941,17 +941,37 @@ def _eventually(
     raise AssertionError(message)
 
 
-def _task_state(task: str, program: Path) -> str:
-    """Task Scheduler's own account of one task, and the servers running, as a failure reads it."""
+def _task_state(task: str, program: Path, killed: Sequence[int] = ()) -> str:
+    """Task Scheduler's own account of one task, and every process around it, as a failure reads it.
+
+    The process Task Scheduler tracks for the running instance is its engine
+    PID; beside it, every process at the program's path, every process one of
+    them started, and the processes `killed` lists — the servers running when
+    one was killed, that one first — each with its parent and when it started.
+    """
     told = _powershell_answer(
         f"$t = Get-ScheduledTask -TaskName {_quoted(task)} -TaskPath '\\'; "
         "$i = $t | Get-ScheduledTaskInfo; "
         "'state ' + $t.State; 'last run ' + $i.LastRunTime; "
         "'last result ' + $i.LastTaskResult; 'missed runs ' + $i.NumberOfMissedRuns; "
-        "'next run ' + $i.NextRunTime",
+        "'next run ' + $i.NextRunTime; "
+        "$s = New-Object -ComObject Schedule.Service; $s.Connect(); "
+        f"@($s.GetRunningTasks(1)) | Where-Object {{ $_.Name -eq {_quoted(task)} }} | "
+        "ForEach-Object { 'running instance ' + $_.InstanceGuid + ' engine ' + $_.EnginePID }; "
+        "$all = @(Get-CimInstance Win32_Process); "
+        f"$ours = @($all | Where-Object {{ $_.ExecutablePath -eq {_quoted(str(program))} "
+        f"-or @({','.join(map(str, killed)) or '0'}) -contains $_.ProcessId }}); "
+        "$ids = @($ours | ForEach-Object { $_.ProcessId }); "
+        "@($ours) + @($all | Where-Object { $ids -contains $_.ParentProcessId }) | "
+        "ForEach-Object { 'process ' + $_.ProcessId + ' parent ' + $_.ParentProcessId + ' ' + "
+        "$_.Name + ' started ' + $_.CreationDate + ': ' + $_.CommandLine }",
         check=False,
     )
-    return f"Task Scheduler says:\n{told}\nservers running: {_servers(program)}"
+    return (
+        f"Task Scheduler says:\n{told}\n"
+        f"servers when one was killed: {list(killed)}\n"
+        f"servers running: {_servers(program)}"
+    )
 
 
 @pytest.fixture
@@ -1463,7 +1483,7 @@ def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_pl
                 bool((now := _servers(home.program)) and now[0] != killed[0])
                 and _serves(home.program, port)
             ),
-            lambda: _task_state(task, home.program),
+            lambda: _task_state(task, home.program, killed),
         )
 
         # An image and the turn records, read as the user.
