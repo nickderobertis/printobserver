@@ -226,3 +226,116 @@ budgets:
     direction: max
     threshold: 2600
     timeout_seconds: 60
+  - id: supervisor-tokens-per-print
+    description: >-
+      Supervisor input tokens over one print's conversation. Model input
+      tokens, cache reads and writes included, the shipped supervisor reads
+      over one print's continued conversation of 76 scheduled checks, about 4
+      of them acting, compacted while idle at the shipped
+      `idle_compact_tokens` (150,000) with `auto_compact_tokens` (200,000) as
+      the backstop. Projected from the last full suite run's per-call figures:
+      B the base context per call (the text probe), q the median input of a
+      quiet check with no history, g the median growth in conversation size
+      per quiet check, k the median model calls per acting check, r the
+      median conversation size after an idle compaction, z the median input
+      of an idle compaction; the projection sums each check's calls at the
+      conversation size it carries, growing by g from B, compacting at
+      150,000 for z and restarting at r. Detail: B, q, g, k, r, z, the
+      compactions observed, and per check the calls and the input not read
+      from cache. Basis: arithmetic — with lean checks and the composite, B
+      about 3.7k and q about 7.1k, a quiet check leaving about 3.7k; the
+      conversation reaches 150k after about 40 checks (about 3.2 M), one
+      compaction near 150k restarts at about 12k, the last 36 checks about
+      2.9 M, and 4 acting checks about 0.3 M: about 6.6 M against about 11 M
+      uncompacted; 7.5 M leaves about 14%. Workload: a typical 2.5 h print
+      checked every 120 s, 76 checks in one conversation, about 4 acting,
+      each carrying its facts on the lean harness and, once the first-layer
+      alignment passes, the 1024x1848 composite (the whole 1280x720 frame
+      before), on `claude-code` and claude-opus-5-5 as measured; the long
+      plate's 281 checks over 9 h 21 min are in the detail. Measurement
+      source: telemetry, read from the record `just skilltest-record` writes.
+      Check runtime approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - tokens_per_print
+    unit: tokens
+    direction: max
+    threshold: 7500000
+    timeout_seconds: 60
+  - id: supervisor-tokens-per-long-plate
+    description: >-
+      Supervisor input tokens over the long plate's conversation. The
+      projection `supervisor-tokens-per-print` defines, from the same last
+      full suite run's B, q, g, k, r and z, at the long plate's 281 scheduled
+      checks, about 15 of them acting, compacted while idle at 150,000.
+      Detail: the compactions projected and the share read from cache. Basis:
+      arithmetic — the first cycle of about 40 checks to 150k is about 3.2 M
+      plus a 150k compaction; each later cycle restarts near 12k and reaches
+      150k after about 37 checks, about 3.06 M plus 0.15 M; the remaining 241
+      checks are about 6.5 cycles, about 20.9 M, and 15 acting checks add
+      about 1.2 M: about 25.5 M against about 150 M uncompacted; 32 M leaves
+      about 25%. Workload: the long plate, 281 checks every 120 s over 9 h 21
+      min in one conversation, about 15 acting, each carrying its facts on the
+      lean harness and, once the first-layer alignment passes, the 1024x1848
+      composite (the whole 1280x720 frame before), on `claude-code` and
+      claude-opus-5-5 as measured. Measurement source: telemetry. Check
+      runtime approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - tokens_per_long_plate
+    unit: tokens
+    direction: max
+    threshold: 32000000
+    timeout_seconds: 60
+  - id: compaction-delayed-checks
+    description: >-
+      Checks delayed by a compaction. Checks, over the run's replays, whose
+      turn started only after a compaction completed that was running when
+      the check's event arrived; a check whose event cancelled a compaction
+      does not count. Detail: compactions started, completed and cancelled,
+      the longest time in milliseconds from an event's arrival to its turn's
+      start while a compaction was being cancelled, the longest a scheduled
+      check waited for a compaction to end, and each check's wait. Basis:
+      design — a compaction runs only while the supervisor is idle and an
+      arriving event cancels it; by manager ruling the scheduled check waits
+      for a running compaction before its event is written, so its event
+      never arrives during one. Cancelling still takes the harness process's
+      exit time, which the detail reports in milliseconds rather than the
+      count. Workload: the suite's last full run, 9 print replays feeding
+      about 89 checks, the bubbler replay crossing the 150k idle threshold at
+      least once; in production 1 to 5 idle compactions per print.
+      Measurement source: telemetry. Check runtime approximately 3 seconds.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - tests/skilltest/results/latest.json
+      - compaction_delayed_checks
+    unit: checks
+    direction: max
+    threshold: 0
+    timeout_seconds: 60

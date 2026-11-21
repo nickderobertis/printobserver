@@ -876,9 +876,18 @@ def health() -> ThreadingHTTPServer:
 
 
 def control(
-    started: Callable[[], str], exited: Callable[[], None], failed: Callable[[str], None]
+    started: Callable[[], str],
+    exited: Callable[[], None],
+    failed: Callable[[str], None],
+    *,
+    compaction: tuple[Callable[[], str], Callable[[], None]] | None = None,
 ) -> ThreadingHTTPServer:
-    """Where the launcher reports the harness's start and its exit, each answered when done with."""
+    """Where the launcher reports the harness's start and its exit, each answered when done with.
+
+    A harness started to compact a session rather than to take a turn is reported
+    on its own two paths, answered by `compaction`'s pair when one is given: a
+    compaction serves no replay entry, so its exit moves the replay nowhere.
+    """
 
     class Handler(_Quiet):
         def do_POST(self) -> None:
@@ -890,6 +899,11 @@ def control(
                         self.answer(200, started().encode(), "text/plain")
                     case "/exited":
                         exited()
+                        self.answer(200)
+                    case "/compaction-started" if compaction is not None:
+                        self.answer(200, compaction[0]().encode(), "text/plain")
+                    case "/compaction-exited" if compaction is not None:
+                        compaction[1]()
                         self.answer(200)
                     case _:
                         self.answer(404)

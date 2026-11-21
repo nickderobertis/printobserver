@@ -252,14 +252,9 @@ impl OneharnessSupervisor {
             cancel: cancel.clone(),
             ending: Arc::clone(&ending),
         };
-        // A thread that could not be started compacts nothing; the next turn's
-        // end asks again.
-        let Ok(thread) = std::thread::Builder::new()
-            .name(format!("compact-{print_id}"))
-            .spawn(move || compaction.run())
-        else {
-            return;
-        };
+        // A thread of this process, not a child process: the compaction's own
+        // harness is started by `OneHarness`, as a turn's is.
+        let thread = std::thread::spawn(move || compaction.run());
         self.compacting
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

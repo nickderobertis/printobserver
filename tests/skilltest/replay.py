@@ -520,6 +520,33 @@ class DecisionRecord(TypedDict):
     facts_bytes: NotRequired[int | None]
     #: The image its prompt carried, when the transcript showed its prompt.
     image: NotRequired[CheckImage | None]
+    #: How long its event waited for its turn, and what compaction ran meanwhile.
+    wait: NotRequired[CheckWait | None]
+    #: Whether an idle compaction of its session completed since the previous check.
+    follows_compaction: NotRequired[bool]
+
+
+class WaitedCompaction(TypedDict):
+    """One idle compaction a check's event waited beside, as its record carries it."""
+
+    ended: str
+    started_at: str
+    ended_at: str
+
+
+class CheckWait(TypedDict):
+    """From a check's event's arrival to its turn's start, on the server's clock."""
+
+    arrived_at: str
+    started_at: str | None
+    wait_ms: int | None
+    #: Each idle compaction of the session running between the two.
+    compactions: list[WaitedCompaction]
+    #: Whether its turn started only after one of them completed.
+    delayed: bool
+    #: How long, in real milliseconds, the scheduled check waited for the
+    #: compaction just before its event to end, when it waited for one.
+    waited_for_compaction_ms: int | None
 
 
 #: Which image a check was shown.
@@ -596,6 +623,26 @@ class TestRecord(TypedDict):
     decision_points: list[DecisionRecord]
     #: Its print's first-layer alignment verdict, when the server decided one.
     alignment: NotRequired[Alignment | None]
+    #: Every idle compaction of its print's sessions, from the port's ledger.
+    compactions: NotRequired[list[LedgerCompaction]]
+    #: The compaction settings its server was configured with.
+    configured: NotRequired[Compaction | None]
+
+
+class Compaction(TypedDict):
+    """The two compaction settings a server is configured with, as its file has them."""
+
+    idle_compact_tokens: int | None
+    auto_compact_tokens: int | None
+
+
+def configured_compaction(config: Path) -> Compaction:
+    """The compaction settings one server configuration file carries."""
+    supervisor = tomllib.loads(config.read_text(encoding="utf-8")).get("supervisor", {})
+    return {
+        "idle_compact_tokens": supervisor.get("idle_compact_tokens"),
+        "auto_compact_tokens": supervisor.get("auto_compact_tokens"),
+    }
 
 
 class LedgerSession(TypedDict):
@@ -610,6 +657,25 @@ class LedgerTurn(TypedDict):
 
     session_name: str
     calls: NotRequired[list[CallUsage]]
+    #: When it ended and when it started, on the server's clock.
+    ran_at: NotRequired[str]
+    started_at: NotRequired[str]
+
+
+class LedgerCompaction(TypedDict):
+    """One idle compaction of a print's session, as the supervisor port's ledger holds it."""
+
+    session_name: str
+    started_at: str
+    ended_at: str
+    #: `completed`, `cancelled`, `failed` or `unsupported`.
+    ended: str
+    size_before: int
+    reported_before: NotRequired[int]
+    reported_after: NotRequired[int]
+    usage: CallUsage
+    error: NotRequired[str]
+    scheduled_check_waited_ms: NotRequired[int]
 
 
 class Ledger(TypedDict):
@@ -617,6 +683,84 @@ class Ledger(TypedDict):
 
     sessions: list[LedgerSession]
     turns: list[LedgerTurn]
+    compactions: list[LedgerCompaction]
+
+
+#: How an idle compaction may end, in the port's words.
+COMPACTION_ENDS = {"completed", "cancelled", "failed", "unsupported"}
+
+
+def _is_compaction(entry: object) -> bool:
+    """Whether one ledger entry is an idle compaction as the port writes one."""
+    return (
+        isinstance(entry, dict)
+        and isinstance(entry.get("session_name"), str)
+        and _is_timestamp(entry.get("started_at"))
+        and _is_timestamp(entry.get("ended_at"))
+        and entry.get("ended") in COMPACTION_ENDS
+        and type(entry.get("size_before")) is int
+        and all(
+            type(entry[name]) is int and entry[name] >= 0
+            for name in ("reported_before", "reported_after", "scheduled_check_waited_ms")
+            if name in entry
+        )
+        and isinstance(entry.get("usage", {}), dict)
+        and all(type(count) is int and count >= 0 for count in entry.get("usage", {}).values())
+    )
+
+
+def check_wait(
+    arrived_at: str,
+    turn: LedgerTurn | None,
+    previous_end: str | None,
+    compactions: list[LedgerCompaction],
+) -> tuple[CheckWait, bool]:
+    """How one check's event waited for its turn, and whether it follows a compaction.
+
+    The turn starts once any compaction it cancelled has exited; a compaction
+    running between the event's arrival and that start, which then completed, is
+    one the check waited on. A scheduled check waits for a running compaction
+    before its event is written down, so the wait it took is the one the port
+    recorded on the compaction that ended just before its event arrived.
+    """
+    arrived = _utc_instant(arrived_at)
+    started_at = turn.get("started_at") if turn is not None else None
+    started = _utc_instant(started_at) if started_at is not None else None
+    since = _utc_instant(previous_end) if previous_end is not None else None
+    meanwhile: list[WaitedCompaction] = [
+        {
+            "ended": compaction["ended"],
+            "started_at": compaction["started_at"],
+            "ended_at": compaction["ended_at"],
+        }
+        for compaction in compactions
+        if started is not None
+        and _utc_instant(compaction["started_at"]) < started
+        and _utc_instant(compaction["ended_at"]) > arrived
+    ]
+    before = [
+        compaction
+        for compaction in compactions
+        if (since is None or _utc_instant(compaction["ended_at"]) > since)
+        and _utc_instant(compaction["ended_at"]) <= (started or arrived)
+    ]
+    waited = [
+        compaction["scheduled_check_waited_ms"]
+        for compaction in before
+        if "scheduled_check_waited_ms" in compaction
+        and _utc_instant(compaction["ended_at"]) <= arrived
+    ]
+    wait: CheckWait = {
+        "arrived_at": arrived_at,
+        "started_at": started_at,
+        "wait_ms": None
+        if started is None
+        else max(0, round((started - arrived).total_seconds() * 1000)),
+        "compactions": meanwhile,
+        "delayed": any(compaction["ended"] == "completed" for compaction in meanwhile),
+        "waited_for_compaction_ms": waited[-1] if waited else None,
+    }
+    return wait, any(compaction["ended"] == "completed" for compaction in before)
 
 
 @dataclass
@@ -656,6 +800,10 @@ class DecisionPoint:
     image_note: str | None = None
     #: Whether the server wrote down that the turn answered `stop` and stopped nothing.
     stopped_nothing: bool = False
+    #: When the server kept its event.
+    arrived_at: str | None = None
+    wait: CheckWait | None = None
+    follows_compaction: bool = False
 
     @property
     def check_class(self) -> CheckClass:
@@ -695,6 +843,8 @@ class DecisionPoint:
             "check_class": self.check_class,
             "facts_bytes": self.facts_bytes,
             "image": check_image(self.image_note) if self.image_note is not None else None,
+            "wait": self.wait,
+            "follows_compaction": self.follows_compaction,
         }
 
 
@@ -709,6 +859,8 @@ class Replayed:
     state: Path
     transcript: list[dict[str, Any]] = field(default_factory=list)
     alignment: Alignment | None = None
+    #: The compaction settings the server was configured with.
+    configured: Compaction | None = None
 
     @property
     def passed(self) -> bool:
@@ -753,6 +905,8 @@ class Replayed:
             "compound_commands": self.compound_commands(),
             "decision_points": [point.as_record() for point in self.points],
             "alignment": self.alignment,
+            "compactions": self.ledger["compactions"],
+            "configured": self.configured,
         }
 
 
@@ -760,6 +914,20 @@ def _ledger_of(document: object, path: Path) -> Ledger:
     """A ledger read from the port's file, once it holds what is read from one."""
     sessions = document.get("sessions") if isinstance(document, dict) else None
     turns = document.get("turns") if isinstance(document, dict) else None
+    compactions = document.get("compactions", []) if isinstance(document, dict) else None
+    if (
+        not isinstance(compactions, list)
+        or not all(_is_compaction(entry) for entry in compactions)
+        or not all(
+            _is_timestamp(entry[name])
+            for entry in turns or []
+            if isinstance(entry, dict)
+            for name in ("ran_at", "started_at")
+            if name in entry
+        )
+    ):
+        msg = f"{path} carries compactions or turn times the port does not write"
+        raise ReplayError(msg)
     if (
         not isinstance(sessions, list)
         or not isinstance(turns, list)
@@ -772,7 +940,7 @@ def _ledger_of(document: object, path: Path) -> Ledger:
     ):
         msg = f"{path} is no ledger of sessions and turns"
         raise ReplayError(msg)
-    return {"sessions": sessions, "turns": turns}
+    return {"sessions": sessions, "turns": turns, "compactions": compactions}
 
 
 def _calls_are_counts(calls: object) -> bool:
@@ -992,12 +1160,19 @@ class Replay:
             gcode=gcode,
         )
         self.runs: list[Run] = []
+        #: Each idle compaction's harness run, which serves no replay entry.
+        self.compaction_runs: list[Run] = []
         self.errors: list[str] = []
         self.servers = [
             doubles.octoprint(self.timeline, self.minted.octoprint_key),
             doubles.camera(self.timeline),
             doubles.obico(self.timeline),
-            doubles.control(self._harness_started, self._harness_exited, self.errors.append),
+            doubles.control(
+                self._harness_started,
+                self._harness_exited,
+                self.errors.append,
+                compaction=(self._compaction_started, self._compaction_exited),
+            ),
         ]
         self.port = _free_port()
         self.server: subprocess.Popen[str] | None = None
@@ -1061,6 +1236,18 @@ class Replay:
             Run(record, self.timeline.index, self._transcript_sizes(), self.timeline.now())
         )
         return str(record)
+
+    def _compaction_started(self) -> str:
+        """Note one compaction's harness run, which moves the replay nowhere."""
+        record = self.records / f"compaction-{len(self.compaction_runs):04}.json"
+        self.compaction_runs.append(
+            Run(record, self.timeline.index, self._transcript_sizes(), self.timeline.now())
+        )
+        return str(record)
+
+    def _compaction_exited(self) -> None:
+        """Note that the compaction's harness exited; its end is the port's to record."""
+        self.compaction_runs[-1].ended_at = self.timeline.now()
 
     def _transcripts(self) -> list[Path]:
         # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
@@ -1405,8 +1592,14 @@ class Replay:
             points = self._judged(events)
             ledger = self._ledger()
             if len(ledger["turns"]) == len(points):
+                previous_end: str | None = None
                 for point, turn in zip(points, ledger["turns"], strict=True):
                     point.calls = list(turn.get("calls", []))
+                    if point.arrived_at is not None:
+                        point.wait, point.follows_compaction = check_wait(
+                            point.arrived_at, turn, previous_end, ledger["compactions"]
+                        )
+                    previous_end = turn.get("ran_at")
             return Replayed(
                 case=self.case,
                 points=points,
@@ -1415,6 +1608,7 @@ class Replay:
                 state=self.state,
                 transcript=[line for harness_run in self.runs for line in _lines_of(harness_run)],
                 alignment=self.alignment,
+                configured=configured_compaction(config),
             )
         finally:
             self.stop()
@@ -1422,7 +1616,7 @@ class Replay:
     def _ledger(self) -> Ledger:
         path = self.state / "supervisor-sessions" / f"{self._print_id()}.json"
         if not path.is_file():
-            return {"sessions": [], "turns": []}
+            return {"sessions": [], "turns": [], "compactions": []}
         return _ledger_of(json.loads(path.read_text(encoding="utf-8")), path)
 
     def _judged(self, events: list[HistoryEvent]) -> list[DecisionPoint]:
@@ -1514,6 +1708,7 @@ class Replay:
             facts_bytes=report.facts_bytes,
             image_note=report.image_note,
             stopped_nothing=any(event["kind"] == STOP_UNACTED for event in answered),
+            arrived_at=trigger["received_at"],
         )
 
     def stop(self) -> None:
