@@ -34,6 +34,7 @@ import secrets
 import shutil
 import struct
 import threading
+import tomllib
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler
@@ -1017,15 +1018,35 @@ ADDED_AFTER = "printobserver-added-after-release"
 WEDGED = "not found in the registry, but the git tag"
 
 
-def add_crate_after_the_release(stage: Stage) -> None:
-    """Commit a new workspace crate on top of the released tree, as a `feat:` change.
+#: A changelog section heading as release-plz writes one: `## [<version>](<link>)`.
+SECTION_LINK = re.compile(r"^## \[(?P<version>[^\]]+)\]\((?P<link>[^)]+)\)", re.MULTILINE)
 
-    It is drawn the way every crate of this workspace is — inheriting the
-    workspace's version and package fields, and joining the one version group
-    in `release-plz.toml` — so the only thing that sets it apart is that it
-    landed after the release's tag.
+#: The one tag name a release of this workspace is cut under.
+RELEASE_TAG = re.compile(r"v\d+\.\d+\.\d+")
+
+
+def repository_url() -> str:
+    """The forge address the workspace declares, which the changelog's links are under."""
+    with (REPO_ROOT / "Cargo.toml").open("rb") as handle:
+        return str(tomllib.load(handle)["workspace"]["package"]["repository"]).removesuffix("/")
+
+
+def add_crate_after_the_release(stage: Stage) -> None:
+    """Commit a new workspace crate on top of the released tree, then a fix to a released one.
+
+    The new crate is drawn the way every crate of this workspace is —
+    inheriting the workspace's version and package fields, and joining the one
+    version group in `release-plz.toml` — so the only thing that sets it apart
+    is that it landed after the release's tag. The fix gives a crate the
+    registry already serves a section of its own to link from the release
+    before it.
+
+    `semver_check` is turned off in the copy: with a registry carrying the
+    released crates, it builds the API of every changed one twice, which is
+    cargo-semver-checks' work and none of what is asked here.
     """
     stage.registry.owned.add(ADDED_AFTER)
+    stage.copy.edit("release-plz.toml", "semver_check = true", "semver_check = false")
     stage.copy.write(
         f"crates/{ADDED_AFTER}/Cargo.toml",
         f'[package]\nname = "{ADDED_AFTER}"\n'
@@ -1041,13 +1062,49 @@ def add_crate_after_the_release(stage: Stage) -> None:
         + f'\n[[package]]\nname = "{ADDED_AFTER}"\nversion_group = "printobserver"\n',
     )
     shell_run(["cargo", "update", "--workspace", "--offline"], cwd=stage.copy.root, check=True)
-    shell_run(["git", "add", "-A"], cwd=stage.copy.root, check=True)
-    shell_run(
-        ["git", *COMMIT_IDENTITY, "commit", "-qm", "feat: add a crate after the release"],
-        cwd=stage.copy.root,
-        check=True,
-    )
+    for subject, touched in (
+        ("feat: add a crate after the release", None),
+        ("fix(types): a change the next release carries", "crates/printobserver-types/touched.md"),
+    ):
+        if touched is not None:
+            stage.copy.write(touched, "A change the next release carries.\n")
+        shell_run(["git", "add", "-A"], cwd=stage.copy.root, check=True)
+        shell_run(
+            ["git", *COMMIT_IDENTITY, "commit", "-qm", subject], cwd=stage.copy.root, check=True
+        )
     shell_run(["git", "repack", "-ad"], cwd=stage.copy.root, check=True)
+
+
+def drafted_links(root: Path) -> dict[str, tuple[str, str]]:
+    """Each crate's newly drafted changelog section: its version and the link it carries.
+
+    New is what the crate's `CHANGELOG.md` heads with that its committed copy
+    did not — a crate with no committed changelog has every section new.
+    """
+    drafted: dict[str, tuple[str, str]] = {}
+    for changelog in sorted(root.glob("crates/*/CHANGELOG.md")):
+        relative = changelog.relative_to(root).as_posix()
+        committed = shell_run(["git", "show", f"HEAD:{relative}"], cwd=root)
+        before = (
+            {match.group(0) for match in SECTION_LINK.finditer(committed.stdout)}
+            if committed.returncode == 0
+            else set()
+        )
+        for match in SECTION_LINK.finditer(changelog.read_text(encoding="utf-8")):
+            if match.group(0) not in before:
+                drafted[changelog.parent.name] = (match["version"], match["link"])
+                break
+    return drafted
+
+
+def refs_of(link: str, repository: str) -> list[str]:
+    """The refs a release link names: both ends of a comparison, or the one tag released."""
+    for route in ("/compare/", "/releases/tag/"):
+        prefix = f"{repository}{route}"
+        if link.startswith(prefix):
+            return link.removeprefix(prefix).split("...")
+    msg = f"{link!r} is not a comparison or a release under {repository}"
+    raise AssertionError(msg)
 
 
 def test_a_crate_added_after_a_release_is_drafted_rather_than_wedging_the_draft(
@@ -1056,24 +1113,33 @@ def test_a_crate_added_after_a_release_is_drafted_rather_than_wedging_the_draft(
     """The state `main` was in after `printobserver-panels` landed on top of `v0.13.1`.
 
     Every crate is on the registry at the released version and `v<version>`
-    is in the copy; then a new crate lands. The drafting computation
-    `release-pr` runs — `release-plz update`, driven for real against the
-    stand-in — reaches the new crate and drafts it, rather than reading the
-    release's tag as the new crate's own and stopping the whole draft because
-    the registry has never carried it.
+    is in the copy; then a new crate lands, and a fix to a released one. The
+    drafting computation `release-pr` runs — `release-plz update`, driven for
+    real against the stand-in — reaches the new crate and drafts it, rather
+    than reading the release's tag as the new crate's own and stopping the
+    whole draft because the registry has never carried it.
+
+    And every changelog section it drafts links to the tags a release here is
+    actually cut under: `v<version>`, which only `printobserver` creates, never
+    the `<package>-v<version>` names the other packages render and nothing
+    creates. The released crate's section compares the release before it with
+    the one drafted.
     """
     version = workspace_version()
+    repository = repository_url()
     with Stage(gate_copy, tags=(version,)) as stage:
         stage.seed(*publishable_crates())
         add_crate_after_the_release(stage)
 
         result = capture(
-            ["release-plz", "update", "--no-changelog", "--registry", STANDIN],
+            ["release-plz", "update", "--registry", STANDIN, "--repo-url", repository],
             stage.copy.root,
             timeout=RELEASE_TIMEOUT_SECONDS,
             env=stage.environment(),
         )
         said = output(result)
+        drafted = drafted_links(stage.copy.root)
+        tags = set(shell_run(["git", "tag", "--list"], cwd=stage.copy.root).stdout.split())
 
     passing(result, describing="drafting over a crate added after the release")
     absent(said, WEDGED, describing="what the drafting tool said")
@@ -1083,6 +1149,26 @@ def test_a_crate_added_after_a_release_is_drafted_rather_than_wedging_the_draft(
         describing="the crates the drafting tool computed",
     )
     contains(said, f"{ADDED_AFTER}: next version is", describing="what the tool drafted")
+
+    contains(list(drafted), ADDED_AFTER, describing="the crates given a changelog section")
+    contains(list(drafted), "printobserver-types", describing="the crates given a section")
+    for crate, (drafted_version, link) in drafted.items():
+        for ref in refs_of(link, repository):
+            truth(
+                RELEASE_TAG.fullmatch(ref) is not None,
+                describing=f"`{crate}`'s section to link `v<version>` tags, not {ref!r}: {link}",
+            )
+            truth(
+                ref in tags or ref == f"v{drafted_version}",
+                describing=f"`{crate}`'s section to link a tag the copy carries or the one "
+                f"drafted, not {ref!r}: {link} (the copy carries {sorted(tags)})",
+            )
+    drafted_version, link = drafted["printobserver-types"]
+    equal(
+        link,
+        f"{repository}/compare/v{version}...v{drafted_version}",
+        describing="the released crate's section link",
+    )
 
 
 def test_creation_enabled_for_every_package_dies_on_the_second_ref(

@@ -144,6 +144,28 @@ git_release_enable = true
 # independent of these display groups, so skipping a type from the changelog
 # never changes the bump.
 [changelog]
+# release-plz's own default body (release_plz_core 0.38.4's
+# `default_changelog_body_config`, the release `repo-policy.toml` holds) with
+# one change: the section's link. The default links `release_link`, which
+# release-plz builds from each package's OWN tag name — `<package>-v<version>`
+# for every package but `printobserver`, a name nothing creates — so it is built
+# here from the one tag a release is cut under, `v<version>`: the release
+# before compared with this one, or this release alone when there is none
+# before. `tests/repo-e2e-independent/tests/test_release_tag_journey.py` holds
+# every drafted link to tags that exist.
+body = '''
+## [{{ version }}]{%- if remote.link -%}{%- if previous.version and previous.version != version -%}({{ remote.link }}/compare/v{{ previous.version }}...v{{ version }}){%- else -%}({{ remote.link }}/releases/tag/v{{ version }}){%- endif -%}{%- endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+
+{% for commit in commits %}
+{%- if commit.scope -%}
+- *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}{%- if commit.links %} ({% for link in commit.links %}[{{link.text}}]({{link.href}}) {% endfor -%}){% endif %}
+{% else -%}
+- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}
+{% endif -%}
+{% endfor -%}
+{% endfor %}'''
 commit_parsers = [
   { message = "^feat", group = "Added" },
   { message = "^fix", group = "Fixed" },
