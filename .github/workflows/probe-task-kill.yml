@@ -21,8 +21,10 @@ jobs:
         with:
           lfs: false
       - shell: pwsh
+        run: wevtutil sl Microsoft-Windows-TaskScheduler/Operational /e:true
+      - shell: pwsh
         env:
-          PROBE_MODES: none,attached,stalled
+          PROBE_LEADS: "30,45,10,55"
           PROBE_ROUNDS: "2"
           GH_TOKEN: ${{ github.token }}
         run: .github/probe/task-kill-probe.ps1

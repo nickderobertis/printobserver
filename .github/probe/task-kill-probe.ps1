@@ -45,63 +45,38 @@ function Until([string]$what, [scriptblock]$ok, [int]$seconds) {
     Write-Output "TIMEOUT $what $(State)"
 }
 
-foreach ($mode in $env:PROBE_MODES -split ',') {
+function NextRun { (Get-ScheduledTask -TaskName $task | Get-ScheduledTaskInfo).NextRunTime }
+function Events([datetime]$since) {
+    Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-TaskScheduler/Operational'; StartTime = $since } -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -match $task } | Sort-Object TimeCreated |
+        ForEach-Object { "    ev {0} {1:HH:mm:ss.fff} {2}" -f $_.Id, $_.TimeCreated, (($_.Message -replace '\s+', ' ') -replace '^(.{0,170}).*', '$1') }
+}
+foreach ($lead in $env:PROBE_LEADS -split ',') {
     for ($n = 1; $n -le [int]$env:PROBE_ROUNDS; $n++) {
         Stop-ScheduledTask -TaskName $task
         Until 'stopped' { (Servers).Count -eq 0 } 120
         $since = Get-Date
         Start-ScheduledTask -TaskName $task
         Until 'serving' { Listening } 120
-        $s = Servers
-        $killed = $s[0].ProcessId
-        $held = $null
-        $suspended = @()
-        if ($mode -eq 'attached') {
-            # A second process on the server's console, as any process that
-            # attaches to it or inherits it is.
-            $helper = Join-Path $env:RUNNER_TEMP 'attach-helper.ps1'
-            Set-Content -Path $helper -Value @'
-param([uint32]$Target, [string]$Said)
-Add-Type -Namespace H -Name C -MemberDefinition @"
-[DllImport("kernel32.dll")] public static extern bool FreeConsole();
-[DllImport("kernel32.dll")] public static extern bool AttachConsole(uint id);
-"@
-[void][H.C]::FreeConsole()
-"attached $([H.C]::AttachConsole($Target))" | Out-File -FilePath $Said
-Start-Sleep -Seconds 150
-'@
-            $held = Start-Process -PassThru -WindowStyle Hidden -FilePath powershell.exe -ArgumentList '-NoProfile', '-File', $helper, $killed, "$env:RUNNER_TEMP\attached.txt"
-            Start-Sleep -Seconds 5
-            Write-Output "  helper: $(Get-Content "$env:RUNNER_TEMP\attached.txt" -ErrorAction SilentlyContinue)"
-        }
-        if ($mode -eq 'stalled') {
-            # The delegated terminal host started with this server's console,
-            # suspended: a terminal slow to notice its client is gone.
-            $suspended = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'OpenConsole.exe' -and $_.CreationDate -ge $since })
-            foreach ($p in $suspended) { [void][Probe.Native]::NtSuspendProcess((Get-Process -Id $p.ProcessId).Handle) }
-            Write-Output "  suspended: $($suspended.ProcessId -join ',')"
-        }
-        Write-Output "[$mode $n] before kill: server=$killed $(State) running=[$(Running)]"
-        Around @($killed) $since
+        # Kill `lead` seconds before the next minute's start, as the failing run's kill fell.
+        $next = NextRun
+        if ($next -lt (Get-Date).AddSeconds([int]$lead + 1)) { $next = $next.AddMinutes(1) }
+        $wait = ($next.AddSeconds(-[int]$lead) - (Get-Date)).TotalMilliseconds
+        if ($wait -gt 0) { Start-Sleep -Milliseconds $wait }
+        $killed = (Servers)[0].ProcessId
+        Write-Output ("[lead {0}s {1}] kill {2} at {3:HH:mm:ss.fff}, next run {4:HH:mm:ss}: {5}" -f $lead, $n, $killed, (Get-Date), (NextRun), (State))
+        $at = Get-Date
         & taskkill.exe /F /PID $killed | Out-Null
-        $start = Get-Date
         $last = ''
         $back = $false
-        while (((Get-Date) - $start).TotalSeconds -lt 140) {
+        while (((Get-Date) - $at).TotalSeconds -lt 200) {
             $now = Servers
-            $line = "servers=$($now.ProcessId -join ',') $(State) running=[$(Running)]"
-            if ($line -ne $last) {
-                Write-Output ("  +{0,5:N1}s {1}" -f ((Get-Date) - $start).TotalSeconds, $line); $last = $line
-                if ($now.Count -and $now[0].ProcessId -eq $killed) { Around @($killed) $since }
-            }
+            $line = "servers=$($now.ProcessId -join ',') $(State) next=$((NextRun).ToString('HH:mm:ss')) running=[$(Running)]"
+            if ($line -ne $last) { Write-Output ("  +{0,5:N1}s {1}" -f ((Get-Date) - $at).TotalSeconds, $line); $last = $line }
             if ($now.Count -ge 1 -and $now[0].ProcessId -ne $killed -and (Listening)) { $back = $true; break }
             Start-Sleep -Milliseconds 1000
         }
-        Write-Output ("[$mode $n] " + $(if ($back) { 'BACK' } else { 'NOT BACK' }) + (" after {0:N1}s" -f ((Get-Date) - $start).TotalSeconds))
-        if (-not $back) { Around @($killed) $since }
-        if ($held) { Stop-Process -Id $held.Id -Force -ErrorAction SilentlyContinue }
-        foreach ($p in $suspended) { try { [void][Probe.Native]::NtResumeProcess((Get-Process -Id $p.ProcessId).Handle) } catch {} }
-        Start-Sleep -Seconds 3
-        if (-not $back) { Write-Output "  after releasing the holder: servers=$((Servers).ProcessId -join ',') $(State) running=[$(Running)]" }
+        Write-Output ("[lead {0}s {1}] {2} after {3:N1}s" -f $lead, $n, $(if ($back) { 'BACK' } else { 'NOT BACK' }), ((Get-Date) - $at).TotalSeconds)
+        Events $at.AddSeconds(-2)
     }
 }
