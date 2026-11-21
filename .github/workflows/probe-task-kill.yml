@@ -1,0 +1,55 @@
+# TEMPORARY diagnostic, removed before this change is finished: runs the per-user
+# Windows install journey again and again on both Windows runners, so a failure
+# of its kill-and-come-back step is caught with the test's own diagnostics.
+name: probe-task-kill
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  probe:
+    name: probe (${{ matrix.runner }}, ${{ matrix.load }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025, windows-11-arm]
+        load: [alone, file]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-key: probe-task-kill
+      - uses: astral-sh/setup-uv@v7
+      - run: cargo build --locked -p printobserver
+      - name: the journey, repeated
+        env:
+          PYTHONPATH: tools/repo-checks/src;tools/contract-codegen/src;tools/release-artifacts/src
+          PATH_SEPARATOR: ";"
+          LOAD: ${{ matrix.load }}
+        run: |
+          failed=0
+          for round in 1 2 3 4 5 6 7 8; do
+            if [ "$LOAD" = alone ]; then
+              selected=(-k task_serves_comes_back)
+            else
+              selected=(-n auto --dist loadgroup)
+            fi
+            if uv run -q pytest tests/repo-e2e/tests/test_per_user_windows_install_journey.py \
+                "${selected[@]}" -q -p no:cacheprovider 2>&1 | tee "round-$round.log" | tail -3; then
+              echo "round $round passed"
+            else
+              failed=$((failed + 1))
+              echo "round $round FAILED"
+              grep -a -A40 "back after it was killed within" "round-$round.log" | head -60 || true
+            fi
+          done
+          echo "failed rounds: $failed of 8"
+          rm -f round-*.log
