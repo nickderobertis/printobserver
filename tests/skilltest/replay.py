@@ -526,10 +526,14 @@ class DecisionRecord(TypedDict):
     follows_compaction: NotRequired[bool]
 
 
+#: How an idle compaction may end, in the port's words.
+CompactionEnd = Literal["completed", "cancelled", "failed", "unsupported"]
+
+
 class WaitedCompaction(TypedDict):
     """One idle compaction a check's event waited beside, as its record carries it."""
 
-    ended: str
+    ended: CompactionEnd
     started_at: str
     ended_at: str
 
@@ -682,8 +686,7 @@ class LedgerCompaction(TypedDict):
     session_name: str
     started_at: str
     ended_at: str
-    #: `completed`, `cancelled`, `failed` or `unsupported`.
-    ended: str
+    ended: CompactionEnd
     size_before: int
     reported_before: NotRequired[int]
     reported_after: NotRequired[int]
@@ -700,8 +703,8 @@ class Ledger(TypedDict):
     compactions: list[LedgerCompaction]
 
 
-#: How an idle compaction may end, in the port's words.
-COMPACTION_ENDS = {"completed", "cancelled", "failed", "unsupported"}
+#: Every end an idle compaction may have.
+COMPACTION_ENDS = set(get_args(CompactionEnd))
 
 
 def _is_compaction(entry: object) -> bool:
