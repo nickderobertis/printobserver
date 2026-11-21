@@ -1560,6 +1560,34 @@ def test_a_run_that_released_the_workspace_answers_its_one_tag_once(
     equal(err, "", describing="what a passing read said beside its one line")
 
 
+def own_tags(answered: str) -> str:
+    """The answer with every entry naming its package's own tag, as release-plz renders it.
+
+    That is `release-plz.toml`'s workspace `git_tag_name`, which every package
+    but `printobserver` renders and creates nothing under.
+    """
+    parsed = json.loads(answered)
+    for entry in parsed["releases"]:
+        entry["tag"] = f"{entry['package_name']}-v{entry['version']}"
+    return json.dumps(parsed)
+
+
+def test_entries_naming_their_own_package_tag_answer_the_one_release_tag(
+    repo: Repo, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A package's own tag name is read as the `v<version>` its version was cut under.
+
+    Every package but `printobserver` names `<package>-v<version>` in the answer,
+    and the release a run cut is still the one tag the artifacts are built for.
+    """
+    code, out, err = read(own_tags(answer(repo, "0.4.0", "0.4.0")), tmp_path, capsys)
+
+    equal(code, 0, describing=f"the exit a run that released answers with:\n{err}")
+    equal(
+        out.strip(), f"{RELEASED_FIELD}=v0.4.0", describing="the field a job reads its output from"
+    )
+
+
 def test_a_run_that_released_nothing_answers_an_empty_field(
     repo: Repo, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1593,6 +1621,16 @@ def without_tag(answered: str) -> str:
         (lambda repo: answer(repo, "0.4.0\nextra=injected"), "is not that"),
         # A version is not a tag: release automation writes `v` before it.
         (lambda repo: answer(repo, "0.4.0").replace("v0.4.0", "0.4.0"), "is not that"),
+        # A package's own tag name is its own: another package's, or another
+        # version's, is not one release automation writes for this entry.
+        (
+            lambda repo: answer(repo, "0.4.0").replace('"v0.4.0"', '"printobserver-other-v0.4.0"'),
+            "is not that",
+        ),
+        (
+            lambda repo: own_tags(answer(repo, "0.4.0")).replace("-v0.4.0", "-v0.3.0"),
+            "is not that",
+        ),
     ],
 )
 def test_an_answer_the_release_program_does_not_write_is_refused_rather_than_read_as_none(

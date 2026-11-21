@@ -1,0 +1,19 @@
+{
+  "name": "release-drafting",
+  "root": "tests/release-drafting",
+  "projectType": "library",
+  "tags": ["lang:python", "type:e2e", "platform:independent"],
+  "metadata": {
+    "description": "The release-pr drafting journey over a fixture workspace: the real release-plz.toml and the held release-plz, against a loopback registry. It reads no crate of this workspace and no other project's tests, so its one edge is repo-checks, whose expect and shell vocabulary every suite here is written in; release-plz.toml is a root file no project owns, so a change to it reaches the whole graph and this journey with it."
+  },
+  "implicitDependencies": ["repo-checks"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tests/release-drafting" },
+    "format-check": { "command": "uv run -q ruff format --check tests/release-drafting" },
+    "lint": { "command": "uv run -q ruff check tests/release-drafting" },
+    "typecheck": {
+      "command": "uv run -q ty check tests/release-drafting && uv run -q ty check --python-platform win32 tests/release-drafting"
+    },
+    "test-e2e": { "command": "uv run -q pytest tests/release-drafting/tests" }
+  }
+}

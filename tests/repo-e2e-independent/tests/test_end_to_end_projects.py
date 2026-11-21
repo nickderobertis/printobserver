@@ -1,11 +1,15 @@
 """Every end-to-end test file is collected by exactly the one project it is assigned to.
 
-The end-to-end tier is two Nx projects. `repo-e2e` holds the journeys whose
-subject behaves differently by platform — installers, service managers, paths,
-the shipped program, the gate as each platform's own cell runs it — and runs on
-every platform. `repo-e2e-independent` holds the journeys that drive only this
-repository's own tooling, workflows and records, and carries the tag
-`repo-policy.toml`'s `[gate] platform_independent_tag` declares, so CI may run
+The end-to-end tier's journeys over a copy of this tree are two Nx projects,
+which share `journey`'s helpers; a journey over a fixture of its own, such as
+`release-drafting`, is a project of its own and outside this record.
+
+`repo-e2e` holds the journeys whose subject behaves differently by platform —
+installers, service managers, paths, the shipped program, the gate as each
+platform's own cell runs it — and runs on every platform. `repo-e2e-independent`
+holds the journeys that drive only this repository's own tooling, workflows and
+records, and carries the tag `repo-policy.toml`'s `[gate]
+platform_independent_tag` declares, so CI may run
 it once. `ASSIGNED` is the one record of which file is whose.
 
 Each project's real `test-e2e` target is run here in pytest's collection mode,
