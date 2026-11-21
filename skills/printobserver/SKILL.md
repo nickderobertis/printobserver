@@ -111,3 +111,4 @@ must check.
 [API](reference/api-and-clients.md), [policy](reference/intervention-policy.md),
 [schemas](reference/schemas.md), [architecture](reference/architecture.md),
 [testing](reference/testing.md).
+An outside supervisor takes its own frames: [see](reference/common-operations.md).
