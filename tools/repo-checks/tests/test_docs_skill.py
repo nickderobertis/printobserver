@@ -20,7 +20,7 @@ def test_the_committed_skill_is_accepted(committed: Repo) -> None:
 
 
 def test_the_check_enforces_the_bounds_this_repository_declares(committed: Repo) -> None:
-    """The two numbers are 6,057 characters and 150 lines.
+    """The two numbers are 6,106 characters and 150 lines.
 
     A check free to choose its own budget could hold the skill to one no skill
     could exceed while buying none of the discipline the bounds are for. The
