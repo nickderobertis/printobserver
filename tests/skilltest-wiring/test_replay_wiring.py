@@ -313,7 +313,7 @@ def test_the_cases_carry_exactly_the_replays_the_suite_was_given() -> None:
     for name, replay in REPLAYS.items():
         equal([moment.id for moment in read_case(name).moments], replay, describing=name)
     bubbler = read_case("bubbler-guard-and-pad-pla-healthy")
-    equal(len(bubbler.moments), 18)
+    equal(len(bubbler.moments), 32)
     equal(
         [moment.at for moment in bubbler.moments],
         sorted(moment.at for moment in bubbler.moments),
