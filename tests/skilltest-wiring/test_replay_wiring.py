@@ -23,7 +23,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from http.client import HTTPConnection
 from pathlib import Path
-from typing import Any, cast, get_args, get_type_hints
+from typing import Any, get_args, get_type_hints
 from urllib.parse import quote
 
 import classify
@@ -54,8 +54,11 @@ from replay import (
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     Assessment,
+    CallUsage,
+    CheckClass,
     Confidence,
     DecisionPoint,
+    DecisionRecord,
     Disposition,
     LedgerCompaction,
     LedgerTurn,
@@ -2724,7 +2727,7 @@ def test_an_idle_compaction_runs_between_checks_and_the_next_scheduled_check_wai
     equal(written["detail"]["idle_compactions"], 1)
 
 
-def _call(input_tokens: int, output: int, cached: int = 0) -> dict[str, int]:
+def _call(input_tokens: int, output: int, cached: int = 0) -> CallUsage:
     return {"input_tokens": input_tokens, "output_tokens": output, "cache_read_tokens": cached}
 
 
@@ -2771,7 +2774,7 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
             "usage": {"input_tokens": 5, "cache_read_tokens": 149_995},
         },
     ]
-    scripted = [
+    scripted: list[tuple[CheckClass, list[CallUsage]]] = [
         ("quiet", [_call(7_000, 1_000)]),
         ("quiet", [_call(3_000, 1_000, cached=8_000)]),
         ("acting", [_call(15_000, 500), _call(16_000, 1_000)]),
@@ -2780,7 +2783,7 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
         ("quiet", [_call(21_000, 1_000)]),
     ]
     arrivals = [stamp(1), stamp(3), "2026-10-31T16:04:30Z", stamp(7), stamp(9), stamp(10)]
-    points = []
+    points: list[DecisionRecord] = []
     previous: str | None = None
     for number, ((check_class, calls), turn, arrived) in enumerate(
         zip(scripted, ledger_turns, arrivals, strict=True)
@@ -2790,11 +2793,20 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
         points.append(
             {
                 "scenario": f"check-{number}",
+                "at": arrived,
                 "trigger": "periodic_observation",
-                "check_class": check_class,
-                "calls": calls,
+                "passed": True,
+                "why_not": None,
+                "requests": [],
                 "commands": [],
+                "opened": [],
+                "assessment": None,
                 "looks": 0,
+                "usage": None,
+                "models": [],
+                "compacted": False,
+                "calls": calls,
+                "check_class": check_class,
                 "wait": wait,
                 "follows_compaction": follows,
             }
@@ -2803,10 +2815,17 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
         [point["follows_compaction"] for point in points],
         [False, False, False, True, False, True],
     )
-    tests = cast(
-        "list[RecordedTest]",
-        [{"test": "scripted", "decision_points": points, "compactions": compactions}],
-    )
+    tests: list[RecordedTest] = [
+        {
+            "test": "scripted",
+            "passed": True,
+            "turns": len(points),
+            "sessions": ["s"],
+            "compound_commands": {},
+            "decision_points": points,
+            "compactions": compactions,
+        }
+    ]
     figures, detail = record.compaction_figures(
         record.checks_of(tests, 4_000), 4_000, compactions, 150_000
     )
