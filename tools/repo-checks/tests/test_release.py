@@ -6,11 +6,17 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
+import sysconfig
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
 import pytest
+import repo_checks
 from closures import closure
 from repo_checks.checks_release import (
+    ONEVCS_DISTRIBUTION,
     Answer,
     _publishable_crates,
     onevcs_builds_for_this_host,
@@ -25,6 +31,7 @@ from repo_checks.checks_release import (
 from repo_checks.expect import accepted, contains, equal, refused, refused_naming
 from repo_checks.model import Repo
 from repo_checks.release_declaration import drift, joined
+from repo_checks.shell import run
 from treecopy import REPO_ROOT, Tree
 
 #: The files the checks this module drives read; see `closures`.
@@ -310,16 +317,82 @@ def test_a_declaration_with_a_target_missing_its_name_is_refused(
     )
 
 
-@pytest.mark.skipif(
-    onevcs_builds_for_this_host(Repo(REPO_ROOT)),
-    reason="the locked onevcs publishes a build for this host's platform",
-)
-def test_a_host_onevcs_publishes_no_build_for_reads_nothing(tree: Callable[[], Tree]) -> None:
+def _without_onevcs_wheels(lock: str) -> str:
+    """The lock with every wheel of its `onevcs-cli` release removed: a build for no platform."""
+    head, found, rest = lock.partition(f'[[package]]\nname = "{ONEVCS_DISTRIBUTION}"\n')
+    if not found:
+        msg = f"uv.lock holds no `{ONEVCS_DISTRIBUTION}` package table; the fixture is stale"
+        raise AssertionError(msg)
+    package, separator, after = rest.partition("\n[[package]]\n")
+    kept = "\n".join(
+        line
+        for line in package.split("\n")
+        if not (line.startswith("    { url = ") and ".whl" in line)
+    )
+    if kept == package:
+        msg = f"uv.lock's `{ONEVCS_DISTRIBUTION}` records no wheel; the fixture is stale"
+        raise AssertionError(msg)
+    return f"{head}{found}{kept}{separator}{after}"
+
+
+def _judged_where_no_reader_is_installed(root: Path, scratch: Path) -> list[str]:
+    """What the check finds over `root`, run by an interpreter whose environment has no onevcs.
+
+    The check looks for the reader beside the interpreter running it, so it is
+    run by a fresh virtual environment's interpreter: one where nothing has
+    installed onevcs, as on a host the locked release publishes no build for.
+    This module's own dependencies reach it on `PYTHONPATH` rather than through
+    an install, which would put the reader back.
+    """
+    environment = scratch / "no-reader"
+    run([sys.executable, "-m", "venv", "--without-pip", str(environment)], check=True)
+    interpreter = environment / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    importable = [str(Path(repo_checks.__file__).resolve().parents[1])]
+    importable += dict.fromkeys(sysconfig.get_path(name) for name in ("purelib", "platlib"))
+    judged = run(
+        [
+            str(interpreter),
+            "-c",
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            "from repo_checks.checks_release import release_declaration_readable\n"
+            "from repo_checks.model import Repo\n"
+            "print(json.dumps(release_declaration_readable(Repo(Path(sys.argv[1])))))\n",
+            str(root),
+        ],
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(importable)},
+        timeout=60,
+    )
+    if judged.returncode != 0:
+        msg = f"the check could not run without a reader: {judged.stderr}"
+        raise AssertionError(msg)
+    return [str(finding) for finding in json.loads(judged.stdout)]
+
+
+def test_a_host_onevcs_publishes_no_build_for_reads_nothing(
+    tree: Callable[[], Tree], tmp_path: Path
+) -> None:
     """With no reader to run here, the check says nothing rather than refusing every tree."""
     broken = tree()
     broken.edit(TARGETS, 'name = "github-release"\n', "")
+    broken.write("uv.lock", _without_onevcs_wheels(broken.read("uv.lock")))
+    equal(onevcs_builds_for_this_host(broken.repo), False, describing="a lock with no build here")
 
-    accepted(release_declaration_readable(broken.repo))
+    accepted(_judged_where_no_reader_is_installed(broken.repo.root, tmp_path))
+
+
+def test_a_host_onevcs_builds_for_with_no_reader_installed_is_refused(
+    tree: Callable[[], Tree], tmp_path: Path
+) -> None:
+    """Where the lock holds this host's build, a missing reader is a broken environment."""
+    copied = tree()
+    equal(onevcs_builds_for_this_host(copied.repo), True, describing="the lock's build here")
+
+    refused_naming(
+        _judged_where_no_reader_is_installed(copied.repo.root, tmp_path),
+        "is not installed in this environment",
+        "run `uv sync`",
+    )
 
 
 #: The ids the committed declaration declares, in order, as this repository reads them.
