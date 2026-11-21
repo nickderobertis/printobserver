@@ -345,6 +345,14 @@ pub struct Operation {
     /// through this one's. It takes no value this operation does not, less
     /// the print.
     pub printer_wide: Option<&'static Operation>,
+    /// Whether a call may name no print, and is then made under a print
+    /// identifier the calling program mints.
+    ///
+    /// For the one operation that opens a print of its own when none is open:
+    /// a caller starting a first print has no print to name, and an
+    /// identifier it had to make up is one it gets wrong. What the answer
+    /// names is the print the operation ran under.
+    pub mints_print: bool,
 }
 
 impl Operation {
@@ -853,6 +861,7 @@ const fn action(name: &'static str, path: &'static str, kind: ActionKind) -> Ope
         body: &[],
         image_path_field: None,
         printer_wide: None,
+        mints_print: false,
     }
 }
 
@@ -877,6 +886,7 @@ const fn recovery(name: &'static str, path: &'static str, kind: RecoveryActionKi
         body: &[],
         image_path_field: None,
         printer_wide: None,
+        mints_print: false,
     }
 }
 
@@ -893,6 +903,7 @@ const fn read(name: &'static str, path: &'static str) -> Operation {
         body: &[],
         image_path_field: None,
         printer_wide: None,
+        mints_print: false,
     }
 }
 
@@ -964,6 +975,7 @@ pub const OPERATIONS: [Operation; 39] = [
         query: &[Declared::once("wait_s", false, ValueKind::Integer)],
         image_path_field: Some(CONTEXT_IMAGE_PATH_FIELD),
         printer_wide: Some(&PRINTER_LOOK_OPERATION),
+        mints_print: false,
         ..read("look", "/prints/{print_id}/look")
     },
     PRINTER_LOOK_OPERATION,
@@ -984,6 +996,7 @@ pub const OPERATIONS: [Operation; 39] = [
         ],
         image_path_field: None,
         printer_wide: None,
+        mints_print: false,
     },
     // Every spool, the retired ones only when asked for, each beside one line
     // saying what it holds — and the charges held for a tool after a filament
@@ -1039,11 +1052,15 @@ pub const OPERATIONS: [Operation; 39] = [
         "/prints/{print_id}/actions/cancel",
         ActionKind::Cancel,
     ),
-    action(
-        "start_print",
-        "/prints/{print_id}/actions/start_print",
-        ActionKind::StartPrint,
-    ),
+    // A first start has no print to name, so one is minted for it.
+    Operation {
+        mints_print: true,
+        ..action(
+            "start_print",
+            "/prints/{print_id}/actions/start_print",
+            ActionKind::StartPrint,
+        )
+    },
     action(
         "set_feedrate_factor",
         "/prints/{print_id}/actions/set_feedrate_factor",
@@ -1163,6 +1180,7 @@ pub const OPERATIONS: [Operation; 39] = [
         ],
         image_path_field: None,
         printer_wide: None,
+        mints_print: false,
     },
 ];
 
