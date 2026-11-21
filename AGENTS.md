@@ -1514,7 +1514,8 @@ package whose rendered tag exists as one the registry already serves, and
 stops the whole draft when it does not. Under a shared `v<version>`, every
 crate added after a release did exactly that, and `printobserver-panels` held
 up every release after `v0.13.1`. `just release-answer` folds each entry's
-name into the one `v<version>`. A `v<version>` tag left standing on the forge
+name into the one `v<version>`, and `[changelog] body` links each
+section between `v<version>` tags rather than those names. A `v<version>` tag left standing on the forge
 over an unpublished `printobserver` is the quieter failure: release-plz skips a
 package whose tag exists *before* it asks the registry, so the program and its
 tag's release never follow. The repair is to delete the tag and the GitHub
