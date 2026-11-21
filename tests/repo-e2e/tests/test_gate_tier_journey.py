@@ -21,6 +21,12 @@ from repo_checks.gate_tier import PROJECTS_VARIABLE
 RAN = re.compile(r"^> nx run (?P<project>[^:\s]+):format-check", re.MULTILINE)
 
 
+#: The nested client suite runs whole: a caller's own `PYTEST_ADDOPTS` selection
+#: (`-k` over this file, say) would otherwise deselect every test it has and fail
+#: the run these journeys read the coverage of.
+UNSELECTED = {"PYTEST_ADDOPTS": ""}
+
+
 def as_a_clone(copy: GateCopy) -> GateCopy:
     """The copy with its linked `node_modules` ignored, as a clone's installed one is.
 
@@ -269,7 +275,7 @@ def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
         ],
         copy.root,
         timeout=1800,
-        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET),
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET, **UNSELECTED),
     )
     passing(tested, describing="the Python client's own `test` target")
     reported = copy.just("coverage", environment=QUIET)
@@ -413,7 +419,7 @@ def test_each_side_of_a_split_test_tier_reports_its_own_ecosystem_of_the_change(
         ],
         copy.root,
         timeout=1800,
-        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET),
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET, **UNSELECTED),
     )
     passing(tested, describing="the crate's and the client's own `test` targets")
 
