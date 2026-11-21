@@ -42,6 +42,7 @@ from typing import NamedTuple, NewType, Self
 
 import pytest
 from journey import (
+    COMMIT_IDENTITY,
     RELEASE_DRAFTING,
     REPO_ROOT,
     CopiesTheTree,
@@ -104,12 +105,19 @@ ALREADY_PUBLISHED = "{crate} {version}: already published"
 FAILED_REF = "failed to create ref refs/tags/v"
 
 #: The edits that put the former configuration back — creation on for every
-#: package — which is the one the `0.2.0` release died under. The package stays
-#: in the one version group every crate is released in.
+#: package, under the one tag name every package shared — which is the one the
+#: `0.2.0` release died under. The package stays in the one version group every
+#: crate is released in.
 CREATION_EVERYWHERE = (
-    ("git_tag_enable = false\ngit_release_enable = false\n", ""),
+    (
+        'git_tag_name = "{{ package }}-v{{ version }}"\n'
+        'git_release_name = "{{ package }}-v{{ version }}"\n'
+        "git_tag_enable = false\ngit_release_enable = false\n",
+        'git_tag_name = "v{{ version }}"\ngit_release_name = "v{{ version }}"\n',
+    ),
     (
         'name = "printobserver"\nversion_group = "printobserver"\n'
+        'git_tag_name = "v{{ version }}"\ngit_release_name = "v{{ version }}"\n'
         "git_tag_enable = true\ngit_release_enable = true\n",
         'name = "printobserver"\nversion_group = "printobserver"\n',
     ),
@@ -997,6 +1005,84 @@ def test_a_fully_published_version_releases_nothing_and_writes_nothing(
         code, read = stage.answered(answer, tmp_path / "released.json")
         passing((code, read), describing="`just release-answer` over the program's answer")
         contains(read.splitlines(), "released=", describing="what the recipe answered")
+
+
+#: A crate the workspace gains after a release, as `printobserver-panels` was
+#: gained on top of `v0.13.1`. The stand-in registry owns the name, so it is
+#: never forwarded to crates.io and is served by nobody.
+ADDED_AFTER = "printobserver-added-after-release"
+
+#: What the drafting tool says of a package the registry does not carry while
+#: the tag that package's own tag name renders exists.
+WEDGED = "not found in the registry, but the git tag"
+
+
+def add_crate_after_the_release(stage: Stage) -> None:
+    """Commit a new workspace crate on top of the released tree, as a `feat:` change.
+
+    It is drawn the way every crate of this workspace is — inheriting the
+    workspace's version and package fields, and joining the one version group
+    in `release-plz.toml` — so the only thing that sets it apart is that it
+    landed after the release's tag.
+    """
+    stage.registry.owned.add(ADDED_AFTER)
+    stage.copy.write(
+        f"crates/{ADDED_AFTER}/Cargo.toml",
+        f'[package]\nname = "{ADDED_AFTER}"\n'
+        'description = "A crate added after a release."\n'
+        "version.workspace = true\nedition.workspace = true\n"
+        "rust-version.workspace = true\nlicense.workspace = true\n"
+        "repository.workspace = true\nauthors.workspace = true\n",
+    )
+    stage.copy.write(f"crates/{ADDED_AFTER}/src/lib.rs", "//! A crate added after a release.\n")
+    stage.copy.write(
+        "release-plz.toml",
+        stage.copy.read("release-plz.toml")
+        + f'\n[[package]]\nname = "{ADDED_AFTER}"\nversion_group = "printobserver"\n',
+    )
+    shell_run(["cargo", "update", "--workspace", "--offline"], cwd=stage.copy.root, check=True)
+    shell_run(["git", "add", "-A"], cwd=stage.copy.root, check=True)
+    shell_run(
+        ["git", *COMMIT_IDENTITY, "commit", "-qm", "feat: add a crate after the release"],
+        cwd=stage.copy.root,
+        check=True,
+    )
+    shell_run(["git", "repack", "-ad"], cwd=stage.copy.root, check=True)
+
+
+def test_a_crate_added_after_a_release_is_drafted_rather_than_wedging_the_draft(
+    gate_copy: CopiesTheTree,
+) -> None:
+    """The state `main` was in after `printobserver-panels` landed on top of `v0.13.1`.
+
+    Every crate is on the registry at the released version and `v<version>`
+    is in the copy; then a new crate lands. The drafting computation
+    `release-pr` runs — `release-plz update`, driven for real against the
+    stand-in — reaches the new crate and drafts it, rather than reading the
+    release's tag as the new crate's own and stopping the whole draft because
+    the registry has never carried it.
+    """
+    version = workspace_version()
+    with Stage(gate_copy, tags=(version,)) as stage:
+        stage.seed(*publishable_crates())
+        add_crate_after_the_release(stage)
+
+        result = capture(
+            ["release-plz", "update", "--no-changelog", "--registry", STANDIN],
+            stage.copy.root,
+            timeout=RELEASE_TIMEOUT_SECONDS,
+            env=stage.environment(),
+        )
+        said = output(result)
+
+    passing(result, describing="drafting over a crate added after the release")
+    absent(said, WEDGED, describing="what the drafting tool said")
+    contains(
+        said,
+        f"determining next version for {ADDED_AFTER} {version}",
+        describing="the crates the drafting tool computed",
+    )
+    contains(said, f"{ADDED_AFTER}: next version is", describing="what the tool drafted")
 
 
 def test_creation_enabled_for_every_package_dies_on_the_second_ref(

@@ -1506,15 +1506,21 @@ of them. One package rather than thirteen because release-plz tags and releases
 *per package*, in release order, and under the one name every package renders
 the second to publish dies creating a ref the first already created, leaving the
 rest unpublished. So `release-plz.toml` turns creation off under `[workspace]`
-and on for `printobserver` alone, keeping the name templates workspace-wide so
-that every entry of the program's answer still carries `v<version>` for `just
-release-answer` to fold into one. A `v<version>` tag left standing on the forge
-over unpublished crates is the quieter failure: release-plz skips every package
-whose tag exists *before* it asks the registry, so the next push releases
-nothing, exits 0, answers `released=`, and skips the artifacts. The repair is
-to delete the tag and the GitHub Release, never to move the version.
+and on for `printobserver` alone, which alone names its tag `v<version>`.
+
+Every other package renders release-plz's default `<package>-v<version>` and
+creates nothing under it. That name must stay its own: `release-pr` reads a
+package whose rendered tag exists as one the registry already serves, and
+stops the whole draft when it does not. Under a shared `v<version>`, every
+crate added after a release did exactly that, and `printobserver-panels` held
+up every release after `v0.13.1`. `just release-answer` folds each entry's
+name into the one `v<version>`. A `v<version>` tag left standing on the forge
+over an unpublished `printobserver` is the quieter failure: release-plz skips a
+package whose tag exists *before* it asks the registry, so the program and its
+tag's release never follow. The repair is to delete the tag and the GitHub
+Release, never to move the version.
 `tests/repo-e2e-independent/tests/test_release_tag_journey.py` holds the configuration to
-this.
+this, a crate added after a release included.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as
