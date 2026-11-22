@@ -135,7 +135,9 @@ case "$1" in
         about="${{context#printobserver context }}"
         print="${{about##*--print-id }}"
         actor=$(printf '%s\n' "$2" | grep -m1 '^--actor ')
-        event=$(printf '%s\n' "$2" | grep -m1 '"id": ' | sed 's/.*"id": "\([^"]*\)".*/\1/')
+        # The event is the first compact JSON block, and its identifier its
+        # first field.
+        event=$(printf '%s\n' "$2" | grep -m1 '^{{"id":"' | sed 's/^{{"id":"\([^"]*\)".*/\1/')
         n=1
         while [ -e "$dir/{PROMPT}-$print-$n" ]; do n=$((n + 1)); done
         printf '%s\n' "$2" > "$dir/{PROMPT}-$print-$n.part"

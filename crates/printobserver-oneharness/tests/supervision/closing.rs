@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-
 use printobserver_oneharness::EnvAssignment;
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
