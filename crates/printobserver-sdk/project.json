@@ -22,6 +22,9 @@
     "test-integration": {
       "command": "cargo nextest run -p printobserver-sdk --no-fail-fast --test-threads=1 -E \"binary(integration) or binary(live) or binary(falsifying)\""
     },
+    "compile-integration": {
+      "command": "cargo nextest run -p printobserver-sdk --no-run"
+    },
     "build": {
       "command": "cargo build -p printobserver-sdk --locked"
     }

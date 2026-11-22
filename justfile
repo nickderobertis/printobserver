@@ -214,12 +214,16 @@ CLIENT_WORLDS := "printobserver-sdk,printobserver-sdk-python-integration,printob
 
 # What one `warm.yml` leg compiles into the cache its platform's `test` job
 # restores: every project's tests not tagged `platform:independent` and its
-# build, the release build of the program the end-to-end tier's install
-# journeys make, and on `linux-x86_64` the lints the `lint` job runs, which
-# restores that platform's cache too.
+# build, the test binaries of every Rust project's printer integration tier —
+# its `compile-integration` target, the tier's own build with `--no-run`, so no
+# printer is needed and no test runs — the release build of the program the
+# end-to-end tier's install journeys make, and on `linux-x86_64` the lints the
+# `lint` job runs, which restores that platform's cache too.
 ci-warm:
     PRINTOBSERVER_GATE_PROJECTS={{quote(PLATFORM_DEPENDENT)}} just test all
     PRINTOBSERVER_GATE_PROJECTS={{quote(PLATFORM_DEPENDENT)}} just build all
+    just node-modules
+    bunx nx run-many -t compile-integration --output-style=stream
     cargo build --release --locked -p printobserver
     if [ "${PRINTOBSERVER_PLATFORM:-}" = linux-x86_64 ]; then just lint all; fi
 

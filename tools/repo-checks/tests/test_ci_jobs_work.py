@@ -874,6 +874,48 @@ def warmed(doubled: Callable[[], Copy]) -> dict[str, Work]:
     return legs
 
 
+#: The target that compiles a Rust project's printer integration tier, and runs none of it.
+COMPILE_INTEGRATION = "compile-integration"
+#: How a Rust project's integration tier, and the target compiling it, run nextest.
+NEXTEST_RUN = "cargo nextest run "
+#: Where a tier's command stops naming what is built and starts naming what is run.
+RUN_ONLY = " --no-fail-fast"
+
+
+def compiled_integration_projects() -> set[str]:
+    """The committed projects whose integration tier is a nextest run: what a warm leg compiles."""
+    return {
+        project.name
+        for project in projects(Repo(Path(__file__).resolve().parents[3]))
+        if str(project.targets.get("test-integration", {}).get("command", "")).startswith(
+            NEXTEST_RUN
+        )
+    }
+
+
+def test_each_rust_integration_tier_is_compiled_as_it_is_built() -> None:
+    """A project's `compile-integration` builds exactly what its `test-integration` builds.
+
+    The tier's command up to `--no-fail-fast` names the package, features and
+    profile it is built with; the target compiling it is that, with `--no-run`.
+    One drifting from the other warms a cache the tier then compiles past.
+    """
+    committed = {
+        project.name: project for project in projects(Repo(Path(__file__).resolve().parents[3]))
+    }
+    names = compiled_integration_projects()
+    truth(names, describing="the Rust projects carrying a printer integration tier")
+    for name in sorted(names):
+        targets = committed[name].targets
+        tier = str(targets["test-integration"]["command"])
+        truth(RUN_ONLY in tier, describing=f"{name}'s tier naming where its run options start")
+        equal(
+            targets.get(COMPILE_INTEGRATION, {}).get("command"),
+            tier.split(RUN_ONLY, 1)[0] + " --no-run",
+            describing=f"{name}'s `{COMPILE_INTEGRATION}`, its tier's build with --no-run",
+        )
+
+
 def test_each_warm_leg_compiles_what_its_platforms_jobs_compile(
     committed: Ran, warmed: dict[str, Work]
 ) -> None:
@@ -882,7 +924,9 @@ def test_each_warm_leg_compiles_what_its_platforms_jobs_compile(
     What a cache keeps is what the tasks writing it compiled, so a leg running
     the same tasks as the job restoring its cache fills that cache with what
     the job compiles; the release build the end-to-end tier's install journeys
-    make is warmed beside them.
+    make is warmed beside them, and so are the printer integration tier's test
+    binaries, compiled and not run — `printobserver`'s under its own
+    `integration` profile, which nothing else builds.
     """
     equal(
         sorted(warmed),
@@ -900,4 +944,14 @@ def test_each_warm_leg_compiles_what_its_platforms_jobs_compile(
         truth(
             "cargo build --release --locked -p printobserver" in {unit.name for unit in leg.units},
             describing=f"`warm ({platform})` building the install journeys' release program",
+        )
+        equal(
+            compiled(leg, (COMPILE_INTEGRATION,)),
+            {f"{COMPILE_INTEGRATION}:{name}" for name in compiled_integration_projects()},
+            describing=f"the integration tier's test binaries `warm ({platform})` compiles",
+        )
+        equal(
+            leg.integration,
+            (),
+            describing=f"the printer integration tier `warm ({platform})` runs",
         )
