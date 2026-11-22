@@ -31,6 +31,24 @@
 //! given still runs under the same one-agent-per-print rule and the same action
 //! policy, `safety.agent_min_interval_s` included.
 //!
+//! # An idle compaction of the session ends first
+//!
+//! A supervisor port may compact a print's session while no turn of it runs
+//! ([`SupervisorPort::idle_work_ended`](printobserver_supervisor_api::SupervisorPort::idle_work_ended)),
+//! and every other event's turn cancels that compaction at once. A scheduled
+//! check alone waits for it to end, bounded by the compaction's own timeout,
+//! because it is the turn that continues that session on the port's own
+//! cadence: cancelling it would leave the session as large as it was and the
+//! next gap no longer.
+//!
+//! # The detector's record is read first
+//!
+//! Each round begins by reading the failure detector's own record of the
+//! active print, when the composition root installed something to read it
+//! with ([`crate::scoring`]), so that every turn the round claims reads the
+//! detector's status as it stands now. A read that failed is recorded against
+//! each observation the round writes, as a port failure.
+//!
 //! # The reads, and the frame, precede the append
 //!
 //! Everywhere else the event append is the first thing the loop does
@@ -88,9 +106,11 @@ impl Supervisor {
     /// settled, before any print was claimed.
     pub async fn observe_active_prints(&self) -> Result<Observed, CoreError> {
         let mut observed = Observed::default();
-        for print in self.prints_to_observe().await? {
+        let prints = self.prints_to_observe().await?;
+        let scoring_failed = self.read_scoring(&prints).await;
+        for print in prints {
             let print_id = print.id;
-            match self.observe(print).await {
+            match self.observe(print, scoring_failed.as_deref()).await {
                 Ok(Some(turn)) => observed.turns.push(turn),
                 Ok(None) => {}
                 Err(error) => observed.refused.push((print_id, error)),
@@ -119,7 +139,16 @@ impl Supervisor {
     }
 
     /// Observe one print, when it is printing and nobody is watching it.
-    async fn observe(&self, print: PrintRecord) -> Result<Option<PendingTurn>, CoreError> {
+    async fn observe(
+        &self,
+        print: PrintRecord,
+        scoring_failed: Option<&str>,
+    ) -> Result<Option<PendingTurn>, CoreError> {
+        // A scheduled check continues the session it is about, so it lets an
+        // idle compaction of that session end rather than cancel it, and reads
+        // the printer once it has.
+        // A wait that could not be taken leaves the check to run at once.
+        let _ = self.agent().idle_work_ended(print.id).await;
         let printer = self.read_snapshot().await;
         if printer
             .as_ref()
@@ -131,7 +160,10 @@ impl Supervisor {
         if !self.inboxes().claim_if_idle(print.id) {
             return Ok(None);
         }
-        match self.write_observation_down(&print, printer, job).await {
+        match self
+            .write_observation_down(&print, printer, job, scoring_failed)
+            .await
+        {
             Ok(arrival) => Ok(Some(PendingTurn::new(print, arrival, Vec::new()))),
             Err(error) => {
                 // Anything handed to the print while it was claimed is owed a
@@ -152,6 +184,7 @@ impl Supervisor {
         print: &PrintRecord,
         printer: Result<PrinterSnapshot, PrinterError>,
         job: Result<JobSnapshot, PrinterError>,
+        scoring_failed: Option<&str>,
     ) -> Result<Arrival, CoreError> {
         let fetched = self.fetch_configured_frame(Some(print.id)).await;
         let payload = PeriodicObservationPayload {
@@ -184,6 +217,15 @@ impl Supervisor {
                 event.id,
                 PortFailureSite::PrinterJob,
                 error.to_string(),
+            )
+            .await;
+        }
+        if let Some(detail) = scoring_failed {
+            self.record_port_failure(
+                print.id,
+                event.id,
+                PortFailureSite::DetectorScoringRead,
+                detail.to_owned(),
             )
             .await;
         }

@@ -182,6 +182,15 @@ pub fn naming_the_print_and_spool_now(arguments: &[String], world: &World) -> Ve
         if now[index - 1] == "--print-id" && !world.is_the_ended_print(&now[index]) {
             now[index] = print_about(world, &command, &world.print_id());
         }
+        if now[index - 1] == "--since" && command == "context" {
+            let print_id = now
+                .iter()
+                .position(|word| word == "--print-id")
+                .and_then(|at| now.get(at + 1))
+                .cloned()
+                .unwrap_or_else(|| world.print_id());
+            now[index] = world.an_earlier_event_of(&print_id);
+        }
         if now[index - 1] == "--spool-id"
             && command == "retire-spool"
             && now[index] != world.retired_spool_id()
@@ -226,7 +235,13 @@ fn ordered(world: &World) -> Vec<Entry> {
         // opening another.
         named("prints", Reports::Printing, vec![]),
         named("status", Reports::Printing, vec![]),
-        named("context", Reports::Printing, vec![]),
+        // Since an event of the print's own, named again whenever the print
+        // the walk is about moves on.
+        named(
+            "context",
+            Reports::Printing,
+            vec![("since".to_owned(), world.event_id.clone())],
+        ),
         named(
             "image",
             Reports::Printing,
@@ -340,8 +355,8 @@ fn ledger(world: &World) -> Vec<Entry> {
     ]
 }
 
-/// The recovery read and the seven recovery actions, each with values no
-/// other command drives, asked of an idle machine before anything this
+/// The recovery read, the operator's word that the bed is clear and the seven
+/// recovery actions, each with values no other command drives, asked of an idle machine before anything this
 /// supervisor did trusts Z: the lift reads no position then, and the Z home
 /// is what trusts it before the three moves over the part, each carried out
 /// on the operator's word that the nozzle is clear.
@@ -355,6 +370,7 @@ fn recovery() -> Vec<Entry> {
     let asserted = || value("clearance_asserted", "true");
     vec![
         named("recover-status", Reports::Operational, vec![]),
+        acting("bed-clear", vec![]),
         acting("recover-lift", vec![value("mm", "3")]),
         acting("recover-cool", vec![]),
         acting("recover-fan", vec![value("percent", "37")]),
@@ -509,6 +525,40 @@ pub fn invocations(driven: &Driven, world: &World) -> Vec<Invocation> {
         .collect()
 }
 
+/// The invocations of one command a walk over a real machine runs, by their
+/// index in [`invocations`]: taken in that order, each one that spells
+/// something no earlier choice did, so between them they give every option
+/// form, both renderings and both ways of being configured.
+///
+/// Each of a command's invocations asks the machine for the same thing in its
+/// own spelling, so a real machine proves nothing more of the command for being
+/// asked it once per spelling: what a spelling changes is this program's own
+/// handling of it, which the walk over a socket proves for every point of the
+/// cross-product. The command, every form of each of its options, `--json` and
+/// its absence, and `--config` and the environment are each still driven
+/// against the real machine at least once.
+pub fn covering(invocations: &[Invocation]) -> Vec<usize> {
+    let mut seen = BTreeSet::new();
+    let mut chosen = Vec::new();
+    for (index, one) in invocations.iter().enumerate() {
+        let given = spellings(one);
+        if !given.is_subset(&seen) {
+            seen.extend(given);
+            chosen.push(index);
+        }
+    }
+    chosen
+}
+
+/// What one invocation spells, for [`covering`]: each option it gives, its
+/// rendering and where its configuration came from.
+fn spellings(one: &Invocation) -> BTreeSet<String> {
+    let mut given = one.options.clone();
+    given.insert(format!("machine-readable: {}", one.machine_readable));
+    given.insert(format!("explicit configuration: {}", one.explicit_config));
+    given
+}
+
 /// One invocation, with machine-readable output asked for or left alone.
 fn with_output(so_far: &Invocation, machine_readable: bool) -> Invocation {
     let mut next = so_far.clone();
@@ -599,5 +649,68 @@ pub fn as_sent(kind: ValueKind, text: &str) -> Value {
         ValueKind::Boolean => json!(text.parse::<bool>().expect("true or false")),
         ValueKind::Structured => printobserver_types::serde_json::from_str(text)
             .unwrap_or_else(|_| Value::String(text.to_owned())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::{Invocation, covering, spellings};
+
+    /// One point of a cross-product of two options, each spelt two ways, by
+    /// both renderings and both ways of being configured.
+    fn point(
+        first: &str,
+        second: &str,
+        machine_readable: bool,
+        explicit_config: bool,
+    ) -> Invocation {
+        Invocation {
+            arguments: Vec::new(),
+            environment: Vec::new(),
+            machine_readable,
+            explicit_config,
+            options: [first, second].map(str::to_owned).into_iter().collect(),
+        }
+    }
+
+    #[test]
+    fn the_covering_points_spell_everything_the_whole_cross_product_does() {
+        let mut every = Vec::new();
+        for first in ["--manifest", "--manifest-file"] {
+            for second in ["--file-name", "--file-name-file"] {
+                for machine_readable in [true, false] {
+                    for explicit_config in [true, false] {
+                        every.push(point(first, second, machine_readable, explicit_config));
+                    }
+                }
+            }
+        }
+        let chosen = covering(&every);
+        let spelt = |indices: &[usize]| -> BTreeSet<String> {
+            indices
+                .iter()
+                .flat_map(|&index| spellings(&every[index]))
+                .collect()
+        };
+
+        assert_eq!(spelt(&chosen), spelt(&(0..every.len()).collect::<Vec<_>>()));
+        assert!(
+            chosen.len() < every.len(),
+            "{chosen:?} is the whole of {}",
+            every.len()
+        );
+        assert!(
+            chosen.windows(2).all(|pair| pair[0] < pair[1]),
+            "{chosen:?} out of order"
+        );
+    }
+
+    #[test]
+    fn a_command_with_one_spelling_is_still_driven_once() {
+        let only = [point("--print-id", "--reason", true, true)];
+
+        assert_eq!(covering(&only), vec![0]);
     }
 }

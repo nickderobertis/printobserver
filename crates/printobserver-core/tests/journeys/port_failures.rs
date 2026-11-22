@@ -38,6 +38,7 @@ const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
         | PrinterMethod::PrintedFiles
         | PrinterMethod::ExtrudedTo
         | PrinterMethod::PrintedExtent
+        | PrinterMethod::ReadGcode
         | PrinterMethod::ReadPosition
         | PrinterMethod::PushEvents
         | PrinterMethod::SendCommand => None,
@@ -65,13 +66,16 @@ const fn action_reaching(method: PrinterMethod) -> Option<ActionKind> {
 /// printer's own error (`unobserved`) — and those journeys walk it there. The
 /// two reads recovery takes — what the last print laid down and where the head
 /// is — are answered as a recovery refusal where recovery reads them, and the
-/// server's recovery journeys walk them there.
-const NOT_YET_CALLED: [PrinterMethod; 8] = [
+/// server's recovery journeys walk them there. The whole-file read the G-code
+/// index is built from is answered as a context that says the index is not
+/// there (`gcode_index`).
+const NOT_YET_CALLED: [PrinterMethod; 9] = [
     PrinterMethod::FileFacts,
     PrinterMethod::FilamentTypes,
     PrinterMethod::PrintedFiles,
     PrinterMethod::ExtrudedTo,
     PrinterMethod::PrintedExtent,
+    PrinterMethod::ReadGcode,
     PrinterMethod::ReadPosition,
     PrinterMethod::PushEvents,
     PrinterMethod::SendCommand,

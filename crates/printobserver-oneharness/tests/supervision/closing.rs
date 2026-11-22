@@ -9,6 +9,8 @@
 
 use std::sync::Arc;
 
+use oneharness_core::domain::structured::{self, Schema};
+
 use printobserver_oneharness::EnvAssignment;
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
@@ -211,6 +213,56 @@ fn a_refused_identity_closes_the_session_and_opens_a_new_one() {
     assert!(
         reason.contains(HARNESS) && reason.contains(OTHER_HARNESS),
         "the reason does not name the identity that refused: {reason}"
+    );
+}
+
+/// A session moved onto Claude Code runs its turn in a new session held to the
+/// schema by its prompt, exactly as a turn opening one is: the new session's
+/// prompt carries the engine's instruction to answer to the schema, and the
+/// turn's answer is taken.
+#[test]
+fn a_session_moved_onto_claude_code_is_held_to_the_schema_in_its_new_session() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("closing-onto-claude");
+    let schema = generated_assessment_schema();
+    let print_id = PrintId::new();
+
+    let watch = Arc::new(Watch::default());
+    let first = port(
+        config(&schemas, &fixture, OTHER_HARNESS, &schema, answering()),
+        &watch,
+    );
+    block_on(first.run_turn(
+        turn(print_id, event(print_id, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the first turn runs");
+    drop(first);
+
+    let moved_watch = Arc::new(Watch::default());
+    let moved = port(
+        config(&schemas, &fixture, HARNESS, &schema, answering()),
+        &moved_watch,
+    );
+    let after = block_on(moved.run_turn(
+        turn(print_id, event(print_id, unreadable_body()), None),
+        crate::support::access(),
+    ))
+    .expect("the turn ran in a new session");
+    assert_eq!(after.session.session_name, format!("print-{print_id}-2"));
+    assert_eq!(after.assessment.summary, "the print is fine");
+
+    let compiled = Schema::compile(&std::fs::read_to_string(&schema).expect("the schema reads"))
+        .expect("the schema compiles");
+    let instruction = structured::prompt_instruction(compiled.as_text());
+    let requests = moved_watch.requests();
+    let opened = requests
+        .iter()
+        .find(|request| request.session.as_deref() == Some(&*format!("print-{print_id}-2")))
+        .expect("a run in the new session");
+    assert!(
+        opened.prompt[0].ends_with(&instruction),
+        "the new session's prompt is not held to the schema"
     );
 }
 

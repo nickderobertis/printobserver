@@ -1,37 +1,62 @@
-# The gate, on the supported platform matrix, plus the judged-lint tier and the
-# pull-request-title lint as jobs of their own.
+# Every check a pull request is held to, in eight jobs.
 #
-# The gate runs `just check` at the tier `just gate-tier` answers for the event:
-# the affected tier on an ordinary pull request and on a push to `main`, each
-# against an explicitly derived base, and the full sweep on the release pull
-# request `release-plz` opens — the one point every batched release passes
-# through before it ships. AGENTS.md's "Commits, releases, and merging" records
-# why the sweep sits there.
+# * `lint`, once, on Linux: the formatters, the linters and the type checkers
+#   over the affected projects, the Windows-target lint, the workflow lint and
+#   the repository checks; the `test` tier with its coverage, the `build` tier
+#   and the end-to-end tier over the affected projects tagged
+#   `platform:independent` (`repo-policy.toml`'s `[gate]
+#   platform_independent_tag`), whose suites exercise nothing a platform
+#   changes; and, as steps, the pull-request title, the suppressions comment,
+#   the Rust supply chain, the Agent Skill install and the judged lint.
+# * `test (<platform>)`, one per supported platform: the `test` tier with its
+#   coverage, the `build` tier and the end-to-end tier over every other affected
+#   project, the per-project budgets, and the printer integration tier against a
+#   real OctoPrint.
+# * `skilltest`: the real-print suite, where its first step says the change
+#   owes it.
+# * `budgets`: this run's own two lines, `ci-check-time` and `ci-job-count` in
+#   the root `budgets.yaml`, measured once every other job has ended.
 #
-# The matrices below are derived from AGENTS.md's "Supported platforms" list and
-# `just check-repo` refuses one if the two disagree, so this file cannot be
-# narrowed independently of that list.
-# Which jobs carry one at all is `repo-policy.toml`'s
-# `workflows.platform_dependent_kinds`.
+# No job is sharded, and only `budgets` waits on another. `just ci-lint` and
+# `just ci-test` are the two halves of `just check`'s work, and the release pull
+# request runs them at the affected tier like any other; the full sweep is
+# `just check all`, run by hand. AGENTS.md's "Commits, releases, and merging"
+# records why.
 #
-# macOS is the one exception, and it is a consolidation rather than a
-# narrowing: the account's few macOS slots are shared with other repositories,
-# so the gate's and the integration tier's `macos-aarch64` cells run as jobs of
-# their own — the gate's two shards and `integration-macos` — and only on a
-# pull request the classifier (`.github/macos-policy.mjs`) says owes them.
-# `repo-policy.toml`'s `[[workflows.carried]]` records the integration cell
-# as carried by `integration-macos`, the gate's cell is reported by its
-# aggregator `gate-macos`, and AGENTS.md's "The consolidated macOS lanes" says
-# why.
+# The `test` matrix is derived from AGENTS.md's "Supported platforms" list and
+# `just check-repo` refuses it where the two disagree. `macos-aarch64` is the
+# one consolidation: the account's few macOS slots are shared with other
+# repositories, so its cell is the job `test-macos`, which reports `test
+# (macos-aarch64)` itself and runs only on a pull request owing the macOS lane —
+# every one but release automation's own. `repo-policy.toml`'s
+# `[[workflows.carried]]` records it, and AGENTS.md's "The consolidated macOS
+# lanes" says why.
+#
+# A pull request restores the caches `warm.yml` saves on every push to `main`,
+# and saves none of its own: a cache a pull request saves is scoped to its merge
+# ref, which no other run restores, so open pull requests saving theirs fill the
+# repository's 10 GB quota and evict `main`'s. Bun's own cache cannot be split
+# that way — the action saves on any ref whose key missed — so it is off, and its
+# executable is restored by the cache action's restore half.
+#
+# The one cache a pull request saves is the real-print suite's LFS store, keyed
+# on the cases' content: `skilltest` saves it only when that key missed, so only
+# a pull request changing the cases saves one, and its later pushes restore it
+# rather than download the cases again. `warm.yml` restores it on every push to
+# `main`, which keeps `main`'s entry from the forge's 7-day eviction, and fetches
+# and saves it when the key missed. Every restore of it falls back by key prefix
+# to the newest older store, so a fetch downloads only the objects that store
+# lacks. `.github/tests/caches.test.mjs` holds every cache step to this.
 
 name: ci
 
 # The pull-request trigger names GitHub's three default activity types and not
 # `ready_for_review`: a pull request opened as a draft has already run every
 # check on its commit, and lifting it out of draft changes no commit, so a run
-# on the lift would repeat the draft's run on the same commit (the macOS and
-# Windows gates take about two hours) while the merge waits on it. The draft's
-# results stand, because a check reports on the commit.
+# on the lift would repeat the draft's run on the same commit while the merge
+# waits on it. The draft's results stand, because a check reports on the
+# commit. A push to `main` runs `budgets` alone: the pull request that landed it
+# ran every other job on the merge of its head into `main`.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -46,426 +71,123 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Whether this run owes the macOS lane: an ordinary pull request does, and
-  # release automation's own version/changelog-only pull request and every push
-  # do not. Unknown is never omission — a pull request it cannot read owes it.
-  classify:
-    name: classify
+  lint:
+    name: lint
+    if: github.event_name == 'pull_request'
+    # The judged lint and every deterministic tier that runs once: no matrix,
+    # because a second cell would be a second verdict on one diff rather than a
+    # second platform.
     runs-on: ubuntu-24.04
-    outputs:
-      macos-required: ${{ steps.classify.outputs.macos-required }}
-      reason: ${{ steps.classify.outputs.reason }}
+    timeout-minutes: 60
+    env:
+      PRINTOBSERVER_PLATFORM: linux-x86_64
+    permissions:
+      contents: read
+      # `nx-set-shas` reads this workflow's runs.
+      actions: read
+      # The suppressions comment, upserted on the pull request.
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
         with:
           lfs: false
-          # The classifier diffs the pull request against its merge base and
-          # reads release-plz.toml off the base, neither of which a shallow
-          # checkout carries.
+          # The affected tier, the suppression check and the judged lint all
+          # diff against the base branch, which a shallow checkout omits.
           fetch-depth: 0
-      - uses: extractions/setup-just@v3
+      # The base the affected tier is diffed against, exported as NX_BASE and
+      # NX_HEAD: the merge base with `main`.
+      - uses: nrwl/nx-set-shas@v4
+      # Linux's `test` job's cache, which `warm.yml`'s `linux-x86_64` leg also
+      # fills with the lints this job compiles.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: linux-x86_64
+          cache-save-if: false
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,cargo-llvm-cov
+      - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: false
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
-      - id: classify
+        with:
+          no-cache: true
+      - run: just bootstrap
+      # Under squash-merge the pull-request title becomes the commit release
+      # automation reads.
+      - run: just check-pr-title
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: just macos-classify "$GITHUB_EVENT_PATH" "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
+          # Passed through the environment rather than interpolated into the
+          # shell: the title is attacker-controlled on a fork pull request.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+      # One sticky comment listing the suppressions this change adds, each with
+      # its rule, its reason and a link to the line: a review artifact, never a
+      # verdict. A fork's pull request is granted a read-only token, so the
+      # upsert would fail on something the contributor has no way to fix.
+      # `@v0` follows every 0.x release once its artifacts have published.
+      - if: github.event.pull_request.head.repo.full_name == github.repository
+        uses: nickderobertis/notignored@v0
+      - run: just ci-lint
+      # This half's Python coverage data, which `budgets` combines with each
+      # platform's and rules on: a source and the tests measuring it can sit
+      # on the two sides of the `platform:independent` tag.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-lint
+          path: coverage-data/lint*
+          if-no-files-found: error
+          retention-days: 1
+      # A real `gh skill install` of the Agent Skill from a copy of the tree,
+      # with no GitHub credentials, under the release `repo-policy.toml` holds
+      # gh at, installed from that release's own archive ahead of the runner's.
+      - id: held
+        run: just tool-version gh >> "$GITHUB_OUTPUT"
+      - run: just install-gh ${{ steps.held.outputs.version }}
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: just test-skill-install
+      # The judged lint, last: its deterministic half first, so a config,
+      # plugin or suppression slip fails without spending a harness call.
+      - run: just setup-llmlint
+      - run: just lint-llm-validate
+      - run: just lint-llm-diff
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # The Rust supply chain, last, so an advisory published upstream never
+      # hides the verdicts before it; at the releases `repo-policy.toml` holds
+      # the two tools at, installed prebuilt so the recipe's own install
+      # compiles nothing. It reports and gates nothing, as the job it was before
+      # this one did: a finding is a red step with its annotations and leaves
+      # `lint` green, because an advisory published upstream is no defect of the
+      # change under review, and fixing one is dependency work of its own.
+      - id: deny
+        run: just tool-version cargo-deny >> "$GITHUB_OUTPUT"
+      - id: machete
+        run: just tool-version cargo-machete >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@${{ steps.deny.outputs.version }},cargo-machete@${{ steps.machete.outputs.version }}
+      # llmlint: ignore[diagnostics_error_or_absent] suppressions.toml has the reason.
+      - run: just supply-chain
+        continue-on-error: true
 
-  gate:
+  test:
+    # The platform is in the name because that name is the status context a
+    # branch-protection rule names: two cells reporting under one name are two
+    # check runs the rule cannot tell apart.
+    name: test (${{ matrix.platform.id }})
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 60
     env:
       PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
       # The service-manager journey skips a case whose prerequisite a host lacks
       # (Docker for systemd, a password-free `sudo` for launchd); every hosted
-      # runner here has its own, so on the merge path a missing one fails the
-      # journey rather than skipping it.
+      # runner here has its own, so a missing one fails the journey.
       PRINTOBSERVER_SERVICE_JOURNEY: required
-      # What the `gate-time` step reads this run's jobs with. At job level
-      # because a dispatch by hand carries a step's literal environment alone,
-      # and leaves this out: that run reads the public jobs API unauthenticated.
-      GITHUB_TOKEN: ${{ github.token }}
-    # The cell's platform is in the name because that name is the status context
-    # a branch-protection rule names: two cells reporting under one name are two
-    # check runs the rule cannot tell apart, so it cannot require both.
-    # `macos-aarch64` is sharded below, `gate-macos` reporting its context.
-    name: gate (${{ matrix.platform.id }})
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - id: linux-aarch64
-            runner: ubuntu-24.04-arm
-          # The `linux-x86_64` and the two Windows gates are sharded:
-          # `gate-shard-<platform>` runs each one's work and `gate-<platform>`
-          # reports its context.
-    runs-on: ${{ matrix.platform.runner }}
-    permissions:
-      contents: read
-      # `nx-set-shas` reads this workflow's own runs on `main` to find the last
-      # commit the gate passed on, which is the base a push is diffed against.
-      actions: read
-    # Git's own bash on the Windows runners rather than PowerShell, so that
-    # every cell runs its steps, and `just` finds the bash its recipes name, the
-    # same way.
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-          # The affected tier, the end-to-end tier and the suppression check all
-          # diff against the base branch, which a shallow checkout omits.
-          fetch-depth: 0
-      # The base the affected tier is diffed against, derived explicitly and
-      # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
-      # request, and the last commit this workflow passed on for a push to it.
-      - uses: nrwl/nx-set-shas@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      # `just` from the same action as the cargo tools: `extractions/setup-just`
-      # has no build for the `windows-11-arm` runner.
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: just,cargo-nextest,cargo-llvm-cov
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
-      - run: just runner-temp
-      - run: just bootstrap
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check "$(just gate-tier)"
-      # Only the release pull request pays for the two-build maintenance
-      # workload, and only on `linux-x86_64`, whose gate is sharded below: on
-      # this job's cells the recipe does nothing, and a dispatch of `gate` on
-      # `linux-x86_64` runs it here.
-      - run: just budgets-release-pr
-      - if: always()
-        run: just runner-temp cleanup
-      # The `gate-time` budget, last so that the span it reads ends here.
-      - name: gate-time
-        run: just gate-time
-        env:
-          GATE_TIME_KIND: gate
-
-  # `linux-x86_64`'s gate reaches past 1,800 s on one 4-processor runner once a
-  # change reaches the whole graph — 1,980 s on run 41558713748 and 2,006 s on
-  # the release sweep 41532109264 — because its `test` and `test-e2e` tiers run
-  # side by side on the same processors. Four shards give the Rust crates'
-  # tests, every other project's tests beside the other tiers, and each half of
-  # the end-to-end tier a runner of their own.
-  gate-shard-linux-x86_64:
-    env:
-      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
-      PRINTOBSERVER_SERVICE_JOURNEY: required
-    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - id: linux-x86_64
-            runner: ubuntu-24.04
-            shard: 1
-            shards: 4
-          - id: linux-x86_64
-            runner: ubuntu-24.04
-            shard: 2
-            shards: 4
-          - id: linux-x86_64
-            runner: ubuntu-24.04
-            shard: 3
-            shards: 4
-          - id: linux-x86_64
-            runner: ubuntu-24.04
-            shard: 4
-            shards: 4
-    runs-on: ${{ matrix.platform.runner }}
-    permissions:
-      contents: read
-      actions: read
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-          # The affected tier, the end-to-end tier and the suppression check all
-          # diff against the base branch, which a shallow checkout omits.
-          fetch-depth: 0
-      # The base the affected tier is diffed against, derived explicitly and
-      # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
-      # request, and the last commit this workflow passed on for a push to it.
-      - uses: nrwl/nx-set-shas@v4
-      # A cache per shard: the first compiles the Rust crates' instrumented
-      # test builds, the second the lints, the debug program the Python suites
-      # run and the build tier, the last two the debug program the end-to-end
-      # tier runs — and one key shared by all would hold whichever shard saved
-      # first.
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: just,cargo-nextest,cargo-llvm-cov
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
-      - run: just runner-temp
-      - run: just bootstrap
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
-        env:
-          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
-      # The release pull request's maintenance measurement, on one shard
-      # alone so that it is taken once, after that shard's work has passed.
-      - if: matrix.platform.shard == 1
-        run: just budgets-release-pr
-      - if: always()
-        run: just runner-temp cleanup
-
-  # The required `gate (linux-x86_64)` context: it waits on every shard
-  # whatever each concluded, and fails unless each succeeded.
-  gate-linux-x86_64:
-    name: gate (linux-x86_64)
-    needs: [gate-shard-linux-x86_64]
-    if: always()
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      # The `gate-time` step reads this run's jobs.
-      actions: read
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - run: just shard-verdict gate linux-x86_64
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-      - name: gate-time
-        run: just gate-time
-        env:
-          GATE_TIME_KIND: gate
-          PRINTOBSERVER_PLATFORM: linux-x86_64
-          GITHUB_TOKEN: ${{ github.token }}
-
-  # A platform whose gate does not fit one runner in the 30 minutes each
-  # platform is held to is split: one matrix cell per shard, each running the
-  # gate tiers `just gate-shards <shards>` hands that shard, and an aggregating
-  # job carrying the required name. AGENTS.md's "Commits, releases, and merging"
-  # records which platform is split and the run that measured it over.
-  gate-shard-windows-aarch64:
-    env:
-      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
-      PRINTOBSERVER_SERVICE_JOURNEY: required
-    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - id: windows-aarch64
-            runner: windows-11-arm
-            shard: 1
-            shards: 5
-          - id: windows-aarch64
-            runner: windows-11-arm
-            shard: 2
-            shards: 5
-          - id: windows-aarch64
-            runner: windows-11-arm
-            shard: 3
-            shards: 5
-          - id: windows-aarch64
-            runner: windows-11-arm
-            shard: 4
-            shards: 5
-          - id: windows-aarch64
-            runner: windows-11-arm
-            shard: 5
-            shards: 5
-    runs-on: ${{ matrix.platform.runner }}
-    permissions:
-      contents: read
-      actions: read
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-          # The affected tier, the end-to-end tier and the suppression check all
-          # diff against the base branch, which a shallow checkout omits.
-          fetch-depth: 0
-      # The base the affected tier is diffed against, derived explicitly and
-      # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
-      # request, and the last commit this workflow passed on for a push to it.
-      - uses: nrwl/nx-set-shas@v4
-      # A cache per shard: each compiles different things — the first the
-      # Rust crates' instrumented test builds, the second the lints, the debug
-      # program the Python suites run and the build tier, the last three the
-      # debug program the end-to-end tier runs — and one key shared by all
-      # would hold whichever shard saved first.
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
-      # `just` from the same action as the cargo tools: `extractions/setup-just`
-      # has no build for the `windows-11-arm` runner.
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: just,cargo-nextest,cargo-llvm-cov
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
-      - run: just runner-temp
-      - run: just bootstrap
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
-        env:
-          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
-      - if: always()
-        run: just runner-temp cleanup
-
-  # The required `gate (windows-aarch64)` context: it waits on every shard
-  # whatever each concluded, and fails unless each succeeded. Its one verdict
-  # reads nothing of the platform, so it takes no runner of that platform's.
-  gate-windows-aarch64:
-    name: gate (windows-aarch64)
-    needs: [gate-shard-windows-aarch64]
-    if: always()
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      # The `gate-time` step reads this run's jobs.
-      actions: read
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - run: just shard-verdict gate windows-aarch64
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-      - name: gate-time
-        run: just gate-time
-        env:
-          GATE_TIME_KIND: gate
-          PRINTOBSERVER_PLATFORM: windows-aarch64
-          GITHUB_TOKEN: ${{ github.token }}
-
-  gate-shard-windows-x86_64:
-    env:
-      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
-      PRINTOBSERVER_SERVICE_JOURNEY: required
-    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - id: windows-x86_64
-            runner: windows-2025
-            shard: 1
-            shards: 5
-          - id: windows-x86_64
-            runner: windows-2025
-            shard: 2
-            shards: 5
-          - id: windows-x86_64
-            runner: windows-2025
-            shard: 3
-            shards: 5
-          - id: windows-x86_64
-            runner: windows-2025
-            shard: 4
-            shards: 5
-          - id: windows-x86_64
-            runner: windows-2025
-            shard: 5
-            shards: 5
-    runs-on: ${{ matrix.platform.runner }}
-    permissions:
-      contents: read
-      actions: read
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-          # The affected tier, the end-to-end tier and the suppression check all
-          # diff against the base branch, which a shallow checkout omits.
-          fetch-depth: 0
-      # The base the affected tier is diffed against, derived explicitly and
-      # exported as NX_BASE and NX_HEAD: the merge base with `main` on a pull
-      # request, and the last commit this workflow passed on for a push to it.
-      - uses: nrwl/nx-set-shas@v4
-      # A cache per shard: each compiles different things — the first the
-      # Rust crates' instrumented test builds, the second the lints, the debug
-      # program the Python suites run and the build tier, the last three the
-      # debug program the end-to-end tier runs — and one key shared by all
-      # would hold whichever shard saved first.
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
-      # `just` from the same action as the cargo tools, as every gate cell takes
-      # it, so the two Windows shard jobs set their hosts up alike.
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: just,cargo-nextest,cargo-llvm-cov
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
-      - run: just runner-temp
-      - run: just bootstrap
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
-        env:
-          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
-      - if: always()
-        run: just runner-temp cleanup
-
-  # The required `gate (windows-x86_64)` context: it waits on every shard
-  # whatever each concluded, and fails unless each succeeded. Its one verdict
-  # reads nothing of the platform, so it takes no runner of that platform's.
-  gate-windows-x86_64:
-    name: gate (windows-x86_64)
-    needs: [gate-shard-windows-x86_64]
-    if: always()
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      # The `gate-time` step reads this run's jobs.
-      actions: read
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - run: just shard-verdict gate windows-x86_64
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-      - name: gate-time
-        run: just gate-time
-        env:
-          GATE_TIME_KIND: gate
-          PRINTOBSERVER_PLATFORM: windows-x86_64
-          GITHUB_TOKEN: ${{ github.token }}
-
-  integration:
-    env:
-      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
-      # What the `gate-time` step reads this run's jobs with, at job level for
-      # the reason the gate job's gives.
-      GITHUB_TOKEN: ${{ github.token }}
-    # Named by platform id, not runner, so a new runner image renames no
-    # required check; each cell reports the context AGENTS.md's required-checks
-    # record names, and that record says how the live protection follows a rename.
-    name: integration (${{ matrix.platform.id }})
-    # The printer integration tier, against a real OctoPrint. It is a job of
-    # its own rather than one of `just check`'s tiers because it installs
-    # OctoPrint, starts it and waits a print out — but it runs on every change,
-    # on every platform AGENTS.md's supported-platform list names for which its
-    # "Virtual printer availability" block records no exclusion — `macos-aarch64`
-    # in the `integration-macos` job below rather than in a cell of its own.
     strategy:
       fail-fast: false
       matrix:
@@ -481,11 +203,9 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
-      # The `gate-time` step reads this run's jobs.
       actions: read
-    # Git's own bash on the Windows runners rather than PowerShell, so that
-    # every cell runs its steps, and `just` finds the bash its recipes name, the
-    # same way.
+    # Git's own bash on the Windows runners rather than PowerShell, so every
+    # cell runs its steps, and `just` finds the bash its recipes name, alike.
     defaults:
       run:
         shell: bash
@@ -493,28 +213,57 @@ jobs:
       - uses: actions/checkout@v5
         with:
           lfs: false
+          # The affected tier and the end-to-end tier diff against the base
+          # branch, which a shallow checkout omits.
+          fetch-depth: 0
+      - uses: nrwl/nx-set-shas@v4
+      # The cache `warm.yml`'s leg for this platform saves.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: ${{ matrix.platform.id }}
+          cache-save-if: false
+      # `just` from the same action as the cargo tools: `extractions/setup-just`
+      # has no build for the `windows-11-arm` runner.
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: false
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
-      # The release program every client's world carries, in a cache of its
-      # own: keyed on the source, toolchain and profile it is built from, and
-      # saved only when that key missed, so it holds one program and nothing of
-      # the Rust toolchain's cache. A restored program whose key no longer
-      # holds is built over rather than used.
+      # The release program every client's world carries, restored from the
+      # cache `warm.yml` keeps for this platform under the source, toolchain
+      # and profile it is built from; a restored program whose key no longer
+      # holds is built over rather than used, by `just ci-integration`.
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: .release-program
           key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
-      - run: just release-program
+      # The printer the integration tier drives, up before `just ci-test`,
+      # which runs that tier beside its end-to-end tier.
       - run: just octoprint-up
-      - run: just test-integration
+      - run: just ci-test
+      # This platform's half of the Python coverage data, for `budgets`.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-${{ matrix.platform.id }}
+          path: coverage-data/${{ matrix.platform.id }}*
+          if-no-files-found: error
+          retention-days: 1
+      # Only the release pull request pays for the two-build maintenance
+      # workload, and only on `linux-x86_64`: everywhere else it does nothing.
+      - run: just budgets-release-pr
       # Both teardowns run after failure: stop the printer environment, then
       # restore usable temp for post-job actions before removing owned scratch.
       - if: always()
@@ -529,46 +278,23 @@ jobs:
           if-no-files-found: warn
       - if: always()
         run: just runner-temp cleanup
-      - name: gate-time
-        run: just gate-time
-        env:
-          GATE_TIME_KIND: integration
 
-  # The gate and the printer integration tier for `macos-aarch64`: the gate in
-  # two macOS shards behind an aggregator, and the integration tier in a macOS
-  # job of its own, all side by side and only on a pull request the classifier
-  # says owes the lane. On a pull request it could not answer they run anyway:
-  # unknown is never omission. No other event runs them, and a job its
-  # condition skips reports its context as a success, so a pull request owing no
-  # macOS lane still reports both. Three at once is the most
-  # `.github/budgets.yaml` lets one run ask for.
-  gate-shard-macos-aarch64:
-    env:
-      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}
-      # As in the gate's own cells: on the merge path a service-manager case
-      # whose prerequisite is missing fails rather than skipping.
-      PRINTOBSERVER_SERVICE_JOURNEY: required
-      # The Windows-target lint reads the committed tree alone, and every Linux
-      # gate cell runs it.
-      PRINTOBSERVER_HOST_INDEPENDENT: elsewhere
-    name: gate-shard (${{ matrix.platform.id }}, ${{ matrix.platform.shard }}/${{ matrix.platform.shards }})
-    needs: classify
+  # `macos-aarch64`'s cell of `test`, as a job of its own so that a condition
+  # can leave it off release automation's version/changelog pull request without
+  # taking a runner: that pull request is this repository's own head branch
+  # under the prefix `release-plz.toml` names, and owes no macOS lane. A job its
+  # condition skips reports its context as a success.
+  test-macos:
+    name: test (macos-aarch64)
     if: >-
-      !cancelled() && (needs.classify.outputs.macos-required == 'true' ||
-      (github.event_name == 'pull_request' && needs.classify.result != 'success'))
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - id: macos-aarch64
-            runner: macos-15
-            shard: 1
-            shards: 2
-          - id: macos-aarch64
-            runner: macos-15
-            shard: 2
-            shards: 2
-    runs-on: ${{ matrix.platform.runner }}
+      github.event_name == 'pull_request' &&
+      !(github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.head_ref, 'release-plz-'))
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      PRINTOBSERVER_PLATFORM: macos-aarch64
+      PRINTOBSERVER_SERVICE_JOURNEY: required
     permissions:
       contents: read
       actions: read
@@ -581,95 +307,42 @@ jobs:
           lfs: false
           fetch-depth: 0
       - uses: nrwl/nx-set-shas@v4
-      # A cache per shard: the first compiles the debug program the end-to-end
-      # tier runs, the second the Rust crates' instrumented test builds, the
-      # lints, the debug program the Python suites run and the build tier.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          cache-key: shard-${{ matrix.platform.shard }}-of-${{ matrix.platform.shards }}
+          cache-shared-key: macos-aarch64
+          cache-save-if: false
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,cargo-llvm-cov
       - uses: astral-sh/setup-uv@v7
+        with:
+          save-cache: false
+      - id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
       - uses: oven-sh/setup-bun@v2
-      - run: just runner-temp
-      - run: just bootstrap
-      # llmlint: ignore[no_second_broader_sweep_over_an_already_gated_commit] suppressions.toml has the reason.
-      - run: just check-shard "$(just gate-tier)" "$GATE_SHARD"
-        env:
-          GATE_SHARD: ${{ matrix.platform.shard }}/${{ matrix.platform.shards }}
-      - if: always()
-        run: just runner-temp cleanup
-
-  # The required `gate (macos-aarch64)` context: it waits on both shards
-  # whatever each concluded, and fails unless each succeeded — except where the
-  # classifier owed no macOS lane and skipped them, where it is skipped too.
-  gate-macos:
-    name: gate (macos-aarch64)
-    needs: [gate-shard-macos-aarch64]
-    if: always() && needs.gate-shard-macos-aarch64.result != 'skipped'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      # The `gate-time` step reads this run's jobs.
-      actions: read
-    steps:
-      - uses: actions/checkout@v5
         with:
-          lfs: false
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - run: just shard-verdict gate macos-aarch64
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-      - name: gate-time
-        run: just gate-time
-        env:
-          GATE_TIME_KIND: gate
-          PRINTOBSERVER_PLATFORM: macos-aarch64
-          GITHUB_TOKEN: ${{ github.token }}
-
-  integration-macos:
-    name: integration (macos-aarch64)
-    needs: classify
-    if: >-
-      !cancelled() && (needs.classify.outputs.macos-required == 'true' ||
-      (github.event_name == 'pull_request' && needs.classify.result != 'success'))
-    runs-on: macos-15
-    env:
-      PRINTOBSERVER_PLATFORM: macos-aarch64
-      GITHUB_TOKEN: ${{ github.token }}
-    permissions:
-      contents: read
-      # The `gate-time` step reads this run's jobs.
-      actions: read
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: just,cargo-nextest,cargo-llvm-cov
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
+          no-cache: true
       - run: just runner-temp
       - run: just bootstrap
       - id: release-program
         run: just release-program-key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: .release-program
           key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
-      - run: just release-program
       - run: just octoprint-up
-      - run: just test-integration
+      - run: just ci-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-macos-aarch64
+          path: coverage-data/macos-aarch64*
+          if-no-files-found: error
+          retention-days: 1
       - if: always()
         run: just octoprint-down
-      # The logs a failed tier kept before that bring-down.
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -678,68 +351,21 @@ jobs:
           if-no-files-found: warn
       - if: always()
         run: just runner-temp cleanup
-      - name: gate-time
-        run: just gate-time
-        env:
-          GATE_TIME_KIND: integration
 
-  llmlint:
-    name: llmlint
-    # The judged tier is a job of its own rather than a step inside the gate:
-    # it is non-deterministic and needs a harness credential, and a gate that
-    # could not run without one would stop being the deterministic gate.
-    # No matrix: a second cell over a text diff would be a second verdict from
-    # that non-deterministic judge, not a second platform.
+  # The real-print suite, on the harness and model production runs. Its first
+  # step says whether the change owes it, by `repo-policy.toml`'s `[skilltest]
+  # owed_paths`; where it is not owed every later step but the store's is
+  # skipped and the job passes, and a classifier that could not answer owes it.
+  # A failed test fails this job: nothing retries.
+  skilltest:
+    name: skilltest
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-          fetch-depth: 0
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - run: just setup-llmlint
-      # The deterministic half runs first: a config, plugin or suppression slip
-      # fails here without spending a harness call.
-      - run: just lint-llm-validate
-      - run: just lint-llm-diff
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-  skill-install:
-    name: skill-install
-    # A real `gh skill install` of this repository's Agent Skill, from a copy of
-    # the tree and with no GitHub credentials, and `gh skill publish --dry-run`
-    # over it. A job of its own rather than a tier of the gate: it needs GitHub
-    # CLI at the release `repo-policy.toml` holds, which this job installs and
-    # the gate's runners are not given. No matrix: what `gh skill` reads and
-    # writes is the tree's own files, the same whichever host reads them.
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
-      # The release `repo-policy.toml` holds gh at, installed from that
-      # release's own archive once its published checksums vouch for it, ahead
-      # of the runner's own gh on PATH.
-      - id: held
-        run: just tool-version gh >> "$GITHUB_OUTPUT"
-      - run: just install-gh ${{ steps.held.outputs.version }}
-      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - run: just test-skill-install
-
-  # Whether this change owes the real-print suite: a change to anything that can
-  # move what the agent sees or how it judges does, by the list `repo-policy.toml`
-  # holds. Unknown is never omission, and the step's summary says why either way.
-  skilltest-classify:
-    name: skilltest-classify
-    runs-on: ubuntu-24.04
-    outputs:
-      owed: ${{ steps.classify.outputs.owed }}
-      reason: ${{ steps.classify.outputs.reason }}
+    timeout-minutes: 60
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # The real-print cases' LFS store, restored, and saved where its key missed.
+      REAL_PRINTS_STORE: "true"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -749,104 +375,100 @@ jobs:
           fetch-depth: 0
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
-      - id: classify
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: just skilltest-classify "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
-
-  # The real-print suite, on the harness and model production runs. Where the
-  # classifier says it is not owed this is skipped, which the forge reports as a
-  # passing check, and `skilltest-classify`'s summary says why; a classifier that
-  # could not answer owes it. A failed test fails this job: nothing retries.
-  skilltest:
-    name: skilltest
-    needs: skilltest-classify
-    if: >-
-      !cancelled() && (needs.skilltest-classify.outputs.owed == 'true' ||
-      needs.skilltest-classify.result != 'success')
-    runs-on: ubuntu-24.04
-    env:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-    steps:
-      - uses: actions/checkout@v5
         with:
-          lfs: false
-      - uses: extractions/setup-just@v3
+          save-cache: false
+      - id: classify
+        continue-on-error: true
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: just skilltest-classify "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
       # Before anything costs anything: a run with no credential fails saying so.
-      - run: just skilltest-credential
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: astral-sh/setup-uv@v7
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
-      - run: just bootstrap
+      - if: steps.classify.outputs.owed != 'false'
+        run: just skilltest-credential
+      - if: steps.classify.outputs.owed != 'false'
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-shared-key: linux-x86_64
+          cache-save-if: false
+      - if: steps.classify.outputs.owed != 'false'
+        id: bun-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/bin
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package.json') }}
+      - if: steps.classify.outputs.owed != 'false'
+        uses: oven-sh/setup-bun@v2
+        with:
+          no-cache: true
+      - if: steps.classify.outputs.owed != 'false'
+        uses: actions/setup-node@v4
+      - if: steps.classify.outputs.owed != 'false'
+        run: just bootstrap
       # The steps `tests/real-prints-lfs/ci-steps.yml` holds, verbatim.
       - id: real-prints-key
+        if: env.REAL_PRINTS_STORE == 'true'
         run: just real-prints-cache-key >> "$GITHUB_OUTPUT"
       - id: real-prints-cache
+        if: env.REAL_PRINTS_STORE == 'true'
         uses: actions/cache/restore@v4
         with:
           path: .git/lfs/objects
           key: ${{ steps.real-prints-key.outputs.key }}
-      - if: steps.real-prints-cache.outputs.cache-hit != 'true'
+          restore-keys: real-prints-lfs-
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
         run: just real-prints-fetch
-      - if: steps.real-prints-cache.outputs.cache-hit != 'true'
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .git/lfs/objects
           key: ${{ steps.real-prints-key.outputs.key }}
-      - if: steps.real-prints-cache.outputs.cache-hit == 'true'
+      - if: env.REAL_PRINTS_STORE == 'true' && steps.real-prints-cache.outputs.cache-hit == 'true'
         run: just real-prints-checkout
-      - run: just skilltest-install-harness
-      - run: just skilltest-record
-      - if: always()
+      - if: steps.classify.outputs.owed != 'false'
+        run: just skilltest-install-harness
+      - if: steps.classify.outputs.owed != 'false'
+        run: just skilltest-record
+      - if: always() && steps.classify.outputs.owed != 'false'
         uses: actions/upload-artifact@v4
         with:
           name: skilltest-report
-          path: tests/skilltest/results/latest.json
+          # The record, and each failed test's transcript and server log.
+          path: tests/skilltest/results/
           if-no-files-found: warn
 
-  supply-chain:
-    name: supply-chain
-    # The Rust supply-chain gate: `deny.toml`'s advisory, licence, ban and
-    # source policy, and no unused dependency. A job of its own rather than a
-    # tier of the gate, and no matrix: what it reads is the lockfile's
-    # dependency graph, which is the same on every platform, so a second cell
-    # would read the same graph again. Nothing needs it.
+  # This run's own two lines, measured once every other job has ended however
+  # it ended: the longest job of the run, and how many jobs took a runner. It
+  # builds and tests nothing, and on a push to `main` it is the one job. On a
+  # pull request it also rules on the Python coverage floor per platform, over
+  # `lint`'s kept data combined with each platform's: the one place both halves
+  # of a source's tests meet.
+  budgets:
+    name: budgets
+    needs: [lint, test, test-macos, skilltest]
+    if: always()
     runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          lfs: false
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: extractions/setup-just@v3
-      - uses: astral-sh/setup-uv@v7
-      # The releases `repo-policy.toml` holds the two tools at, installed
-      # prebuilt, so the recipe's own install finds them held and compiles
-      # nothing.
-      - id: deny
-        run: just tool-version cargo-deny >> "$GITHUB_OUTPUT"
-      - id: machete
-        run: just tool-version cargo-machete >> "$GITHUB_OUTPUT"
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny@${{ steps.deny.outputs.version }},cargo-machete@${{ steps.machete.outputs.version }}
-      - run: just supply-chain
-
-  pr-title:
-    name: pr-title
-    # Under squash-merge the pull-request title becomes the commit release
-    # automation reads, so it is linted as a required check.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # The two budgets read this run's jobs off the jobs API.
+      actions: read
     steps:
       - uses: actions/checkout@v5
         with:
           lfs: false
       - uses: extractions/setup-just@v3
       - uses: astral-sh/setup-uv@v7
-      - run: just check-pr-title
+        with:
+          save-cache: false
+      - run: just ci-budgets
         env:
-          # Passed through the environment rather than interpolated into the
-          # shell: the title is attacker-controlled on a fork pull request.
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          GITHUB_TOKEN: ${{ github.token }}
+      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-python-*
+          path: coverage-data
+          merge-multiple: true
+      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        run: just coverage-combine coverage-data

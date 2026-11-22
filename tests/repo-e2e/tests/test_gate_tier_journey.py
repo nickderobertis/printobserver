@@ -12,6 +12,7 @@ import json
 import os
 import re
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from journey import QUIET, GateCopy, capture, clean_environment, plain
@@ -19,6 +20,12 @@ from repo_checks.expect import contains, equal, failing, passing, truth
 from repo_checks.gate_tier import PROJECTS_VARIABLE
 
 RAN = re.compile(r"^> nx run (?P<project>[^:\s]+):format-check", re.MULTILINE)
+
+
+#: The nested client suite runs whole: a caller's own `PYTEST_ADDOPTS` selection
+#: (`-k` over this file, say) would otherwise deselect every test it has and fail
+#: the run these journeys read the coverage of.
+UNSELECTED = {"PYTEST_ADDOPTS": ""}
 
 
 def as_a_clone(copy: GateCopy) -> GateCopy:
@@ -123,14 +130,36 @@ EXERCISED_BY_THE_E2E_TIER = {
 SELECTED = "> nx run repo-e2e:test-e2e"
 
 
+@pytest.fixture(scope="module")
+def stood_in_clone(tmp_path_factory: pytest.TempPathFactory, shared_venv: Path) -> GateCopy:
+    """One clone, with the end-to-end suites stood in, that each selection case branches.
+
+    The cases differ only in the branch they commit, so they share the clone a
+    contributor would have, each starting its branch afresh from `main` — and
+    each run after the first reads the project graph Nx kept in it, as a run in
+    that contributor's clone does, rather than paying for a copy and a cold
+    graph of its own.
+    """
+    copy = as_a_clone(GateCopy(tmp_path_factory.mktemp("selection") / "copy", shared_venv))
+    standing_in_for_the_suite(copy)
+    return copy
+
+
+def afresh_from_main(copy: GateCopy, relative: str) -> None:
+    """Commit a change to `relative` on a `change` branch started again from `main`."""
+    copy.git("checkout", "-q", "main")
+    if copy.git("branch", "--list", "change"):
+        copy.git("branch", "-q", "-D", "change")
+    branch_with_a_change(copy, relative)
+
+
 @pytest.mark.parametrize("changed", sorted(EXERCISED_BY_THE_E2E_TIER.values()))
 def test_a_change_to_what_the_end_to_end_tier_exercises_selects_it(
-    gate_copy: Callable[..., GateCopy], changed: str
+    stood_in_clone: GateCopy, changed: str
 ) -> None:
     """`just test-e2e` at the affected tier runs the tier for a change it can be broken by."""
-    copy = as_a_clone(gate_copy())
-    standing_in_for_the_suite(copy)
-    branch_with_a_change(copy, changed)
+    copy = stood_in_clone
+    afresh_from_main(copy, changed)
 
     result = copy.just("test-e2e", environment=QUIET)
 
@@ -140,12 +169,11 @@ def test_a_change_to_what_the_end_to_end_tier_exercises_selects_it(
 
 
 def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
-    gate_copy: Callable[..., GateCopy],
+    stood_in_clone: GateCopy,
 ) -> None:
     """The scheduled Obico tier's environment is no journey's, so a change there runs none."""
-    copy = as_a_clone(gate_copy())
-    standing_in_for_the_suite(copy)
-    branch_with_a_change(copy, "tools/obico-env/obico_env.py")
+    copy = stood_in_clone
+    afresh_from_main(copy, "tools/obico-env/obico_env.py")
 
     result = copy.just("test-e2e", environment=QUIET)
 
@@ -156,20 +184,25 @@ def test_a_change_to_what_the_end_to_end_tier_never_reaches_leaves_it_out(
     )
 
 
+#: The projects carrying the end-to-end tier's target, by their directory.
+END_TO_END_PROJECTS = ("tests/repo-e2e", "tests/repo-e2e-independent", "tests/release-drafting")
+
+
 def standing_in_for_the_suite(copy: GateCopy) -> None:
-    """Commit, on the copy's `main`, a `test-e2e` target that does nothing.
+    """Commit, on the copy's `main`, `test-e2e` targets that do nothing.
 
     The project graph's edges, and so which projects a change selects, are the
-    copy's own and unchanged. Only what selection would then run is replaced:
-    the suite, and the build it waits on, which is a task-graph edge and
-    selects nothing.
+    copy's own and unchanged. Only what selection would then run is replaced,
+    in each of the tier's projects: the suite, and any build it waits on,
+    which is a task-graph edge and selects nothing.
     """
-    project = copy.root / "tests" / "repo-e2e" / "project.json"
-    declared = json.loads(project.read_text(encoding="utf-8"))
-    declared["targets"]["test-e2e"]["command"] = "echo the suite runs as this journey"
-    declared["targets"]["test-e2e"].pop("dependsOn")
-    project.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
-    copy.git("commit", "-q", "-am", "test: stand in for the end-to-end suite")
+    for directory in END_TO_END_PROJECTS:
+        project = copy.root / directory / "project.json"
+        declared = json.loads(project.read_text(encoding="utf-8"))
+        declared["targets"]["test-e2e"]["command"] = "echo the suite runs as this journey"
+        declared["targets"]["test-e2e"].pop("dependsOn", None)
+        project.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
+    copy.git("commit", "-q", "-am", "test: stand in for the end-to-end suites")
 
 
 def test_the_sweep_runs_every_gate_eligible_project(gate_copy: Callable[..., GateCopy]) -> None:
@@ -242,12 +275,31 @@ def test_the_affected_coverage_report_rules_on_no_code_its_run_did_not_measure(
 def test_the_affected_coverage_report_is_over_the_code_its_run_measured(
     gate_copy: Callable[..., GateCopy],
 ) -> None:
-    """A change to the Python client measures that client, and the report rules on it alone."""
+    """A change to the Python client measures that client, and the report rules on it alone.
+
+    The client's own `test` target is run, through Nx as the test tier runs it,
+    rather than the whole affected tier: the change reaches `printer-smoke` too,
+    whose suite measures no coverage and so gives the report nothing to read,
+    and the tier's selection is what the `format-check` journeys above prove.
+    """
     copy = as_a_clone(gate_copy())
     branch_with_a_change(copy, "python/printobserver-sdk/src/printobserver_sdk/__init__.py")
 
-    tested = copy.just("test", environment=QUIET, timeout=1800)
-    passing(tested, describing="`just test` over a change to the Python client")
+    tested = capture(
+        [
+            "bunx",
+            "nx",
+            "run-many",
+            "-t",
+            "test",
+            "--projects=printobserver-sdk-python",
+            "--output-style=stream",
+        ],
+        copy.root,
+        timeout=1800,
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET, **UNSELECTED),
+    )
+    passing(tested, describing="the Python client's own `test` target")
     reported = copy.just("coverage", environment=QUIET)
 
     passing(reported, describing="`just coverage` over the client's own run")
@@ -363,10 +415,13 @@ def test_each_side_of_a_split_test_tier_reports_its_own_ecosystem_of_the_change(
 
     The changed crate's and the client's own `test` targets are run, so each
     ecosystem has measurements to read, and `just coverage` is run once per side
-    of `lang:rust` as a sharded gate runs it. At the affected tier, through the
-    real graph's own answer, the Rust side reports the crate and rules on no
-    Python source, and the other side reports the client and rules on no crate,
-    so the two sides' floors together rule on what one unsharded report does.
+    of a project tag, as `just ci-lint` and `just ci-test` run it once per side
+    of `platform:independent`. The tag here is `lang:rust`, which splits this
+    change by ecosystem, so which side reported what can be read off the
+    reports. At the affected tier, through the real graph's own answer, the Rust
+    side reports the crate and rules on no Python source, and the other side
+    reports the client and rules on no crate, so the two sides' floors together
+    rule on what one report over every project does.
     """
     copy = as_a_clone(gate_copy())
     branch_with_a_change(copy, "crates/printobserver-vision-api/src/lib.rs")
@@ -389,7 +444,7 @@ def test_each_side_of_a_split_test_tier_reports_its_own_ecosystem_of_the_change(
         ],
         copy.root,
         timeout=1800,
-        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET),
+        env=clean_environment(UV_PROJECT_ENVIRONMENT=str(copy.shared_venv), **QUIET, **UNSELECTED),
     )
     passing(tested, describing="the crate's and the client's own `test` targets")
 

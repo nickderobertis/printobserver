@@ -30,9 +30,21 @@
 //! Nothing in a document is typed out by hand, so a document cannot show an
 //! output the program has never produced.
 //!
+//! # One section runs over a print of its own
+//!
+//! The section of [`OUTSIDE`] is about a print at its milestones — its layers,
+//! what each lays, and a look at the printer beside it — which this walk's
+//! world, running no slice, has none of. So this walk hands it to
+//! `supervising_outside`, which runs every example of it over a print reading a
+//! real slice, and refuses a tree in which that section carries no example for
+//! that journey to run. There each block shows the lines of its output a reader
+//! acts on, and they are held to what the command printed, in its order.
+//!
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use printobserver_types::serde_json::Value;
 
 use crate::world::{CREDENTIAL, World};
 
@@ -47,6 +59,27 @@ const EXIT_READ: &str = "echo $?";
 
 /// The variable that makes this walk write the examples rather than check them.
 const WRITING: &str = "PRINTOBSERVER_DOCS";
+
+/// Wait until this world's supervisor has asked its detector whether it is
+/// answering, so every example reads the status the check found.
+///
+/// # Panics
+///
+/// Panics when no check is found within half a minute.
+pub fn until_the_detector_was_checked(world: &World) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let read = super::running::read(world, &["status", "--print-id", &world.print_id()]);
+        if read.pointer("/detector/status").and_then(Value::as_str) != Some("unchecked") {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the detector was never checked: {read}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
 
 /// One command of one example, and what it printed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,9 +97,38 @@ struct Example {
     document: String,
     /// The line the fence opens on, one-based, for a finding that names it.
     line: usize,
+    /// The `##` section it is written under, when it is under one.
+    section: Option<String>,
     /// Its commands, in the order the reader runs them.
     steps: Vec<Step>,
 }
+
+/// One `##` section of one reference document.
+#[derive(Debug, Clone, Copy)]
+pub struct Section {
+    /// The document, relative to the repository root.
+    pub document: &'static str,
+    /// The section's heading, without its `## `.
+    pub heading: &'static str,
+}
+
+/// The section an outside supervisor reads, whose examples run over a print
+/// reading a real slice rather than in this walk's world.
+pub const OUTSIDE: Section = Section {
+    document: "skills/printobserver/reference/common-operations.md",
+    heading: "Supervising from outside",
+};
+
+impl Example {
+    /// Whether it is written under one section of one document.
+    fn is_in(&self, section: Section) -> bool {
+        self.document == section.document && self.section.as_deref() == Some(section.heading)
+    }
+}
+
+/// Held while a document is rewritten, so that two walks writing one document
+/// at once cannot each write over what the other wrote.
+static REWRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// The repository root, from this crate's own directory.
 fn repo_root() -> PathBuf {
@@ -110,9 +172,13 @@ fn examples_in(root: &Path, document: &str) -> Vec<Example> {
         .unwrap_or_else(|error| panic!("{document} is readable: {error}"));
     let mut found = Vec::new();
     let mut inside: Option<(usize, Vec<Step>)> = None;
+    let mut section: Option<String> = None;
     for (index, line) in text.lines().enumerate() {
         match inside.as_mut() {
             None => {
+                if let Some(heading) = line.strip_prefix("## ") {
+                    section = Some(heading.trim().to_owned());
+                }
                 if line.trim_end() == FENCE {
                     inside = Some((index + 1, Vec::new()));
                 }
@@ -122,6 +188,7 @@ fn examples_in(root: &Path, document: &str) -> Vec<Example> {
                     found.push(Example {
                         document: document.to_owned(),
                         line: *line_number,
+                        section: section.clone(),
                         steps: core::mem::take(steps),
                     });
                     inside = None;
@@ -486,25 +553,37 @@ fn run(world: &World, example: &Example) -> (Vec<Step>, Vec<String>) {
     (produced, findings)
 }
 
-/// Rewrite one document's blocks with what its examples actually printed.
+/// Rewrite one document's blocks with what its examples actually printed:
+/// each block whose opening line `produced` names, and no other.
 fn rewrite(root: &Path, document: &str, produced: &[Example]) {
+    let _held = REWRITING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = root.join(document);
     let text = std::fs::read_to_string(&path).expect("the document is readable");
+    let by_line: BTreeMap<usize, &Example> = produced
+        .iter()
+        .map(|example| (example.line, example))
+        .collect();
     let mut written: Vec<String> = Vec::new();
-    let mut blocks = produced.iter();
+    let mut replacing = false;
     let mut inside = false;
-    for line in text.lines() {
+    for (index, line) in text.lines().enumerate() {
         if inside {
             if line.starts_with("```") {
                 written.push(line.to_owned());
                 inside = false;
+            } else if !replacing {
+                written.push(line.to_owned());
             }
             continue;
         }
         written.push(line.to_owned());
         if line.trim_end() == FENCE {
             inside = true;
-            if let Some(example) = blocks.next() {
+            replacing = false;
+            if let Some(example) = by_line.get(&(index + 1)) {
+                replacing = true;
                 for step in &example.steps {
                     written.push(format!("{PROMPT}{}", step.command));
                     written.extend(step.output.iter().cloned());
@@ -519,17 +598,18 @@ fn rewrite(root: &Path, document: &str, produced: &[Example]) {
 fn walk(world: &World, root: &Path) -> Vec<String> {
     let mut findings = Vec::new();
     let mut ran = 0_usize;
+    let mut handed_on = 0_usize;
     for document in documents(root) {
         let mut produced = Vec::new();
         for example in examples_in(root, &document) {
+            if example.is_in(OUTSIDE) {
+                handed_on += 1;
+                continue;
+            }
             let (steps, said) = run(world, &example);
             ran += 1;
             findings.extend(said);
-            produced.push(Example {
-                document: example.document.clone(),
-                line: example.line,
-                steps,
-            });
+            produced.push(Example { steps, ..example });
         }
         // llmlint: ignore[changed_behavior_has_e2e] Proving replacement of stale committed examples requires a corrupted documentation copy, explicitly forbidden by this dispatch. The positive example journey executes every example against a real server and compares its output; this mode writes those same captured steps.
         if writing() {
@@ -537,7 +617,119 @@ fn walk(world: &World, root: &Path) -> Vec<String> {
         }
     }
     assert!(ran > 0, "no declared document carries a runnable example");
+    if handed_on == 0 {
+        findings.push(format!(
+            "`{}` carries no example under `## {}`, which `supervising_outside` runs over a \
+             print at its milestones: the section shows a reader nothing to run",
+            OUTSIDE.document, OUTSIDE.heading
+        ));
+    }
     findings
+}
+
+/// One command of one example of a section, as it ran.
+#[derive(Debug, Clone)]
+pub struct Ran {
+    /// The command line, as the document writes it.
+    pub command: String,
+    /// What it printed, standard output then standard error, as printed.
+    pub printed: String,
+}
+
+/// Run every example of one section against a world, calling `before` with
+/// each example's index first, and hold each command's shown lines to what it
+/// printed: every line shown is a line it printed, in the order it printed
+/// them. Under `PRINTOBSERVER_DOCS=write` each block is rewritten with the
+/// lines of what was printed that `keeps` keeps instead.
+///
+/// # Panics
+///
+/// Panics when a block cannot be run or shows a line its command did not
+/// print, naming the block and everything the command printed.
+pub fn runs_the_section(
+    world: &World,
+    section: Section,
+    mut before: impl FnMut(usize),
+    keeps: impl Fn(&str, &str) -> bool,
+) -> Vec<Vec<Ran>> {
+    let root = repo_root();
+    let examples: Vec<Example> = examples_in(&root, section.document)
+        .into_iter()
+        .filter(|example| example.is_in(section))
+        .collect();
+    let mut ran_all = Vec::new();
+    let mut produced = Vec::new();
+    let mut findings = Vec::new();
+    for (index, example) in examples.iter().enumerate() {
+        before(index);
+        let bindings = bindings(world, example);
+        let mut last_status = None;
+        let mut ran = Vec::new();
+        let mut steps = Vec::new();
+        for step in &example.steps {
+            let (printed, status) = run_one(world, &step.command, &bindings, last_status)
+                .unwrap_or_else(|why| {
+                    panic!(
+                        "{}:{} shows `{}`, which cannot be run: {why}",
+                        example.document, example.line, step.command
+                    )
+                });
+            last_status = status;
+            let abstracted_lines: Vec<String> = abstracted(&printed, &bindings)
+                .lines()
+                .map(str::to_owned)
+                .collect();
+            let mut remaining = abstracted_lines.iter();
+            let in_order = step
+                .output
+                .iter()
+                .all(|line| remaining.any(|printed| printed == line));
+            if !in_order || step.output.is_empty() {
+                findings.push(format!(
+                    "{}:{} shows `{}` printing\n{}\nand it printed\n{}",
+                    example.document,
+                    example.line,
+                    step.command,
+                    step.output.join("\n"),
+                    abstracted_lines.join("\n")
+                ));
+            }
+            steps.push(Step {
+                command: step.command.clone(),
+                output: abstracted_lines
+                    .iter()
+                    .filter(|line| keeps(&step.command, line))
+                    .cloned()
+                    .collect(),
+            });
+            ran.push(Ran {
+                command: step.command.clone(),
+                printed,
+            });
+        }
+        produced.push(Example {
+            steps,
+            ..example.clone()
+        });
+        ran_all.push(ran);
+    }
+    assert!(
+        !examples.is_empty(),
+        "`{}` carries no example under `## {}`",
+        section.document,
+        section.heading
+    );
+    // llmlint: ignore[changed_behavior_has_e2e] This writes back the same captured steps the assertion below compares, which the outside-supervision journey runs against a real server. Proving the rewrite would mean a stale copy of a committed document and a process-wide environment switch flipped inside a parallel test binary.
+    if writing() {
+        rewrite(&root, section.document, &produced);
+        return ran_all;
+    }
+    assert!(
+        findings.is_empty(),
+        "the section no longer shows what its examples print:\n{}",
+        findings.join("\n\n")
+    );
+    ran_all
 }
 
 /// Every documented example prints exactly what its document shows.

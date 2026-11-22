@@ -22,7 +22,7 @@ The answer's shape is the program's own, read from release-plz 0.3.167's
 `main.rs` (`{"prs": [...]}`, empty when it drafted nothing) and its core's
 `ReleasePr` (`head_branch`, `base_branch`, `html_url`, `number`, `releases`).
 `samples/release-plz-release-pr.json` is a committed copy of it, and
-`tests/repo-e2e/tests/test_release_path_journey.py` holds that copy to the
+`tests/repo-e2e-independent/tests/test_release_path_journey.py` holds that copy to the
 fields and types the held release actually writes, by running it against a
 stand-in forge and arming what it answered.
 """

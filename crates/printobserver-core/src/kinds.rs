@@ -33,7 +33,9 @@ use printobserver_supervisor_api::AgentAssessment;
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
-use printobserver_types::{EventId, EventKind, EventPayload, EventSource, PrintId, Timestamp};
+use printobserver_types::{
+    EventId, EventKind, EventPayload, EventSource, FileName, PrintId, Timestamp,
+};
 
 /// The source name of an event the supervisor raised itself.
 pub const SYSTEM_SOURCE: &str = "system";
@@ -106,6 +108,11 @@ pub struct ActionExecutedPayload {
     /// The bounded intervention it opened, when it opened one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intervention_id: Option<InterventionId>,
+    /// How far into its file the print had last been read to have got when
+    /// the action was taken, in bytes, when that was known: what places a
+    /// change against the commands the file sets the same thing with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_position_bytes: Option<i64>,
 }
 
 impl EventPayload for ActionExecutedPayload {
@@ -117,6 +124,7 @@ impl Sample for ActionExecutedPayload {
         Self {
             action_id: ActionId::sample_full(),
             intervention_id: Some(InterventionId::sample_full()),
+            file_position_bytes: Some(4_096),
         }
     }
 
@@ -124,6 +132,7 @@ impl Sample for ActionExecutedPayload {
         Self {
             action_id: ActionId::sample_full(),
             intervention_id: None,
+            file_position_bytes: None,
         }
     }
 }
@@ -199,6 +208,39 @@ impl Sample for AgentAssessmentPayload {
         Self {
             session_name: "print-0191f0a0".to_owned(),
             assessment: AgentAssessment::sample_full(),
+        }
+    }
+}
+
+/// The agent answered that a running print should stop, and asked for no
+/// pause or cancel — not even when asked again — so nothing stopped it.
+///
+/// An answer records a judgement and does not act: acting is a request that
+/// policy rules on. Written to the print's history, where a refused pause is,
+/// so the person reading it is told the print the agent judged should stop is
+/// still running.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct AgentStopUnactedPayload {
+    /// The event the turn was about.
+    pub event_id: EventId,
+    /// The session the turn ran in.
+    pub session_name: String,
+    /// What the agent said it saw, as its answer's summary put it.
+    pub summary: String,
+}
+
+impl EventPayload for AgentStopUnactedPayload {
+    const KIND: &'static str = "agent_stop_unacted";
+}
+
+impl Sample for AgentStopUnactedPayload {
+    fn sample_full() -> Self {
+        Self {
+            event_id: EventId::sample_full(),
+            session_name: "print-0191f0a0".to_owned(),
+            summary: "The part has moved off its planned place.".to_owned(),
         }
     }
 }
@@ -443,6 +485,37 @@ impl Sample for CameraDegradedPayload {
     }
 }
 
+/// A print's G-code was read and indexed: what the slicer planned at each
+/// file position is now known for it, without reading the file again.
+///
+/// Written once per index built, which is once per print for as long as the
+/// server runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct GcodeIndexedPayload {
+    /// The file that was indexed.
+    pub file_name: FileName,
+    /// How many bytes of it were read.
+    pub bytes: u64,
+    /// How many layers it plans.
+    pub layers: u64,
+}
+
+impl EventPayload for GcodeIndexedPayload {
+    const KIND: &'static str = "gcode_indexed";
+}
+
+impl Sample for GcodeIndexedPayload {
+    fn sample_full() -> Self {
+        Self {
+            file_name: FileName::sample_full(),
+            bytes: 440_608,
+            layers: 150,
+        }
+    }
+}
+
 /// Where a port failed while an event was being handled.
 ///
 /// A closed set of exactly the sites at which a failure has nowhere else to be
@@ -472,6 +545,12 @@ pub enum PortFailureSite {
     CameraLook,
     /// Telling the detector that paused the print its detection was handled.
     DetectorAcknowledgement,
+    /// Asking the failure detector whether it is answering, while it was
+    /// scoring the print all the same.
+    DetectorHealthCheck,
+    /// Reading the failure detector's own record of the print's live
+    /// prediction.
+    DetectorScoringRead,
 }
 
 impl Sample for PortFailureSite {
@@ -514,9 +593,10 @@ impl Sample for PortFailurePayload {
 }
 
 /// Every kind of the printer timeline: prints starting and ending, what they
-/// took from a spool, every change to the spool ledger, and every change the
-/// printer watch finds in the machine.
-pub const TIMELINE_KINDS: [&str; 23] = [
+/// took from a spool, every change to the spool ledger, every change the
+/// printer watch finds in the machine, every recovery, and the operator's word
+/// that the bed is clear.
+pub const TIMELINE_KINDS: [&str; 24] = [
     PrintStartedPayload::KIND,
     PrintEndedPayload::KIND,
     FilamentConsumedPayload::KIND,
@@ -540,6 +620,7 @@ pub const TIMELINE_KINDS: [&str; 23] = [
     RecoveryRequestedPayload::KIND,
     RecoveryExecutedPayload::KIND,
     RecoveryRejectedPayload::KIND,
+    BedClearAssertedPayload::KIND,
 ];
 
 /// A fixed spool identifier the timeline's samples share.
@@ -1448,6 +1529,11 @@ pub struct RecoveryRequestedPayload {
     pub actor: Actor,
     /// Why.
     pub reason: String,
+    /// The operator's standing word that the bed is clear this request is
+    /// decided on in place of an assertion of its own, when it is: the
+    /// `bed_clear_asserted` event recording it. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed_clear: Option<EventId>,
 }
 
 impl EventPayload for RecoveryRequestedPayload {
@@ -1460,6 +1546,14 @@ impl Sample for RecoveryRequestedPayload {
             action: RecoveryAction::sample_full(),
             actor: Actor::Operator,
             reason: "free the nozzle from the part".to_owned(),
+            bed_clear: Some(EventId::sample_full()),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            bed_clear: None,
+            ..Self::sample_full()
         }
     }
 }
@@ -1477,6 +1571,11 @@ pub struct RecoveryExecutedPayload {
     pub reason: String,
     /// What the printer made of it.
     pub outcome: crate::records::ExecutionOutcome,
+    /// The operator's standing word that the bed is clear this action was
+    /// carried out on in place of an assertion of its own, when it was: the
+    /// `bed_clear_asserted` event recording it. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed_clear: Option<EventId>,
 }
 
 impl EventPayload for RecoveryExecutedPayload {
@@ -1490,6 +1589,14 @@ impl Sample for RecoveryExecutedPayload {
             actor: Actor::Operator,
             reason: "free the nozzle from the part".to_owned(),
             outcome: crate::records::ExecutionOutcome::Succeeded,
+            bed_clear: Some(EventId::sample_full()),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            bed_clear: None,
+            ..Self::sample_full()
         }
     }
 
@@ -1531,6 +1638,62 @@ impl Sample for RecoveryRejectedPayload {
             actor: Actor::Operator,
             reason: "move the head off the part".to_owned(),
             rejection: RecoveryRejection::sample_full(),
+        }
+    }
+}
+
+/// The operator's word that the bed is clear: nothing is on it that homing Z
+/// could crush or a move over the part could strike.
+///
+/// The printer's rather than any print's, so it is written with no print. It
+/// stands until the next `print_started`, whichever way that print started,
+/// and while it stands a recovery that needs the bed or the nozzle clear is
+/// decided as though it carried the operator's assertion — read back out of
+/// the event log, so a server started again holds it as the one before did.
+/// Only the operator records one: an assertion is a person's word for what
+/// they can see.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct BedClearAssertedPayload {
+    /// Who said so: the operator, the one actor whose word this records.
+    pub actor: BedClearActor,
+    /// Why they say so.
+    pub reason: String,
+}
+
+/// Who may say the bed is clear: the operator, and no other actor.
+///
+/// Its own type rather than [`Actor`], so that a record of the agent's or the
+/// system's word that the bed is clear is one no value can spell. On the wire
+/// it is `"operator"`, as [`Actor::Operator`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum BedClearActor {
+    /// A person: the operator.
+    Operator,
+}
+
+impl BedClearActor {
+    /// The actor this is, in the vocabulary every other record names actors in.
+    #[must_use]
+    pub const fn actor(self) -> Actor {
+        match self {
+            Self::Operator => Actor::Operator,
+        }
+    }
+}
+
+impl EventPayload for BedClearAssertedPayload {
+    const KIND: &'static str = "bed_clear_asserted";
+}
+
+impl Sample for BedClearAssertedPayload {
+    fn sample_full() -> Self {
+        Self {
+            actor: BedClearActor::Operator,
+            reason: "the cancelled print is off the bed and nothing else is on it".to_owned(),
         }
     }
 }

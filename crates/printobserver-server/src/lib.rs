@@ -37,7 +37,9 @@
 //! The store and the session directory are the whole of the state, and
 //! [`reconcile`] is what adopts them on start.
 
+pub mod alignment;
 pub mod api;
+pub mod check_images;
 pub mod config;
 pub mod events;
 pub mod ingress;
@@ -49,7 +51,12 @@ pub mod turns;
 pub mod watch;
 pub mod wire;
 
+pub use alignment::{AlignmentFailure, Alignments, PreviousCheck, PrintAlignment};
 pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, SPOOL_RECENT_EVENTS, router};
+pub use check_images::{
+    CHECK_IMAGES_DIRECTORY, COMPOSITE_NOTE, PanelImages, PlanAt, WHOLE_FRAME_NOTE,
+    WholeFrameReason, WholeFrames, compose_at, composite_note, whole_frame_note,
+};
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,
     CredentialVerifier, DEFAULT_INGRESS_ANSWER_BOUND_MS, DEFAULT_OBSERVATION_INTERVAL_S,
@@ -60,11 +67,13 @@ pub use config::{
 pub use events::{DEFAULT_EVENTS_LIMIT, MAX_EVENTS_LIMIT, MAX_EVENTS_WAIT_S, Stored};
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
 pub use operations::{
-    Answer, BESIDE_THE_ACTIONS, COMMAND_TAG, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect,
+    Answer, BED_CLEAR, BESIDE_THE_ACTIONS, COMMAND_TAG, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect,
     IMAGE_PATH_FIELD, INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation,
     PRINTER_LOOK, Parameter, RECOVERY_STATUS, RecoveryActionKind, SpoolCommandKind, VERSION_PREFIX,
     ValueKind, command_for, operation, printer_wide_of,
 };
+/// The longest wait one look takes, which a refusal's advice is held to.
+pub use printobserver_core::MAX_LOOK_WAIT_S;
 /// The harness identities this program can sign in, as the adapter declares
 /// them: the command-line program reads the table through this crate, which is
 /// the one edge it has to the adapter.
@@ -76,14 +85,14 @@ pub use reconcile::{
 pub use server::{
     API_CREDENTIAL_FILE, API_CREDENTIAL_VERIFIER_FILE, CLIENT_CONFIG_FILE, CONTEXT_PROGRAM,
     CREDENTIAL_ISSUE, CREDENTIAL_VERIFIER, OperatorCredential, PROMPT_FILE, Ports, Running,
-    SCHEMA_FILE, Server, StartError, TURN_PROMPT, agent_config, context_command,
+    SCHEMA_FILE, Server, StartError, TURN_PROMPT, agent_config, agent_config_with, context_command,
     operator_credential, plaintext_credential_warning,
 };
 pub use turns::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};
 pub use wire::{
-    ActionAnswer, ActionBody, BodyRefusal, ContextAnswer, ErrorAnswer, EventsAnswer, HistoryAnswer,
-    ImageAnswer, IngressAnswer, LookAnswer, ManifestAnswer, ManifestBody, PreflightAnswer,
-    PrintEnded, PrintsAnswer, RecoveryAnswer, RecoveryStatusAnswer, SpoolAnswer,
-    SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer, at_a_glance, claimed_actor,
-    reason_of, recovery_of, spool_command_of,
+    ActionAnswer, ActionBody, BedClearAnswer, BedClearBody, BodyRefusal, ContextAnswer,
+    ErrorAnswer, EventsAnswer, HistoryAnswer, ImageAnswer, IngressAnswer, LookAnswer,
+    ManifestAnswer, ManifestBody, PreflightAnswer, PrintEnded, PrintsAnswer, RecoveryAnswer,
+    RecoveryStatusAnswer, SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer, StatusAnswer,
+    TimelineAnswer, at_a_glance, claimed_actor, reason_of, recovery_of, spool_command_of,
 };

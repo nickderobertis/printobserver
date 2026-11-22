@@ -15,6 +15,8 @@ __pycache__/
 .coverage
 .coverage.*
 /coverage-python/
+# The Python coverage data a CI job keeps for the `budgets` job's combined report.
+/coverage-data/
 
 # Node / Nx
 node_modules/
@@ -38,3 +40,10 @@ dist/
 
 # The figures the real-print LFS fixture test records for its budgets to read.
 /tests/real-prints-lfs/telemetry/
+
+# The metadata uv builds for the calibration tool, a workspace member whose
+# version is dynamic because release automation owns every version field.
+*.egg-info/
+
+# A failed real-print test's transcript and server log, kept for the job's report.
+/tests/skilltest/results/failed/

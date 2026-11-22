@@ -25,7 +25,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 
 import pytest
-from journey import DEBUG_BUILD, REPO_ROOT, clean_environment, install_the_skill
+from journey import DEBUG_BUILD, REPO_ROOT, clean_environment, install_the_skill, listen_port
 from release_artifacts.world import Machine
 from repo_checks import install_path
 from repo_checks.expect import contains, equal, failing, passing, truth
@@ -648,7 +648,6 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
     tmp_path: Path, program: Path, machine: Machine
 ) -> None:
     """The host's real systemd user manager or GUI launchd owns the server process."""
-    import socket
     import time
 
     from test_service_manager_journey import Launchd, Systemd, _disabled_services, _unmet
@@ -678,9 +677,7 @@ def test_the_user_manager_serves_restarts_after_crash_and_upgrades(
         if container
         else "Library/Application Support/printobserver/state"
     )
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        port = listener.getsockname()[1]
+    port = listen_port()
     address = f"http://127.0.0.1:{port}"
     env = clean_environment(
         HOME=str(home),

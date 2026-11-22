@@ -22,9 +22,10 @@ The rules the real-print cases' LFS proof is held to, and why. The root
   here must work in whatever repository `just` runs it in, and read nothing
   of this tree but its own scripts.
 - **The CI steps are one committed list,** because the action-pin rule admits
-  no local composite action. The suite's job pastes `ci-steps.yml` in verbatim,
-  `real-prints-lfs-ci` holds it there, and `run_ci_steps` executes that same
-  file. A step or an expression that runner does not know fails the journey, so
+  no local composite action. The suite's job, and the job warming `main`'s
+  store, paste `ci-steps.yml` in verbatim, each setting the `REAL_PRINTS_STORE`
+  its steps run under; `real-prints-lfs-ci` holds both there, and
+  `run_ci_steps` executes that same file. A step or an expression that runner does not know fails the journey, so
   the list cannot grow past what is proven.
 - **Telemetry, not a second measurement.** The journeys write
   `telemetry/lfs.json`, which is ignored by git, and the two zero-byte budgets

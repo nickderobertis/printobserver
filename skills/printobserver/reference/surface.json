@@ -76,6 +76,13 @@
           "option": "--print-id",
           "required": true,
           "supply": "value"
+        },
+        {
+          "field": "since",
+          "located": "query",
+          "option": "--since",
+          "required": false,
+          "supply": "value"
         }
       ],
       "path": "/v1/prints/{print_id}/context"
@@ -536,7 +543,7 @@
           "field": "print_id",
           "located": "path",
           "option": "--print-id",
-          "required": true,
+          "required": false,
           "supply": "value"
         },
         {
@@ -1589,6 +1596,40 @@
         }
       ],
       "path": "/v1/printer/recovery/recover_home_z"
+    },
+    {
+      "answers": [
+        "success"
+      ],
+      "command": "bed-clear",
+      "image_path_field": null,
+      "method": "POST",
+      "mutating": true,
+      "operation": "bed_clear",
+      "options": [
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor",
+          "required": true,
+          "supply": "value"
+        },
+        {
+          "field": "actor",
+          "located": "body",
+          "option": "--actor-file",
+          "required": false,
+          "supply": "file"
+        },
+        {
+          "field": "reason",
+          "located": "body",
+          "option": "--reason",
+          "required": true,
+          "supply": "value"
+        }
+      ],
+      "path": "/v1/printer/bed_clear"
     },
     {
       "command": "watch",

@@ -30,6 +30,16 @@ tiers = [
     "check-repo",
     "test-e2e",
 ]
+# The one spelling of the project tag a project's `project.json` carries to
+# declare that its `test` or `test-e2e` target exercises no platform-dependent
+# behaviour, so CI runs it once, in the `lint` job on linux-x86_64 (`just
+# ci-lint`), instead of in every supported platform's `test` job (`just
+# ci-test`), which runs every project without it. The owner of a project's
+# tests decides whether it carries the tag. `just check-repo`'s `project-tags`
+# accepts it, refuses any other tag in the `platform:` dimension, so a
+# misspelling cannot silently keep a suite on every platform, and holds the
+# justfile's one spelling of it, `PLATFORM_INDEPENDENT`, to this one.
+platform_independent_tag = "platform:independent"
 
 [gate.coverage]
 # Line-coverage floors. 95% is the create-repo default and nothing here lowers
@@ -467,6 +477,22 @@ owed_paths = [
     "crates/printobserver-oneharness/**",
     "crates/printobserver-core/src/context.rs",
     "crates/printobserver-core/src/events.rs",
+    "crates/printobserver-core/src/watch.rs",
+    "crates/printobserver-core/src/scoring.rs",
+    "crates/printobserver-core/src/gcode_index.rs",
+    "crates/printobserver-core/src/check_image.rs",
+    "crates/printobserver-server/src/check_images.rs",
+    "crates/printobserver-panels/src/whole_frame.rs",
+    "crates/printobserver-panels/src/compose.rs",
+    "crates/printobserver-panels/src/geometry.rs",
+    "crates/printobserver-panels/src/text.rs",
+    "crates/printobserver-panels/src/drift.rs",
+    "crates/printobserver-panels/src/calibration.rs",
+    "crates/printobserver-panels/src/alignment.rs",
+    "crates/printobserver-server/src/alignment.rs",
+    "crates/printobserver-core/src/toolpath.rs",
+    "crates/printobserver-core/src/look.rs",
+    "crates/printobserver-supervisor-api/src/assessment.rs",
     "tests/skilltest/**",
     "tests/real-prints/**",
 ]
@@ -580,6 +606,7 @@ cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
 "printobserver-octoprint" = ["printobserver-printer-api", "printobserver-types"]
 "printobserver-obico" = ["printobserver-vision-api", "printobserver-core", "printobserver-types"]
 "printobserver-oneharness" = ["printobserver-supervisor-api", "printobserver-types"]
+"printobserver-panels" = ["printobserver-types", "printobserver-core", "printobserver-vision-api"]
 "printobserver-store-sqlite" = [
     "printobserver-core",
     "printobserver-supervisor-api",
@@ -595,6 +622,7 @@ cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
     "printobserver-octoprint",
     "printobserver-obico",
     "printobserver-oneharness",
+    "printobserver-panels",
     "printobserver-store-sqlite",
 ]
 "printobserver-sdk" = []
@@ -609,6 +637,9 @@ cli_forbids = ["printobserver-octoprint", "printobserver-obico"]
 # reach either crate at run time.
 [crates.may_depend_on_in_tests]
 "printobserver" = ["printobserver-core", "printobserver-store-sqlite"]
+# The panels crate's recorded-frame tests stream a case's G-code into the real
+# index builder through the printer port's sink, as the whole-file read does.
+"printobserver-panels" = ["printobserver-printer-api"]
 
 [supervisor]
 # The one implementation of the supervisor port, and the artifacts it is held
@@ -782,6 +813,7 @@ mended_recipe = "release-mended"
 "crate:printobserver-octoprint" = { built_by = "release-plz" }
 "crate:printobserver-obico" = { built_by = "release-plz" }
 "crate:printobserver-oneharness" = { built_by = "release-plz" }
+"crate:printobserver-panels" = { built_by = "release-plz" }
 "crate:printobserver-store-sqlite" = { built_by = "release-plz" }
 "crate:printobserver-core" = { built_by = "release-plz" }
 "crate:printobserver-server" = { built_by = "release-plz" }
@@ -819,10 +851,9 @@ action_pin_pattern = '^[A-Za-z0-9._-]+/[A-Za-z0-9._/-]+@v[0-9]+(\.[0-9]+\.[0-9]+
 # that may carry a platform matrix. A job's kind is what its own steps run, not
 # what it is called. `just check-repo` holds these to AGENTS.md's
 # supported-platform list and refuses a platform matrix on any other job.
-# A shard job of a sharded gate runs the gate's work and is a `gate` job, its
-# cells one platform's shards; the aggregating job reporting that platform's
-# context carries no matrix, and AGENTS.md's unmatrixed-jobs record says why.
-platform_dependent_kinds = ["gate", "integration", "install", "artifact"]
+# A `warm` job compiles one platform's `test` job's work into the cache that job
+# restores, so its cells are held to exactly the gate job's own.
+platform_dependent_kinds = ["gate", "integration", "install", "artifact", "warm"]
 # The install scripts behind the install-path section's third route, one per
 # family of platform — the shell one for Linux and macOS, the PowerShell one
 # for Windows — and the paths that route's fetch commands may name. The service
@@ -873,10 +904,10 @@ waived_report = "GITHUB_STEP_SUMMARY"
 # consolidated macOS lanes" is the prose half.
 [[workflows.carried]]
 platform = "macos-aarch64"
-jobs = ["integration"]
-carrier = "ci.yml:integration-macos"
-runs = ["just bootstrap", "just octoprint-up", "just test-integration", "just octoprint-down"]
-reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS printer integration tier runs as a job of its own beside the macOS gate job, owed only where the classifier says so, and reports `integration (macos-aarch64)` itself"
+jobs = ["test"]
+carrier = "ci.yml:test-macos"
+runs = ["just bootstrap", "just octoprint-up", "just ci-test", "just octoprint-down"]
+reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS `test` cell runs as a job of its own, whose condition leaves it off release automation's version/changelog pull request without taking a runner, and reports `test (macos-aarch64)` itself"
 
 [[workflows.carried]]
 platform = "macos-aarch64"
@@ -993,7 +1024,7 @@ install = "cargo install cargo-llvm-cov --locked"
 
 # Held at the newest release on 2026-09-14. It reports a forge's refusal in a
 # different shape from 0.3.164, the release the `0.2.0` run used, and
-# `tests/repo-e2e/tests/test_release_tag_journey.py` records the shape this one
+# `tests/repo-e2e-independent/tests/test_release_tag_journey.py` records the shape this one
 # prints: a bump re-reads that recording.
 #
 # Not bootstrapped: compiling it cost a cold Windows gate cell about thirteen
@@ -1057,11 +1088,11 @@ version = "3.8.1"
 provided_by = ["git-lfs"]
 install = "uv run -q python -m repo_checks install-git-lfs {version}"
 
-# onebudgetspec, which checks the root `budgets.yaml`'s `gate-time` in the
-# `gate-time` step of every required gate and integration job, and which
-# `repo_checks gate_time_budget` reports that figure through. Held at the
+# onebudgetspec, which checks the root `budgets.yaml`'s `ci-check-time` and
+# `ci-job-count` in `ci.yml`'s `budgets` job, and which `repo_checks
+# ci_budgets` reports those figures through. Held at the
 # release the budget was registered on, 2026-10-25. The `dev` dependency group
-# pins `onebudgetspec-sdk` at this same release — `test_gate_time_budget.py`
+# pins `onebudgetspec-sdk` at this same release — `test_ci_budgets.py`
 # holds the two together — and that SDK requires `onebudgetspec-cli` at its
 # own release, whose wheel puts this binary in the environment `uv run` gives
 # every recipe; where a host's PATH carries no copy at all, `install` puts this
@@ -1110,7 +1141,7 @@ install = "uv run -q python -m repo_checks install-powershell {version}"
 # refuses a link to a document that is not there, and refuses a skill that omits
 # a link to one of the documents declared below.
 skill = "skills/printobserver/SKILL.md"
-skill_max_characters = 6000
+skill_max_characters = 6222
 skill_max_lines = 150
 
 # The generated artifacts the documentation checks read the things they
@@ -1152,16 +1183,16 @@ name = "the escalation path"
 marker = "## When to escalate instead"
 
 [[docs.skill_element]]
-name = "the workflow step that reads the context"
-marker = "1. **Read the context.**"
+name = "the workflow step that decides from the facts and the frame"
+marker = "1. **Decide from what is in front of you:**"
 
 [[docs.skill_element]]
 name = "the workflow step that inspects the image"
-marker = "2. **Look at the image.**"
+marker = "2. **Judge the frame.**"
 
 [[docs.skill_element]]
-name = "the workflow step that looks again before deciding"
-marker = "3. **Look again, and watch if you need to.**"
+name = "the workflow step that looks again only for an ambiguous frame"
+marker = "3. **Look again only when the frame is genuinely ambiguous.**"
 
 [[docs.skill_element]]
 name = "the workflow step that decides"
@@ -1169,11 +1200,11 @@ marker = "4. **Decide.**"
 
 [[docs.skill_element]]
 name = "the workflow step that acts with a reason"
-marker = "5. **Act, and say why.**"
+marker = "5. **To act, ask for the change, then answer.**"
 
 [[docs.skill_element]]
-name = "the workflow step that records what was seen"
-marker = "6. **Record what you saw.**"
+name = "the workflow step that records the check in the answer"
+marker = "6. **Your answer's disposition records the check,**"
 
 # Every reference document this repository declares, with the headings each one
 # owes. A heading declared here and absent from the document is a failing check
@@ -1212,7 +1243,7 @@ headings = ["The schema set", "The schemas"]
 
 [[docs.document]]
 path = "skills/printobserver/reference/common-operations.md"
-headings = ["Before you start", "The worked examples"]
+headings = ["Before you start", "The worked examples", "Supervising from outside"]
 
 [[docs.document]]
 path = "skills/printobserver/reference/testing.md"

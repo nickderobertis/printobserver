@@ -1,0 +1,35 @@
+{
+  "$defs": {
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "How far the plan has risen since one earlier frame of this print that was\nseen: the height a camera should show the parts to have gained since then.",
+  "properties": {
+    "mm": {
+      "description": "Two heights of the print's highest point, in millimetres: the first\nis where the plan had it when that frame was captured, the second how\nfar it should have risen since — the rise of every layer since that\nlays anything but supports. They are the plate's, not every part's: a\npart the plan has finished does not grow with it.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "since": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a check of this print — a periodic observation or an\nalert — or a look at it was given, as that check or look states its\ncapture time."
+    }
+  },
+  "required": [
+    "since",
+    "mm"
+  ],
+  "title": "Rise",
+  "type": "object"
+}

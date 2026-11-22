@@ -3,8 +3,9 @@
 The OctoPrint stand-in serves the case's G-code and moves the job's file position
 to each event's; the camera answers each fetch with the case's latest frame
 captured at or before the replay's current time; the Obico double serves its
-health, takes acknowledgements and hands over the alert images it delivers. All
-of them read one [`Timeline`], which is what "the replay's current time" is.
+health, takes acknowledgements, hands over the alert images it delivers and
+answers its record of the printer from the case's own recorded detector state.
+All of them read one [`Timeline`], which is what "the replay's current time" is.
 
 # Why the timeline moves when the harness process exits
 
@@ -29,10 +30,10 @@ from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, NamedTuple, TypedDict
-from urllib.parse import unquote, urlsplit
+from typing import Any, NamedTuple, NewType, Protocol, TypedDict
+from urllib.parse import quote, unquote, urlsplit
 
-from cases import Case, MachineState, Moment, instant
+from cases import Case, MachineState, Moment, ObicoPrintId, instant
 from repo_checks.loopback import LoopbackServer
 
 #: A heater command in the G-code, and the temperature it sets.
@@ -79,8 +80,47 @@ def numbered(jpeg: bytes, number: int) -> bytes:
     return jpeg[:2] + b"\xff\xfe" + (len(comment) + 2).to_bytes(2, "big") + comment + jpeg[2:]
 
 
-#: The one request the Obico adapter makes of Obico's API.
+#: The request the Obico adapter makes of Obico's API when a detection was handled.
 ACKNOWLEDGEMENT = re.compile(r"/api/v1/printers/\d+/acknowledge_alert/")
+
+#: Obico's own identifier for one printer.
+ObicoPrinterId = NewType("ObicoPrinterId", int)
+
+#: The read of Obico's own record of the printer the detector's status is built from.
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+PRINTER_RECORD = re.compile(r"/api/v1/printers/\d+/")
+
+#: The printer Obico's record names, which the replay's configuration names too.
+OBICO_PRINTER = ObicoPrinterId(1)
+
+#: Obico's identifier for a print no recorded alert names.
+UNNAMED_OBICO_PRINT = ObicoPrintId(1)
+
+
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+class ObicoSnapshot(TypedDict):
+    """The latest snapshot Obico's record of the printer names."""
+
+    img_url: str
+
+
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+class ObicoPrint(TypedDict):
+    """The print Obico's record of the printer says it is watching."""
+
+    id: ObicoPrintId
+    filename: str
+    started_at: str
+
+
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+class ObicoPrinterRecord(TypedDict):
+    """Obico's record of the printer, as far as the server reads one."""
+
+    id: ObicoPrinterId
+    current_print: ObicoPrint | None
+    pic: ObicoSnapshot | None
+    normalized_p: float
 
 
 class JobFile(TypedDict):
@@ -115,6 +155,77 @@ class JobDocument(TypedDict):
     progress: JobProgress
     state: str
     error: str
+
+
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+class IdleJobFile(TypedDict):
+    """The file block of what `GET /api/job` answers with nothing selected."""
+
+    name: None
+    origin: None
+    size: None
+
+
+class IdleJobFacts(TypedDict):
+    """The job block of what `GET /api/job` answers with nothing selected."""
+
+    file: IdleJobFile
+    estimatedPrintTime: None
+    filament: None
+
+
+class IdleJobProgress(TypedDict):
+    """The progress block of what `GET /api/job` answers with no job."""
+
+    completion: None
+    filepos: None
+    printTime: None
+    printTimeLeft: None
+
+
+class IdleJobDocument(TypedDict):
+    """What `GET /api/job` answers from a printer that is idle."""
+
+    job: IdleJobFacts
+    progress: IdleJobProgress
+    state: str
+    error: str
+
+
+class ToolFilament(TypedDict):
+    """One tool's filament in OctoPrint's analysis of a file."""
+
+    length: float
+
+
+class FileAnalysis(TypedDict):
+    """OctoPrint's analysis of a file, as far as a start reads it."""
+
+    filament: dict[str, ToolFilament]
+
+
+class FileRefs(TypedDict):
+    """The links OctoPrint reaches a file at."""
+
+    download: str
+
+
+class FileFacts(TypedDict):
+    """What `GET /api/files/local/<name>` answers, and each entry of a listing."""
+
+    name: str
+    origin: str
+    type: str
+    size: int
+    gcodeAnalysis: FileAnalysis
+    refs: FileRefs
+
+
+class HeldFile(NamedTuple):
+    """One file the printer holds: its name, and its bytes."""
+
+    name: str
+    data: bytes
 
 
 class PrinterFlags(TypedDict):
@@ -170,11 +281,39 @@ class FrameDue(NamedTuple):
     captured: datetime
 
 
+class Passing(NamedTuple):
+    """Where the job stands as it passes its first layer between two events, and its frame."""
+
+    position: int
+    #: The index of the recorded frame captured then, among the case's frames.
+    frame: int
+    at: datetime
+
+
 class CameraFrame(NamedTuple):
     """The bytes a camera answers a fetch with."""
 
     picture: bytes
     captured: datetime
+
+
+class ClockReading(NamedTuple):
+    """One reading of the replay's clock, and the offset from real time it was read by."""
+
+    #: The replay's time.
+    at: datetime
+    #: How far the replay's clock stood from real time.
+    offset: timedelta
+
+
+@dataclass(frozen=True)
+class JobRead:
+    """One read of the job: how far the replay's clock stood from real time, and where."""
+
+    #: The offset the clock answered this read by.
+    offset: timedelta
+    #: The file position it answered.
+    position: int
 
 
 @dataclass
@@ -215,6 +354,13 @@ class Timeline:
     stopped: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
     heaters: Heaters = field(default_factory=Heaters)
+    #: Every read of the job, in order.
+    job_reads: list[JobRead] = field(default_factory=list)
+    #: Where the job stands as it passes its first layer, between two events.
+    passing: Passing | None = None
+    #: The event whose turn's exit moved the replay on, which a re-prompt of that turn
+    #: stands at again.
+    exited_from: int = 0
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -228,9 +374,27 @@ class Timeline:
         return self.case.moments[self.index]
 
     def now(self) -> datetime:
-        """The replay's current time, which is what the server's clock answers."""
-        moved = datetime.now(UTC) + self.offset
-        return min(moved, self.ceiling) if self.ceiling else moved
+        """The replay's current time, which is what the server's clock answers.
+
+        The offset is read back from the clock file rather than held here: a look
+        on the server passes its wait by moving that file on, and the time every
+        double reads has to move with it.
+        """
+        return self._clock().at
+
+    def _clock(self) -> ClockReading:
+        """The replay's current time, and the offset from real time it was read by."""
+        offset = self._offset()
+        moved = datetime.now(UTC) + offset
+        return ClockReading(min(moved, self.ceiling) if self.ceiling else moved, offset)
+
+    def _offset(self) -> timedelta:
+        """The offset the clock file holds now, or the one last written here."""
+        try:
+            words = self.clock.read_text("ascii").split()
+            return timedelta(milliseconds=int(words[0]))
+        except OSError, ValueError, IndexError:
+            return self.offset
 
     def _set_clock(self, when: datetime) -> None:
         """Move the clock to an instant, and tell the server, which reads the file each time."""
@@ -240,8 +404,19 @@ class Timeline:
         written.write_text(f"{int(self.offset.total_seconds() * 1000)}{ceiling}\n", "ascii")
         written.replace(self.clock)
 
+    def pass_at(self, passing: Passing) -> None:
+        """Stand where the job passed its first layer, between this event and the next.
+
+        Its recorded frame is what every fetch answers until the next event, and its
+        position what every job read does: what the printer watch saw as the layer
+        went down, which a replay jumping from one event to the next would skip.
+        """
+        self.passing = passing
+        self._set_clock(passing.at)
+
     def stand_at(self, index: int) -> None:
         """Stand at one event: its recorded time, and its frame next for a fetch to answer."""
+        self.passing = None
         self.index = index
         self.looked = False
         moment = self.case.moments[index]
@@ -271,7 +446,7 @@ class Timeline:
         """A second run within one turn, the engine's own re-prompt, is still that turn's."""
         with self.lock:
             if self.moved_at_exit and self.index > 0:
-                self.index -= 1
+                self.index = self.exited_from
                 self.owed_event_frame = False
             self.moved_at_exit = False
 
@@ -304,6 +479,10 @@ class Timeline:
         with self.lock:
             if self.finished:
                 return None
+            if self.passing is not None:
+                name = self.case.frames[self.passing.frame].file
+                self.fetches.append(name)
+                return FrameDue(name, self.frame_times[self.passing.frame])
             if self.owed_event_frame:
                 self.cursor = max(self.cursor, self.at_event_frame)
                 self.owed_event_frame = False
@@ -317,7 +496,41 @@ class Timeline:
             shown = max(self.cursor, 0)
             name = self.case.frames[shown].file
             self.fetches.append(name)
-            return FrameDue(name, self.frame_times[shown])
+            captured = self.frame_times[shown]
+            if self.moment.is_outside:
+                # A camera asked at a milestone answers a frame of that moment, which
+                # the recorded frame nearest after it stands for, or the recording's
+                # last frame where it ends before the milestone.
+                captured = min(captured, self.now())
+            return FrameDue(name, captured)
+
+    def obico_printer(self) -> ObicoPrinterRecord:
+        """Obico's record of the printer, from the case's own recorded detector state.
+
+        A case recording what the detector did is one whose print Obico was watching,
+        so the record names that print as its current one and carries the snapshot
+        Obico last took, which a watching Obico replaces every few seconds: it is
+        named by the replay's clock, so two reads apart never share one. A case
+        recording no detector names no current print. The score is not kept by any
+        case frame by frame, so it is the zero a score of nothing flagged reads as.
+        """
+        if not self.case.detector_recorded:
+            return ObicoPrinterRecord(
+                id=OBICO_PRINTER, current_print=None, pic=None, normalized_p=0.0
+            )
+        taken = int(self.now().timestamp())
+        return ObicoPrinterRecord(
+            id=OBICO_PRINTER,
+            current_print=ObicoPrint(
+                id=self.case.obico_print_id() or UNNAMED_OBICO_PRINT,
+                filename=self.case.gcode.name,
+                started_at=self.case.job_started().isoformat().replace("+00:00", "Z"),
+            ),
+            pic=ObicoSnapshot(
+                img_url=f"/media/tsd-pics/snapshots/{OBICO_PRINTER}/latest.jpg?digest={taken}"
+            ),
+            normalized_p=0.0,
+        )
 
     def camera_answer(self) -> CameraFrame | None:
         """The bytes this fetch answers, and when they were captured.
@@ -333,11 +546,14 @@ class Timeline:
             numbered(self.picture(answered.name), len(self.fetches)), answered.captured
         )
 
-    def position(self) -> int:
-        """The job's file position at the replay's current time, as the recording has it.
+    def position(self, at: datetime | None = None) -> int:
+        """The job's file position at an instant, by default the replay's current time.
 
-        The event's own until a look has been taken, and short of the next event's.
+        The event's own until a look has been taken, and short of the next event's;
+        where the job passed its first layer while it stands there.
         """
+        if self.passing is not None:
+            return self.passing.position
         low = self.moment.file_position_bytes
         if not self.looked:
             return low
@@ -347,7 +563,7 @@ class Timeline:
             high = following[0].file_position_bytes - 1
         else:
             high = later.position - 1 if later else self.case.gcode_size - 1
-        return max(low, min(self.case.position_at(self.now()), high))
+        return max(low, min(self.case.position_at(at or self.now()), high))
 
     def _print_time(self) -> int:
         """How long the job has been running: now, less when the recording says it started."""
@@ -361,7 +577,9 @@ class Timeline:
             # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
             if not self.moment.printer_state.answers:
                 return JsonAnswer(503, {"error": "the printer's serial port is gone"})
-            position = self.position()
+            reading = self._clock()
+            position = self.position(reading.at)
+            self.job_reads.append(JobRead(reading.offset, position))
             size = self.case.gcode_size
             job: JobDocument = {
                 "job": {
@@ -528,7 +746,8 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
                     "origin": "local",
                     "type": "machinecode",
                     "size": timeline.case.gcode_size,
-                    "refs": {"download": f"http://{host}/downloads/files/local/{name}"},
+                    # Percent-encoded, as OctoPrint writes the link.
+                    "refs": {"download": f"http://{host}/downloads/files/local/{quote(name)}"},
                 },
             )
 
@@ -590,7 +809,17 @@ def octoprint(timeline: Timeline, api_key: str) -> ThreadingHTTPServer:
     return _serving(Handler)
 
 
-def camera(timeline: Timeline) -> ThreadingHTTPServer:
+class Scene(Protocol):
+    """What the loopback camera answers from: a replay's timeline, or a bench."""
+
+    stopped: threading.Event
+
+    def camera_answer(self) -> CameraFrame | None:
+        """The bytes this fetch answers and when they were captured, or nothing any more."""
+        ...
+
+
+def camera(timeline: Scene) -> ThreadingHTTPServer:
     """The loopback camera, answering each fetch with the frame the timeline stands at."""
 
     class Handler(_Quiet):
@@ -609,11 +838,14 @@ def camera(timeline: Timeline) -> ThreadingHTTPServer:
 
 
 def obico(timeline: Timeline) -> ThreadingHTTPServer:
-    """The Obico double: its health, its acknowledgements and its alert images."""
+    """The Obico double: its health, its acknowledgements, its alert images and its printer."""
 
     class Handler(_Quiet):
         def do_GET(self) -> None:
             path = urlsplit(self.path).path
+            if PRINTER_RECORD.fullmatch(path):
+                self.answer_json(200, timeline.obico_printer())
+                return
             if path.startswith("/media/"):
                 name = unquote(path.rsplit("/", 1)[1])
                 if name not in {moment.event_image for moment in timeline.case.moments}:
@@ -634,10 +866,37 @@ def obico(timeline: Timeline) -> ThreadingHTTPServer:
     return _serving(Handler)
 
 
+def health() -> ThreadingHTTPServer:
+    """An Obico that answers its health and delivers nothing, for a replay no alert is part of."""
+
+    class Handler(_Quiet):
+        def do_GET(self) -> None:
+            if urlsplit(self.path).path.startswith("/media/"):
+                self.answer_json(404, {"error": "no such image"})
+                return
+            self.answer_json(200, {"status": "ok"})
+
+        def do_POST(self) -> None:
+            if self.body() is None:
+                return
+            self.answer_json(404, {"error": "Not found"})
+
+    return _serving(Handler)
+
+
 def control(
-    started: Callable[[], str], exited: Callable[[], None], failed: Callable[[str], None]
+    started: Callable[[], str],
+    exited: Callable[[], None],
+    failed: Callable[[str], None],
+    *,
+    compaction: tuple[Callable[[], str], Callable[[], None]] | None = None,
 ) -> ThreadingHTTPServer:
-    """Where the launcher reports the harness's start and its exit, each answered when done with."""
+    """Where the launcher reports the harness's start and its exit, each answered when done with.
+
+    A harness started to compact a session rather than to take a turn is reported
+    on its own two paths, answered by `compaction`'s pair when one is given: a
+    compaction serves no replay entry, so its exit moves the replay nowhere.
+    """
 
     class Handler(_Quiet):
         def do_POST(self) -> None:
@@ -649,6 +908,11 @@ def control(
                         self.answer(200, started().encode(), "text/plain")
                     case "/exited":
                         exited()
+                        self.answer(200)
+                    case "/compaction-started" if compaction is not None:
+                        self.answer(200, compaction[0]().encode(), "text/plain")
+                    case "/compaction-exited" if compaction is not None:
+                        compaction[1]()
                         self.answer(200)
                     case _:
                         self.answer(404)
@@ -662,3 +926,242 @@ def control(
 def address(server: ThreadingHTTPServer) -> str:
     """The URL one double answers at."""
     return _url(server)
+
+
+#: The filament OctoPrint's analysis says a start request's file needs, in millimetres:
+#: a small part's worth, which a full spool holds many times over.
+BENCH_FILAMENT_MM = 2_000.0
+#: How a `Range` header asks for a file's last bytes.
+SUFFIX_RANGE = re.compile(r"^bytes=-(?P<count>\d+)$")
+
+
+@dataclass
+class Bench:
+    """The printer between prints: the files it holds, the bed the camera sees, its clock.
+
+    What a start request's replay doubles. The OctoPrint stand-in answers an idle,
+    operational printer until it is told to start a file it holds, and then that job
+    printing; the camera answers the request's own frame, captured at the request's
+    moment, to every fetch; the server's clock reads that moment, moving at real speed.
+    """
+
+    #: The bytes of one frame, by its file name.
+    picture: Callable[[str], bytes]
+    #: The file the server's clock is moved by.
+    clock: Path
+    #: Every file the printer holds, by its name.
+    files: dict[str, bytes] = field(default_factory=dict)
+    frame: str | None = None
+    captured: datetime | None = None
+    #: The file a start is of, once one was selected.
+    selected: str | None = None
+    #: The file the printer is printing, once something started it.
+    printing: str | None = None
+    #: Each file a start asked the printer for, in order.
+    started: list[str] = field(default_factory=list)
+    #: Each frame a fetch was answered with, in order.
+    fetches: list[str] = field(default_factory=list)
+    offset: timedelta = timedelta()
+    finished: bool = False
+    stopped: threading.Event = field(default_factory=threading.Event)
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def now(self) -> datetime:
+        """The bench's current time, which is what the server's clock answers."""
+        return datetime.now(UTC) + self.offset
+
+    def stand_at(self, when: datetime, frame: str, gcode: HeldFile) -> None:
+        """A new request: the bed as its frame shows it, the file it asks for, at its moment.
+
+        Whatever the last request started has ended by then, and the printer is idle.
+        """
+        with self.lock:
+            self.offset = when - datetime.now(UTC)
+            written = self.clock.with_suffix(".new")
+            written.write_text(f"{int(self.offset.total_seconds() * 1000)}\n", "ascii")
+            written.replace(self.clock)
+            self.frame = frame
+            self.captured = when
+            self.printing = None
+            self.selected = None
+            self.files[gcode.name] = gcode.data
+
+    def camera_answer(self) -> CameraFrame | None:
+        """The request's frame, numbered for this fetch, and when it was captured."""
+        with self.lock:
+            if self.finished or self.frame is None or self.captured is None:
+                return None
+            self.fetches.append(self.frame)
+            number, frame, captured = len(self.fetches), self.frame, self.captured
+        return CameraFrame(numbered(self.picture(frame), number), captured)
+
+    def job_body(self) -> JobDocument | IdleJobDocument:
+        """What `GET /api/job` answers: nothing selected while idle, the job once started."""
+        with self.lock:
+            if self.printing is None:
+                return {
+                    "job": {
+                        "file": {"name": None, "origin": None, "size": None},
+                        "estimatedPrintTime": None,
+                        "filament": None,
+                    },
+                    "progress": {
+                        "completion": None,
+                        "filepos": None,
+                        "printTime": None,
+                        "printTimeLeft": None,
+                    },
+                    "state": "Operational",
+                    "error": "",
+                }
+            size = len(self.files[self.printing])
+            return {
+                "job": {
+                    "file": {"name": self.printing, "origin": "local", "size": size},
+                    "estimatedPrintTime": None,
+                    "filament": None,
+                },
+                "progress": {
+                    "completion": 0.0,
+                    "filepos": 0,
+                    "printTime": 0,
+                    "printTimeLeft": None,
+                },
+                "state": "Printing",
+                "error": "",
+            }
+
+    def printer_body(self) -> PrinterDocument:
+        """What `GET /api/printer` answers: operational, and printing once started."""
+        with self.lock:
+            printing = self.printing is not None
+        return {
+            "state": {
+                "text": "Printing" if printing else "Operational",
+                "flags": {
+                    "operational": True,
+                    "printing": printing,
+                    "paused": False,
+                    "cancelling": False,
+                    "error": False,
+                    "closedOrError": False,
+                },
+            },
+            "temperature": {
+                "tool0": {"actual": 24.0, "target": 0.0, "offset": 0},
+                "bed": {"actual": 24.0, "target": 0.0, "offset": 0},
+            },
+        }
+
+    def holds(self, name: str) -> bool:
+        """Whether the printer holds a file of that name."""
+        with self.lock:
+            return name in self.files
+
+    def select(self, name: str) -> bool:
+        """Select a file the printer holds, which is what a start is then of."""
+        with self.lock:
+            if name not in self.files:
+                return False
+            self.selected = name
+            return True
+
+    def start(self) -> bool:
+        """Start the selected file, as OctoPrint does only from an operational printer."""
+        with self.lock:
+            if self.printing is not None or self.selected is None:
+                return False
+            self.printing = self.selected
+            self.started.append(self.selected)
+            return True
+
+
+# llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
+def bench_octoprint(bench: Bench, api_key: str) -> ThreadingHTTPServer:
+    """The OctoPrint stand-in over a bench: what a start request reads, and the start itself."""
+
+    class Handler(_Quiet):
+        def do_GET(self) -> None:
+            path = urlsplit(self.path).path
+            if path.startswith("/downloads/files/local/"):
+                self._download(unquote(path.rsplit("/", 1)[1]))
+                return
+            if self.headers.get("X-Api-Key") != api_key:
+                self.answer_json(403, {"error": "Forbidden"})
+                return
+            match path:
+                case "/api/job":
+                    self.answer_json(200, bench.job_body())
+                case "/api/printer":
+                    self.answer_json(200, bench.printer_body())
+                case "/api/connection":
+                    state = bench.printer_body()["state"]["text"]
+                    self.answer_json(200, {"current": {"state": state, "port": "/dev/ttyACM0"}})
+                case "/api/files":
+                    self.answer_json(200, {"files": [self._facts(name) for name in bench.files]})
+                case _ if path.startswith("/api/files/local/"):
+                    name = unquote(path.rsplit("/", 1)[1])
+                    if not bench.holds(name):
+                        self.answer_json(404, {"error": "Not found"})
+                        return
+                    self.answer_json(200, self._facts(name))
+                case _:
+                    self.answer_json(404, {"error": "Not found"})
+
+        def _facts(self, name: str) -> FileFacts:
+            host = self.headers.get("Host", "127.0.0.1")
+            return {
+                "name": name,
+                "origin": "local",
+                "type": "machinecode",
+                "size": len(bench.files[name]),
+                "gcodeAnalysis": {"filament": {"tool0": {"length": BENCH_FILAMENT_MM}}},
+                "refs": {"download": f"http://{host}/downloads/files/local/{name}"},
+            }
+
+        def _download(self, name: str) -> None:
+            """A file's bytes, or only its last ones when a suffix `Range` asks for some of them."""
+            held = bench.files.get(name)
+            if held is None:
+                self.answer(404)
+                return
+            asked = SUFFIX_RANGE.match(self.headers.get("Range", ""))
+            if asked is None or not 0 < int(asked["count"]) < len(held):
+                self.answer(200, held, "text/plain")
+                return
+            start = len(held) - int(asked["count"])
+            self.send_response(206)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Range", f"bytes {start}-{len(held) - 1}/{len(held)}")
+            self.send_header("Content-Length", str(len(held) - start))
+            self.end_headers()
+            self.wfile.write(held[start:])
+
+        def do_POST(self) -> None:
+            if self.headers.get("X-Api-Key") != api_key and self.path != "/api/login":
+                self.answer_json(403, {"error": "Forbidden"})
+                return
+            body = self.body()
+            if body is None:
+                return
+            path = urlsplit(self.path).path
+            match path, body:
+                case "/api/login", _:
+                    self.answer_json(200, {"name": "operator", "session": "replay"})
+                    return
+                case _, {"command": "select", "print": False} if path.startswith(
+                    "/api/files/local/"
+                ):
+                    if not bench.select(unquote(path.rsplit("/", 1)[1])):
+                        self.answer_json(404, {"error": "Not found"})
+                        return
+                case "/api/job", {"command": "start"}:
+                    if not bench.start():
+                        self.answer_json(409, {"error": "Printer is not operational"})
+                        return
+                case _:
+                    self.answer_json(400, {"error": "Not a command this printer takes now"})
+                    return
+            self.answer(204)
+
+    return _serving(Handler)

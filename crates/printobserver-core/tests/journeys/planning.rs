@@ -1,0 +1,864 @@
+//! The slicer's plan the context answers, through the real core over its port
+//! fakes: when it is answered at all, what a failed read or a refused record
+//! leaves, how a change made through this program stands beside what the file
+//! set, and how many indexes the core keeps.
+//!
+//! The printer fake streams each file's G-code into the core's own sink in
+//! pieces that cut its lines, and counts every whole-file read, so how often a
+//! file was read is read off the port rather than inferred.
+
+use printobserver_core::kinds::GcodeIndexedPayload;
+use printobserver_core::records::{InterventionOutcome, PrintAction};
+use printobserver_core::store::PrintStore as _;
+use printobserver_core::{
+    Actor, PeriodicObservationPayload, PlanFact, PrintRecord, Rise, SetValue, block_on,
+};
+use printobserver_printer_api::{PrinterError, PrinterState};
+use printobserver_types::{EventPayload as _, PrintId};
+
+use crate::fakes::PrinterMethod;
+use crate::world::World;
+
+/// The print's file, as every journey here names it.
+const FILE: &str = "benchy.gcode";
+
+/// Two layers of a part: the flow set to one, the fan off, then on, then the
+/// flow narrowed at the second layer.
+const PLAN: &str = "\
+M83
+M221 S100
+M107
+;LAYER_CHANGE
+;Z:0.2
+;TYPE:Perimeter
+G1 X10 Y10
+G1 X20 Y10 E1
+M106 S255
+;LAYER_CHANGE
+;Z:0.4
+G1 X20 Y20 E1
+M221 S95
+G1 X10 Y20 E1
+";
+
+/// The offset just past the first line carrying `needle`.
+fn past(needle: &str) -> i64 {
+    let at = PLAN.find(needle).expect("the plan carries the line");
+    let end = PLAN[at..]
+        .find('\n')
+        .map_or(PLAN.len(), |newline| at + newline + 1);
+    i64::try_from(end).expect("a small offset")
+}
+
+/// A world printing the plan's file, its job at a position.
+fn printing_at(position: Option<i64>) -> (World, PrintRecord) {
+    let world = World::new();
+    world.printer.holds_gcode(FILE, PLAN);
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Printing);
+    world.printer.reports_state(PrinterState::Printing);
+    world
+        .printer
+        .reports_position(position, Some(i64::try_from(PLAN.len()).expect("small")));
+    let print = world.open_print(7);
+    (world, print)
+}
+
+/// How many indexes the core recorded building for a print.
+fn builds(world: &World, print_id: PrintId) -> usize {
+    world
+        .store
+        .events_of(print_id)
+        .iter()
+        .filter(|event| event.kind().as_str() == GcodeIndexedPayload::KIND)
+        .count()
+}
+
+/// A fan change the operator asks for.
+fn fan(percent: f64, duration_s: Option<i64>) -> PrintAction {
+    PrintAction::SetFanPercent {
+        percent,
+        duration_s,
+        reason: "a journey sets the fan".to_owned(),
+        actor: Actor::Operator,
+    }
+}
+
+/// A flow change the operator asks for.
+fn flow(factor: f64) -> PrintAction {
+    PrintAction::SetFlowrateFactor {
+        factor,
+        duration_s: None,
+        reason: "a journey sets the flow".to_owned(),
+        actor: Actor::Operator,
+    }
+}
+
+/// The plan is answered for an open print whose file the printer is running
+/// at a known position, and for nothing else: a job reporting no position, a
+/// job of another file and a print that is over each answer none, and none of
+/// them reads the file.
+///
+/// A job at no known place and a print that is over are proven end to end by
+/// `indexing::the_plan_follows_the_running_job_and_a_bounded_change_until_it_expires`;
+/// another file's job is a print of its own there, so the core's rule for it
+/// is held here.
+#[test]
+fn the_plan_is_answered_only_for_the_print_the_running_job_is() {
+    let (world, print) = printing_at(None);
+    let context = world.context(print.id).expect("the context reads");
+    assert_eq!(
+        context.slicer, None,
+        "a job reporting no position was planned"
+    );
+
+    world
+        .printer
+        .reports_position(Some(past("M106 S255")), None);
+    world.printer.holds_gcode("other.gcode", PLAN);
+    world
+        .printer
+        .reports_job(Some("other.gcode"), PrinterState::Printing);
+    let context = world.context(print.id).expect("the context reads");
+    assert_eq!(
+        context.slicer, None,
+        "another file's job was planned for this print"
+    );
+    assert_eq!(world.printer.gcode_reads("other.gcode"), 0);
+
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Printing);
+    let context = world.context(print.id).expect("the context reads");
+    assert_eq!(
+        context.slicer.and_then(|plan| plan.layer),
+        Some(1),
+        "the print's own running job was not planned"
+    );
+
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Operational);
+    let context = world.context(print.id).expect("the context reads");
+    assert!(
+        context.print.ended_at.is_some(),
+        "the job being over did not end the print"
+    );
+    assert_eq!(context.slicer, None, "a print that is over was planned");
+    assert_eq!(world.printer.gcode_reads(FILE), 1);
+}
+
+/// A read the printer fails builds nothing and records no build, and the
+/// context is answered without a plan; the next read builds the index once,
+/// and no read after it touches the file.
+#[test]
+fn a_failed_read_builds_nothing_and_the_next_read_builds_once() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.printer.fails(
+        PrinterMethod::ReadGcode,
+        PrinterError::Unreachable {
+            detail: "the link dropped".to_owned(),
+        },
+    );
+    let context = world.context(print.id).expect("the context reads");
+    assert_eq!(context.slicer, None);
+    assert_eq!(builds(&world, print.id), 0);
+
+    world.printer.heals();
+    let planned = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the healed read planned the print");
+    assert_eq!(planned.layer, Some(1));
+    world.context(print.id).expect("the context reads");
+    assert_eq!(world.printer.gcode_reads(FILE), 2);
+    assert_eq!(builds(&world, print.id), 1);
+}
+
+/// A store refusing the record of a build leaves the index built: the plan is
+/// answered, and the next read uses it rather than reading the file again.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// `SQLite` store refuses one append only when its file is damaged or its disk
+/// full, and neither can be caused from outside the process without failing
+/// every read the same context answers too. The server journey
+/// `indexing::one_read_of_a_prints_gcode_plans_every_check_of_it` holds the
+/// path where the record is taken, end to end.
+#[test]
+fn the_plan_stands_when_the_store_refuses_the_record_of_its_build() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.store.refuses_appends_for(
+        print.id,
+        printobserver_core::store::StoreError::Database {
+            detail: "the disk is full".to_owned(),
+        },
+    );
+    let context = world.context(print.id).expect("the context reads");
+    assert_eq!(context.slicer.and_then(|plan| plan.layer), Some(1));
+    assert_eq!(builds(&world, print.id), 0);
+
+    world.store.heals();
+    let context = world.context(print.id).expect("the context reads");
+    assert_eq!(context.slicer.and_then(|plan| plan.layer), Some(1));
+    assert_eq!(
+        world.printer.gcode_reads(FILE),
+        1,
+        "the built index was not reused"
+    );
+}
+
+/// The latest flow change made through this program stands beside what the
+/// file set until the file sets the flow again; a change made before any
+/// position was read is placed at the file's start, so whatever the file has
+/// set since takes over from it.
+#[test]
+fn a_change_stands_beside_the_files_until_the_file_sets_it_again() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world
+        .request(print.id, fan(60.0, None))
+        .expect("the fan change is recorded");
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(
+        plan.fan_percent,
+        Some(SetValue {
+            file: Some(0.0),
+            changed: None
+        }),
+        "a change made before any position was read stood over what the file set since"
+    );
+
+    world
+        .request(print.id, flow(1.02))
+        .expect("the flow change is recorded");
+    world
+        .request(print.id, flow(1.05))
+        .expect("the flow change is recorded");
+    world
+        .request(print.id, fan(70.0, None))
+        .expect("the fan change is recorded");
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(
+        (plan.flow_factor, plan.fan_percent),
+        (
+            Some(SetValue {
+                file: Some(1.0),
+                changed: Some(1.05)
+            }),
+            Some(SetValue {
+                file: Some(0.0),
+                changed: Some(70.0)
+            })
+        ),
+        "the latest changes do not stand beside the file's"
+    );
+
+    world.printer.reports_position(Some(past("M221 S95")), None);
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(
+        (plan.flow_factor, plan.fan_percent),
+        (
+            Some(SetValue {
+                file: Some(0.95),
+                changed: None
+            }),
+            Some(SetValue {
+                file: Some(100.0),
+                changed: None
+            })
+        ),
+        "the file's later commands did not take over from the changes"
+    );
+}
+
+/// A bounded change stands while its intervention does, and no longer once
+/// the intervention has expired and put the prior value back.
+///
+/// Proven end to end by
+/// `indexing::the_plan_follows_the_running_job_and_a_bounded_change_until_it_expires`;
+/// here the expiry is driven by the fake clock rather than waited out.
+#[test]
+fn a_bounded_change_stands_until_its_intervention_expires() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.context(print.id).expect("the context reads");
+    let outcome = world
+        .request(print.id, fan(80.0, Some(60)))
+        .expect("the fan change is recorded");
+    let intervention = outcome.intervention.expect("a bounded change opens one");
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(plan.fan_percent.and_then(|set| set.changed), Some(80.0));
+
+    world.clock.advance(61);
+    world.wait_until("the intervention settles", || {
+        world
+            .store
+            .intervention(intervention.id)
+            .is_some_and(|held| held.outcome != InterventionOutcome::StillActive)
+    });
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(
+        plan.fan_percent.and_then(|set| set.changed),
+        None,
+        "an expired change still stands"
+    );
+}
+
+/// The core keeps the indexes of its sixteen most recent prints: building a
+/// seventeenth lets go of another, keeps the one it just built, and a print
+/// let go of is read and built again when it runs once more.
+///
+/// Over the port fakes rather than through the running server, by choice: the
+/// bound is a memory ceiling over prints long finished, and reaching it through
+/// the server takes seventeen whole print lifecycles, each a job adopted and
+/// ended over the scripted instance. What the bound decides, which index goes
+/// and that the newest stays, is the core's alone and is read off the port's
+/// own count of reads here; building and reusing an index through the server
+/// is proven end to end by the `indexing` server journeys.
+#[test]
+fn the_core_keeps_a_bounded_number_of_indexes() {
+    let world = World::new();
+    world.printer.reports_state(PrinterState::Printing);
+    let mut prints = Vec::new();
+    for number in 0..17 {
+        let file = format!("part-{number}.gcode");
+        world.printer.holds_gcode(&file, PLAN);
+        world
+            .printer
+            .reports_job(Some(&file), PrinterState::Printing);
+        world
+            .printer
+            .reports_position(Some(past("G1 X20 Y10 E1")), None);
+        let print = printobserver_core::block_on(
+            world
+                .store
+                .open_print(Some(100 + number), Some(file.clone())),
+        )
+        .expect("the store opens a print");
+        assert!(
+            world
+                .context(print.id)
+                .expect("the context reads")
+                .slicer
+                .is_some(),
+            "{file} was not planned"
+        );
+        prints.push((print, file));
+    }
+    let reads = |file: &str| world.printer.gcode_reads(file);
+    assert!(
+        prints.iter().all(|(_, file)| reads(file) == 1),
+        "a print was read more than once on its way in"
+    );
+
+    let (last, last_file) = &prints[16];
+    world.context(last.id).expect("the context reads");
+    assert_eq!(reads(last_file), 1, "the newest index was let go of");
+
+    let rebuilt: Vec<&str> = prints[..16]
+        .iter()
+        .filter(|(print, file)| {
+            world
+                .printer
+                .reports_job(Some(file), PrinterState::Printing);
+            world.context(print.id).expect("the context reads");
+            reads(file) == 2
+        })
+        .map(|(_, file)| file.as_str())
+        .collect();
+    assert!(
+        !rebuilt.is_empty(),
+        "seventeen prints were all held, past the bound"
+    );
+}
+
+/// A plan that sets the fan to full before its first layer, and to full again
+/// part-way through it.
+const REPEATED: &str = "\
+M83
+M106 S255
+;LAYER_CHANGE
+;Z:0.2
+;TYPE:Perimeter
+G1 X10 Y10
+G1 X20 Y10 E1
+M106 S255
+G1 X20 Y20 E1
+";
+
+/// A file setting the same value again after a change through this program
+/// puts its value back over the change, which no longer stands.
+///
+/// Proven end to end by `indexing::one_read_of_a_prints_gcode_plans_every_check_of_it`,
+/// where the file's own later fan command takes over from the operator's.
+#[test]
+fn a_file_repeating_a_value_takes_over_from_a_change_made_before_it() {
+    let world = World::new();
+    world.printer.holds_gcode(FILE, REPEATED);
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Printing);
+    world.printer.reports_state(PrinterState::Printing);
+    let first = REPEATED.find("G1 X20 Y10 E1").expect("the move") + "G1 X20 Y10 E1\n".len();
+    world
+        .printer
+        .reports_position(Some(i64::try_from(first).expect("small")), None);
+    let print = world.open_print(7);
+    world.context(print.id).expect("the context reads");
+    world
+        .request(print.id, fan(40.0, None))
+        .expect("the fan change is recorded");
+    let plan = world.context(print.id).expect("the context reads").slicer;
+    assert_eq!(
+        plan.and_then(|plan| plan.fan_percent),
+        Some(SetValue {
+            file: Some(100.0),
+            changed: Some(40.0)
+        })
+    );
+
+    world
+        .printer
+        .reports_position(Some(i64::try_from(REPEATED.len()).expect("small")), None);
+    let plan = world.context(print.id).expect("the context reads").slicer;
+    assert_eq!(
+        plan.and_then(|plan| plan.fan_percent),
+        Some(SetValue {
+            file: Some(100.0),
+            changed: None
+        }),
+        "the file's repeated command did not take over from the change"
+    );
+}
+
+/// A store that cannot say where the print had got leaves the action taken,
+/// and the change is placed at the file's start: whatever the file set since
+/// takes over from it.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// `SQLite` store fails a read only when its file is damaged, which cannot be
+/// caused from outside the process without failing every other read too.
+#[test]
+fn an_action_whose_place_cannot_be_read_is_placed_at_the_files_start() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.context(print.id).expect("the context reads");
+    world.store.fails(
+        crate::fakes::StoreMethod::FilePosition,
+        printobserver_core::store::StoreError::Database {
+            detail: "the ledger is locked".to_owned(),
+        },
+    );
+    let outcome = world
+        .request(print.id, flow(1.05))
+        .expect("the flow change is recorded");
+    assert!(outcome.executed.is_some_and(|executed| executed.is_ok()));
+    world.store.heals();
+
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(
+        plan.flow_factor,
+        Some(SetValue {
+            file: Some(1.0),
+            changed: None
+        })
+    );
+}
+
+/// An executed action whose payload is unreadable, or whose request is not in
+/// the print's history, changes nothing the plan answers.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// server writes only well-formed records of requests it took, so neither
+/// record can be made through it.
+#[test]
+fn an_unreadable_or_unmatched_action_record_changes_nothing() {
+    use printobserver_core::store::{EventDraft, EventStore as _};
+    use printobserver_types::{EventBody, EventKind, EventSource, serde_json::json};
+
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    for payload in [
+        json!({ "not": "an action" }),
+        json!({ "action_id": printobserver_core::ActionId::new() }),
+    ] {
+        printobserver_core::block_on(world.store.append_event(EventDraft {
+            print_id: Some(print.id),
+            source: EventSource::new("system"),
+            received_at: printobserver_core::Clock::now(world.clock.as_ref()),
+            body: EventBody {
+                kind: EventKind::new("action_executed").expect("a kind"),
+                payload,
+            },
+            raw: None,
+        }))
+        .expect("the store takes the record");
+    }
+
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the print is planned");
+    assert_eq!(
+        (plan.flow_factor, plan.fan_percent),
+        (
+            Some(SetValue {
+                file: Some(1.0),
+                changed: None
+            }),
+            Some(SetValue {
+                file: Some(0.0),
+                changed: None
+            })
+        )
+    );
+}
+
+/// A store that cannot read the print's actions fails the context read, as
+/// every store read of the context does, rather than answering a plan that
+/// quietly leaves the print's changes out — while the print's recent events,
+/// read before it, were read.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// `SQLite` store fails a read only when its file is damaged, which cannot be
+/// caused from outside the process without failing every other read too.
+#[test]
+fn the_actions_the_store_cannot_read_fail_the_context_read() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.context(print.id).expect("the context reads");
+    world.store.refuses_history_naming(
+        printobserver_types::EventKind::new("action_executed").expect("a kind"),
+        printobserver_core::store::StoreError::Database {
+            detail: "the log is locked".to_owned(),
+        },
+    );
+
+    let refused = world.context(print.id);
+
+    assert!(
+        matches!(&refused, Err(printobserver_core::CoreError::Store(_))),
+        "{refused:?}"
+    );
+    world.store.heals();
+    assert!(world.context(print.id).is_ok());
+}
+
+/// A print whose file is named with a name no file could carry is planned
+/// with nothing, and nothing is read.
+#[test]
+fn a_print_whose_file_name_is_no_file_is_not_planned() {
+    let world = World::new();
+    world.printer.reports_state(PrinterState::Printing);
+    world
+        .printer
+        .reports_job(Some("a/b.gcode"), PrinterState::Printing);
+    world.printer.reports_position(Some(64), None);
+    let print = printobserver_core::block_on(
+        world
+            .store
+            .open_print(Some(9), Some("a/b.gcode".to_owned())),
+    )
+    .expect("the store opens a print");
+
+    let context = world.context(print.id).expect("the context reads");
+
+    assert_eq!(context.slicer, None);
+    assert_eq!(world.printer.gcode_reads("a/b.gcode"), 0);
+}
+
+/// Until a periodic observation is half an hour old the plan states no rise;
+/// once one is, the plan states when it was taken, the part's top the file had
+/// reached by its job's position, and the Z the file has added since. This world has no
+/// camera, so the observation carries no frame time and its received time
+/// stands in for it.
+#[test]
+fn the_plan_states_the_height_added_since_a_half_hour_old_frame() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    assert!(
+        world
+            .store
+            .events_of(print.id)
+            .iter()
+            .any(|event| event.kind().as_str() == PeriodicObservationPayload::KIND),
+        "the observation is not recorded"
+    );
+
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the job is planned");
+    assert_eq!(
+        plan.rise, None,
+        "a frame of this moment was given as an earlier one"
+    );
+    assert!(
+        plan.unknown.contains(&PlanFact::Rise),
+        "a rise not yet known was left out rather than stated unknown: {:?}",
+        plan.unknown
+    );
+
+    world.clock.advance(29 * 60);
+    world.printer.reports_position(Some(past("M221 S95")), None);
+    let plan = world.context(print.id).expect("the context reads").slicer;
+    assert_eq!(
+        plan.and_then(|plan| plan.rise),
+        None,
+        "a frame under half an hour old was given as the earlier one"
+    );
+
+    world.clock.advance(2 * 60);
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the job is planned");
+    assert_eq!(
+        plan.rise,
+        Some(Rise {
+            since: observed_at(&world, print.id),
+            mm: [0.2, 0.2],
+        }),
+        "the rise since the observation half an hour back is not the file's"
+    );
+    assert!(
+        !plan.unknown.contains(&PlanFact::Rise),
+        "{:?}",
+        plan.unknown
+    );
+}
+
+/// When the periodic observation was received that a world with no camera
+/// stands its frame time in by.
+fn observed_at(world: &World, print_id: PrintId) -> printobserver_types::Timestamp {
+    world
+        .store
+        .events_of(print_id)
+        .iter()
+        .find(|event| event.kind().as_str() == PeriodicObservationPayload::KIND)
+        .expect("the observation is recorded")
+        .received_at
+}
+
+/// The plan's rise is measured from the newest frame at least half an hour
+/// old that was seen, whether a periodic observation or a look was given it:
+/// a look younger than that leaves the observation as the frame; once the
+/// look is old enough it is the frame, with the part's top where the job then
+/// stood and the rise since.
+#[test]
+fn the_rise_is_measured_from_the_newest_half_hour_old_frame_a_look_was_given_too() {
+    let world = World::with_camera();
+    world.printer.holds_gcode(FILE, PLAN);
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Printing);
+    world.printer.reports_state(PrinterState::Printing);
+    let size = Some(i64::try_from(PLAN.len()).expect("small"));
+    world
+        .printer
+        .reports_position(Some(past("G1 X20 Y10 E1")), size);
+    let print = world.open_print(7);
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    let observation = world
+        .store
+        .events_of(print.id)
+        .iter()
+        .find_map(|event| event.payload_as::<PeriodicObservationPayload>()?.ok())
+        .and_then(|observed| observed.frame_captured_at)
+        .expect("the observation was given a frame");
+
+    world.clock.advance(60);
+    world.printer.reports_position(Some(past(";Z:0.4")), size);
+    let look = block_on(
+        world
+            .core
+            .take_look(print.id, std::time::Duration::ZERO, Vec::new()),
+    )
+    .expect("the look is taken");
+    let looked = look
+        .event
+        .payload_as::<printobserver_core::kinds::CameraLookPayload>()
+        .and_then(Result::ok)
+        .and_then(|look| look.frame_captured_at)
+        .expect("the look was given a frame");
+    assert!(looked > observation);
+
+    // The observation half an hour and thirty seconds old, the look thirty
+    // seconds short of it.
+    world.clock.advance(30 * 60 - 30);
+    world.printer.reports_position(Some(past("M221 S95")), size);
+    let rise = |world: &World| {
+        world
+            .context(print.id)
+            .expect("the context reads")
+            .slicer
+            .expect("the job is planned")
+            .rise
+    };
+    assert_eq!(
+        rise(&world),
+        Some(Rise {
+            since: observation,
+            mm: [0.2, 0.2],
+        }),
+        "a look under half an hour old was measured from"
+    );
+
+    world.clock.advance(60);
+    assert_eq!(
+        rise(&world),
+        Some(Rise {
+            since: looked,
+            mm: [0.4, 0.0],
+        }),
+        "the newer half-hour-old frame, the look's, was not measured from"
+    );
+}
+
+/// An alert's frame is one the agent was shown, so once it is half an hour old
+/// the plan's rise is measured from it rather than from an observation older
+/// still: a check after an alert, a pause and a person's resume was told the
+/// rise since the print's first frame hours before, and paused a print that
+/// had grown as planned since the alert's frame (`warning-after-resume`).
+#[test]
+fn the_rise_is_measured_from_an_alerts_frame_too() {
+    let world = World::with_camera();
+    world.printer.holds_gcode(FILE, PLAN);
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Printing);
+    world.printer.reports_state(PrinterState::Printing);
+    let size = Some(i64::try_from(PLAN.len()).expect("small"));
+    world
+        .printer
+        .reports_position(Some(past("G1 X20 Y10 E1")), size);
+    let print = world.open_print(7);
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    for turn in observed.turns {
+        block_on(world.core.run_supervision(turn)).expect("the turn is supervised");
+    }
+    let observation = world
+        .store
+        .events_of(print.id)
+        .iter()
+        .find_map(|event| event.payload_as::<PeriodicObservationPayload>()?.ok())
+        .and_then(|observed| observed.frame_captured_at)
+        .expect("the observation was given a frame");
+
+    world.clock.advance(60);
+    world.printer.reports_position(Some(past(";Z:0.4")), size);
+    world
+        .handle(crate::world::failure_alert_with_image(7))
+        .expect("the alert is handled");
+    let turns = world.agent.turns();
+    assert_eq!(turns.len(), 2, "the alert was given no turn");
+    let alerted = turns[1]
+        .situation
+        .frame_captured_at
+        .expect("the alert's check was given a frame");
+    assert!(alerted > observation);
+
+    world.clock.advance(30 * 60 - 30);
+    world.printer.reports_position(Some(past("M221 S95")), size);
+    let rise = |world: &World| {
+        world
+            .context(print.id)
+            .expect("the context reads")
+            .slicer
+            .expect("the job is planned")
+            .rise
+    };
+    assert_eq!(
+        rise(&world).map(|rise| rise.since),
+        Some(observation),
+        "an alert's frame under half an hour old was measured from"
+    );
+
+    world.clock.advance(60);
+    assert_eq!(
+        rise(&world),
+        Some(Rise {
+            since: alerted,
+            mm: [0.4, 0.0],
+        }),
+        "the newer half-hour-old frame, the alert's, was not measured from"
+    );
+}
+
+/// An observation whose job had no position says nothing of how far the plan
+/// has risen since, and the context is answered all the same.
+///
+/// Over the fakes rather than through the running server, by choice: the rise
+/// reads an observation half an hour old, which the running server makes only
+/// by running for half an hour; its stated rise is proven end to end by
+/// `indexing::a_check_is_told_the_plans_rise_and_the_settings_at_odds_with_it`.
+#[test]
+fn an_observation_with_no_position_gives_no_rise() {
+    let (world, print) = printing_at(None);
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    world.clock.advance(31 * 60);
+    world.printer.reports_position(Some(past("M221 S95")), None);
+
+    let plan = world
+        .context(print.id)
+        .expect("the context reads")
+        .slicer
+        .expect("the job is planned");
+    assert_eq!(plan.rise, None, "a rise was given from no position");
+    assert_eq!(plan.layer, Some(2));
+}
+
+/// A store that cannot read the print's observations fails the context read
+/// rather than leaving the rise out in silence, and heals with it.
+///
+/// Over the store fake rather than through the running server, by choice: the
+/// `SQLite` store fails a read only when its file is damaged, which cannot be
+/// caused from outside the process without failing every other read too.
+#[test]
+fn the_observations_the_store_cannot_read_fail_the_context_read() {
+    let (world, print) = printing_at(Some(past("G1 X20 Y10 E1")));
+    world.context(print.id).expect("the context reads");
+    world.store.refuses_history_naming(
+        printobserver_types::EventKind::new(PeriodicObservationPayload::KIND).expect("a kind"),
+        printobserver_core::store::StoreError::Database {
+            detail: "the log is locked".to_owned(),
+        },
+    );
+
+    let refused = world.context(print.id);
+
+    assert!(
+        matches!(&refused, Err(printobserver_core::CoreError::Store(_))),
+        "{refused:?}"
+    );
+    world.store.heals();
+    assert!(world.context(print.id).is_ok());
+}

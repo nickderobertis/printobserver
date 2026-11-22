@@ -39,7 +39,7 @@ use printobserver_types::serde::{Deserialize, Serialize};
 use printobserver_types::{EventPayload, EventRecord, PrintId, PrinterState, Timestamp};
 
 pub use access::{CREDENTIAL_ENV, SERVER_ENV, TurnAccess, TurnPass, TurnSession};
-pub use assessment::{AgentAssessment, Confidence};
+pub use assessment::{AgentAssessment, Confidence, Disposition};
 pub use session::{SessionPhase, SupervisionSession};
 
 /// A future this port's methods answer with, in the one shape a trait object
@@ -60,6 +60,18 @@ pub struct TurnRequest {
     pub image_path: Option<PathBuf>,
     /// The command the turn runs to read the print's context.
     pub context_command: String,
+    /// The print's context as the context command answered it when the turn
+    /// began, its events cut to those since the agent last answered: what the
+    /// turn decides from without running a command. Absent when no context
+    /// could be read.
+    ///
+    /// A document rather than the context's own type, because that type is the
+    /// supervision core's, which this port may not depend on: the core builds
+    /// it from its own context answer and nothing else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub facts: Option<
+        printobserver_types::serde_json::Map<String, printobserver_types::serde_json::Value>,
+    >,
     /// What the supervisor knew about the moment the turn began.
     #[serde(default)]
     pub situation: TurnSituation,
@@ -105,6 +117,11 @@ pub struct TurnSituation {
     /// moment it answered; absent when the event says so itself or has no frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame_captured_at: Option<Timestamp>,
+    /// What the image attached to the prompt is, and why it is that one, in
+    /// one line; absent when no image is attached or what made it says
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 impl Sample for TurnSituation {
@@ -120,6 +137,11 @@ impl Sample for TurnSituation {
                     .to_owned(),
             ),
             frame_captured_at: Some(Timestamp::sample_full()),
+            image: Some(
+                "the three-panel check image: this layer's planned toolpath on the frame, \
+                 a close-up of the part being printed, and the previous check's frame"
+                    .to_owned(),
+            ),
         }
     }
 
@@ -252,4 +274,22 @@ pub trait SupervisorPort: Send + Sync {
         print_id: PrintId,
         close_reason: String,
     ) -> BoxFuture<'_, Result<(), SupervisorError>>;
+
+    /// Answer once no idle work of this port on one print's session is under
+    /// way: at once when there is none, and otherwise when it ends.
+    ///
+    /// What the periodic observation awaits before it claims the print, so a
+    /// scheduled check does not cancel a compaction of the session it is about
+    /// to continue; every other event's turn starts at once. A port does all
+    /// its work inside a turn unless it says otherwise, which is why this
+    /// answers at once by default.
+    ///
+    /// # Errors
+    ///
+    /// None this default answers; a port whose wait could not be taken answers
+    /// [`SupervisorError::Unavailable`], and the check runs regardless.
+    fn idle_work_ended(&self, print_id: PrintId) -> BoxFuture<'_, Result<(), SupervisorError>> {
+        let _ = print_id;
+        Box::pin(core::future::ready(Ok(())))
+    }
 }

@@ -2,7 +2,7 @@
   "name": "printobserver-sdk-node",
   "root": "npm/printobserver-sdk",
   "projectType": "library",
-  "tags": ["lang:typescript", "type:client"],
+  "tags": ["lang:typescript", "type:client", "platform:independent"],
   "targets": {
     "format": {
       "command": "bunx biome format --write npm/printobserver-sdk"

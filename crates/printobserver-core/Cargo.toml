@@ -22,7 +22,16 @@ printobserver-vision-api = { workspace = true }
 # of this workspace, so no implementation crate reaches core through its tests
 # either.
 [dev-dependencies]
+# The CPU time of the thread the `index_budget` binary builds the index on: what
+# the budget `gcode-index-seconds` measures, because a shared runner's load
+# moves wall time and not the work the build does.
+cpu-time = "1"
 jsonschema.workspace = true
+# The counting global allocator the `index_budget` binary measures the index
+# build's peak heap with: the one allocator that binary runs under, so every
+# allocation the build makes is counted, without an `unsafe` site of this
+# workspace's own.
+peak_alloc = "0.3"
 quote = "1"
 syn = { version = "3", features = ["full", "parsing", "printing", "extra-traits", "visit"] }
 

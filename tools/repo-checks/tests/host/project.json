@@ -1,0 +1,17 @@
+{
+  "name": "repo-checks-host",
+  "root": "tools/repo-checks/tests/host",
+  "projectType": "library",
+  "tags": ["lang:python", "type:tooling"],
+  "metadata": { "description": "llmlint: ignore[expensive_tests_stay_behind_their_own_edge] suppressions.toml has the reason." },
+  "implicitDependencies": ["contract-codegen", "github-workflows", "repo-checks"],
+  "targets": {
+    "format": { "command": "uv run -q ruff format tools/repo-checks/tests/host" },
+    "format-check": { "command": "uv run -q ruff format --check tools/repo-checks/tests/host" },
+    "lint": { "command": "uv run -q ruff check tools/repo-checks/tests/host" },
+    "typecheck": {
+      "command": "uv run -q ty check tools/repo-checks/tests/host && uv run -q ty check --python-platform win32 tools/repo-checks/tests/host"
+    },
+    "test": { "command": "uv run -q coverage run -m pytest tools/repo-checks/tests/host" }
+  }
+}

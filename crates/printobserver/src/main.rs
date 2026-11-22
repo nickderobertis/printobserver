@@ -34,7 +34,7 @@ fn printed(answered: Result<credential::Printed, Failure>) -> Outcome {
 
 /// Run the supervisor until the service manager stops it.
 async fn serve(config: PathBuf) -> Result<(), String> {
-    let running = Server::start(&config)
+    let running = Server::start_with_usage(&config, &printobserver::surface::usage_lines())
         .await
         .map_err(|error| error.to_string())?;
     for warning in running.warnings() {

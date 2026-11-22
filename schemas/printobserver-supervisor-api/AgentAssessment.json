@@ -19,6 +19,26 @@
           "type": "string"
         }
       ]
+    },
+    "Disposition": {
+      "description": "What the agent's answer asks for next, in the vocabulary an\nacknowledgement's disposition is spelled in.\n\nA turn that acknowledged nothing by command is acknowledged from its\nanswer with this, so a quiet check records its judgement without a command\nof its own.",
+      "oneOf": [
+        {
+          "const": "continue",
+          "description": "Carry on printing.",
+          "type": "string"
+        },
+        {
+          "const": "watch",
+          "description": "Carry on printing, watched more closely.",
+          "type": "string"
+        },
+        {
+          "const": "stop",
+          "description": "The print should stop.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -32,6 +52,10 @@
     "did": {
       "description": "What the agent did.",
       "type": "string"
+    },
+    "disposition": {
+      "$ref": "#/$defs/Disposition",
+      "description": "What the turn's event is acknowledged with, when the turn acknowledged\nnothing by command."
     },
     "escalating": {
       "description": "Whether the agent is escalating to a person.",
@@ -56,7 +80,8 @@
     "should_continue",
     "did",
     "why",
-    "escalating"
+    "escalating",
+    "disposition"
   ],
   "title": "AgentAssessment",
   "type": "object"

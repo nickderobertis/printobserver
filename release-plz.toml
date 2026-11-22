@@ -46,27 +46,38 @@ semver_check = true
 # One tag and one GitHub Release per workspace version, both named `v<version>`
 # and both created by the `printobserver` package alone.
 #
-# The two templates stay HERE, workspace-wide: every package's `--output json`
-# entry carries its rendered `git_tag_name` whether or not that package creates
-# the tag, and `just release-answer` admits only `v<version>`. Creation is off
-# here and on for one package below because release-plz tags and releases PER
-# PACKAGE, in release order, and under a shared name the second package to
-# publish dies creating a ref the first already created — with every crate
-# after it unpublished. `tests/repo-e2e/tests/test_release_tag_journey.py`
-# holds this.
-git_tag_name = "v{{ version }}"
-git_release_name = "v{{ version }}"
+# Every OTHER package renders its own tag name, `<package>-v<version>` — the
+# workspace default release-plz documents — and creates none. The name has to
+# be its own because `release-plz release-pr` reads a package whose rendered tag
+# already exists as one the registry must already serve, and stops the whole
+# draft when it does not: under one shared `v<version>`, every crate added after
+# a release found that release's tag and died "not found in the registry, but
+# the git tag v<version> exists", which is what stopped every draft after
+# `printobserver-panels` landed on top of v0.13.1. A name nothing creates is
+# never found, so a new crate is drafted and published at the group's version
+# like any other; `tests/release-drafting` holds this by drafting, under this
+# file, a fixture workspace that gains a crate after a tagged release.
+#
+# Creation is off here and on for one package below because release-plz tags
+# and releases PER PACKAGE, in release order, and under a shared name the second
+# package to publish dies creating a ref the first already created — with every
+# crate after it unpublished. Every package's `--output json` entry carries its
+# rendered `git_tag_name` whether or not that package creates the tag, and
+# `just release-answer` folds them into the one `v<version>` the release cut.
+# `tests/repo-e2e-independent/tests/test_release_tag_journey.py` holds this.
+git_tag_name = "{{ package }}-v{{ version }}"
+git_release_name = "{{ package }}-v{{ version }}"
 git_tag_enable = false
 git_release_enable = false
 
 # One version group holding every crate of the workspace, so a release of any
-# of them is a release of all twelve at one version — the one `[workspace.
+# of them is a release of all thirteen at one version — the one `[workspace.
 # package] version` every crate inherits and the one `v<version>` tag below.
 # Without it release-plz decides each crate apart: a release of some writes the
 # next version into that shared field, which moves every crate, but rewrites
 # the requirements of only the crates it released, and `cargo update` then
 # refuses a sibling requiring the version just moved past.
-# `tests/repo-e2e/tests/test_release_path_journey.py` holds this by drafting a
+# `tests/repo-e2e-independent/tests/test_release_path_journey.py` holds this by drafting a
 # release of one crate and requiring every crate to move with it.
 [[package]]
 name = "printobserver-types"
@@ -101,6 +112,10 @@ name = "printobserver-oneharness"
 version_group = "printobserver"
 
 [[package]]
+name = "printobserver-panels"
+version_group = "printobserver"
+
+[[package]]
 name = "printobserver-store-sqlite"
 version_group = "printobserver"
 
@@ -119,6 +134,8 @@ version_group = "printobserver"
 [[package]]
 name = "printobserver"
 version_group = "printobserver"
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
 git_tag_enable = true
 git_release_enable = true
 
@@ -127,6 +144,28 @@ git_release_enable = true
 # independent of these display groups, so skipping a type from the changelog
 # never changes the bump.
 [changelog]
+# release-plz's own default body (release_plz_core 0.38.4's
+# `default_changelog_body_config`, the release `repo-policy.toml` holds) with
+# one change: the section's link. The default links `release_link`, which
+# release-plz builds from each package's OWN tag name — `<package>-v<version>`
+# for every package but `printobserver`, a name nothing creates — so it is built
+# here from the one tag a release is cut under, `v<version>`: the release
+# before compared with this one, or this release alone when there is none
+# before. `tests/repo-e2e-independent/tests/test_release_tag_journey.py` holds
+# every drafted link to tags that exist.
+body = '''
+## [{{ version }}]{%- if remote.link -%}{%- if previous.version and previous.version != version -%}({{ remote.link }}/compare/v{{ previous.version }}...v{{ version }}){%- else -%}({{ remote.link }}/releases/tag/v{{ version }}){%- endif -%}{%- endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+
+{% for commit in commits %}
+{%- if commit.scope -%}
+- *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}{%- if commit.links %} ({% for link in commit.links %}[{{link.text}}]({{link.href}}) {% endfor -%}){% endif %}
+{% else -%}
+- {% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message }}
+{% endif -%}
+{% endfor -%}
+{% endfor %}'''
 commit_parsers = [
   { message = "^feat", group = "Added" },
   { message = "^fix", group = "Fixed" },

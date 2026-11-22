@@ -39,8 +39,19 @@ use crate::world::World;
 use super::answers::{answered, at};
 use super::running;
 
-/// Drive every point of the cross-product, and hold each to all of it.
-pub fn the_cross_product_walk(world: &World) {
+/// How much of each command's cross-product a walk drives.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// Every point of it.
+    Every,
+    /// The covering points alone ([`walk::covering`]), for a world whose
+    /// machine takes its own time over each.
+    Covering,
+}
+
+/// Drive every point of the cross-product, or its covering points, and hold
+/// each to all of it.
+pub fn the_cross_product_walk(world: &World, reach: Reach) {
     let driven = walk::walk(world);
     let uncovered = walk::covers(&driven, world);
     assert!(
@@ -49,7 +60,12 @@ pub fn the_cross_product_walk(world: &World) {
     );
 
     for planned in &driven {
-        for index in 0..walk::invocations(planned, world).len() {
+        let points = walk::invocations(planned, world);
+        let chosen = match reach {
+            Reach::Every => (0..points.len()).collect(),
+            Reach::Covering => walk::covering(&points),
+        };
+        for index in chosen {
             // Before every invocation rather than once per command: a real
             // machine is moved by the command that just ran, so the next
             // invocation of that same command needs it put back — and a heater
@@ -67,6 +83,38 @@ pub fn the_cross_product_walk(world: &World) {
             the_effect_is_confirmed_by_reading_it_back(world, one, &invocation, &ran);
         }
     }
+}
+
+/// Start a print through this program, as the walk does, and follow it.
+///
+/// A journey run over a world of its own rather than after the walk starts
+/// from where the walk leaves every journey after it: on a print this program
+/// started, which the supervisor's record and this world agree is the running
+/// one. The world's own seeded print is not that — the supervisor opens a
+/// print of its own for the machine's job on the first action it takes — so a
+/// journey about it would read one print and act on another.
+///
+/// # Panics
+///
+/// Panics when the walk drives no `start-print`, or when the start fails any
+/// assertion the walk holds it to.
+pub fn on_a_print_this_program_started(world: &World) {
+    let planned = walk::walk(world)
+        .into_iter()
+        .find(|one| one.command.name == "start-print")
+        .expect("the walk drives `start-print`");
+    world.wants(planned.reports);
+    let one = &walk::about_now(&planned, world);
+    let points = walk::invocations(one, world);
+    let index = walk::covering(&points)
+        .into_iter()
+        .next()
+        .expect("`start-print` has a covering invocation");
+    let invocation = walk::invocations(one, world).swap_remove(index);
+    let ran = drive(world, &invocation);
+    let received = world.proxy.the_one_request();
+    the_request_carries_the_callers_values(one, &received);
+    the_effect_is_confirmed_by_reading_it_back(world, one, &invocation, &ran);
 }
 
 /// One invocation, run and held to the two things every run is held to.
@@ -254,11 +302,40 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
             assert_eq!(at(&said, "actions.0.action"), "recover_lift", "{said:#?}");
             assert_eq!(at(&said, "z_home.x"), "100.0", "{said:#?}");
         }
+        "bed-clear" => the_word_was_recorded(world, one, &said),
         recovering if recovering.starts_with("recover-") => {
             the_recovery_was_carried_out(one, &said);
         }
         _ => the_action_was_carried_out(world, one, &said),
     }
+}
+
+/// The operator's word that the bed is clear was recorded with the caller's
+/// own reason, as the operator's and no print's, and the printer history
+/// reads it back as the newest of its kind.
+fn the_word_was_recorded(world: &World, one: &Driven, said: &BTreeMap<String, String>) {
+    assert_eq!(at(said, "event.kind"), "bed_clear_asserted", "{said:#?}");
+    assert_eq!(at(said, "event.payload.actor"), "operator", "{said:#?}");
+    assert_eq!(
+        at(said, "event.payload.reason"),
+        one.text("reason"),
+        "{said:#?}"
+    );
+    let read = running::read(
+        world,
+        &[
+            "printer-history",
+            "--kinds",
+            "bed_clear_asserted",
+            "--limit",
+            "1",
+        ],
+    );
+    assert_eq!(
+        read.pointer("/events/0/id").and_then(Value::as_str),
+        Some(at(said, "event.id").as_str()),
+        "the printer history does not read the word back: {read}"
+    );
 }
 
 /// One recovery reached the machine and the machine took it, recorded as the

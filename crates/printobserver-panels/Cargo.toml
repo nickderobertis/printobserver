@@ -1,0 +1,48 @@
+[package]
+name = "printobserver-panels"
+description = "Camera calibration, drift and alignment checks, and the check image's panels, for printobserver."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+# The crate's own code is MIT; the label font it bundles, with its licence
+# file beside it under `assets/`, is the SIL Open Font License's.
+license = "MIT AND OFL-1.1"
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Turns the label font's glyph outlines into coverage. The font itself is read
+# by `skrifa`.
+ab_glyph_rasterizer = "0.1"
+base64.workspace = true
+# The previous check's capture time, in the host's local time, in panel 3's
+# label.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# The decoders and encoder the frames and the check image need, and no other
+# format: a camera frame is a JPEG and a landmark patch a PNG.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+# Line drawing and the frame's blur, with none of the crate's optional
+# parallel, text or transform machinery.
+imageproc = { version = "0.27", default-features = false }
+nalgebra = "0.35"
+printobserver-core = { workspace = true }
+printobserver-types = { workspace = true }
+# The one validated web address type, which the calibration's snapshot URL
+# is held to as it is read.
+printobserver-vision-api = { workspace = true }
+# The label font's reader: the bundled font's glyph outlines and metrics.
+skrifa = "0.50"
+
+[dev-dependencies]
+jsonschema.workspace = true
+# The interface the fixture tests stream a case's G-code into the real index
+# builder through, as the printer port's whole-file read does.
+printobserver-printer-api = { workspace = true }
+
+# The recorded-frame tests, run as a project of their own.
+[[test]]
+name = "fixtures"
+path = "tests/fixtures_suite/main.rs"
+
+[lints]
+workspace = true

@@ -13,7 +13,7 @@ from __future__ import annotations
 import shutil
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import pytest
 from release_artifacts.__main__ import main
@@ -21,7 +21,7 @@ from release_artifacts.reused import DIGEST_FILE, DIRECTORY, IGNORE_FILE, KEY_FI
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
-from repo_checks.parsing import jobs_of, load_workflow, steps_of
+from repo_checks.parsing import jobs_of, load_workflow, recipes, steps_of
 from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -411,35 +411,78 @@ def test_a_toolchain_that_cannot_say_what_it_is_is_refused(
     equal(said.out, "", describing="the key a refused run printed")
 
 
-def test_the_integration_job_caches_the_directory_under_the_key_the_command_prints(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """The committed workflow caches the kept directory under the key the command prints.
-
-    The job appends the command's line to `GITHUB_OUTPUT`, caches the directory
-    this tool keeps the program in under that key, then prepares the program
-    before the tier. A directory or field renamed on either side, or a
-    preparation moved after the tier, would leave the tier building it again.
-    """
-    workflow = load_workflow(REPO_ROOT / ".github" / "workflows" / "ci.yml")
-    steps = steps_of(jobs_of(workflow)["integration"])
+def _keyed_steps(workflow: str, job: str) -> tuple[list[dict[str, Any]], list[str], str]:
+    """A job's steps, their run lines, and its key step's outputs as `steps.<id>.outputs`."""
+    steps = steps_of(jobs_of(load_workflow(REPO_ROOT / ".github" / "workflows" / workflow))[job])
     runs = [str(step.get("run", "")).strip() for step in steps]
     keyed = runs.index('just release-program-key >> "$GITHUB_OUTPUT"')
-    outputs = f"steps.{steps[keyed]['id']}.outputs"
-    cached = next(step for step in steps if str(step.get("uses", "")).startswith("actions/cache@"))
+    return steps, runs, f"steps.{steps[keyed]['id']}.outputs"
 
-    equal(cached["with"]["path"], DIRECTORY, describing="the directory the job caches")
-    contains(
-        cached["with"]["key"],
-        f"${{{{ {outputs}.{KEY_FIELD} }}}}",
-        describing="the key the job caches it under",
+
+def _caching(steps: list[dict[str, Any]], action: str) -> dict[str, Any]:
+    """The step of `steps` keeping the kept directory through `action`."""
+    return next(
+        step
+        for step in steps
+        if str(step.get("uses", "")).startswith(f"{action}@")
+        and step.get("with", {}).get("path") == DIRECTORY
+    )
+
+
+def test_the_test_job_restores_the_directory_the_warm_job_saves_under_the_printed_key(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`ci.yml`'s `test` job restores the kept directory that `warm.yml` saves, under one key.
+
+    Each job appends the command's line to `GITHUB_OUTPUT`. The `test` job
+    restores the directory this tool keeps the program in under that key and
+    prepares the program before the tier; the `warm` job, which alone saves a
+    cache a pull request restores, restores, prepares and saves it under the
+    same key. A directory or field renamed on either side, a key the two spell
+    differently, or a preparation moved after the tier, would leave the tier
+    building it again.
+    """
+    steps, runs, outputs = _keyed_steps("ci.yml", "test")
+    restored = _caching(steps, "actions/cache/restore")
+    warm_steps, warm_runs, warm_outputs = _keyed_steps("warm.yml", "warm")
+    warm_restored = _caching(warm_steps, "actions/cache/restore")
+    saved = _caching(warm_steps, "actions/cache/save")
+    for step, named, published in (
+        (restored, "the test job restores", outputs),
+        (warm_restored, "the warm job restores", warm_outputs),
+        (saved, "the warm job saves", warm_outputs),
+    ):
+        contains(
+            step["with"]["key"],
+            f"${{{{ {published}.{KEY_FIELD} }}}}",
+            describing=f"the key {named} it under",
+        )
+    equal(
+        restored["with"]["key"].replace(outputs, "<key>"),
+        saved["with"]["key"].replace(warm_outputs, "<key>"),
+        describing="the key the test job restores, as the warm job saves it",
     )
     truth(
-        keyed
-        < steps.index(cached)
-        < runs.index("just release-program")
-        < runs.index("just test-integration"),
-        describing=f"the key, the cache, the preparation and the tier in that order: {runs}",
+        runs.index('just release-program-key >> "$GITHUB_OUTPUT"')
+        < steps.index(restored)
+        < runs.index("just ci-test"),
+        describing=f"the key, the restore and the step running the tier in order: {runs}",
+    )
+    # `just ci-test` runs the tier through `just ci-integration`, beside its
+    # end-to-end tier, and that recipe prepares the program before the tier.
+    integrating = " ".join(
+        recipes((REPO_ROOT / "justfile").read_text(encoding="utf-8"))["ci-integration"].body
+    )
+    truth(
+        integrating.index("just release-program")
+        < integrating.index("just test-integration --projects="),
+        describing=f"the preparation before the clients' tier: {integrating}",
+    )
+    truth(
+        warm_steps.index(warm_restored)
+        < warm_runs.index("just release-program")
+        < warm_steps.index(saved),
+        describing=f"the warm job's restore, preparation and save in order: {warm_runs}",
     )
     _key(REPO_ROOT, capsys)
 

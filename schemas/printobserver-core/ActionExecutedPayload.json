@@ -23,6 +23,14 @@
       "$ref": "#/$defs/ActionId",
       "description": "The action's identifier."
     },
+    "file_position_bytes": {
+      "description": "How far into its file the print had last been read to have got when\nthe action was taken, in bytes, when that was known: what places a\nchange against the commands the file sets the same thing with.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
     "intervention_id": {
       "anyOf": [
         {

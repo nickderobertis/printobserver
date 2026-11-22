@@ -24,6 +24,8 @@ import shlex
 import shutil
 import sys
 import tarfile
+import tempfile
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 
@@ -52,6 +54,11 @@ SCRIPT_DIRECTORY = "bin"
 #: one of the two this host's own platform is reached by.
 INSTALL_SCRIPT = "scripts/install.sh"
 INSTALL_SCRIPT_WINDOWS = "scripts/install.ps1"
+
+#: The install scripts' switch that puts the program on the path and installs no
+#: server beside it: the shell script's, and the PowerShell script's.
+CLIENT_ONLY = "--client-only"
+CLIENT_ONLY_WINDOWS = "-ClientOnly"
 
 #: The PowerShells a Windows host may carry, in the order one is taken: the
 #: cross-platform one where it is installed, and Windows PowerShell otherwise.
@@ -91,6 +98,11 @@ def executable(name: str, host: str | None = None) -> str:
             own when not given.
     """
     return f"{name}.exe" if (host or sys.platform) == "win32" else name
+
+
+#: The variable naming where `cargo` keeps a build's intermediate artifacts,
+#: apart from the target directory its finished programs are put in.
+BUILD_DIR = "CARGO_BUILD_BUILD_DIR"
 
 
 def release_program(target_directory: Path, name: str) -> Path:
@@ -488,10 +500,18 @@ def powershell() -> str:
 def install_script_argv(repo: Repo, *, version: str, into: Path) -> list[str]:
     """How this host runs the committed install script that reaches its own platform.
 
-    Exactly as the install-path section's own one-line command runs it: with
-    `sh` where that command pipes into `sh`, and under PowerShell where it
-    pipes into `iex`. `version` pins a release and is empty for the newest;
-    `into` is the directory the program is put in.
+    As the install-path section's own one-line command runs it: with `sh` where
+    that command pipes into `sh`, and under PowerShell where it pipes into
+    `iex`. `version` pins a release and is empty for the newest; `into` is the
+    directory the program is put in.
+
+    With the script's client-only switch, because what a route proves is the
+    program it puts on the path. Without it the script also installs and starts
+    a supervising server as the user running the proof — a systemd user unit, a
+    LaunchAgent or a Scheduled Task under that user's real home — so every proof
+    would leave a server registered on the host that ran it. That second half is
+    the per-user pair's first command, which `tests/repo-e2e`'s per-user install
+    journeys prove in homes of their own.
 
     Raises:
         InstallError: If this is a Windows host with no PowerShell on it.
@@ -500,11 +520,11 @@ def install_script_argv(repo: Repo, *, version: str, into: Path) -> list[str]:
         argv = [powershell(), "-NoProfile", "-File", str(repo.path(INSTALL_SCRIPT_WINDOWS))]
         if version:
             argv += ["-Version", version]
-        return [*argv, "-To", str(into)]
+        return [*argv, "-To", str(into), CLIENT_ONLY_WINDOWS]
     argv = ["sh", str(repo.path(INSTALL_SCRIPT))]
     if version:
         argv += ["--version", version]
-    return [*argv, "--to", str(into)]
+    return [*argv, "--to", str(into), CLIENT_ONLY]
 
 
 def npm_global_program(prefix: Path, name: str) -> Path:
@@ -698,17 +718,25 @@ def rust_client(repo: Repo, built: Built, into: Path) -> Installed:
     (consumer / "src").mkdir(parents=True, exist_ok=True)
     shutil.copy2(repo.path("crates/printobserver-sdk/smoke/main.rs"), consumer / "src/main.rs")
     (consumer / "Cargo.toml").write_text(consumer_manifest(inside), encoding="utf-8")
-    ran(
-        ["cargo", "build", "--release", "--manifest-path", str(consumer / "Cargo.toml")],
-        cwd=consumer,
-        describing="building a consumer of the packaged crate",
-    )
-    return Installed(
-        built.target,
-        environment,
-        None,
-        str(consumer_program(consumer, "printobserver-sdk-smoke")),
-    )
+    program = consumer_program(consumer, "printobserver-sdk-smoke")
+    # A consumer building beside its own manifest, outside this clone, keeps
+    # its intermediate artifacts under a short temporary root: nested in a
+    # caller's directory, the deepest of them passes the 260 characters the
+    # Windows linker opens, and that build stops with LNK1104. One inside the
+    # clone keeps sharing the clone's `target`, which an earlier build warmed.
+    beside_itself = not program.resolve().is_relative_to(repo.root.resolve())
+    with (
+        tempfile.TemporaryDirectory(prefix="cb", ignore_cleanup_errors=True)
+        if beside_itself
+        else nullcontext()
+    ) as intermediates:
+        ran(
+            ["cargo", "build", "--release", "--manifest-path", str(consumer / "Cargo.toml")],
+            cwd=consumer,
+            env={**os.environ, BUILD_DIR: intermediates} if intermediates else None,
+            describing="building a consumer of the packaged crate",
+        )
+    return Installed(built.target, environment, None, str(program))
 
 
 def python_route(repo: Repo, built: Built, into: Path) -> Installed:

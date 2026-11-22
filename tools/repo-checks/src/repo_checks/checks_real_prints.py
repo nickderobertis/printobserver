@@ -45,6 +45,8 @@ from repo_checks.shell import discovered_no_higher_than, run
 ROOT = "tests/real-prints"
 SCHEMA = f"{ROOT}/case.schema.json"
 CASE_FILE = "case.json"
+# Beside the cases and no case itself: the camera calibrations cases name.
+CAMERAS = "cameras"
 HISTORY = "printobserver-history.json"
 HISTORY_SCHEMA = "schemas/printobserver-server/HistoryAnswer.json"
 SERVICE_CONFIG = f"{ROOT}/service-config.toml"
@@ -76,6 +78,9 @@ POINTER_SIZE = re.compile(r"size (?P<size>0|[1-9][0-9]*)")
 
 #: The one list of steps a continuous-integration job fetches the cases with.
 CI_STEPS = "tests/real-prints-lfs/ci-steps.yml"
+#: The job-level variable those steps run under: `true` where the job reads or
+#: warms the store on this run, and anything else where it does neither.
+CI_STEPS_SWITCH = "REAL_PRINTS_STORE"
 #: The programs a command reaches the cases' LFS objects through; a recipe
 #: reaches them when its body, or a recipe it calls, names one of these.
 LFS_PROGRAMS = ("git lfs", "git-lfs")
@@ -83,10 +88,16 @@ LFS_PROGRAMS = ("git lfs", "git-lfs")
 JUST_CALL = re.compile(r"\bjust (?P<recipe>[a-z][\w-]*)")
 
 #: What starts a scenario's turn, as `case.schema.json` declares it.
-Trigger = Literal["recorded_alert", "synthetic_alert", "periodic_observation", "start_request"]
+Trigger = Literal[
+    "recorded_alert",
+    "synthetic_alert",
+    "periodic_observation",
+    "start_request",
+    "outside_supervision",
+]
 #: The triggers that happen during a print, whose position in its G-code is known.
 POSITIONED_TRIGGERS: frozenset[Trigger] = frozenset(
-    {"periodic_observation", "recorded_alert", "synthetic_alert"}
+    {"periodic_observation", "recorded_alert", "synthetic_alert", "outside_supervision"}
 )
 
 # An event's id in a case's history, and a scenario's id within its case.
@@ -437,10 +448,13 @@ class Case:
         """Every file the case.json refers to and so must carry.
 
         Each `file` field, each scenario image, and every file named in
-        `sources` and `obico_scores`. Every other field's prose may mention a
+        `sources` and `obico_scores`, and the camera calibration it names.
+        Every other field's prose may mention a
         file — `see its make_plate.py` — without that being a reference.
         """
         yield from _file_fields({k: v for k, v in self.document.items() if k != "assertions"})
+        if isinstance(calibration := self.document.get("camera_calibration"), str):
+            yield calibration
         for scenario in self.scenarios:
             yield from scenario.images
         texts = [*self.document.get("sources", {}).values(), self.document.get("obico_scores", "")]
@@ -535,7 +549,9 @@ def _cases(repo: Repo) -> Iterator[tuple[str, Case | list[str]]]:
     """Every case directory by name, read, or the problems that stopped it."""
     case_schema = _validator(repo, SCHEMA)
     history_schema = _validator(repo, HISTORY_SCHEMA)
-    for directory in sorted(p for p in repo.path(ROOT).iterdir() if p.is_dir()):
+    for directory in sorted(
+        p for p in repo.path(ROOT).iterdir() if p.is_dir() and p.name != CAMERAS
+    ):
         yield directory.name, _read_case(directory, case_schema, history_schema)
 
 
@@ -973,7 +989,9 @@ def real_prints_lfs_ci(repo: Repo) -> list[str]:
     counts as surely as `just real-prints-fetch`. A job with such a line must
     carry `ci-steps.yml` verbatim, which restores the store from the Actions
     cache and downloads only on a miss, and may have none before those steps;
-    after them the store is whole, and a fetch there downloads nothing.
+    after them the store is whole, and a fetch there downloads nothing. Those
+    steps run only where the job's own `REAL_PRINTS_STORE` is `true`, so the
+    job must set it: a job leaving it out would skip all of them.
     """
     canonical = _ci_steps(repo)
     if isinstance(canonical, str):
@@ -1008,6 +1026,13 @@ def real_prints_lfs_ci(repo: Repo) -> list[str]:
                     f"{CI_STEPS} verbatim: fetch them through those steps"
                 )
                 continue
+            switch = job.get("env")
+            if not isinstance(switch, dict) or CI_STEPS_SWITCH not in switch:
+                findings.append(
+                    f"{where} carries {CI_STEPS} without setting `{CI_STEPS_SWITCH}` in its "
+                    f'`env`, so every one of those steps is skipped: set it to `"true"`, or '
+                    f"to the expression naming the runs that need the store"
+                )
             findings.extend(
                 f"{where} runs `{command}`, which reaches the cases' LFS objects, before "
                 f"{CI_STEPS}: run it after those steps, once the store is whole"

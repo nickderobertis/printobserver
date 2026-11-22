@@ -62,6 +62,16 @@
           "shape": {
             "type": "string"
           }
+        },
+        {
+          "kind": "text",
+          "located": "query",
+          "name": "since",
+          "repeated": false,
+          "required": false,
+          "shape": {
+            "$ref": "#/$defs/EventId"
+          }
         }
       ],
       "path": "/v1/prints/{print_id}/context",
@@ -2167,6 +2177,43 @@
         {
           "answer": "rejected",
           "type": "RecoveryAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "write",
+      "image_path_field": null,
+      "method": "POST",
+      "name": "bed_clear",
+      "parameters": [
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/printer/bed_clear",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "BedClearAnswer"
         }
       ]
     }

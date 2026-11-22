@@ -301,9 +301,10 @@ pub const PRINT_FIELD: &str = "print_id";
 
 /// One value of an operation's request, as its command takes it: the print an
 /// operation with a printer-wide form names is optional, because a call
-/// naming none is that form's.
+/// naming none is that form's; and so is the print of an operation that mints
+/// one, because a call naming none is made under the one this program mints.
 fn optional_when_printer_wide(operation: &Operation, parameter: Parameter) -> Parameter {
-    if operation.printer_wide.is_some()
+    if (operation.printer_wide.is_some() || operation.mints_print)
         && parameter.name == PRINT_FIELD
         && parameter.located == Located::Path
     {
@@ -377,6 +378,15 @@ pub fn command(name: &str) -> Option<Command> {
 #[must_use]
 pub fn is_duration(parameter: &Parameter) -> bool {
     parameter.name == DURATION_FIELD && parameter.located == Located::Body
+}
+
+/// Every command's usage line, as `--help` prints it.
+#[must_use]
+pub fn usage_lines() -> Vec<String> {
+    surface()
+        .iter()
+        .map(|command| command.usage_line().trim().to_owned())
+        .collect()
 }
 
 /// The whole command surface, which is also what `--help` prints.

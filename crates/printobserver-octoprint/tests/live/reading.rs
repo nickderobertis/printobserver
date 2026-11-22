@@ -151,12 +151,21 @@ fn walk_the_job(instance: &Scripted) {
         None => assert_eq!(job.estimated_print_time_s, None),
     }
 
-    // `completion` — reported, as a percentage, carried as a fraction.
+    // `completion` — reported, as a percentage, carried as a fraction. Held in
+    // the port's own unit, the instance's figures each divided by a hundred as
+    // the port divides them: scaling the fraction back up instead rounds
+    // differently, and 31.350107487813 percent came back as 31.350107487813002
+    // against a still instance on a Windows runner (run 45002896275).
+    let in_fraction = |percent: &serde_json::Value| {
+        percent.as_f64().map_or(serde_json::Value::Null, |percent| {
+            serde_json::json!(percent / 100.0)
+        })
+    };
     reported_or_absent(
         "completion",
-        job.completion.map(|reported| reported.value() * 100.0),
-        &before["progress"]["completion"],
-        &after["progress"]["completion"],
+        job.completion.map(|reported| reported.value()),
+        &in_fraction(&before["progress"]["completion"]),
+        &in_fraction(&after["progress"]["completion"]),
     );
 
     // `print_time_s` and `print_time_left_s` — in seconds, where the instance

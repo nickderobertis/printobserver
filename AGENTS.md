@@ -87,8 +87,8 @@ against the tree, is what reconciles it against a later version of that skill.
   proves the artifact on the supported platform matrix and proves the end-user
   install path.
 - `cross-cutting:llmlint` — included: `llmlint.yml` and `oneharness.toml` are
-  composed rather than hand-rolled, and the judged tier is a continuous-
-  integration job of its own rather than a step inside the gate job.
+  composed rather than hand-rolled, and the judged tier is a step of the
+  `lint` job, which runs once, rather than of a per-platform `test` job.
 - `optional:asdf` — included: `.tool-versions` pins `just`, Node and `uv` for
   asdf/mise users. The Rust toolchain is pinned by `rust-toolchain.toml`
   instead, because rustup reads that and asdf does not.
@@ -101,9 +101,9 @@ against the tree, is what reconciles it against a later version of that skill.
 - `optional:pre-commit-framework` — excluded: what verifies a change here is the
   pull request's own required checks. A local framework that re-specifies those
   tools is a second, drifting copy of the gate, run before the one that decides.
-- `optional:notignored` — included: `.github/workflows/notignored.yml` posts the
+- `optional:notignored` — included: a step of `ci.yml`'s `lint` job posts the
   suppressions a change adds. It is a review artifact, deliberately not a
-  required check.
+  verdict: it never fails the job it runs in.
 - `optional:pr-template` — included: `.github/pull_request_template.md`, whose
   **What**/**Why** becomes the squash body release automation reads.
 [//]: # (END composition-record)
@@ -159,8 +159,9 @@ module has, so one host's pass leaves every other platform's defects to that
 platform's own runner. `just check-repo` refuses a target carrying fewer.
 
 The judged-lint tier (`just lint-llm-diff`) is deliberately **not** in `just
-check`: it is non-deterministic and needs a harness credential, so it is a
-continuous-integration job of its own.
+check`: it is non-deterministic and needs a harness credential, so it is the
+last steps of continuous integration's `lint` job, after the deterministic
+tiers that job runs.
 
 That tier needs the *harness* as well as its credential, and the two are not the
 same thing. `llmlint` and `oneharness` drive a separate agent binary that
@@ -367,44 +368,31 @@ nothing about any of them. Each carries the reason it has none — the record is
 what makes a job running once a decision rather than an omission.
 
 [//]: # (BEGIN unmatrixed-jobs)
-- `llmlint` — the judged-lint tier reads one text diff and a non-deterministic judge rules on it, so a second cell is a second independent verdict on one change rather than a second platform: two required checks free to pass and fail the same content.
-- `pr-title` — a pull-request title is one string, and linting it against Conventional Commits reads nothing at all of the host it runs on.
+- `lint` — every tier it runs reads the committed tree or runs a suite whose project carries `platform:independent`, which says that suite exercises nothing a platform changes, so a second cell would run the same work again; and the judged-lint tier it ends with reads one text diff, where a second cell would be a second independent verdict on one change rather than a second platform.
 - `obico` — the scheduled Obico tier proves an EXTERNAL producer's webhook payload shape: it stands a self-hosted Obico up from that project's own Linux container composition, causes a real failure alert on it over HTTP, and compares the body that stack posts against the committed sample. It is not a printer-host tier, and the hosted macOS and Windows runners do not run Linux containers.
-- `skill-install` — what it proves is the committed skill's files as `gh skill` reads them, and those are the same files whichever host reads them; it needs GitHub CLI at the held release, which no gate cell is given.
-- `gate-windows-aarch64` — it is the aggregating job of the sharded `gate (windows-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-aarch64`, whose cells are on that platform's runner.
-- `gate-linux-x86_64` — it is the aggregating job of the sharded `gate (linux-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-linux-x86_64`, whose cells are on that platform's runner.
-- `gate-windows-x86_64` — it is the aggregating job of the sharded `gate (windows-x86_64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-windows-x86_64`, whose cells are on that platform's runner.
-- `supply-chain` — `cargo deny` and `cargo machete` read the lockfile's dependency graph and the crates' own sources, which are the same whichever host reads them, so a second cell would read the same graph again; it is the Rust supply-chain gate `just supply-chain` runs, and no job needs it.
-- `gate-macos` — it is the aggregating job of the sharded `gate (macos-aarch64)`, and its one step reads the results the workflow hands it of that platform's shard jobs, which are the same whichever host reads them; the platform's own work runs in `gate-shard-macos-aarch64`, whose cells are on that platform's runner.
-- `skilltest-classify` — it reads one diff, whose paths and packages are the same whichever host reads them, and answers whether the real-print suite is owed.
 - `skilltest` — the real-print suite proves the agent's judgement over recorded prints through the server, whose supervision does not differ by platform in anything the agent is asked to judge, and each run spends real model quota; a second cell would be a second verdict on one change rather than a second platform.
-- `integration-macos` — it is the `macos-aarch64` cell of the printer integration job run as a job of its own, on that platform's runner, which `repo-policy.toml`'s `[[workflows.carried]]` holds to the cell's runner and commands; a matrix of one cell would say nothing a carried record does not, and the account's shared macOS slots allow no second cell.
+- `budgets` — it reads the run's own recorded jobs off the forge's API, which answers the same whichever host asks, and builds and tests nothing.
+- `test-macos` — it is the `macos-aarch64` cell of the `test` job run as a job of its own, on that platform's runner, which `repo-policy.toml`'s `[[workflows.carried]]` holds to the cell's runner and commands; a matrix of one cell would say nothing a carried record does not, and its own condition is what leaves it off release automation's pull request.
 [//]: # (END unmatrixed-jobs)
 
 ### The consolidated macOS lanes
 
 The account's few macOS slots are shared with other repositories, so one change
 may occupy at most three per workflow run, and at most two runs over its
-automatic life: its pull request's macOS jobs in `ci.yml` — the gate's two
-shards and `integration-macos` — which run side by side, and the release's
-macOS `artifacts` cell, which proves what it built before publishing. Nothing
-else starts macOS automatically; `platform-dispatch.yml` is the one manual
+automatic life: its pull request's `test (macos-aarch64)` job in `ci.yml`, and
+the release's macOS `artifacts` cell, which proves what it built before
+publishing. Nothing else starts macOS automatically — `warm.yml` has no macOS
+leg, so that job compiles cold — and `platform-dispatch.yml` is the one manual
 lever, one job per dispatch.
 
-`.github/macos-policy.mjs classify` decides whether a pull request owes the
-lane — release automation's version/changelog-only pull request does not, and
-unknown input does. `gate (macos-aarch64)` is reported by the gate's aggregator
-and `integration (macos-aarch64)` by the integration job itself; where the lane
-is not owed, every one of those jobs is skipped, which the forge reports as a
-passing check. `repo-policy.toml`'s `[[workflows.carried]]` records the
-integration cell and the job carrying it, and `.github/budgets.yaml` holds both
-bounds against the graph `github-workflows:test` evaluates.
-
-The gate is two shards and the integration tier a job of its own because one
-3-core runner cannot run the gate, let alone both lanes, under `gate-time`'s
-1,800 s: they are bound by the same processors. The macOS shards leave the
-Windows-target lint, which reads only the committed tree, to the Linux gate
-cells, through `PRINTOBSERVER_HOST_INDEPENDENT=elsewhere`.
+That job is `test-macos`, a job of its own rather than a cell of `test`,
+because a job's condition cannot read its matrix: its condition leaves it off
+release automation's version/changelog pull request — this repository's own
+head branch under the `pr_branch_prefix` `release-plz.toml` names — without
+taking a runner, and a job its condition skips reports its context as a
+success. `repo-policy.toml`'s `[[workflows.carried]]` records the cell and the
+job carrying it, and `.github/budgets.yaml` holds both bounds against the graph
+`github-workflows:test` evaluates.
 
 ## The scripted OctoPrint environment
 
@@ -422,15 +410,21 @@ that failed are the script's own rules, in `tools/octoprint-env/AGENTS.md`.
 
 `just octoprint-up` and `just octoprint-down` bracket `just test-integration`,
 which is deliberately **not** one of `just check`'s tiers: it installs
-OctoPrint, starts it and waits a print out, so it is a continuous-integration
-job of its own. The gate also drives these recipes to prove process cleanup.
-The `integration`
-job runs it on every change, on every platform the supported-platform list above
-names except those excluded below. `repo-policy.toml`'s `[integration]` names
-the three recipes, and `just check-repo` refuses a job that runs a recipe the
-set does not declare, omits the bring-up or bring-down recipe, omits a platform
-with no exclusion recorded, or is narrowed below every change — a pull-request
-trigger that leaves out one of GitHub's three default activity types. It does
+OctoPrint, starts it and waits a print out, so in continuous integration's
+`test` jobs the bring-up is a step before `just ci-test`, which runs the tier
+beside its end-to-end tier because the tier mostly waits on the printer's own
+time, and the bring-down is a step after it. The gate also drives
+these recipes to prove process cleanup. The `test` job runs it on every pull
+request, on every platform the supported-platform list above names except those
+excluded below; a push to `main` is the merge of a pull request whose own run
+ran it on the merge of its head into `main`. `repo-policy.toml`'s
+`[integration]` names the three recipes, and `just check-repo` refuses a job
+that runs a recipe the set does not declare, omits the bring-up or bring-down
+recipe, runs the tier — as a step, or from the recipe a step runs — anywhere but
+between them, omits a platform with no exclusion recorded, or is narrowed below every
+pull request — a condition other than the pull-request event, or a
+pull-request trigger that leaves out one of GitHub's three default activity
+types. It does
 not run on `ready_for_review`: a draft has already run every check on its
 commit, and the lift changes no commit, so a second run would only repeat the
 first while the merge waits on it.
@@ -554,7 +548,7 @@ exactly that ceiling.
 
 **What it verifies**, in this order, reading the printer's own answer back at
 every point and failing the run naming the point where that answer was not what
-was required: the context read reports the printer, the job and effective bounds
+was required: the context read reports the printer, the print's state and effective bounds <!-- llmlint: ignore[instruction_layer_localized, agents_md_durable_and_terse] This change only keeps this phrase of a pre-existing paragraph true of the trimmed context. suppressions.toml has the full reasons. -->
 no wider than the configuration allows; the smoke print starts; each adjustable
 is set just inside its bound and read back from the machine; each is then asked
 for just outside its bound, and the rejection is confirmed to have changed
@@ -1251,7 +1245,7 @@ platform, named as the two inputs of a manual dispatch, and no other job — one
 hosted macOS runner rather than every job's, on a branch, without pushing to it.
 What runs where is decided by the committed script `repo_checks.dispatching`
 (`just dispatch-resolve`, `just dispatch-run`) rather than by the workflow's own
-expressions, so `tests/repo-e2e` drives the selection on a host that is not a
+expressions, so `tests/repo-e2e-independent` drives the selection on a host that is not a
 runner; the forge dispatches a workflow only from the default branch, so the
 workflow's own first run exists only after it merges. `just check-repo`'s
 `platform-dispatch` holds the workflow to that shape: `workflow_dispatch` alone,
@@ -1263,58 +1257,60 @@ input to the platform-matrixed jobs of those two workflows.
 **Merge model.** A change reaches `main` through a pull request, squash-merged,
 with auto-merge on and head branches deleted. **`main` takes no direct push.**
 The pull request title becomes the squash subject, which is the commit release
-automation reads, so it is linted against Conventional Commits as a required
-check.
+automation reads, so it is linted against Conventional Commits by a step of the
+required `lint` job.
 
 The status contexts required to be green before a pull request can merge. These
 are **check-run names, not job keys**: a branch-protection rule names a check by
 the name GitHub reports it under, and a matrixed job reports one check run per
-cell. That is why the gate and the printer integration job each appear once per
-platform, and every cell of a required job is required, because a job required on
-one platform and not the other is a merge path the other never blocked — and why
-the judged tier appears once, with no platform in its name at all.
+cell. That is why `test` appears once per platform, and every cell of a required
+job is required, because a job required on one platform and not the other is a
+merge path the other never blocked — and why `lint`, which runs once, appears
+with no platform in its name at all.
 
-Both matrixed jobs interpolate the cell's platform id into their own `name`,
-so GitHub takes that name verbatim and the contexts are `gate (<platform>)` and
-`integration (<platform>)`. A `name` interpolating nothing would have GitHub
-qualify it instead, appending the cell's whole matrix entry — which puts the
-runner in the context beside the platform, so moving a platform to a newer
-runner image would rename a required check and block every pull request until
-somebody edited the protection. Do not unqualify either name: that is a rename,
-and it strands the contexts the record below names for that job. What
-matters is that the record spells each context the way the job actually reports
-it, because a context named here that nothing reports blocks every pull request
-forever.
+**One pull-request push runs eight jobs, none of them sharded**, all of
+`ci.yml`: `lint` once, one `test (<platform>)` per supported platform,
+`skilltest` and `budgets`. `just ci-lint` and `just ci-test` split `just check`'s
+work by the `platform:independent` tag, so together they run every tier, each
+project's once, and a test drives both through the real recipes to hold that.
+Only `budgets` waits on another job. `lint`'s last step, the supply chain,
+reports and gates nothing, because an advisory published upstream is no defect
+of the change it lands on.
 
-**The two Windows gates and `linux-x86_64`'s are sharded.** A 4-processor
-Windows runner cannot run the whole gate in 1,800 s with its tiers in turn, and
-running the end-to-end and test tiers beside each other there starves Nx's
-plugin workers. The `linux-x86_64` runner runs them side by side and still
-exceeds 1,800 s once a change reaches the whole graph. So each of those
-platforms' work runs in the cells of `gate-shard-<platform>`,
-reporting `gate-shard (<platform>, <k>/<n>)`, each running in turn the tiers
-`just gate-shards <n>` hands it; and `gate-<platform>` reports the required
-context, failing unless every shard in its `needs` succeeded. Three things
-must stay true and `just check-repo`'s `sharded-jobs` holds the workflow to
-them: the shards together run every tier `just check` runs, no Nx task twice
-and no test twice, at the tier `just gate-tier` answers; `coverage` runs beside
-the `test` run it reads, each side of the split judged at its own ecosystem's
-floor; and the aggregator runs `if: always()` and nothing but `just
-shard-verdict` over the workflow's own `needs`, and then the `gate-time` step.
-`repo_checks.gate_jobs` is the one reading of how long a sharded or unsharded
-context is waited on.
+**The Python coverage floor is ruled on by the required `budgets` context.** A
+Python source and the tests measuring it can sit on the two sides of the
+`platform:independent` tag — `repo-checks`' sources are measured by
+`repo-checks-host` too, and `release-artifacts`' by `release-artifacts-independent`
+— so neither half's report is the code the whole gate measured. Each half keeps
+its Python data and uploads it, and `budgets` combines `lint`'s with each
+platform's and holds every platform to the 95% floor, leaving out that platform's
+own `pragma: unreached` lines (`just coverage-combine`). The Rust floor stays
+with each `test` job, whose half carries every crate's tests.
 
-**Every required gate and integration context is held to 1,800 s, inside
-itself.** The root `budgets.yaml` registers `gate-time`, and every job reporting
-one of the ten contexts ends with the `gate-time` step, which fails that context
-over budget — so the merge path refuses the change with no protection change —
-except on the release pull request's full sweep, where it only reports. The
-figure is the critical path of the context's jobs' own running time: the longest
-job behind it, then the aggregator. A job queued for a runner is GitHub's
-capacity rather than this repository's work, so every queue is reported and
-none is charged. A context over budget is brought under by making its work
-faster or sharding it behind its own required name, never by loosening the
-budget.
+The `test` matrix interpolates the cell's platform id into its own `name`, so
+GitHub takes that name verbatim and the contexts are `test (<platform>)`. A
+`name` interpolating nothing would have GitHub qualify it instead, appending the
+cell's whole matrix entry — which puts the runner in the context beside the
+platform, so moving a platform to a newer runner image would rename a required
+check and block every pull request until somebody edited the protection. Do not
+unqualify that name: that is a rename, and it strands the contexts the record
+below names for that job. What matters is that the record spells each context
+the way the job actually reports it, because a context named here that nothing
+reports blocks every pull request forever.
+
+**Every job of a pull-request run is held to one hour, and the run to eight
+jobs.** The root `budgets.yaml` registers `ci-check-time` — the run's longest
+job, from its start to its end, over every job but `budgets` — and
+`ci-job-count` — the jobs that took a runner across every run the push started —
+and is the one place either threshold is written. The `budgets` job measures
+both off the run's recorded jobs once every other job has ended, whatever each
+concluded, and fails over either on a pull request; every job's own
+`timeout-minutes` is 60, and the `budgets` job's 10, so the one job the line
+leaves out is bounded too. A job queued for a runner is GitHub's capacity rather
+than this repository's work, so every queue is reported and none is charged. A
+job over the line is brought under by making its work faster, never by sharding
+it, dropping a platform or leaving a suite out of a job, and never by loosening
+the budget.
 
 The record names the contexts the committed workflows report, which is not
 always what the live protection requires: a person applies that. A change that
@@ -1323,18 +1319,13 @@ protection goes on requiring the old names, which nothing reports any more — s
 the swap and the merge of that change belong to one window.
 
 [//]: # (BEGIN required-checks)
-- `gate (linux-x86_64)`
-- `gate (linux-aarch64)`
-- `gate (macos-aarch64)`
-- `gate (windows-x86_64)`
-- `gate (windows-aarch64)`
-- `integration (linux-x86_64)`
-- `integration (linux-aarch64)`
-- `integration (macos-aarch64)`
-- `integration (windows-x86_64)`
-- `integration (windows-aarch64)`
-- `llmlint`
-- `pr-title`
+- `lint`
+- `test (linux-x86_64)`
+- `test (linux-aarch64)`
+- `test (macos-aarch64)`
+- `test (windows-x86_64)`
+- `test (windows-aarch64)`
+- `budgets`
 - `skilltest`
 [//]: # (END required-checks)
 
@@ -1354,23 +1345,23 @@ code the run's tests reached; only the sweep is over every project's. The
 repository-level steps — the Windows-target lint, `lint-workflows` and
 `check-repo` — run whole at either tier.
 
-The release model decides where the sweep runs. release-plz opens a release pull
-request and updates it on every push to `main`, so one release can carry several
-merges: the commit that ships is not one any merge's run swept. So the release is
-**batched**, and the sweep runs on **the release pull request** — the `gate
-(<platform>)` jobs select it by the `release-plz-` head branch, through `just
-gate-tier` — while every other pull request and every push to `main` runs the
-affected tier, a push against the last commit that workflow passed on, which
-`nx-set-shas` derives. A run nothing there recognises, such as a cell dispatched
-by hand, takes the sweep, because the whole graph is the answer that cannot miss
-anything. The required check names are the same at either tier.
+The release model decides where the sweep runs, and it is not continuous
+integration. release-plz opens a release pull request and updates it on every
+push to `main`, so one release can carry several merges: the commit that ships is
+not one any merge's run swept. That pull request runs the affected tier like any
+other — `ci.yml` has no tier of its own for it — and the full sweep is `just
+check all`, run by hand where a release wants one. A push to `main` runs
+`budgets` alone, because the pull request that landed it ran every other job on
+the merge of its head into `main`; `warm.yml` then compiles each platform's
+`test` work into the caches the next pull requests restore. `just gate-tier`
+still tells the release pull request apart, by its `release-plz-` head branch,
+for the one measurement only it pays for (`just budgets-release-pr`). The
+required check names are the same at either tier.
 
-Outside both tiers: the `integration (<platform>)` jobs run `just
-test-integration` on every pull request whatever the affected set reaches;
-`llmlint`, `pr-title`, `skill-install` and `supply-chain` are jobs of their own
-on every change; the `skilltest` job runs the real-print suite where its
-classifier says the change owes it; the Obico tier and the registry install-path
-proof run on their schedules; the real-printer smoke runs only by hand.
+Outside both tiers: the integration tier runs in every `test` job, the
+real-print suite where its own first step says it is owed, the Obico tier and
+the registry install-path proof on their schedules, and the real-printer smoke
+only by hand.
 
 **Which subjects release.** `repo-policy.toml`'s `commits.release_types` is the
 source: **`feat`, `fix` and `perf`** cut a release (and `!` / `BREAKING CHANGE`
@@ -1418,17 +1409,17 @@ every ordinary push — while the Python and JavaScript registries refuse a
 version they already serve, so the artifact build and publish are gated on what
 that step *answered* it released, never on its exit status. `just check-repo`'s
 `release-gating` reads the workflow for both, and
-`tests/repo-e2e/tests/test_release_workflow_journey.py` runs the committed
+`tests/repo-e2e-independent/tests/test_release_workflow_journey.py` runs the committed
 workflow under the forge's scheduling rules to prove them.
 
-**Every release is a release of all twelve crates, at one version.** They
+**Every release is a release of all thirteen crates, at one version.** They
 inherit one `[workspace.package] version`, so `release-plz.toml` puts every
 crate in one `version_group`, and every requirement one crate makes of another
 is inherited from its `[workspace.dependencies]` entry rather than written in
 the crate's own manifest. Without both, a change touching some crates drafts a
 version every crate moves to while the others' requirements stay behind, and
 `cargo update` refuses the draft.
-`tests/repo-e2e/tests/test_release_path_journey.py` drafts a release of one
+`tests/repo-e2e-independent/tests/test_release_path_journey.py` drafts a release of one
 crate in the required gate to hold this.
 
 **When nothing is releasing, read the open `release-broken` issue first.** The
@@ -1493,7 +1484,7 @@ anywhere else is one a person would have to hand-maintain.
 cannot draft while a tag names a version some publishable crate never published
 — the state the first run left, with two scaffold crates at `0.1.0` and eleven
 absent. Every version after it is release automation's. Do not repeat this to
-unstick a run: `tests/repo-e2e/tests/test_release_path_journey.py` drives the
+unstick a run: `tests/repo-e2e-independent/tests/test_release_path_journey.py` drives the
 drafting tool against a stand-in registry and refuses a tree at a tagged
 version, which is the state to fix instead.
 
@@ -1501,19 +1492,27 @@ version, which is the state to fix instead.
 workspace version, both named `v<version>`, and both created by the
 `printobserver` package after its own `cargo publish` — which release ordering
 places after every other publishable crate's, because that crate depends on all
-of them. One package rather than twelve because release-plz tags and releases
+of them. One package rather than thirteen because release-plz tags and releases
 *per package*, in release order, and under the one name every package renders
 the second to publish dies creating a ref the first already created, leaving the
 rest unpublished. So `release-plz.toml` turns creation off under `[workspace]`
-and on for `printobserver` alone, keeping the name templates workspace-wide so
-that every entry of the program's answer still carries `v<version>` for `just
-release-answer` to fold into one. A `v<version>` tag left standing on the forge
-over unpublished crates is the quieter failure: release-plz skips every package
-whose tag exists *before* it asks the registry, so the next push releases
-nothing, exits 0, answers `released=`, and skips the artifacts. The repair is
-to delete the tag and the GitHub Release, never to move the version.
-`tests/repo-e2e/tests/test_release_tag_journey.py` holds the configuration to
-this.
+and on for `printobserver` alone, which alone names its tag `v<version>`.
+
+Every other package renders release-plz's default `<package>-v<version>` and
+creates nothing under it. That name must stay its own: `release-pr` reads a
+package whose rendered tag exists as one the registry already serves, and
+stops the whole draft when it does not. Under a shared `v<version>`, every
+crate added after a release did exactly that, and `printobserver-panels` held
+up every release after `v0.13.1`. `just release-answer` folds each entry's
+name into the one `v<version>`, and `[changelog] body` links each
+section between `v<version>` tags rather than those names. A `v<version>` tag left standing on the forge
+over an unpublished `printobserver` is the quieter failure: release-plz skips a
+package whose tag exists *before* it asks the registry, so the program and its
+tag's release never follow. The repair is to delete the tag and the GitHub
+Release, never to move the version.
+`tests/repo-e2e-independent/tests/test_release_tag_journey.py` holds the configuration to
+this, and `tests/release-drafting` drafts a crate added after a release, over a
+fixture workspace behind an edge of its own.
 
 **Secrets.** `gh-secrets.json` is the authoritative list of the Actions secrets
 this repository holds. A workflow may reference no secret outside it, spelled as
@@ -1541,20 +1540,28 @@ the way a user does: the compiled binary as a subprocess, the real recipes, the
 real checks. "Done" means every user-facing journey, happy path **and**
 failure/recovery — not one smoke test. Coverage is a floor, not the target.
 
-The end-to-end tier lives in `tests/repo-e2e`. It drives bootstrap in a fresh
-copy carrying no build products, dependency installation, hooks, repository
-checks, release tooling, the opt-in smoke interface and the real OctoPrint
-recipes. A gate that stops gating is not a silent failure: the next defective
+The end-to-end tier lives in `tests/repo-e2e` and `tests/repo-e2e-independent`.
+It drives bootstrap in a fresh copy carrying no build products, dependency
+installation, hooks, repository checks, release tooling, the opt-in smoke
+interface and the real OctoPrint recipes. A journey whose subject behaves the
+same on every platform — one driving only this repository's own tooling,
+workflows and records — belongs to `tests/repo-e2e-independent`, whose project
+carries the `platform:independent` tag so CI may run it once; every other
+journey belongs to `tests/repo-e2e`, which runs on every platform.
+`test_end_to_end_projects.py` is the record of which file is whose. A journey
+over a fixture of its own rather than a copy of this tree takes a project of its
+own instead, edged to what it reads: `tests/release-drafting`. A gate that stops gating is not a silent failure: the next defective
 change exposes it, so we do not run whole gates over defect copies to test that
 the gate gates. Structural wiring has one deterministic proof instead:
 `repo_checks.checks_repo.recipe_set`, reached by `just check-repo`, requires
 `check` to invoke every tier in `repo-policy.toml` and refuses empty tiers.
 
 <!-- llmlint: ignore[instruction_layer_localized] This is a repository-wide gate and merge-protection statement spanning the e2e project and CI workflows; neither project subtree alone owns which required job runs the OctoPrint tier. -->
-**The OctoPrint tier runs in the required `integration` jobs, not in the gate.**
-Every `integration (<platform>)` context is a required check, and each runs
-`just octoprint-up`, `just test-integration` and `just octoprint-down` on every
-pull request. The gate's `test_octoprint_tier.py` keeps only what that job does
+**The OctoPrint tier runs in the required `test` jobs, beside their end-to-end
+tier.** Every `test (<platform>)` context is a required check, and each runs
+`just octoprint-up`, then `just ci-test`, whose `just ci-integration` runs `just
+test-integration`, then `just octoprint-down`, on every pull request. The gate's
+`test_octoprint_tier.py` keeps only what those steps do
 not assert: from a clean copy of the tree, the process the bring-up started is
 running, and the bring-down leaves it gone. It runs no second copy of the tier.
 

@@ -1,0 +1,364 @@
+{
+ "about": "Hand marks on printed parts' edges, in pixels of 1920x1080 frames of the Prusa CORE One's camera, from the frame-panels spike. Each curve's points lie on the planned outline `what` names at height `z` (`top`: that layer's outer walls; `first`: every first-layer extrusion, the brim included), and `zc_mm` is the height the print had reached when the frame was taken, which the bed had dropped by. The spike's sheet-corner, hole and printed-mark points are left out: a sheet sits up to 4.7 mm apart between prints, so they anchor nothing. Its one 1280x720 frame (fan-cut-bridge) is left out too: a calibration is for one resolution.",
+ "frames": [
+  {
+   "case": "jar-top-wrong-material-first-layer-detach",
+   "file": "agent-007-obs-182248-p00.3.jpg",
+   "frame": "../jar-top-wrong-material-first-layer-detach/agent-007-obs-182248-p00.3.jpg",
+   "gcode": "../jar-top-wrong-material-first-layer-detach/3423-TOP-REV F.gcode",
+   "zc_mm": 0.4,
+   "curves": [
+    {
+     "what": "top",
+     "z": 0.4,
+     "px": [
+      [
+       841.5,
+       170
+      ],
+      [
+       1009,
+       72.5
+      ],
+      [
+       1089,
+       297.5
+      ],
+      [
+       1234,
+       200
+      ],
+      [
+       899,
+       250
+      ],
+      [
+       874,
+       105
+      ],
+      [
+       1204,
+       250
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-031-obs-125703-p43.2.jpg",
+   "frame": "../jar-top-petg-healthy/agent-031-obs-125703-p43.2.jpg",
+   "gcode": "../jar-top-petg-healthy/3423-TOP-REV F petg.gcode",
+   "zc_mm": 10.6,
+   "curves": [
+    {
+     "what": "top",
+     "z": 10.6,
+     "px": [
+      [
+       1230,
+       180
+      ],
+      [
+       1070,
+       70
+      ],
+      [
+       1120,
+       275
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       1265,
+       240
+      ],
+      [
+       1070,
+       365
+      ],
+      [
+       802.5,
+       235
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-059-obs-135146-p74.2.jpg",
+   "frame": "../jar-top-petg-healthy/agent-059-obs-135146-p74.2.jpg",
+   "gcode": "../jar-top-petg-healthy/3423-TOP-REV F petg.gcode",
+   "zc_mm": 33.4467,
+   "curves": [
+    {
+     "what": "top",
+     "z": 33.4467,
+     "px": [
+      [
+       895.5,
+       167.5
+      ],
+      [
+       1180.5,
+       160
+      ],
+      [
+       1048,
+       107.5
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       810.5,
+       310
+      ],
+      [
+       1245.5,
+       310
+      ],
+      [
+       1043,
+       437.5
+      ],
+      [
+       853,
+       240
+      ],
+      [
+       1203,
+       390
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "jar-top-petg-healthy",
+   "file": "agent-074-obs-142205-p97.0.jpg",
+   "frame": "../jar-top-petg-healthy/agent-074-obs-142205-p97.0.jpg",
+   "gcode": "../jar-top-petg-healthy/3423-TOP-REV F petg.gcode",
+   "zc_mm": 44.0,
+   "curves": [
+    {
+     "what": "top",
+     "z": 44.0,
+     "px": [
+      [
+       887.5,
+       190
+      ],
+      [
+       1182.5,
+       177.5
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       812.5,
+       330
+      ],
+      [
+       1045,
+       467.5
+      ],
+      [
+       1239,
+       340
+      ],
+      [
+       860,
+       242.5
+      ],
+      [
+       860,
+       420
+      ],
+      [
+       1195,
+       420
+      ],
+      [
+       1195,
+       265
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-003-obs-165123-p00.1.jpg",
+   "frame": "../bubbler-guard-and-pad-pla-healthy/agent-003-obs-165123-p00.1.jpg",
+   "gcode": "../bubbler-guard-and-pad-pla-healthy/bubbler_guard_and_pad.gcode",
+   "zc_mm": 0.2,
+   "curves": [
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       865,
+       188
+      ],
+      [
+       895,
+       208
+      ],
+      [
+       1096.7,
+       210
+      ],
+      [
+       981.7,
+       266.7
+      ],
+      [
+       1061.7,
+       256.7
+      ],
+      [
+       1055,
+       161.7
+      ],
+      [
+       885,
+       171.7
+      ],
+      [
+       1008,
+       276.7
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "bubbler-guard-and-pad-pla-healthy",
+   "file": "agent-086-obs-191910-p98.6.jpg",
+   "frame": "../bubbler-guard-and-pad-pla-healthy/agent-086-obs-191910-p98.6.jpg",
+   "gcode": "../bubbler-guard-and-pad-pla-healthy/bubbler_guard_and_pad.gcode",
+   "zc_mm": 141.6,
+   "curves": [
+    {
+     "what": "top",
+     "z": 141.6,
+     "px": [
+      [
+       1103.5,
+       207.5
+      ],
+      [
+       952,
+       275
+      ],
+      [
+       1037,
+       272.5
+      ],
+      [
+       1002,
+       142.5
+      ],
+      [
+       1062,
+       142.5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "jar-top-wrong-material-detach-spaghetti",
+   "file": "agent-020-obs-193110-p34.3.jpg",
+   "frame": "../jar-top-wrong-material-detach-spaghetti/agent-020-obs-193110-p34.3.jpg",
+   "gcode": "../jar-top-wrong-material-detach-spaghetti/3423-TOP-REV F brim.gcode",
+   "zc_mm": 8.4,
+   "curves": [
+    {
+     "what": "top",
+     "z": 8.4,
+     "px": [
+      [
+       845,
+       165
+      ],
+      [
+       1060,
+       72.5
+      ],
+      [
+       1235,
+       200
+      ],
+      [
+       1110,
+       290
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       812.5,
+       215
+      ],
+      [
+       1040,
+       345
+      ],
+      [
+       1249,
+       235
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "landmarks": [
+  {
+   "name": "rail-bracket-top-right",
+   "center_px": [
+    1820,
+    110
+   ]
+  },
+  {
+   "name": "rail-end-right",
+   "center_px": [
+    1830,
+    190
+   ]
+  },
+  {
+   "name": "frame-screws-right-front",
+   "center_px": [
+    1490,
+    774
+   ]
+  },
+  {
+   "name": "frame-label-right",
+   "center_px": [
+    1618,
+    662
+   ]
+  }
+ ]
+}

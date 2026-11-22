@@ -331,6 +331,13 @@ skill_path = "$RUNTIME_STATE/skills/printobserver/SKILL.md"
 # whether or not the detector has alerted. Left out, every 120 seconds: an
 # eight-hour print is 240 turns. Raise it to spend less; zero is refused.
 $INTERVAL_LINE
+# The conversation size, in tokens, at or above which a print's session is
+# compacted while no turn of it runs, so each check stays near a fixed cost.
+# A new event cancels a compaction rather than waiting on it.
+idle_compact_tokens = 150000
+# The size at which the harness compacts a session on its own during a turn:
+# the backstop for one turn growing past the idle compaction.
+auto_compact_tokens = 200000
 
 [ingress]
 # FILL IN: the shared secret Obico's webhook notification plugin must carry.
@@ -357,14 +364,27 @@ shared_secret = ""
 # looks carry the printer's state but no frame.
 # [camera]
 # snapshot_url = "http://127.0.0.1:1984/api/frame.jpeg?src=camera"
+# Optional, with a camera: the path of this camera's calibration file, which
+# tools/camera-calibration fits once per printer and again whenever the camera
+# moves. With it, a check can draw the planned toolpath where it sits in the
+# camera's view. The service refuses to start with an unreadable or invalid
+# file. Left out, nothing is drawn.
+# calibration = "/path/to/core-one-2026-09-27.json"
 
-# Optional: Obico's own API, so that a print Obico paused, and the agent adjusted
-# and the supervisor resumed, is acknowledged to Obico, which re-arms its
-# detection for the rest of the print. Give both keys or neither; the token is
-# an OAuth2 access token from the Obico instance's own administration.
+# Optional: Obico's own API and its failure detector. With the address and the
+# token, Obico's record of the printer is read once per observation interval,
+# which is how the detector's status says Obico is scoring a print, and a print
+# Obico paused, and the agent adjusted and the supervisor resumed, is
+# acknowledged to Obico, which re-arms its detection for the rest of the print.
+# Give both keys or neither; the token is an OAuth2 access token from the Obico
+# instance's own administration. The printer read is the one Obico's own posts
+# name; printer_id = <the number in its Obico page's address> names it sooner.
+# ml_api_url is Obico's detector service, whose health check is asked during
+# every print; left out, nothing asks it.
 # [obico]
 # url = "http://127.0.0.1:3334"
 # access_token = ""
+# ml_api_url = "http://127.0.0.1:3333"
 
 # How a start checks the spools loaded against what its file needs, by
 # OctoPrint's own analysis of it. Every key is optional; left out, a start is

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Who may say the bed is clear: the operator, and no other actor.\n\nIts own type rather than [`Actor`], so that a record of the agent's or the\nsystem's word that the bed is clear is one no value can spell. On the wire\nit is `\"operator\"`, as [`Actor::Operator`] is.",
+  "oneOf": [
+    {
+      "const": "operator",
+      "description": "A person: the operator.",
+      "type": "string"
+    }
+  ],
+  "title": "BedClearActor"
+}

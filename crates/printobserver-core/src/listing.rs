@@ -391,6 +391,9 @@ impl Supervisor {
         let Some(seen) = observed.started_at() else {
             return Ok(print);
         };
+        // Every sighting, kept or not, for the earliest a job was ever seen
+        // to start at, which a resume does not move.
+        self.note_sighted_start(print.id, seen);
         let printing = observed.printing_time_s();
         let started_at = match print.job_started_at {
             Some(held) if seconds_between(held, seen).abs() <= JOB_IDENTITY_TOLERANCE_S => held,

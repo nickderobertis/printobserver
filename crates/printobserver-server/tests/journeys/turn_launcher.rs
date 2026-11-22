@@ -27,7 +27,7 @@ fn control(record: &Path) -> (String, mpsc::Receiver<String>) {
             let read = connection.read(&mut request).expect("a request");
             let text = String::from_utf8_lossy(&request[..read]).into_owned();
             let path = text.split_whitespace().nth(1).unwrap_or("").to_owned();
-            let body = if path == "/started" {
+            let body = if path == "/started" || path == "/compaction-started" {
                 record.clone()
             } else {
                 String::new()
@@ -63,6 +63,27 @@ fn installed(directory: &Path, control: &str, program: &Path) -> PathBuf {
     launcher
 }
 
+/// Run `start` until the kernel no longer reports the program it starts busy.
+///
+/// A program copied a moment ago can still be held open for writing by a
+/// child another test forked while the copy was being written, until that
+/// child execs; the kernel refuses to run it meanwhile. That refusal is the
+/// race, not the launcher, so it is waited out, for two seconds at most.
+fn when_not_busy<T>(mut start: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match start() {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            done => return done,
+        }
+    }
+}
+
 /// Run the launcher with one argument, the published responder scripted by `env`.
 fn launched(launcher: &Path, env: &[(&str, &str)]) -> Output {
     let mut command = Command::new(launcher);
@@ -70,7 +91,7 @@ fn launched(launcher: &Path, env: &[(&str, &str)]) -> Output {
     for (name, value) in env {
         command.env(name, value);
     }
-    command.output().expect("the launcher starts")
+    when_not_busy(|| command.output()).expect("the launcher starts")
 }
 
 fn responder() -> PathBuf {
@@ -106,6 +127,31 @@ fn the_harness_runs_exactly_as_it_was_asked_and_its_output_is_kept() {
     assert_eq!(heard.recv().expect("a report"), "/exited");
 }
 
+/// A harness started to compact a session is reported as a compaction, on its
+/// own two paths, so the replay moves to the next event at a turn's exit alone;
+/// its output still reaches the caller and the record.
+#[test]
+fn a_compaction_is_reported_as_one_and_its_output_is_kept() {
+    let scratch = TempDir::new().expect("a directory");
+    let record = scratch.path().join("record");
+    let (address, heard) = control(&record);
+    let launcher = installed(scratch.path(), &address, &responder());
+    let answer = "{\"type\":\"result\",\"result\":\"\"}";
+    let mut command = Command::new(&launcher);
+    command
+        .args(["-p", "/compact", "--resume", "SID"])
+        .stdin(Stdio::null())
+        .env("MOCK_STDOUT", answer)
+        .env("MOCK_PRESERVE_STDOUT", "1");
+    let output = when_not_busy(|| command.output()).expect("the launcher starts");
+    let said = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{said}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), answer);
+    assert_eq!(std::fs::read_to_string(&record).expect("kept"), answer);
+    assert_eq!(heard.recv().expect("a report"), "/compaction-started");
+    assert_eq!(heard.recv().expect("a report"), "/compaction-exited");
+}
+
 /// The harness's input and error streams are the caller's, and its output arrives
 /// whatever its bytes.
 #[test]
@@ -114,13 +160,15 @@ fn the_harness_has_the_callers_streams_and_its_bytes_arrive_unchanged() {
     let record = scratch.path().join("record");
     let (address, _heard) = control(&record);
     let launcher = installed(scratch.path(), &address, &responder());
-    let mut child = Command::new(&launcher)
-        .env("MOCK_ECHO_STDIN", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("the launcher starts");
+    let mut child = when_not_busy(|| {
+        Command::new(&launcher)
+            .env("MOCK_ECHO_STDIN", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    })
+    .expect("the launcher starts");
     let fed = "caf\u{e9} \u{2603}\n\tno trailing line";
     child
         .stdin

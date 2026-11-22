@@ -71,10 +71,14 @@ pub const FRAME_PATH: &str = "/api/frame.jpeg";
 const SETTLING_ROUNDS: usize = 4;
 
 /// How many times it looks after each asking.
-const SETTLING_POLLS: usize = 40;
+const SETTLING_POLLS: usize = 200;
 
-/// How long it waits between looking.
-const SETTLING_PAUSE: core::time::Duration = core::time::Duration::from_millis(500);
+/// How long it waits between looking: short, because every invocation of the
+/// walk against a real machine waits on at least one settling, and the walk
+/// runs hundreds of them, so the pause is what that wait costs beyond the
+/// machine's own time. The rounds' patience is `SETTLING_POLLS` of these,
+/// twenty seconds, whatever this is.
+const SETTLING_PAUSE: core::time::Duration = core::time::Duration::from_millis(100);
 
 /// Enough hold-print time for one traced command on the slowest hosted runner.
 const INVOCATION_MARGIN_SECONDS: i64 = 120;
@@ -757,6 +761,20 @@ impl World {
             .to_owned()
     }
 
+    /// An event of a print's own that others followed, which a context read
+    /// can be asked since: the oldest of its recent events, read through the
+    /// program.
+    #[must_use]
+    pub fn an_earlier_event_of(&self, print_id: &str) -> String {
+        let read = self.ledger(&["context", "--print-id", print_id]);
+        read.pointer("/context/recent_events")
+            .and_then(Value::as_array)
+            .and_then(|events| events.last())
+            .and_then(|event| event["id"].as_str())
+            .unwrap_or_else(|| panic!("{print_id} has no event to be read since: {read}"))
+            .to_owned()
+    }
+
     /// Ask the ledger for one thing, for no reason but setting the walk up,
     /// and answer what it said.
     fn ledger(&self, asked: &[&str]) -> Value {
@@ -1366,6 +1384,16 @@ pub fn committed_skill() -> PathBuf {
         .join("SKILL.md")
 }
 
+/// How often a world's supervisor has its printer watch read the machine: the
+/// most `supervisor.printer_poll_s` admits.
+///
+/// A watch read that finds the machine idle closes every open record, so one
+/// landing between a journey telling the machine to be idle and that journey's
+/// own close ends the record behind it. The watch sleeps a whole poll before
+/// its first read, and every journey here acts on its world well inside five
+/// minutes of opening it; one driving the watch itself configures its own.
+pub const WATCH_POLL_S: u64 = printobserver_server::config::PRINTER_POLL_RANGE_S.1;
+
 /// The configuration a second supervisor is started under.
 fn server_document(state: &Path, printer: &Printer, skill: &Path) -> String {
     toml_of(&server_value(state, printer, skill))
@@ -1384,6 +1412,7 @@ pub fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
         "supervisor": {
             "harness": "claude-code",
             "skill_path": skill.display().to_string(),
+            "printer_poll_s": WATCH_POLL_S,
         },
         "ingress": { "shared_secret": SECRET, "answer_bound_ms": 1000 },
         // The machine's own facts every recovery is checked against.

@@ -31,13 +31,18 @@ const LOG_FILE: &str = "launcher.log";
 /// The status an answer the replay took a report under carries.
 const ANSWERED: &str = "200";
 
-/// The two things the replay is told about a harness run.
+/// The things the replay is told about a harness run.
 #[derive(Clone, Copy)]
 enum Report {
     /// The harness is about to start; the answer is where to keep its output.
     Started,
     /// The harness has exited; the answer is that the replay has moved on.
     Exited,
+    /// The harness is about to start compacting a session rather than taking a
+    /// turn; the answer is where to keep its output.
+    CompactionStarted,
+    /// The compacting harness has exited.
+    CompactionExited,
 }
 
 impl Report {
@@ -46,9 +51,16 @@ impl Report {
         match self {
             Self::Started => "/started",
             Self::Exited => "/exited",
+            Self::CompactionStarted => "/compaction-started",
+            Self::CompactionExited => "/compaction-exited",
         }
     }
 }
+
+/// The prompt a Claude Code run is started with to compact a session, which is
+/// how a compaction is told from a turn: the replay moves to the next event at
+/// a turn's exit and at nothing else.
+const COMPACT_PROMPT: &str = "/compact";
 
 /// One report to the replay's control address, and the body of its answer.
 fn tell(control: SocketAddr, report: Report) -> Result<String, String> {
@@ -155,9 +167,15 @@ fn run(launch: &Launch, record: &Path) -> Result<ExitCode, String> {
 
 fn launched() -> Result<ExitCode, String> {
     let launch = launch()?;
-    let record = tell(launch.control, Report::Started)?;
+    let compacting = std::env::args().any(|argument| argument == COMPACT_PROMPT);
+    let (started, exited) = if compacting {
+        (Report::CompactionStarted, Report::CompactionExited)
+    } else {
+        (Report::Started, Report::Exited)
+    };
+    let record = tell(launch.control, started)?;
     let status = run(&launch, Path::new(record.trim()))?;
-    tell(launch.control, Report::Exited)?;
+    tell(launch.control, exited)?;
     Ok(status)
 }
 

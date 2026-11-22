@@ -188,9 +188,9 @@ impl Supervisor {
         }
         // Only a change to the machine starts the agent's interval again.
         if actor.class() == ActorClass::Agent && changes_the_machine(action.kind()) {
-            self.note_agent_action(print_id, self.clock().elapsed());
+            self.note_agent_action(print_id, self.clock().paced());
         }
-        self.follow_the_detectors_pause(print_id, &action, snapshot.as_ref());
+        self.follow_an_accepted_action(print_id, &action, snapshot.as_ref());
         if let PrintAction::StartPrint {
             manifest,
             file_name,
@@ -204,12 +204,23 @@ impl Supervisor {
         let intervention = self
             .open_bounded_intervention(print_id, &action, &issued, snapshot.as_ref(), requested_at)
             .await?;
+        // Where the print had last been read to have got: what places this
+        // change against the commands its file sets the same thing with.
+        let file_position_bytes = self
+            .stores()
+            .filament
+            .file_position(print_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|position| position.bytes);
         self.append_action_event(
             print_id,
             source,
             EventBody::of(&ActionExecutedPayload {
                 action_id: issued.record.id,
                 intervention_id: intervention.as_ref().map(|opened| opened.id),
+                file_position_bytes,
             })?,
         )
         .await?;
@@ -233,6 +244,8 @@ impl Supervisor {
         issued: &Issued,
         preflight: Option<&Preflight>,
     ) -> Result<(), CoreError> {
+        // Every request is written down here, taken or refused.
+        self.note_stop_asked(print_id, action);
         self.append_action_event(
             print_id,
             source.clone(),
@@ -387,6 +400,23 @@ impl Supervisor {
             .open_print(None, Some(file_name.as_str().to_owned()))
             .await?;
         Ok(opened.id)
+    }
+
+    /// What one action that went through does to what the supervisor holds of
+    /// its print: the detector's pause, and whether the running turn
+    /// acknowledged its event by command.
+    fn follow_an_accepted_action(
+        &self,
+        print_id: PrintId,
+        action: &PrintAction,
+        snapshot: Option<&PrinterSnapshot>,
+    ) {
+        self.follow_the_detectors_pause(print_id, action, snapshot);
+        if action.actor().class() == ActorClass::Agent
+            && matches!(action, PrintAction::AcknowledgeFailure { .. })
+        {
+            self.note_acknowledged_by_turn(print_id);
+        }
     }
 
     /// What one action that went through does to a pause the detector made.

@@ -41,6 +41,8 @@ mod machine;
 mod proxy;
 #[path = "support/scripted.rs"]
 mod scripted;
+#[path = "support/slicing.rs"]
+mod slicing;
 #[path = "support/standalone.rs"]
 mod standalone;
 #[path = "support/traced.rs"]
@@ -57,12 +59,16 @@ mod world;
 mod announcing;
 #[path = "journeys/answers.rs"]
 mod answers;
+#[path = "journeys/bed_clearing.rs"]
+mod bed_clearing;
 #[path = "journeys/carrying.rs"]
 mod carrying;
 #[path = "journeys/closing.rs"]
 mod closing;
 #[path = "journeys/confirming.rs"]
 mod confirming;
+#[path = "journeys/contexting.rs"]
+mod contexting;
 #[path = "journeys/documented.rs"]
 mod documented;
 #[path = "journeys/documenting.rs"]
@@ -73,6 +79,8 @@ mod durations;
 mod failures;
 #[path = "journeys/finding.rs"]
 mod finding;
+#[path = "journeys/first_starting.rs"]
+mod first_starting;
 #[path = "journeys/formats.rs"]
 mod formats;
 #[path = "journeys/looking.rs"]
@@ -91,6 +99,8 @@ mod spooling;
 mod starting;
 #[path = "journeys/streaming.rs"]
 mod streaming;
+#[path = "journeys/supervising_outside.rs"]
+mod supervising_outside;
 #[path = "journeys/tainting.rs"]
 mod tainting;
 #[path = "journeys/tier.rs"]
@@ -102,16 +112,53 @@ mod upgrading;
 
 use world::World;
 
-/// The whole tier, over one supervisor.
+/// The tier's walk and the journeys after it, over one supervisor.
 ///
 /// One world rather than one per journey: the supervisor is a process and the
 /// store is a file, and starting sixteen of each to walk sixteen commands would
-/// spend the tier's time on process startup rather than on what it proves.
+/// spend the tier's time on process startup rather than on what it proves. The
+/// three tests after it are the tier's longest journeys, each over a world of
+/// its own so that they run beside this one rather than after it.
 #[test]
 fn every_client_command_is_proven_against_a_real_supervisor() {
     let world = World::open(world::STOOD_IN);
 
-    tier::run(&world, tier::WHOLE);
+    tier::run(&world, tier::WALK);
+}
+
+/// Every assertion the tier makes refuses the defect it is about, driven over
+/// the tainted variant of this program.
+#[test]
+fn every_assertion_of_the_tier_refuses_the_defect_it_is_about() {
+    let world = World::open(world::STOOD_IN);
+
+    tier::run(&world, tier::DEFECTS);
+}
+
+/// Every adjustment the tier drives is a bounded intervention that puts the
+/// prior value back.
+#[test]
+fn every_adjustment_of_the_tier_is_a_bounded_intervention() {
+    let world = World::open(world::STOOD_IN);
+
+    tier::run(&world, tier::INTERVENTIONS);
+}
+
+/// No run of the tier's walk prints the credential it authenticated with.
+#[test]
+fn no_run_of_the_tiers_walk_prints_the_credential() {
+    let world = World::open(world::STOOD_IN);
+
+    tier::run(&world, tier::CREDENTIAL);
+}
+
+/// A record left open with the machine idle is ended by the operator's close,
+/// not by the printer watch, however long after the close comes.
+#[test]
+fn a_record_left_open_past_a_default_poll_is_ended_by_its_close() {
+    let world = World::open(world::STOOD_IN);
+
+    tier::run(&world, tier::CLOSE_PAST_A_POLL);
 }
 
 /// A print started at the printer is found with `printobserver prints`, read
@@ -124,6 +171,42 @@ fn a_print_started_at_the_printer_is_found_and_joined_by_its_alert() {
     let world = World::open(world::STOOD_IN);
 
     finding::a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(&world);
+}
+
+/// An operator says once that the bed is clear, and recovery honours it until
+/// the next print starts.
+///
+/// A world of its own, because the journey starts a print and leaves a word
+/// recorded that every other journey's recovery would otherwise be decided on.
+#[test]
+fn the_operators_word_that_the_bed_is_clear_is_honoured_until_a_print_starts() {
+    let world = World::open(world::STOOD_IN);
+
+    bed_clearing::the_operators_word_is_honoured_until_a_print_starts(&world);
+}
+
+/// A first start names no print and is made under one this program mints, and
+/// a start naming something that is no print is refused saying what to pass.
+///
+/// A world of its own, because the journey starts the print every other
+/// journey here would otherwise find open.
+#[test]
+fn a_first_start_names_no_print_and_a_wrong_one_is_refused_saying_what_to_pass() {
+    let world = World::open(world::STOOD_IN);
+
+    first_starting::a_first_start_names_no_print(&world);
+}
+
+/// A turn reads a print's context, then only what came after the newest
+/// event it read, through this program.
+///
+/// A world of its own, because the journey's adjustments are the only events
+/// its reads are held to.
+#[test]
+fn a_context_read_since_an_event_answers_only_what_came_after_it() {
+    let world = World::open(world::STOOD_IN);
+
+    contexting::a_read_since_an_event_answers_only_what_came_after_it(&world);
 }
 
 /// An operator keeps the spool ledger through this program, and reads all of
@@ -391,9 +474,36 @@ fn the_server_says_it_skipped_the_tallies_it_could_not_read_and_serves() {
 /// document cannot pass by showing something nothing here executes.
 #[test]
 fn every_documented_example_prints_what_the_document_shows() {
-    let world = World::open(world::STOOD_IN);
+    // The documents show a configured detector, as an installed host's is: its
+    // health check asked at a loopback `ml_api` before the first example runs.
+    let detector = host::Host::answering(host::Answer {
+        status: "200 OK",
+        content_type: "text/plain",
+        body: b"ok".to_vec(),
+    });
+    let ml_api_url = detector.url("");
+    let world = World::configured(
+        world::STOOD_IN,
+        &world::committed_skill(),
+        None,
+        move |document| {
+            document["obico"] =
+                printobserver_types::serde_json::json!({ "ml_api_url": ml_api_url });
+        },
+    );
+    documenting::until_the_detector_was_checked(&world);
 
     documenting::accepts_the_committed_documentation(&world);
+    drop(detector);
+}
+
+/// Every example the outside supervisor's section of the reference shows, run
+/// over a print whose machine reads a real slice into the layers they are
+/// about; `PRINTOBSERVER_DOCS=write` rewrites what each shows, as the walk
+/// above does.
+#[test]
+fn every_documented_example_of_supervising_from_outside_runs_over_a_print_at_its_milestones() {
+    supervising_outside::runs_over_a_print_at_its_milestones();
 }
 
 /// The documented operator workflow, carried out from the documentation alone,

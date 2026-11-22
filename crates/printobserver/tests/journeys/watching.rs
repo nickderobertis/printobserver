@@ -32,6 +32,7 @@ use super::looking::{
     reports, wait_for,
 };
 use super::running;
+use super::supervising_outside;
 
 /// The harness the world's configuration names.
 const IDENTITY: &str = "claude-code";
@@ -310,6 +311,63 @@ mv "$dir/look-$print.part" "$dir/look-$print""#,
     );
 }
 
+/// While a print's turn is running and an event for it waits to be handed to
+/// it, the outside supervisor's documented examples — its two context reads and
+/// its look at the printer — take nothing the print's agent is owed: the look
+/// delivers nothing, and the print's own next look is the one the event is
+/// delivered to.
+#[test]
+fn the_documented_outside_supervision_leaves_a_waiting_event_to_the_prints_own_look() {
+    let slot = std::sync::OnceLock::new();
+    let watching = Watching::start(
+        r#"touch "$dir/started-$print"
+until [ -e "$dir/go" ]; do sleep 0.1; done
+eval "printobserver look --json --wait-s 30 $about" > "$dir/look-$print.part" 2>&1
+mv "$dir/look-$print.part" "$dir/look-$print""#,
+        supervising_outside::running_the_slice(&slot),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    watching.written(&format!("started-{print}"));
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    wait_for("the second alert to be written down", PATIENCE, || {
+        alerts(world, &print).len() == 2
+    });
+
+    let slicing = slot.get().expect("the slice runs");
+    let ran = supervising_outside::carries_out_the_section(world, slicing);
+    let printer_look = supervising_outside::labelled(&ran[2][0].printed);
+    assert!(
+        printer_look
+            .iter()
+            .all(|(label, _)| !label.starts_with("arrived")),
+        "the documented look took what the print's agent is owed: {printer_look:?}"
+    );
+    assert!(
+        printer_look
+            .iter()
+            .any(|(label, value)| label == "event.payload.delivered" && value == "[]"),
+        "{printer_look:?}"
+    );
+    assert!(
+        events_of(world, &print, "camera_look").is_empty(),
+        "the documented look was written into the print's history"
+    );
+
+    watching.go();
+    let look: Value = printobserver_types::serde_json::from_str(
+        &std::fs::read_to_string(watching.written(&format!("look-{print}"))).expect("the look"),
+    )
+    .expect("the look is a document");
+    let handed = alerts(world, &print);
+    let arrived = look["arrived"]
+        .as_array()
+        .expect("the print's look carries what arrived");
+    assert_eq!(arrived.len(), 1, "{look}");
+    assert_eq!(arrived[0]["id"], handed[1], "{look}");
+}
+
 /// What a turn never took gets exactly one more turn, in the same session:
 /// the newest as its event, the rest as what arrived while it was busy, and
 /// each prompt carries the situation's actual values.
@@ -515,9 +573,14 @@ eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the 
     assert_eq!(look["detector_paused"], true, "{look}");
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "resume"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "acknowledge_failure", "resume"],
+        "{asked:?}"
+    );
     assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
-    assert_eq!(asked[1]["actor"], "system");
+    assert_eq!(asked[2]["actor"], "system");
     wait_for("Obico to be told", PATIENCE, || acknowledged(&api));
 }
 
@@ -528,6 +591,7 @@ fn acknowledging_stop_leaves_the_pause_for_a_person() {
     let api = obico("200 OK");
     let watching = Watching::start(
         r#"eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the overhang' $actor $about" > "$dir/fan-$print" 2>&1
+eval "printobserver look $about" > "$dir/look-$print" 2>&1
 eval "printobserver acknowledge-failure --event-id $event --disposition stop --reason 'nothing I may change reaches this' $actor $about" > "$dir/stop-$print" 2>&1"#,
         detector_configuration(&api, true),
     );
@@ -552,6 +616,46 @@ eval "printobserver acknowledge-failure --event-id $event --disposition stop --r
     );
 }
 
+/// A turn that acknowledges its event before it has looked is refused, told to
+/// look first, and records nothing; once it has looked, the same turn's
+/// acknowledgement is taken. The frames a turn's context names are already old.
+#[test]
+fn a_turn_acknowledges_its_event_only_after_it_has_looked() {
+    let api = obico("200 OK");
+    let watching = Watching::start(
+        r#"eval "printobserver acknowledge-failure --event-id $event --disposition stop --reason 'judged from the context alone' $actor $about" > "$dir/early-$print" 2>&1; echo $? > "$dir/early-$print.code"
+eval "printobserver look $about" > "$dir/look-$print" 2>&1
+eval "printobserver acknowledge-failure --event-id $event --disposition stop --reason 'the look shows what the alert did' $actor $about" > "$dir/stop-$print" 2>&1; echo $? > "$dir/stop-$print.code""#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+
+    let early = format!("early-{print}");
+    assert_eq!(
+        exited(&watching, &early),
+        i32::from(Exit::Refused.status()),
+        "{}",
+        printed(&watching, &early)
+    );
+    let said = printed(&watching, &early);
+    assert!(
+        said.contains("before the turn has taken a look")
+            && said.contains(&format!("printobserver look --print-id {print}")),
+        "the refusal does not say to look first: {said}"
+    );
+    let stop = format!("stop-{print}");
+    assert_eq!(exited(&watching, &stop), 0, "{}", printed(&watching, &stop));
+    watching.settled_after(&print, 1);
+
+    let asked = actions_asked(world, &print);
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert_eq!(asked[0]["action"], "acknowledge_failure");
+    assert_eq!(asked[0]["reason"], "the look shows what the alert did");
+}
+
 /// A resume the policy refuses — the system is not granted it — leaves the
 /// print paused, the refusal is in the record, and `Obico` is told nothing.
 #[test]
@@ -569,8 +673,13 @@ fn a_resume_the_policy_refuses_leaves_the_print_paused() {
 
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "resume"], "{asked:?}");
-    assert_eq!(asked[1]["actor"], "system");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "acknowledge_failure", "resume"],
+        "{asked:?}"
+    );
+    assert_eq!(asked[2]["actor"], "system");
     let rejected = events_of(world, &print, "action_rejected");
     assert_eq!(rejected.len(), 1, "{rejected:?}");
     let refusal = &rejected[0]["payload"]["decision"]["rejected"]["actor_may_not_request"];
@@ -657,7 +766,12 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
 
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "cancel"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "cancel", "acknowledge_failure"],
+        "{asked:?}"
+    );
     assert_eq!(reports(world), Some(Reports::Operational));
     assert!(
         api.received().is_empty(),
@@ -737,7 +851,12 @@ until [ -e "$dir/go" ]; do sleep 0.1; done"#,
 
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["set_fan_percent", "cancel"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "cancel", "acknowledge_failure"],
+        "{asked:?}"
+    );
 }
 
 /// A print somebody else resumed is no longer the detector's: when it is
@@ -780,7 +899,12 @@ eval "printobserver set-fan-percent --percent 80 --reason 'more cooling for the 
 
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    assert_eq!(kinds, ["resume", "pause", "set_fan_percent"], "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["resume", "pause", "set_fan_percent", "acknowledge_failure"],
+        "{asked:?}"
+    );
     assert_eq!(reports(world), Some(Reports::Paused));
     assert!(
         api.received().is_empty(),
@@ -1024,6 +1148,96 @@ ask pause-moving "pause""#,
             printed(&watching, &format!("{name}-{print}"))
         );
     }
+    // More of the interval is left than one look waits, so the refusal names
+    // looks that wait it out together, each within the most one look takes.
+    let said = printed(&watching, &format!("pause-moving-{print}"));
+    let seconds_after = |words: &str| -> i64 {
+        said.split(words)
+            .nth(1)
+            .and_then(|rest| rest.split('s').next())
+            .and_then(|seconds| seconds.parse().ok())
+            .unwrap_or_else(|| panic!("the refusal does not say {words:?}: {said}"))
+    };
+    let since_last_s = seconds_after("The agent last acted ");
+    let left_s = seconds_after("looks that wait ");
+    assert_eq!(left_s, 300 - since_last_s, "{said}");
+    assert!(
+        left_s > 90 && said.contains("in all, at most `--wait-s 90` each"),
+        "{said}"
+    );
+}
+
+/// A pause the agent's minimum interval held back says how much of it is
+/// left and to send the same command again after a look waiting that long —
+/// and the turn that does exactly what it says has its pause taken.
+#[test]
+fn a_pause_held_back_by_the_interval_is_taken_when_sent_again_after_the_look_it_names() {
+    const INTERVAL_S: i64 = 3;
+    let watching = Watching::start(
+        r#"ask() { eval "printobserver $2 --reason 'a journey about the interval' $actor $about" > "$dir/$1-$print" 2>&1; echo $? > "$dir/$1-$print.code"; }
+ask fan "set-fan-percent --percent 60"
+ask pause-early "pause"
+left=$(sed -n 's/.*--wait-s \([0-9]*\).*/\1/p' "$dir/pause-early-$print" | head -n 1)
+eval "printobserver look --json --wait-s ${left:-0} $about" > "$dir/look-$print" 2>&1
+ask pause-again "pause""#,
+        |document| {
+            document["safety"]["agent_min_interval_s"] = json!(INTERVAL_S);
+            document["safety"]["actions"]["agent"] = json!(["set_fan_percent", "pause"]);
+        },
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Printing);
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+
+    assert_eq!(
+        exited(&watching, &format!("fan-{print}")),
+        0,
+        "{}",
+        printed(&watching, &format!("fan-{print}"))
+    );
+    let early = format!("pause-early-{print}");
+    assert_eq!(
+        exited(&watching, &early),
+        i32::from(Exit::Rejected.status()),
+        "{}",
+        printed(&watching, &early)
+    );
+    let said = printed(&watching, &early);
+    let left: i64 = said
+        .split("--wait-s ")
+        .nth(1)
+        .and_then(|rest| rest.split('`').next())
+        .and_then(|seconds| seconds.parse().ok())
+        .unwrap_or_else(|| panic!("the refusal names no look to wait with: {said}"));
+    assert!((1..=INTERVAL_S).contains(&left), "{said}");
+    for words in [
+        "min_interval_not_elapsed",
+        &format!("its minimum interval is {INTERVAL_S}s"),
+        &format!("so {left}s of it are left"),
+        "then send this same command again",
+    ] {
+        assert!(
+            said.contains(words),
+            "the refusal does not say {words:?}: {said}"
+        );
+    }
+
+    let again = format!("pause-again-{print}");
+    assert_eq!(
+        exited(&watching, &again),
+        0,
+        "the pause sent again after the look the refusal named was not taken: {}",
+        printed(&watching, &again)
+    );
+    let asked = actions_asked(world, &print);
+    let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(
+        kinds,
+        ["set_fan_percent", "pause", "pause", "acknowledge_failure"],
+        "{asked:?}"
+    );
 }
 
 /// A detector that reports the pause again while the turn that adjusted the
@@ -1226,7 +1440,8 @@ fn the_first_turn_acted_as_itself(world: &World, print: &str, captured: &std::pa
             .iter()
             .map(|action| action["action"].clone())
             .collect::<Vec<_>>(),
-        [json!("set_fan_percent")],
+        // The turn acknowledged nothing by command, so its answer did.
+        [json!("set_fan_percent"), json!("acknowledge_failure")],
         "a refused request was recorded: {asked:?}"
     );
     assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
@@ -1358,15 +1573,29 @@ fn an_agent_asking_to_close_its_print_is_refused_by_the_default_grants() {
     watching.settled_after(&print, 1);
 
     let asked = actions_asked(world, &print);
-    assert_eq!(asked.len(), 1, "{asked:?}");
+    // The turn acknowledged nothing by command, so its answer did.
+    assert_eq!(asked.len(), 2, "{asked:?}");
     assert_eq!(asked[0]["action"], "close_print", "{asked:?}");
+    assert_eq!(asked[1]["action"], "acknowledge_failure", "{asked:?}");
     assert!(asked[0]["actor"]["agent"].is_object(), "{asked:?}");
     let rejected = events_of(world, &print, "action_rejected");
     assert_eq!(rejected.len(), 1, "{rejected:?}");
     let refusal = &rejected[0]["payload"]["decision"]["rejected"]["actor_may_not_request"];
     assert_eq!(refusal["actor_class"], "agent", "{rejected:?}");
     assert_eq!(refusal["action"], "close_print", "{rejected:?}");
-    assert!(events_of(world, &print, "action_executed").is_empty());
+    // The one action executed is the answer's acknowledgement; the close is
+    // not among them.
+    let requested = events_of(world, &print, "action_requested");
+    let acknowledgement = requested
+        .iter()
+        .find(|event| event["payload"]["action"]["action"] == "acknowledge_failure")
+        .map(|event| event["payload"]["action_id"].clone())
+        .expect("the answer's acknowledgement was requested");
+    let executed: Vec<Value> = events_of(world, &print, "action_executed")
+        .iter()
+        .map(|event| event["payload"]["action_id"].clone())
+        .collect();
+    assert_eq!(executed, [acknowledgement], "{executed:?}");
     assert!(events_of(world, &print, "print_ended").is_empty());
     assert!(events_of(world, &print, "supervision_session_closed").is_empty());
     let status = running::read(world, &["status", "--print-id", &print]);
@@ -1374,5 +1603,68 @@ fn an_agent_asking_to_close_its_print_is_refused_by_the_default_grants() {
     assert!(
         status["session"].is_object() && status["session"].get("closed_at").is_none(),
         "{status}"
+    );
+}
+
+/// A turn of the real `printobserver server` is handed, in its prompt, the
+/// usage line of the two reads a check uses and of each action the
+/// installer's envelope grants the agent, exactly as `printobserver --help`
+/// prints them and in its order, and no other command's — so a check that acts
+/// needs no call to learn how.
+#[test]
+fn a_turn_is_handed_the_usage_of_each_command_its_role_may_run() {
+    let grants = installed_agent_grants();
+    let granted: Vec<String> = grants
+        .as_array()
+        .expect("the agent's grants are a list")
+        .iter()
+        .filter_map(Value::as_str)
+        .map(|name| name.replace('_', "-"))
+        .collect();
+    let watching = Watching::start(":", move |document| {
+        document["safety"]["actions"]["agent"] = grants;
+    });
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Printing);
+    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    let prompt = watching.prompt(&print, 1);
+
+    let help = std::process::Command::new(env!("CARGO_BIN_EXE_printobserver"))
+        .arg("--help")
+        .output()
+        .expect("the program prints its help");
+    let handed: Vec<String> = ["context".to_owned(), "look".to_owned()]
+        .into_iter()
+        .chain(granted)
+        .collect();
+    let expected: Vec<String> = String::from_utf8_lossy(&help.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            handed.iter().any(|command| {
+                line.strip_prefix("printobserver ")
+                    .is_some_and(|rest| rest == command || rest.starts_with(&format!("{command} ")))
+            })
+        })
+        .map(str::to_owned)
+        .collect();
+    assert!(
+        expected
+            .iter()
+            .any(|line| line.starts_with("printobserver set-fan-percent ")),
+        "the installer grants no adjustment, so this proves nothing: {expected:?}"
+    );
+    let (_, section) = prompt
+        .split_once("## The commands you may run")
+        .unwrap_or_else(|| panic!("the prompt carries no commands: {prompt}"));
+    let (_, block) = section
+        .split_once("```console\n")
+        .expect("the commands are a block");
+    let (lines, _) = block.split_once("\n```").expect("the block closes");
+    assert_eq!(lines.lines().collect::<Vec<_>>(), expected, "{prompt}");
+    assert!(
+        !lines.contains("register-spool") && !lines.contains("printobserver server"),
+        "a command the agent may not ask for was handed over: {lines}"
     );
 }

@@ -2,7 +2,9 @@
 
 At least one worked example of every operation this system serves, each a
 sequence of commands you can run in the order it is given. This document covers
-what to do before you start and the worked examples themselves.
+what to do before you start, the worked examples themselves, and supervising from
+outside: what a supervisor that follows a print beside printobserver's own agent
+must do at the print's milestones.
 
 Every example below was produced by running exactly the command shown against a
 real server, and a committed check runs all of them again and refuses a document
@@ -99,8 +101,8 @@ from when you want one line about where things stand.
 
 ```console
 $ printobserver status --print-id PRINT_ID
-detector.since: null
-detector.status: unchecked
+detector.since: TIMESTAMP
+detector.status: available
 interventions: []
 job.completion.out_of_range: false
 job.completion.value: 0.42
@@ -149,48 +151,23 @@ context.bounds.allowed.flowrate.max: 1.1
 context.bounds.allowed.flowrate.min: 0.9
 context.bounds.allowed.tool_target:0.max: 260.0
 context.bounds.allowed.tool_target:0.min: 0.0
-context.detector.since: null
-context.detector.status: unchecked
+context.detector: available
 context.interventions: []
-context.job.completion.out_of_range: false
-context.job.completion.value: 0.42
-context.job.estimated_print_time_s: 3600
-context.job.file_name: FILE
-context.job.file_origin: local
-context.job.print_time_left_s: 1200
-context.job.print_time_s: 900
-context.job.size_bytes: 4211
-context.job.state: printing
 context.latest_image.id: IMAGE_ID
 context.latest_image.sha256: 106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
-context.print.file_name: FILE
+context.newest_event: ID
 context.print.id: PRINT_ID
-context.print.job_print_time_s: 900
-context.print.job_started_at: TIMESTAMP
-context.print.narrowings: []
-context.print.opened_at: TIMESTAMP
-context.print.provider_print_id: 4211
 context.print.state: printing
-context.printer.bed.actual_c.out_of_range: false
-context.printer.bed.actual_c.value: 59.5
-context.printer.bed.target_c.out_of_range: false
-context.printer.bed.target_c.value: 60.0
-context.printer.connection: printing
-context.printer.observed_at: TIMESTAMP
-context.printer.tools.0.actual_c.out_of_range: false
-context.printer.tools.0.actual_c.value: 209.5
-context.printer.tools.0.target_c.out_of_range: false
-context.printer.tools.0.target_c.value: 210.0
+context.printer.bed.actual_c: 59.5
+context.printer.bed.target_c: 60.0
+context.printer.tools.0.actual_c: 209.5
+context.printer.tools.0.target_c: 210.0
 context.recent_events.0.id: ID
 context.recent_events.0.kind: startup_reconciliation
 context.recent_events.0.payload.outcome: print_adopted
 context.recent_events.0.payload.print_id: PRINT_ID
-context.recent_events.0.print_id: PRINT_ID
 context.recent_events.0.received_at: TIMESTAMP
-context.recent_events.0.source: system
 context.recent_events.1.id: EVENT_ID
-context.recent_events.1.image.id: IMAGE_ID
-context.recent_events.1.image.sha256: 106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
 context.recent_events.1.kind: obico_failure_alert
 context.recent_events.1.payload.ended_at: TIMESTAMP
 context.recent_events.1.payload.file_name: FILE
@@ -198,9 +175,7 @@ context.recent_events.1.payload.is_warning: true
 context.recent_events.1.payload.obico_print_id: 4211
 context.recent_events.1.payload.print_paused: false
 context.recent_events.1.payload.started_at: TIMESTAMP
-context.recent_events.1.print_id: PRINT_ID
 context.recent_events.1.received_at: TIMESTAMP
-context.recent_events.1.source: obico
 image_path: STATE_DIR/images/10/106326ff23f8c012db471960fb919d702d7de21f86dd3170d6760b975d2d4674
 ```
 
@@ -514,12 +489,20 @@ Start a print of a named file, bounded by a manifest. Valid only while the
 printer is operational. A start opens a print of its own when no print is open,
 so `record.print_id` names the print the job runs under and its manifest is
 attached to: act on that print afterwards. The examples below this one do.
+With no print open the start opens its own, so a first start names no
+`--print-id`: the program makes the call under an identifier it mints, and
+`record.print_id` names the print to act on next. A `--print-id` that is no
+print's identifier is refused, saying what to pass.
 The manifest's `sheet` names the build sheet that is down; a start naming none
 is refused. `--override-material-check true` and `--override-sheet-check true`
 start one the material or sheet check refused, as the operator alone.
 
+Before a start, take the printer's look and open its frame: the start below is
+the one made when that frame shows a clear bed and the smooth PEI sheet, and the
+spool loaded is PLA, which that sheet suits.
+
 ```console
-$ printobserver start-print --print-id PRINT_ID --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "re-running the job after clearing the bed"
+$ printobserver start-print --actor operator --file-name FILE --manifest '{"file_name":"FILE","material":"PLA","nozzle_diameter_mm":0.4,"slicer_profile":"draft","sheet":"smooth-pei","allowed":{},"metadata":{}}' --reason "the camera's frame shows a clear bed and the smooth PEI sheet, which suits the loaded PLA"
 record.decision: accepted
 record.executed_at: TIMESTAMP
 record.id: ID
@@ -535,7 +518,7 @@ record.request.action.manifest.metadata: {}
 record.request.action.manifest.nozzle_diameter_mm: 0.4
 record.request.action.manifest.sheet: smooth-pei
 record.request.action.manifest.slicer_profile: draft
-record.request.action.reason: re-running the job after clearing the bed
+record.request.action.reason: the camera's frame shows a clear bed and the smooth PEI sheet, which suits the loaded PLA
 record.request.actor: operator
 record.request.requested_at: TIMESTAMP
 ```
@@ -614,6 +597,7 @@ event.received_at: TIMESTAMP
 event.source: system
 frame.id: ID
 frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no camera calibration is configured
 image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 job.completion.out_of_range: false
 job.completion.value: 0.42
@@ -659,6 +643,7 @@ event.received_at: TIMESTAMP
 event.source: system
 frame.id: ID
 frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no print is named, so there is no planned toolpath to draw on it
 image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 job.completion.out_of_range: false
 job.completion.value: 0.42
@@ -1298,3 +1283,104 @@ events.1.received_at: TIMESTAMP
 events.1.source: operator
 the supervisor refused this recovery: the printer is Printing, and nothing may move it under a running print; pause or cancel the print first
 ```
+
+### bed_clear
+
+Say once that the bed is clear, as the operator, after taking a part off it.
+Until the next print starts, a Z home is decided as though it carried
+`--bed-clear-asserted true` and a heat, a park and an XY home as though they
+carried `--clearance-asserted true`, each naming the word in its events; the
+agent's word is refused.
+
+```console
+$ printobserver bed-clear --actor operator --reason "the cancelled print is off the bed"
+detail: recorded: until the next print starts, a Z home is decided as though it asserted the bed clear, and a heat, a park and an XY home as though they asserted the nozzle clear of the part, wherever the operator's word counts
+event.id: ID
+event.kind: bed_clear_asserted
+event.payload.actor: operator
+event.payload.reason: the cancelled print is off the bed
+event.received_at: TIMESTAMP
+event.source: operator
+```
+
+## Supervising from outside
+
+You supervise a print from outside when you started it, or were asked to watch
+it, and follow it with `printobserver watch` beside printobserver's own agent.
+You are there to catch what that agent misses, so its verdict is one opinion
+and is no substitute for a frame of your own: "still clean" in the watch is
+never a reason to skip one.
+
+At each of these points of the print you must take a frame yourself and open
+it:
+
+- its first layer;
+- the first layer that prints an overhang;
+- the first layer that prints support;
+- the end of the print, its last layer.
+
+Each point is a look of its own, even when two of them fall on the same layer
+or a moment apart: a frame taken for one point does not stand for another.
+
+**Find the points from the context.** `printobserver context --print-id
+PRINT_ID` answers the slicer's plan at the job's position: `slicer.layer` is
+the layer being printed, counting the first as 1; `slicer.types` what that
+layer lays material as; `slicer.z_mm` its height and `slicer.final_z_mm` the
+height of the last layer; and `slicer.minutes_left` the slicer's own estimate
+of the time left. The first layer whose `slicer.types` names `Overhang
+perimeter` is the first overhang layer; the first naming `Support material` is
+the first support layer, which is the first layer itself when support stands
+on the bed; the layer whose `slicer.z_mm` is `slicer.final_z_mm` is the last.
+
+Here the print is on its first layer, which lays support from the bed, so it is
+the first support layer as well:
+
+```console
+$ printobserver context --print-id PRINT_ID
+context.slicer.final_z_mm: 142.0
+context.slicer.layer: 1
+context.slicer.minutes_left: 149
+context.slicer.types.0: Skirt/Brim
+context.slicer.types.1: Support material
+context.slicer.types.2: Perimeter
+context.slicer.types.3: External perimeter
+context.slicer.types.4: Solid infill
+context.slicer.z_mm: 0.2
+```
+
+And later on the first layer that prints an overhang:
+
+```console
+$ printobserver context --print-id PRINT_ID
+context.slicer.final_z_mm: 142.0
+context.slicer.layer: 60
+context.slicer.minutes_left: 135
+context.slicer.types.0: Perimeter
+context.slicer.types.1: External perimeter
+context.slicer.types.2: Solid infill
+context.slicer.types.3: Internal infill
+context.slicer.types.4: Overhang perimeter
+context.slicer.z_mm: 9.0
+```
+
+**Take the frame with no print named.** `printobserver look` with no
+`--print-id` is a look at the printer: it takes a frame now and keeps it,
+belonging to no print, and it waits on nothing printobserver's agent is owed,
+so it never takes an event meant for that agent. A look naming the print is
+that agent's to take and would take such an event from it, so it is never
+yours. Open the image at the `image_path` the look answers and judge it
+yourself; `printobserver image --image-id` with the frame's `frame.id` names
+the same file.
+
+```console
+$ printobserver look
+event.kind: camera_look
+frame.id: ID
+frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no print is named, so there is no planned toolpath to draw on it
+image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+```
+
+Asking for nothing is the outcome of a frame that shows nothing wrong. What a
+frame shows wrong is the operator's to act on, under the same intervention
+policy as every other action.

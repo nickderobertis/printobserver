@@ -137,6 +137,14 @@ pub trait TurnAccess: Send + Sync {
     /// Returns [`SupervisorError::Unavailable`] when no credential could be
     /// minted, which is a run that could reach nothing and is not started.
     fn issue(&self, session: &TurnSession) -> Result<TurnPass, SupervisorError>;
+
+    /// Whether this turn has asked for its print to be paused or cancelled,
+    /// whether the request was taken or refused: what an answer of
+    /// [`Disposition::Stop`](crate::Disposition::Stop) is held to, since an
+    /// answer stops nothing by itself. `false` when nothing says.
+    fn asked_to_stop(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

@@ -51,6 +51,46 @@ impl Timestamp {
         Self(Utc::now())
     }
 
+    /// Let `wait` pass on the real-print replay's clock rather than in real
+    /// time, and answer whether it did.
+    ///
+    /// Only a build of the suite's own, under the `replay-clock` feature, with
+    /// its clock file beside the program, answers `true`: every other build
+    /// answers `false` and the caller waits as it always does. A caller asks
+    /// only when nothing could end its wait early, so passing the wait at once
+    /// moves every reading of the clock exactly as waiting it out would.
+    #[must_use]
+    // llmlint: ignore[code_lands_in_the_domain_that_owns_it] suppressions.toml has the reason.
+    pub fn pass_replay_time(wait: core::time::Duration) -> bool {
+        #[cfg(feature = "replay-clock")]
+        return replay_clock::advance(wait);
+        #[cfg(not(feature = "replay-clock"))]
+        {
+            let _ = wait;
+            false
+        }
+    }
+
+    /// A span measured on the host's steady clock, as the real-print replay's
+    /// clock would measure it.
+    ///
+    /// The replay jumps its clock from one recorded event to the next, minutes or
+    /// hours apart, in a few seconds of real time, so the agent's minimum interval,
+    /// measured across a jump, has to count the jump too, or the agent's change at
+    /// the second of two recorded events an hour apart reads as seconds after its
+    /// change at the first. Only a build of the suite's own, under
+    /// the `replay-clock` feature, with its clock file beside the program, adds
+    /// anything: every other build answers `steady` unchanged. The answer never
+    /// goes back, because a steady clock never does.
+    #[must_use]
+    // llmlint: ignore[code_lands_in_the_domain_that_owns_it] suppressions.toml has the reason.
+    pub fn on_replay_clock(steady: core::time::Duration) -> core::time::Duration {
+        #[cfg(feature = "replay-clock")]
+        return replay_clock::steady(steady);
+        #[cfg(not(feature = "replay-clock"))]
+        steady
+    }
+
     /// The instant this many seconds after the Unix epoch.
     ///
     /// # Errors
@@ -181,12 +221,17 @@ impl JsonSchema for Timestamp {
 #[cfg(feature = "replay-clock")]
 mod replay_clock {
     use chrono::{DateTime, TimeDelta, Utc};
+    use core::time::Duration;
     use std::path::PathBuf;
-    use std::sync::OnceLock;
+    use std::sync::{Mutex, OnceLock};
 
     /// The file beside the program: the milliseconds to add, and the latest instant
     /// to answer in milliseconds since the epoch, or nothing past that for none.
     const CLOCK_FILE: &str = "clock";
+
+    /// Set in the environment to wait in real time all the same: what the suite
+    /// compares a jumped replay against.
+    const REAL_WAITS: &str = "PRINTOBSERVER_REPLAY_REAL_WAITS";
 
     fn path() -> Option<&'static PathBuf> {
         static PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -196,6 +241,83 @@ mod replay_clock {
                 .map(|program| program.with_file_name(CLOCK_FILE))
         })
         .as_ref()
+    }
+
+    /// Move the clock on by `wait`: the file's offset grows by it and its
+    /// ceiling stands, written whole and then renamed into place so a reader
+    /// never sees half of it. Nothing is moved, and `false` answered, when
+    /// there is no file to move or real waits were asked for.
+    pub(super) fn advance(wait: core::time::Duration) -> bool {
+        if std::env::var_os(REAL_WAITS).is_some() {
+            return false;
+        }
+        let Some(file) = path() else {
+            return false;
+        };
+        let Ok(text) = std::fs::read_to_string(file) else {
+            return false;
+        };
+        let mut words = text.split_whitespace();
+        let Some(Ok(offset)) = words.next().map(str::parse::<i64>) else {
+            return false;
+        };
+        let Ok(by) = i64::try_from(wait.as_millis()) else {
+            return false;
+        };
+        let ceiling = words
+            .next()
+            .map(|ceiling| format!(" {ceiling}"))
+            .unwrap_or_default();
+        let written = file.with_extension(format!("advance-{}", std::process::id()));
+        std::fs::write(
+            &written,
+            format!("{}{ceiling}\n", offset.saturating_add(by)),
+        )
+        .is_ok()
+            && std::fs::rename(&written, file).is_ok()
+    }
+
+    /// The offset the clock file holds, in milliseconds, when there is one to read.
+    fn offset_ms() -> Option<i64> {
+        let text = std::fs::read_to_string(path()?).ok()?;
+        text.split_whitespace().next()?.parse().ok()
+    }
+
+    /// What the steady clock has answered: the offset its first reading found, and
+    /// its latest answer.
+    struct Steady {
+        first_ms: Option<i64>,
+        latest: Duration,
+    }
+
+    /// `real` moved on by how far the clock file's offset has grown since the first
+    /// reading of it, and never less than the last answer. A file that cannot be read
+    /// moves nothing.
+    pub(super) fn steady(real: Duration) -> Duration {
+        static STEADY: Mutex<Steady> = Mutex::new(Steady {
+            first_ms: None,
+            latest: Duration::ZERO,
+        });
+        let mut held = STEADY
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let moved_ms = match (offset_ms(), held.first_ms) {
+            (Some(offset), Some(first)) => offset.saturating_sub(first),
+            (Some(offset), None) => {
+                held.first_ms = Some(offset);
+                0
+            }
+            (None, _) => 0,
+        };
+        let by = Duration::from_millis(moved_ms.unsigned_abs());
+        let answer = if moved_ms >= 0 {
+            real.saturating_add(by)
+        } else {
+            real.saturating_sub(by)
+        }
+        .max(held.latest);
+        held.latest = answer;
+        answer
     }
 
     pub(super) fn now(real: DateTime<Utc>) -> DateTime<Utc> {

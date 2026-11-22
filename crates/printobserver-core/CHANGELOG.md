@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.14.0](https://github.com/nickderobertis/printobserver/compare/v0.13.1...v0.14.0) - 2026-11-21
+
+### Added
+
+- *(supervisor)* compact each print's conversation while idle, and at 200k as a backstop ([#352](https://github.com/nickderobertis/printobserver/pull/352))
+- *(supervisor)* give each print check the three-panel image once its alignment passes ([#351](https://github.com/nickderobertis/printobserver/pull/351))
+- *(supervisor)* [**breaking**] put each check's frame and facts in its prompt, on a lean harness ([#349](https://github.com/nickderobertis/printobserver/pull/349))
+- report Obico scoring as detector status and add bed-clear ([#327](https://github.com/nickderobertis/printobserver/pull/327))
+- *(panels)* draw the planned toolpath on the camera frame and compose the three-panel check image ([#346](https://github.com/nickderobertis/printobserver/pull/346))
+
+## [0.13.1](https://github.com/nickderobertis/printobserver/compare/v0.12.0...v0.13.1) - 2026-11-16
+
+### Added
+
+- *(context)* tell the agent the layer, height and features it prints ([#329](https://github.com/nickderobertis/printobserver/pull/329))
+
+## [0.13.0](https://github.com/nickderobertis/printobserver/compare/v0.12.0...v0.13.0) - 2026-11-16
+
+### Added
+
+- *(context)* tell the agent the layer, height and features it prints ([#329](https://github.com/nickderobertis/printobserver/pull/329))
 
 ## [0.12.0](https://github.com/nickderobertis/printobserver/compare/v0.11.1...v0.12.0) - 2026-11-07
 

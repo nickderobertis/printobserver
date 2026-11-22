@@ -18,8 +18,9 @@
 mod schema_files;
 
 use printobserver_supervisor_api::{
-    AgentAssessment, Confidence, SessionPhase, SupervisionSession, SupervisionSessionClosedPayload,
-    SupervisionSessionOpenedPayload, TurnOutcome, TurnRequest, TurnSituation,
+    AgentAssessment, Confidence, Disposition, SessionPhase, SupervisionSession,
+    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnOutcome, TurnRequest,
+    TurnSituation,
 };
 use printobserver_types::contract::{Sample as _, TypeContract, schema_of};
 use printobserver_types::serde_json::{Value, json};
@@ -62,6 +63,7 @@ fn assessment_vocabulary() -> Vec<TypeContract> {
     vec![
         TypeContract::of::<AgentAssessment>("AgentAssessment"),
         TypeContract::of::<Confidence>("Confidence"),
+        TypeContract::of::<Disposition>("Disposition"),
     ]
 }
 
@@ -128,6 +130,7 @@ fn turn_request_carries_exactly_the_stated_fields() {
     let expected = vec![
         field("context_command", "string", true),
         field("event", "EventRecord", true),
+        field("facts", "object", false),
         field("image_path", "string", false),
         field("print_id", "PrintId", true),
         field("situation", "TurnSituation", false),
@@ -143,6 +146,7 @@ fn turn_situation_carries_exactly_the_stated_fields() {
         field("detector_paused_the_print", "boolean", false),
         field("detector_warned", "boolean", false),
         field("frame_captured_at", "Timestamp", false),
+        field("image", "string", false),
         field("noticed", "string", false),
         field("printer_state", "PrinterState", false),
     ];
@@ -231,12 +235,13 @@ fn each_kind_is_written_under_its_own_name_and_reads_back_under_it() {
 /// under the names the schemas carry.
 #[test]
 fn the_assessment_vocabulary_carries_exactly_the_stated_fields() {
-    let expected: [(&str, Vec<WireField>); 2] = [
+    let expected: [(&str, Vec<WireField>); 3] = [
         (
             "AgentAssessment",
             vec![
                 field("confidence", "Confidence", true),
                 field("did", "string", true),
+                field("disposition", "Disposition", true),
                 field("escalating", "boolean", true),
                 field("should_continue", "boolean", true),
                 field("summary", "string", true),
@@ -244,6 +249,7 @@ fn the_assessment_vocabulary_carries_exactly_the_stated_fields() {
             ],
         ),
         ("Confidence", vec![]),
+        ("Disposition", vec![]),
     ];
     let declared = assessment_vocabulary();
     assert_eq!(declared.len(), expected.len());
@@ -257,6 +263,20 @@ fn the_assessment_vocabulary_carries_exactly_the_stated_fields() {
         );
         assert_eq!(schema.get("title").and_then(Value::as_str), Some(name));
     }
+}
+
+/// The disposition vocabulary is an acknowledgement's closed set of three, in
+/// its lowercase spellings.
+#[test]
+fn disposition_is_an_acknowledgements_closed_set_of_three() {
+    let schema = schema_of::<Disposition>();
+    let spellings: Vec<&str> = schema["oneOf"]
+        .as_array()
+        .expect("a closed set of arms")
+        .iter()
+        .filter_map(|arm| arm["const"].as_str())
+        .collect();
+    assert_eq!(spellings, ["continue", "watch", "stop"]);
 }
 
 /// The confidence vocabulary is the closed set of three, in its lowercase

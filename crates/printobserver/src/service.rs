@@ -190,19 +190,20 @@ pub async fn run<R: StatusReporter>(
             wait_hint: START_WAIT_HINT,
         },
     );
-    let running: Running = match Server::start(config).await {
-        Ok(running) => running,
-        Err(error) => {
-            eprintln!("printobserver will not start: {error}");
-            deliver(
-                reporter,
-                StatusReport::Stopped {
-                    exit: Exit::Unconfigured,
-                },
-            );
-            return Exit::Unconfigured;
-        }
-    };
+    let running: Running =
+        match Server::start_with_usage(config, &crate::surface::usage_lines()).await {
+            Ok(running) => running,
+            Err(error) => {
+                eprintln!("printobserver will not start: {error}");
+                deliver(
+                    reporter,
+                    StatusReport::Stopped {
+                        exit: Exit::Unconfigured,
+                    },
+                );
+                return Exit::Unconfigured;
+            }
+        };
     for warning in running.warnings() {
         eprintln!("printobserver: warning: {warning}");
     }

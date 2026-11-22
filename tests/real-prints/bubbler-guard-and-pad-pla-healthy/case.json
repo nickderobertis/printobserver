@@ -1,5 +1,6 @@
 {
   "case": "bubbler-guard-and-pad-pla-healthy",
+  "camera_calibration": "../cameras/core-one-2026-09-27.json",
   "verdict": "healthy: no fault in any frame",
   "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), smooth PEI sheet",
   "printed_on": "2026-10-31, 16:46 to 19:20",
@@ -1696,7 +1697,44 @@
   },
   "obico_scores": "obico-predictions.json: every row Obico scored for this print (exported with the operator's Obico export command, read with the operator's Obico list command)",
   "assertions": {
-    "replay": ["carry-on-003-other", "carry-on-005-support", "carry-on-007-support", "carry-on-009-other", "carry-on-011-other", "carry-on-012-other", "carry-on-013-other", "carry-on-014-design-feature", "carry-on-016-design-feature", "carry-on-022-design-feature", "carry-on-028-camera-or-lighting", "carry-on-030-other", "carry-on-048-design-feature", "carry-on-050-design-feature", "carry-on-054-design-feature", "carry-on-067-design-feature", "carry-on-068-design-feature", "carry-on-086-design-feature"],
+    "replay": [
+      "carry-on-003-other",
+      "outside-first-layer",
+      "outside-first-support",
+      "carry-on-005-support",
+      "carry-on-007-support",
+      "carry-on-009-other",
+      "carry-on-011-other",
+      "carry-on-012-other",
+      "carry-on-013-other",
+      "outside-first-overhang",
+      "carry-on-014-design-feature",
+      "carry-on-016-design-feature",
+      "carry-on-017-healthy",
+      "carry-on-019-healthy",
+      "carry-on-020-healthy",
+      "carry-on-021-healthy",
+      "carry-on-022-design-feature",
+      "carry-on-024-healthy",
+      "carry-on-026-healthy",
+      "carry-on-028-camera-or-lighting",
+      "carry-on-030-other",
+      "carry-on-031-healthy",
+      "carry-on-032-healthy",
+      "carry-on-034-healthy",
+      "carry-on-035-healthy",
+      "carry-on-036-healthy",
+      "carry-on-037-healthy",
+      "carry-on-038-healthy",
+      "carry-on-039-healthy",
+      "carry-on-048-design-feature",
+      "carry-on-050-design-feature",
+      "carry-on-054-design-feature",
+      "carry-on-067-design-feature",
+      "carry-on-068-design-feature",
+      "carry-on-086-design-feature",
+      "outside-end"
+    ],
     "scenarios": [
       {
         "id": "carry-on-003-other",
@@ -2124,6 +2162,190 @@
         ]
       },
       {
+        "id": "carry-on-017-healthy",
+        "at": "2026-10-31T17:09:32",
+        "file_position_bytes": 765608,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 15.9% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-017-obs-170932-p15.9.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-018-look-171031.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-019-healthy",
+        "at": "2026-10-31T17:11:33",
+        "file_position_bytes": 899350,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 18.7% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-019-obs-171133-p18.7.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-020-healthy",
+        "at": "2026-10-31T17:13:34",
+        "file_position_bytes": 998941,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 20.7% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-020-obs-171334-p20.7.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-021-healthy",
+        "at": "2026-10-31T17:15:35",
+        "file_position_bytes": 1098696,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 22.8% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-021-obs-171535-p22.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
         "id": "carry-on-022-design-feature",
         "at": "2026-10-31T17:17:37",
         "file_position_bytes": 1199738,
@@ -2137,6 +2359,104 @@
         "looks": [
           {
             "image": "agent-023-look-171835.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-024-healthy",
+        "at": "2026-10-31T17:19:37",
+        "file_position_bytes": 1299410,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 27.0% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-024-obs-171937-p27.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-025-look-172155.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-026-healthy",
+        "at": "2026-10-31T17:23:38",
+        "file_position_bytes": 1472289,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 30.6% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-026-obs-172338-p30.6.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-027-look-172555.jpg"
           }
         ],
         "accept_any_of": [
@@ -2229,6 +2549,370 @@
         "summary": "A periodic observation of the healthy bubbler guard and pad at 35.8% shows what the agent called 'There is one small, harmless wisp of filament on the guard's upper edge', which is harmless; the agent should carry on and change nothing.",
         "trigger": "periodic_observation",
         "event_image": "agent-030-obs-172940-p35.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-031-healthy",
+        "at": "2026-10-31T17:31:43",
+        "file_position_bytes": 1809662,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 37.6% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-031-obs-173143-p37.6.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-032-healthy",
+        "at": "2026-10-31T17:33:45",
+        "file_position_bytes": 1893235,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 39.3% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-032-obs-173345-p39.3.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [
+          {
+            "image": "agent-033-look-173451.jpg"
+          }
+        ],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-034-healthy",
+        "at": "2026-10-31T17:35:47",
+        "file_position_bytes": 1975317,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 41.0% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-034-obs-173547-p41.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-035-healthy",
+        "at": "2026-10-31T17:37:49",
+        "file_position_bytes": 2068749,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 43.0% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-035-obs-173749-p43.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-036-healthy",
+        "at": "2026-10-31T17:39:51",
+        "file_position_bytes": 2164686,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 45.0% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-036-obs-173951-p45.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-037-healthy",
+        "at": "2026-10-31T17:41:53",
+        "file_position_bytes": 2260729,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 47.0% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-037-obs-174153-p47.0.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-038-healthy",
+        "at": "2026-10-31T17:43:55",
+        "file_position_bytes": 2351645,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 48.8% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-038-obs-174355-p48.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carry-on-039-healthy",
+        "at": "2026-10-31T17:45:58",
+        "file_position_bytes": 2424846,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation of the healthy bubbler guard and pad at 50.4% shows the print going on as it was sliced; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-039-obs-174558-p50.4.jpg",
         "printer_state": "printing",
         "detector_warned": null,
         "detector_paused_the_print": null,
@@ -2537,6 +3221,179 @@
             "args": {
               "disposition": "stop"
             }
+          }
+        ]
+      },
+      {
+        "id": "outside-first-layer",
+        "at": "2026-10-31T16:51:24",
+        "file_position_bytes": 7249,
+        "file_position_source": "milestone",
+        "summary": "The outside supervisor that started the print is handed the watch's line saying it reached its first layer and that printobserver's agent still calls it clean: it takes and opens its own frame of the printer, with no print named, and asks for nothing.",
+        "trigger": "outside_supervision",
+        "milestone": "first_layer",
+        "event_image": "agent-004-look-165229.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "set-fan-percent"
+          }
+        ]
+      },
+      {
+        "id": "outside-first-support",
+        "at": "2026-10-31T16:51:25",
+        "file_position_bytes": 7860,
+        "file_position_source": "milestone",
+        "summary": "The outside supervisor that started the print is handed the watch's line saying it reached the first layer that prints support and that printobserver's agent still calls it clean: it takes and opens its own frame of the printer, with no print named, and asks for nothing.",
+        "trigger": "outside_supervision",
+        "milestone": "first_support",
+        "event_image": "agent-004-look-165229.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "set-fan-percent"
+          }
+        ]
+      },
+      {
+        "id": "outside-first-overhang",
+        "at": "2026-10-31T17:04:41",
+        "file_position_bytes": 517652,
+        "file_position_source": "milestone",
+        "summary": "The outside supervisor that started the print is handed the watch's line saying it reached the first layer that prints an overhang and that printobserver's agent still calls it clean: it takes and opens its own frame of the printer, with no print named, and asks for nothing.",
+        "trigger": "outside_supervision",
+        "milestone": "first_overhang",
+        "event_image": "agent-014-obs-170530-p11.6.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "set-fan-percent"
+          }
+        ]
+      },
+      {
+        "id": "outside-end",
+        "at": "2026-10-31T19:19:27",
+        "file_position_bytes": 4757708,
+        "file_position_source": "milestone",
+        "summary": "The outside supervisor that started the print is handed the watch's line saying it reached its last layer and that printobserver's agent still calls it clean: it takes and opens its own frame of the printer, with no print named, and asks for nothing. Its frame is the last this recording holds, taken 2 layers before the last layer, because the recording has no frame at or after that layer.",
+        "trigger": "outside_supervision",
+        "milestone": "end",
+        "frame_layers_before_milestone": 2,
+        "event_image": "agent-086-obs-191910-p98.6.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "set-fan-percent"
           }
         ]
       }

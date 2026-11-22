@@ -16,3 +16,22 @@ target-dir = "target"
 # binary drops the 2-3x of its size debuginfo was. `release` is untouched.
 [profile.dev]
 debug = 0
+
+# The real-print suite's own build. Its programs carry the `replay-clock` and
+# `test-responder` features, so they differ from the ordinary `dev` build of the
+# same names; a profile of their own puts them in `target/skilltest/`, where the
+# suite reads them, and never over the `target/debug/printobserver` every other
+# target builds and digests. Sharing that path let the suite's build replace the
+# program a concurrent test had already packaged, mid-run.
+[profile.skilltest]
+inherits = "dev"
+
+# The printer integration tier's build of the program's own journeys. The
+# `test` jobs run that tier beside the end-to-end tier, whose journeys build
+# `target/debug/printobserver` with the program's own features while the
+# tier's tests run theirs, built with the dev-dependencies' features too: on
+# one path, each build replaced the program the other was running, and Windows
+# refused it with "Access is denied" (run 44987942864). A profile of its own
+# puts the tier's program in `target/integration/`.
+[profile.integration]
+inherits = "dev"

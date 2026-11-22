@@ -19,7 +19,7 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 38] = [
+pub const OPERATION_NAMES: [&str; 39] = [
     "prints",
     "status",
     "context",
@@ -58,6 +58,7 @@ pub const OPERATION_NAMES: [&str; 38] = [
     "recover_park",
     "recover_home_xy",
     "recover_home_z",
+    "bed_clear",
 ];
 
 /// A field that was sent, null included, as what was sent.
@@ -175,6 +176,11 @@ pub struct ActionAnswer {
 pub struct ActionExecutedPayload {
     /// The action's identifier.
     pub action_id: ActionId,
+    /// How far into its file the print had last been read to have got when
+    /// the action was taken, in bytes, when that was known: what places a
+    /// change against the commands the file sets the same thing with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_position_bytes: Option<i64>,
     /// The bounded intervention it opened, when it opened one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intervention_id: Option<InterventionId>,
@@ -340,6 +346,9 @@ pub struct AgentAssessment {
     pub confidence: Confidence,
     /// What the agent did.
     pub did: String,
+    /// What the turn's event is acknowledged with, when the turn acknowledged
+    /// nothing by command.
+    pub disposition: Disposition,
     /// Whether the agent is escalating to a person.
     pub escalating: bool,
     /// Whether the print should carry on.
@@ -357,6 +366,172 @@ pub struct AgentAssessmentPayload {
     pub assessment: AgentAssessment,
     /// The session the turn ran in.
     pub session_name: String,
+}
+
+/// What a supervision turn reads about one print: `PrintContext` with each
+/// fact stated once, as it is now, and nothing no supervision decision reads.
+///
+/// Left out of it, each because no step of the skill, no check and no
+/// recorded
+/// case decides anything by it: the print's file, provider and times; the
+/// printer's and the job's own states (the print states it once); every
+/// heater's
+/// offset, the chamber and the time they were read; the printer's reported
+/// feedrate, flowrate and fan (the slicer's plan states the flow and fan in
+/// force, and no step reads the feedrate); the job's file, size, progress,
+/// time
+/// and position (the plan states where the print is); the manifest (its
+/// limits
+/// are the bounds); and the detector's health beyond its status — since when,
+/// and why — which only the status read carries.
+///
+/// The printer and the job are stated here and nowhere in the events; each
+/// event is what happened, when, and what it changed; and asked `since` an
+/// event, only the events newer than it are carried, so a turn that has read
+/// the rest is not handed them again. `newest_event` is what the next read
+/// asks `since`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentContext {
+    /// The limits in force, so that the agent can see them before it asks.
+    pub bounds: EffectiveBounds,
+    /// What the failure detector's status is for this print: whether it is
+    /// scoring the print and has flagged it, or what it is otherwise.
+    pub detector: DetectorHealthStatus,
+    /// The interventions still active.
+    pub interventions: Vec<Intervention>,
+    /// The error the job stopped on, when it stopped on one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_error: Option<JobError>,
+    /// The most recent image, whose path is answered beside the context and
+    /// whose record states its digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latest_image: Option<ImageRef>,
+    /// The newest event of this print's, which a later read asks `since`:
+    /// absent only when the print has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub newest_event: Option<EventId>,
+    /// The print.
+    pub print: AgentPrint,
+    /// The printer's heaters now, when they could be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printer: Option<AgentPrinter>,
+    /// This print's events newer than the one asked `since`, or its recent
+    /// ones when none was named, newest first.
+    pub recent_events: Vec<AgentEvent>,
+    /// What the slicer planned at the job's current file position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slicer: Option<SlicerPlan>,
+}
+
+/// One event of the print's, as a turn reads it: what happened, when, and the
+/// facts it changed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentEvent {
+    /// Its identifier, which a later read asks `since`.
+    pub id: EventId,
+    /// What kind of event it is.
+    pub kind: EventKind,
+    /// What it carried, less the snapshots the context states once, the
+    /// agent's own assessment and the bookkeeping no decision reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
+    /// When it was received.
+    pub received_at: Timestamp,
+}
+
+/// One heater, in degrees Celsius: each reading absent when the printer did
+/// not
+/// report it, or reported one outside what a heater can read.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentHeater {
+    /// The temperature it is at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual_c: Option<f64>,
+    /// The temperature it is driving towards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_c: Option<f64>,
+}
+
+/// The print a context is about.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentPrint {
+    /// Why it ended, once it has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_reason: Option<String>,
+    /// Its identifier.
+    pub id: PrintId,
+    /// What the printer was last found doing with it, or the state it ended
+    /// in.
+    pub state: PrinterState,
+}
+
+/// The printer's heaters as they are now.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentPrinter {
+    /// The bed's heater, when it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed: Option<AgentHeater>,
+    /// Each tool's heater, in order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<AgentHeater>>,
+}
+
+/// The agent answered that a running print should stop, and asked for no
+/// pause or cancel — not even when asked again — so nothing stopped it.
+///
+/// An answer records a judgement and does not act: acting is a request that
+/// policy rules on. Written to the print's history, where a refused pause is,
+/// so the person reading it is told the print the agent judged should stop is
+/// still running.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentStopUnactedPayload {
+    /// The event the turn was about.
+    pub event_id: EventId,
+    /// The session the turn ran in.
+    pub session_name: String,
+    /// What the agent said it saw, as its answer's summary put it.
+    pub summary: String,
+}
+
+/// Who may say the bed is clear: the operator, and no other actor.
+///
+/// Its own type rather than `Actor`, so that a record of the agent's or the
+/// system's word that the bed is clear is one no value can spell. On the wire
+/// it is `"operator"`, as `Actor::Operator` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BedClearActor {
+    /// A person: the operator.
+    #[serde(rename = "operator")]
+    Operator,
+}
+
+/// What recording the operator's word that the bed is clear answers: the
+/// event
+/// it was recorded as, which every recovery decided on it names.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BedClearAnswer {
+    /// What it means from now on, in a sentence for a person.
+    pub detail: String,
+    /// The `bed_clear_asserted` event.
+    pub event: EventRecord,
+}
+
+/// The operator's word that the bed is clear: nothing is on it that homing Z
+/// could crush or a move over the part could strike.
+///
+/// The printer's rather than any print's, so it is written with no print. It
+/// stands until the next `print_started`, whichever way that print started,
+/// and while it stands a recovery that needs the bed or the nozzle clear is
+/// decided as though it carried the operator's assertion — read back out of
+/// the event log, so a server started again holds it as the one before did.
+/// Only the operator records one: an assertion is a person's word for what
+/// they can see.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BedClearAssertedPayload {
+    /// Who said so: the operator, the one actor whose word this records.
+    pub actor: BedClearActor,
+    /// Why they say so.
+    pub reason: String,
 }
 
 /// The bed heater, as a recovery read reports it.
@@ -547,8 +722,12 @@ pub enum Confidence {
 
 /// What a context read answers.
 ///
+/// The context is the agent's view of it (`AgentContext`): each fact once,
+/// as it is now, and the events newer than the one asked `since`.
+///
 /// The latest image is **materialized** here rather than left as the handle
-/// `PrintContext` carries: the one thing a supervision turn does with an
+/// `printobserver_core::PrintContext` carries: the one thing a supervision
+/// turn does with an
 /// image is look at it, and a handle is not something anything can open. The
 /// path is absolute on this server's own filesystem, exactly as
 /// `ImageAnswer`'s is, and is absent when there is no image or when the
@@ -556,35 +735,75 @@ pub enum Confidence {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextAnswer {
     /// Everything a supervision turn is given about the print.
-    pub context: PrintContext,
+    pub context: AgentContext,
     /// Where the latest image's bytes are, absolute on this host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_path: Option<String>,
 }
 
-/// The failure detector's health, and since when it has been so: `since` is
-/// `null` exactly while the status is `unchecked`.
+/// The failure detector's status, and since when it has been so: `since` is
+/// `null` exactly while the status is `unchecked`. Evidence that the detector
+/// is scoring the print comes before its health check.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status")]
 pub enum DetectorHealth {
-    /// Nothing checks it: no detector health address is configured, or no
-    /// check has been made yet.
-    #[serde(rename = "unchecked")]
-    Unchecked {
-        /// Nothing: an unchecked detector has no instant it became so.
-        since: (),
+    /// The detector is scoring the print, from `since` on, and no failure
+    /// alert of its own has arrived for it.
+    #[serde(rename = "scoring_nothing_flagged")]
+    ScoringNothingFlagged {
+        /// What the detector's health check answered, when it is failing
+        /// while the detector scores the print.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        probe_failure: Option<String>,
+        /// One shape of the contracts, which say nothing more about it.
+        since: Timestamp,
     },
-    /// It answered its health check, from `since` on.
+    /// The detector is scoring the print, from `since` on, and a failure
+    /// alert of its own has arrived for it.
+    #[serde(rename = "scoring_flagged")]
+    ScoringFlagged {
+        /// What the detector's health check answered, when it is failing
+        /// while the detector scores the print.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        probe_failure: Option<String>,
+        /// One shape of the contracts, which say nothing more about it.
+        since: Timestamp,
+    },
+    /// No evidence that the detector is scoring the print, and it answered
+    /// its health check, from `since` on: available, with no scores yet.
     #[serde(rename = "available")]
     Available {
+        /// Why the detector's scoring of the print is not being read, when it
+        /// is not: no Obico API is configured, no Obico printer is known yet,
+        /// or the last read failed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scoring_unread: Option<String>,
         /// One shape of the contracts, which say nothing more about it.
         since: Timestamp,
     },
-    /// It did not answer its health check, from `since` on.
+    /// No evidence that the detector is scoring the print, and it did not
+    /// answer its health check, from `since` on.
     #[serde(rename = "unavailable")]
     Unavailable {
+        /// Why the detector's scoring of the print is not being read, when it
+        /// is not: no Obico API is configured, no Obico printer is known yet,
+        /// or the last read failed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scoring_unread: Option<String>,
         /// One shape of the contracts, which say nothing more about it.
         since: Timestamp,
+    },
+    /// No evidence of any kind: no detector health address is configured, or
+    /// no check has been made yet, and nothing shows the detector scoring.
+    #[serde(rename = "unchecked")]
+    Unchecked {
+        /// Why the detector's scoring of the print is not being read, when it
+        /// is not: no Obico API is configured, no Obico printer is known yet,
+        /// or the last read failed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scoring_unread: Option<String>,
+        /// Nothing: an unchecked detector has no instant it became so.
+        since: (),
     },
 }
 
@@ -599,6 +818,31 @@ pub struct DetectorHealthChangedPayload {
     pub status: DetectorStatus,
 }
 
+/// The failure detector's status, as the status and context reads answer it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DetectorHealthStatus {
+    /// The detector is scoring the print, and no failure alert of its own has
+    /// arrived for it.
+    #[serde(rename = "scoring_nothing_flagged")]
+    ScoringNothingFlagged,
+    /// The detector is scoring the print, and a failure alert of its own has
+    /// arrived for it.
+    #[serde(rename = "scoring_flagged")]
+    ScoringFlagged,
+    /// No evidence that it is scoring the print, and it answered its health
+    /// check: available, with no scores yet.
+    #[serde(rename = "available")]
+    Available,
+    /// No evidence that it is scoring the print, and it did not answer its
+    /// health check.
+    #[serde(rename = "unavailable")]
+    Unavailable,
+    /// No evidence of any kind: no detector health address is configured, or
+    /// no check has been made yet, and nothing shows it scoring.
+    #[serde(rename = "unchecked")]
+    Unchecked,
+}
+
 /// What a check of the failure detector's own health found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DetectorStatus {
@@ -608,6 +852,25 @@ pub enum DetectorStatus {
     /// It did not: refused, reset, answered otherwise, or not in time.
     #[serde(rename = "unavailable")]
     Unavailable,
+}
+
+/// What the agent's answer asks for next, in the vocabulary an
+/// acknowledgement's disposition is spelled in.
+///
+/// A turn that acknowledged nothing by command is acknowledged from its
+/// answer with this, so a quiet check records its judgement without a command
+/// of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Disposition {
+    /// Carry on printing.
+    #[serde(rename = "continue")]
+    Continue,
+    /// Carry on printing, watched more closely.
+    #[serde(rename = "watch")]
+    Watch,
+    /// The print should stop.
+    #[serde(rename = "stop")]
+    Stop,
 }
 
 /// The envelope intersected with the print's manifest.
@@ -836,6 +1099,21 @@ pub enum FrameCause {
     /// It is not a whole image: a strict decode refused it.
     #[serde(rename = "undecodable")]
     Undecodable,
+}
+
+/// A print's G-code was read and indexed: what the slicer planned at each
+/// file position is now known for it, without reading the file again.
+///
+/// Written once per index built, which is once per print for as long as the
+/// server runs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GcodeIndexedPayload {
+    /// How many bytes of it were read.
+    pub bytes: i64,
+    /// The file that was indexed.
+    pub file_name: FileName,
+    /// How many layers it plans.
+    pub layers: i64,
 }
 
 /// One tool heater whose target was above zero.
@@ -1132,6 +1410,11 @@ pub struct Look {
     /// gave none — which the history records as a port failure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame: Option<ImageRef>,
+    /// What the image at `image_path` is, and why it is that one, in one
+    /// line;
+    /// absent with no image, or when what made it says nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_note: Option<String>,
     /// The absolute path the frame's bytes are at, on the supervisor's host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_path: Option<String>,
@@ -1444,6 +1727,51 @@ pub struct PeriodicObservationPayload {
     pub printer: Option<PrinterSnapshot>,
 }
 
+/// A fact of the plan the print's file does not state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanFact {
+    /// The file marks no layers.
+    #[serde(rename = "layer")]
+    Layer,
+    /// The file states no final height.
+    #[serde(rename = "final_z")]
+    FinalZ,
+    /// The file labels no extrusion types.
+    #[serde(rename = "types")]
+    Types,
+    /// The file carries no estimate of the time left, by the current
+    /// position.
+    #[serde(rename = "minutes_left")]
+    MinutesLeft,
+    /// The file sets no flow factor, by the current position.
+    #[serde(rename = "flow_factor")]
+    FlowFactor,
+    /// The file sets no part-cooling fan speed, by the current position.
+    #[serde(rename = "fan_percent")]
+    FanPercent,
+    /// The file labels no objects.
+    #[serde(rename = "objects")]
+    Objects,
+    /// No frame of this print is half an hour old with a position to rise
+    /// from, so how far the parts should have grown is not known, and no
+    /// growth can be judged from frames closer together.
+    #[serde(rename = "rise")]
+    Rise,
+}
+
+/// A setting in force that the plan at this height says is wrong for what is
+/// being laid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanMismatch {
+    /// The part-cooling fan is off while the current layer or the few below
+    /// it, which a frame shows, bridge or overhang.
+    #[serde(rename = "fan_off_over_bridges")]
+    FanOffOverBridges,
+    /// The flow factor is well under one while the current layer lays walls.
+    #[serde(rename = "flow_low_over_walls")]
+    FlowLowOverWalls,
+}
+
 /// The decision policy took on one request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PolicyDecision {
@@ -1505,6 +1833,14 @@ pub enum PortFailureSite {
     /// Telling the detector that paused the print its detection was handled.
     #[serde(rename = "detector_acknowledgement")]
     DetectorAcknowledgement,
+    /// Asking the failure detector whether it is answering, while it was
+    /// scoring the print all the same.
+    #[serde(rename = "detector_health_check")]
+    DetectorHealthCheck,
+    /// Reading the failure detector's own record of the print's live
+    /// prediction.
+    #[serde(rename = "detector_scoring_read")]
+    DetectorScoringRead,
 }
 
 /// How fresh the position a filament change charged up to is.
@@ -1890,34 +2226,6 @@ pub enum PrintAction {
         /// Why the actor is asking for this.
         reason: String,
     },
-}
-
-/// Everything a supervision turn is given about one print.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PrintContext {
-    /// The limits in force, so that the agent can see them before it asks.
-    pub bounds: EffectiveBounds,
-    /// The failure detector's health, and since when it has been so.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detector: Option<DetectorHealth>,
-    /// The interventions still active.
-    pub interventions: Vec<Intervention>,
-    /// The job, when a snapshot could be taken.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub job: Option<JobSnapshot>,
-    /// The most recent image, when there is one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub latest_image: Option<ImageRef>,
-    /// The manifest, when the print has one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest: Option<JobManifest>,
-    /// The print itself.
-    pub print: PrintRecord,
-    /// The printer, when a snapshot could be taken.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub printer: Option<PrinterSnapshot>,
-    /// A bounded list of this print's events, newest first.
-    pub recent_events: Vec<EventRecord>,
 }
 
 /// One print's end, as its `print_ended` event stored it.
@@ -2317,6 +2625,11 @@ pub struct RecoveryExecutedPayload {
     pub action: RecoveryAction,
     /// Who asked.
     pub actor: Actor,
+    /// The operator's standing word that the bed is clear this action was
+    /// carried out on in place of an assertion of its own, when it was: the
+    /// `bed_clear_asserted` event recording it. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed_clear: Option<EventId>,
     /// What the printer made of it.
     pub outcome: ExecutionOutcome,
     /// Why.
@@ -2445,6 +2758,11 @@ pub struct RecoveryRequestedPayload {
     pub action: RecoveryAction,
     /// Who asked.
     pub actor: Actor,
+    /// The operator's standing word that the bed is clear this request is
+    /// decided on in place of an assertion of its own, when it is: the
+    /// `bed_clear_asserted` event recording it. Absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bed_clear: Option<EventId>,
     /// Why.
     pub reason: String,
 }
@@ -2635,6 +2953,36 @@ pub struct Reported {
     pub value: f64,
 }
 
+/// How far the plan has risen since one earlier frame of this print that was
+/// seen: the height a camera should show the parts to have gained since then.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Rise {
+    /// Two heights of the print's highest point, in millimetres: the first
+    /// is where the plan had it when that frame was captured, the second how
+    /// far it should have risen since — the rise of every layer since that
+    /// lays anything but supports. They are the plate's, not every part's: a
+    /// part the plan has finished does not grow with it.
+    pub mm: [f64; 2],
+    /// When that earlier frame was captured: the newest frame at least half
+    /// an hour old that a check of this print — a periodic observation or an
+    /// alert — or a look at it was given, as that check or look states its
+    /// capture time.
+    pub since: Timestamp,
+}
+
+/// One adjustable as the print's file set it at the current position, and as
+/// a change made through this program since then left it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetValue {
+    /// What the latest change made through this program set it to, when one
+    /// was made after the file last set it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changed: Option<f64>,
+    /// What the file's own commands set it to, by the current position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<f64>,
+}
+
 /// A build sheet's identifier as the sheet table names it, such as
 /// `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
 // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
@@ -2727,6 +3075,59 @@ pub struct SignalPosition {
     pub freshness: PositionFreshness,
     /// The position.
     pub position: FilePosition,
+}
+
+/// What the slicer planned at the print's current file position: the shape
+/// and place of what should be printing, read from the print's own G-code.
+///
+/// These are the slicer's plan rather than an observation: a feature named
+/// here is part of the design at this height, and nothing here says how well
+/// it printed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SlicerPlan {
+    /// Each setting in force the plan at this height says is wrong.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at_odds: Option<Vec<PlanMismatch>>,
+    /// The part-cooling fan speed, in percent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fan_percent: Option<SetValue>,
+    /// The final layer's height, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_z_mm: Option<f64>,
+    /// The flow factor, one meaning one hundred percent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_factor: Option<SetValue>,
+    /// The layer the print is in, counting the first as 1; absent before the
+    /// first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<i64>,
+    /// The slicer's own estimate of the minutes left, at the current
+    /// position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minutes_left: Option<i64>,
+    /// How many objects the file lays down; absent when it labels none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_count: Option<i64>,
+    /// The bed area each object the file lays down covers, unnamed, as
+    /// `[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of
+    /// the file's object numbers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objects: Option<Vec<[i64; 4]>>,
+    /// How far the plan has risen since an earlier frame; absent before any
+    /// frame is half an hour old.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rise: Option<Rise>,
+    /// What the current layer lays material as, in the order the file first
+    /// names each: `Perimeter`, `Support material`, `Bridge infill`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub types: Option<Vec<String>>,
+    /// The facts the file does not state, which are therefore unknown rather
+    /// than absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unknown: Option<Vec<PlanFact>>,
+    /// The current layer's height, in millimetres.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z_mm: Option<f64>,
 }
 
 /// A spool's remaining figure was corrected.
@@ -3456,6 +3857,14 @@ impl EventPayloadKind for AgentAssessmentPayload {
     const KIND: &'static str = "agent_assessment";
 }
 
+impl EventPayloadKind for AgentStopUnactedPayload {
+    const KIND: &'static str = "agent_stop_unacted";
+}
+
+impl EventPayloadKind for BedClearAssertedPayload {
+    const KIND: &'static str = "bed_clear_asserted";
+}
+
 impl EventPayloadKind for CameraDegradedPayload {
     const KIND: &'static str = "camera_degraded";
 }
@@ -3486,6 +3895,10 @@ impl EventPayloadKind for FilamentConsumedPayload {
 
 impl EventPayloadKind for FileTallyRebaselinedPayload {
     const KIND: &'static str = "file_tally_rebaselined";
+}
+
+impl EventPayloadKind for GcodeIndexedPayload {
+    const KIND: &'static str = "gcode_indexed";
 }
 
 impl EventPayloadKind for InterventionExpiredPayload {
@@ -3601,11 +4014,13 @@ impl EventPayloadKind for UnattendedPrinterActivityPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 40] = [
+pub const EVENT_KINDS: [&str; 43] = [
     "action_executed",
     "action_rejected",
     "action_requested",
     "agent_assessment",
+    "agent_stop_unacted",
+    "bed_clear_asserted",
     "camera_degraded",
     "camera_look",
     "camera_retry",
@@ -3614,6 +4029,7 @@ pub const EVENT_KINDS: [&str; 40] = [
     "filament_change_signalled",
     "filament_consumed",
     "file_tally_rebaselined",
+    "gcode_indexed",
     "intervention_expired",
     "malformed_external_event",
     "obico_failure_alert",
@@ -3690,9 +4106,16 @@ impl Client {
     ///
     /// Returns `ClientError` when the supervisor could not be reached, when
     /// it answered something this client cannot read.
-    pub fn context(&self, print_id: &str) -> Result<ContextAnswer, ClientError> {
+    pub fn context(
+        &self,
+        print_id: &str,
+        since: Option<EventId>,
+    ) -> Result<ContextAnswer, ClientError> {
         let target = format!("/v1/prints/{print_id}/context");
-        let asked: Vec<(String, String)> = Vec::new();
+        let mut asked: Vec<(String, String)> = Vec::new();
+        if let Some(value) = since {
+            asked.push(("since".to_owned(), value));
+        }
         let sending: Option<serde_json::Value> = None;
         self.call("GET", &target, &asked, sending.as_ref())
     }
@@ -4610,6 +5033,27 @@ impl Client {
         if let Some(value) = bed_clear_asserted {
             sending.insert("bed_clear_asserted".to_owned(), crate::as_value(&value)?);
         }
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `bed_clear` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn bed_clear(&self, reason: &str) -> Result<BedClearAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = String::from("/v1/printer/bed_clear");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
         sending.insert("reason".to_owned(), crate::as_value(&reason)?);
         let sending = Some(serde_json::Value::Object(sending));
         self.call("POST", &target, &asked, sending.as_ref())

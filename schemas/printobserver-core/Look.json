@@ -506,6 +506,13 @@
       ],
       "description": "The frame the camera gave, absent when no camera is configured or it\ngave none — which the history records as a port failure."
     },
+    "image_note": {
+      "description": "What the image at `image_path` is, and why it is that one, in one line;\nabsent with no image, or when what made it says nothing.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "image_path": {
       "description": "The absolute path the frame's bytes are at, on the supervisor's host.",
       "type": [

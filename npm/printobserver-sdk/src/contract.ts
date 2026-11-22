@@ -106,6 +106,7 @@ export const OPERATION_NAMES = [
   "recover_park",
   "recover_home_xy",
   "recover_home_z",
+  "bed_clear",
 ] as const;
 
 /** What an operator's acknowledgement of a failure event asks for next. */
@@ -142,6 +143,12 @@ export interface ActionAnswer {
 export interface ActionExecutedPayload {
   /** The action's identifier. */
   action_id: ActionId;
+  /**
+   * How far into its file the print had last been read to have got when
+   * the action was taken, in bytes, when that was known: what places a
+   * change against the commands the file sets the same thing with.
+   */
+  file_position_bytes?: number | null;
   /** The bounded intervention it opened, when it opened one. */
   intervention_id?: InterventionId | null;
 }
@@ -244,6 +251,11 @@ export interface AgentAssessment {
   confidence: Confidence;
   /** What the agent did. */
   did: string;
+  /**
+   * What the turn's event is acknowledged with, when the turn acknowledged
+   * nothing by command.
+   */
+  disposition: Disposition;
   /** Whether the agent is escalating to a person. */
   escalating: boolean;
   /** Whether the print should carry on. */
@@ -260,6 +272,171 @@ export interface AgentAssessmentPayload {
   assessment: AgentAssessment;
   /** The session the turn ran in. */
   session_name: string;
+}
+
+/**
+ * What a supervision turn reads about one print: `PrintContext` with each
+ * fact stated once, as it is now, and nothing no supervision decision reads.
+ *
+ * Left out of it, each because no step of the skill, no check and no
+ * recorded
+ * case decides anything by it: the print's file, provider and times; the
+ * printer's and the job's own states (the print states it once); every
+ * heater's
+ * offset, the chamber and the time they were read; the printer's reported
+ * feedrate, flowrate and fan (the slicer's plan states the flow and fan in
+ * force, and no step reads the feedrate); the job's file, size, progress,
+ * time
+ * and position (the plan states where the print is); the manifest (its
+ * limits
+ * are the bounds); and the detector's health beyond its status — since when,
+ * and why — which only the status read carries.
+ *
+ * The printer and the job are stated here and nowhere in the events; each
+ * event is what happened, when, and what it changed; and asked `since` an
+ * event, only the events newer than it are carried, so a turn that has read
+ * the rest is not handed them again. `newest_event` is what the next read
+ * asks `since`.
+ */
+export interface AgentContext {
+  /** The limits in force, so that the agent can see them before it asks. */
+  bounds: EffectiveBounds;
+  /**
+   * What the failure detector's status is for this print: whether it is
+   * scoring the print and has flagged it, or what it is otherwise.
+   */
+  detector: DetectorHealthStatus;
+  /** The interventions still active. */
+  interventions: Array<Intervention>;
+  /** The error the job stopped on, when it stopped on one. */
+  job_error?: JobError | null;
+  /**
+   * The most recent image, whose path is answered beside the context and
+   * whose record states its digest.
+   */
+  latest_image?: ImageRef | null;
+  /**
+   * The newest event of this print's, which a later read asks `since`:
+   * absent only when the print has none.
+   */
+  newest_event?: EventId | null;
+  /** The print. */
+  print: AgentPrint;
+  /** The printer's heaters now, when they could be read. */
+  printer?: AgentPrinter | null;
+  /**
+   * This print's events newer than the one asked `since`, or its recent
+   * ones when none was named, newest first.
+   */
+  recent_events: Array<AgentEvent>;
+  /** What the slicer planned at the job's current file position. */
+  slicer?: SlicerPlan | null;
+}
+
+/**
+ * One event of the print's, as a turn reads it: what happened, when, and the
+ * facts it changed.
+ */
+export interface AgentEvent {
+  /** Its identifier, which a later read asks `since`. */
+  id: EventId;
+  /** What kind of event it is. */
+  kind: EventKind;
+  /**
+   * What it carried, less the snapshots the context states once, the
+   * agent's own assessment and the bookkeeping no decision reads.
+   */
+  payload?: unknown;
+  /** When it was received. */
+  received_at: Timestamp;
+}
+
+/**
+ * One heater, in degrees Celsius: each reading absent when the printer did
+ * not
+ * report it, or reported one outside what a heater can read.
+ */
+export interface AgentHeater {
+  /** The temperature it is at. */
+  actual_c?: number | null;
+  /** The temperature it is driving towards. */
+  target_c?: number | null;
+}
+
+/** The print a context is about. */
+export interface AgentPrint {
+  /** Why it ended, once it has. */
+  end_reason?: string | null;
+  /** Its identifier. */
+  id: PrintId;
+  /** What the printer was last found doing with it, or the state it ended in. */
+  state: PrinterState;
+}
+
+/** The printer's heaters as they are now. */
+export interface AgentPrinter {
+  /** The bed's heater, when it has one. */
+  bed?: AgentHeater | null;
+  /** Each tool's heater, in order. */
+  tools?: Array<AgentHeater>;
+}
+
+/**
+ * The agent answered that a running print should stop, and asked for no
+ * pause or cancel — not even when asked again — so nothing stopped it.
+ *
+ * An answer records a judgement and does not act: acting is a request that
+ * policy rules on. Written to the print's history, where a refused pause is,
+ * so the person reading it is told the print the agent judged should stop is
+ * still running.
+ */
+export interface AgentStopUnactedPayload {
+  /** The event the turn was about. */
+  event_id: EventId;
+  /** The session the turn ran in. */
+  session_name: string;
+  /** What the agent said it saw, as its answer's summary put it. */
+  summary: string;
+}
+
+/**
+ * Who may say the bed is clear: the operator, and no other actor.
+ *
+ * Its own type rather than `Actor`, so that a record of the agent's or the
+ * system's word that the bed is clear is one no value can spell. On the wire
+ * it is `"operator"`, as `Actor::Operator` is.
+ */
+export type BedClearActor = "operator";
+
+/**
+ * What recording the operator's word that the bed is clear answers: the
+ * event
+ * it was recorded as, which every recovery decided on it names.
+ */
+export interface BedClearAnswer {
+  /** What it means from now on, in a sentence for a person. */
+  detail: string;
+  /** The `bed_clear_asserted` event. */
+  event: EventRecord;
+}
+
+/**
+ * The operator's word that the bed is clear: nothing is on it that homing Z
+ * could crush or a move over the part could strike.
+ *
+ * The printer's rather than any print's, so it is written with no print. It
+ * stands until the next `print_started`, whichever way that print started,
+ * and while it stands a recovery that needs the bed or the nozzle clear is
+ * decided as though it carried the operator's assertion — read back out of
+ * the event log, so a server started again holds it as the one before did.
+ * Only the operator records one: an assertion is a person's word for what
+ * they can see.
+ */
+export interface BedClearAssertedPayload {
+  /** Who said so: the operator, the one actor whose word this records. */
+  actor: BedClearActor;
+  /** Why they say so. */
+  reason: string;
 }
 
 /** The bed heater, as a recovery read reports it. */
@@ -417,8 +594,12 @@ export type Confidence = "low" | "medium" | "high";
 /**
  * What a context read answers.
  *
+ * The context is the agent's view of it (`AgentContext`): each fact once,
+ * as it is now, and the events newer than the one asked `since`.
+ *
  * The latest image is **materialized** here rather than left as the handle
- * `PrintContext` carries: the one thing a supervision turn does with an
+ * `printobserver_core::PrintContext` carries: the one thing a supervision
+ * turn does with an
  * image is look at it, and a handle is not something anything can open. The
  * path is absolute on this server's own filesystem, exactly as
  * `ImageAnswer`'s is, and is absent when there is no image or when the
@@ -426,19 +607,22 @@ export type Confidence = "low" | "medium" | "high";
  */
 export interface ContextAnswer {
   /** Everything a supervision turn is given about the print. */
-  context: PrintContext;
+  context: AgentContext;
   /** Where the latest image's bytes are, absolute on this host. */
   image_path?: string | null;
 }
 
 /**
- * The failure detector's health, and since when it has been so: `since` is
- * `null` exactly while the status is `unchecked`.
+ * The failure detector's status, and since when it has been so: `since` is
+ * `null` exactly while the status is `unchecked`. Evidence that the detector
+ * is scoring the print comes before its health check.
  */
 export type DetectorHealth =
-  | { status: "unchecked"; since: null }
-  | { status: "available"; since: Timestamp }
-  | { status: "unavailable"; since: Timestamp };
+  | { status: "scoring_nothing_flagged"; probe_failure?: string; since: Timestamp }
+  | { status: "scoring_flagged"; probe_failure?: string; since: Timestamp }
+  | { status: "available"; scoring_unread?: string; since: Timestamp }
+  | { status: "unavailable"; scoring_unread?: string; since: Timestamp }
+  | { status: "unchecked"; scoring_unread?: string; since: null };
 
 /**
  * The failure detector's own health changed.
@@ -452,8 +636,26 @@ export interface DetectorHealthChangedPayload {
   status: DetectorStatus;
 }
 
+/** The failure detector's status, as the status and context reads answer it. */
+export type DetectorHealthStatus =
+  | "scoring_nothing_flagged"
+  | "scoring_flagged"
+  | "available"
+  | "unavailable"
+  | "unchecked";
+
 /** What a check of the failure detector's own health found. */
 export type DetectorStatus = "available" | "unavailable";
+
+/**
+ * What the agent's answer asks for next, in the vocabulary an
+ * acknowledgement's disposition is spelled in.
+ *
+ * A turn that acknowledged nothing by command is acknowledged from its
+ * answer with this, so a quiet check records its judgement without a command
+ * of its own.
+ */
+export type Disposition = "continue" | "watch" | "stop";
 
 /**
  * The envelope intersected with the print's manifest.
@@ -652,6 +854,22 @@ export interface Footprint {
 
 /** Why a camera frame was not one to hand the agent. */
 export type FrameCause = "blank" | "undecodable";
+
+/**
+ * A print's G-code was read and indexed: what the slicer planned at each
+ * file position is now known for it, without reading the file again.
+ *
+ * Written once per index built, which is once per print for as long as the
+ * server runs.
+ */
+export interface GcodeIndexedPayload {
+  /** How many bytes of it were read. */
+  bytes: number;
+  /** The file that was indexed. */
+  file_name: FileName;
+  /** How many layers it plans. */
+  layers: number;
+}
 
 /** One tool heater whose target was above zero. */
 export interface HeatedTool {
@@ -926,6 +1144,11 @@ export interface Look {
    * gave none — which the history records as a port failure.
    */
   frame?: ImageRef | null;
+  /**
+   * What the image at `image_path` is, and why it is that one, in one line;
+   * absent with no image, or when what made it says nothing.
+   */
+  image_note?: string | null;
   /** The absolute path the frame's bytes are at, on the supervisor's host. */
   image_path?: string | null;
   /** The job the printer reports now, absent when it could not be read. */
@@ -1169,6 +1392,23 @@ export interface PeriodicObservationPayload {
   printer?: PrinterSnapshot | null;
 }
 
+/** A fact of the plan the print's file does not state. */
+export type PlanFact =
+  | "layer"
+  | "final_z"
+  | "types"
+  | "minutes_left"
+  | "flow_factor"
+  | "fan_percent"
+  | "objects"
+  | "rise";
+
+/**
+ * A setting in force that the plan at this height says is wrong for what is
+ * being laid.
+ */
+export type PlanMismatch = "fan_off_over_bridges" | "flow_low_over_walls";
+
 /** The decision policy took on one request. */
 export type PolicyDecision = "accepted" | { rejected: RejectionReason };
 
@@ -1210,7 +1450,9 @@ export type PortFailureSite =
   | "image_write"
   | "supervision_turn"
   | "camera_look"
-  | "detector_acknowledgement";
+  | "detector_acknowledgement"
+  | "detector_health_check"
+  | "detector_scoring_read";
 
 /** How fresh the position a filament change charged up to is. */
 export type PositionFreshness = "read_at_signal" | "last_recorded";
@@ -1403,28 +1645,6 @@ export type PrintAction =
       reason: string;
     }
   | { action: "close_print"; actor: Actor; outcome: PrintOutcome; reason: string };
-
-/** Everything a supervision turn is given about one print. */
-export interface PrintContext {
-  /** The limits in force, so that the agent can see them before it asks. */
-  bounds: EffectiveBounds;
-  /** The failure detector's health, and since when it has been so. */
-  detector?: DetectorHealth;
-  /** The interventions still active. */
-  interventions: Array<Intervention>;
-  /** The job, when a snapshot could be taken. */
-  job?: JobSnapshot | null;
-  /** The most recent image, when there is one. */
-  latest_image?: ImageRef | null;
-  /** The manifest, when the print has one. */
-  manifest?: JobManifest | null;
-  /** The print itself. */
-  print: PrintRecord;
-  /** The printer, when a snapshot could be taken. */
-  printer?: PrinterSnapshot | null;
-  /** A bounded list of this print's events, newest first. */
-  recent_events: Array<EventRecord>;
-}
 
 /** One print's end, as its `print_ended` event stored it. */
 export interface PrintEnded {
@@ -1710,6 +1930,12 @@ export interface RecoveryExecutedPayload {
   action: RecoveryAction;
   /** Who asked. */
   actor: Actor;
+  /**
+   * The operator's standing word that the bed is clear this action was
+   * carried out on in place of an assertion of its own, when it was: the
+   * `bed_clear_asserted` event recording it. Absent otherwise.
+   */
+  bed_clear?: EventId | null;
   /** What the printer made of it. */
   outcome: ExecutionOutcome;
   /** Why. */
@@ -1772,6 +1998,12 @@ export interface RecoveryRequestedPayload {
   action: RecoveryAction;
   /** Who asked. */
   actor: Actor;
+  /**
+   * The operator's standing word that the bed is clear this request is
+   * decided on in place of an assertion of its own, when it is: the
+   * `bed_clear_asserted` event recording it. Absent otherwise.
+   */
+  bed_clear?: EventId | null;
   /** Why. */
   reason: string;
 }
@@ -1870,6 +2102,42 @@ export interface Reported {
 }
 
 /**
+ * How far the plan has risen since one earlier frame of this print that was
+ * seen: the height a camera should show the parts to have gained since then.
+ */
+export interface Rise {
+  /**
+   * Two heights of the print's highest point, in millimetres: the first
+   * is where the plan had it when that frame was captured, the second how
+   * far it should have risen since — the rise of every layer since that
+   * lays anything but supports. They are the plate's, not every part's: a
+   * part the plan has finished does not grow with it.
+   */
+  mm: Array<number>;
+  /**
+   * When that earlier frame was captured: the newest frame at least half
+   * an hour old that a check of this print — a periodic observation or an
+   * alert — or a look at it was given, as that check or look states its
+   * capture time.
+   */
+  since: Timestamp;
+}
+
+/**
+ * One adjustable as the print's file set it at the current position, and as
+ * a change made through this program since then left it.
+ */
+export interface SetValue {
+  /**
+   * What the latest change made through this program set it to, when one
+   * was made after the file last set it.
+   */
+  changed?: number | null;
+  /** What the file's own commands set it to, by the current position. */
+  file?: number | null;
+}
+
+/**
  * A build sheet's identifier as the sheet table names it, such as
  * `smooth-pei`: never blank, and trimmed of surrounding space as it is read.
  */
@@ -1902,6 +2170,57 @@ export interface SignalPosition {
   freshness: PositionFreshness;
   /** The position. */
   position: FilePosition;
+}
+
+/**
+ * What the slicer planned at the print's current file position: the shape
+ * and place of what should be printing, read from the print's own G-code.
+ *
+ * These are the slicer's plan rather than an observation: a feature named
+ * here is part of the design at this height, and nothing here says how well
+ * it printed.
+ */
+export interface SlicerPlan {
+  /** Each setting in force the plan at this height says is wrong. */
+  at_odds?: Array<PlanMismatch>;
+  /** The part-cooling fan speed, in percent. */
+  fan_percent?: SetValue | null;
+  /** The final layer's height, in millimetres. */
+  final_z_mm?: number | null;
+  /** The flow factor, one meaning one hundred percent. */
+  flow_factor?: SetValue | null;
+  /**
+   * The layer the print is in, counting the first as 1; absent before the
+   * first.
+   */
+  layer?: number | null;
+  /** The slicer's own estimate of the minutes left, at the current position. */
+  minutes_left?: number | null;
+  /** How many objects the file lays down; absent when it labels none. */
+  object_count?: number | null;
+  /**
+   * The bed area each object the file lays down covers, unnamed, as
+   * `[x_min, y_min, x_max, y_max]` in whole millimetres, in the order of
+   * the file's object numbers.
+   */
+  objects?: Array<Array<number>>;
+  /**
+   * How far the plan has risen since an earlier frame; absent before any
+   * frame is half an hour old.
+   */
+  rise?: Rise | null;
+  /**
+   * What the current layer lays material as, in the order the file first
+   * names each: `Perimeter`, `Support material`, `Bridge infill`.
+   */
+  types?: Array<string>;
+  /**
+   * The facts the file does not state, which are therefore unknown rather
+   * than absent.
+   */
+  unknown?: Array<PlanFact>;
+  /** The current layer's height, in millimetres. */
+  z_mm?: number | null;
 }
 
 /** A spool's remaining figure was corrected. */
@@ -2363,6 +2682,8 @@ export interface EventPayloads {
   action_rejected: ActionRejectedPayload;
   action_requested: ActionRequestedPayload;
   agent_assessment: AgentAssessmentPayload;
+  agent_stop_unacted: AgentStopUnactedPayload;
+  bed_clear_asserted: BedClearAssertedPayload;
   camera_degraded: CameraDegradedPayload;
   camera_look: CameraLookPayload;
   camera_retry: CameraRetryPayload;
@@ -2371,6 +2692,7 @@ export interface EventPayloads {
   filament_change_signalled: FilamentChangeSignalledPayload;
   filament_consumed: FilamentConsumedPayload;
   file_tally_rebaselined: FileTallyRebaselinedPayload;
+  gcode_indexed: GcodeIndexedPayload;
   intervention_expired: InterventionExpiredPayload;
   malformed_external_event: MalformedExternalEventPayload;
   obico_failure_alert: ObicoFailureAlertPayload;
@@ -2407,6 +2729,8 @@ export const EVENT_KINDS = [
   "action_rejected",
   "action_requested",
   "agent_assessment",
+  "agent_stop_unacted",
+  "bed_clear_asserted",
   "camera_degraded",
   "camera_look",
   "camera_retry",
@@ -2415,6 +2739,7 @@ export const EVENT_KINDS = [
   "filament_change_signalled",
   "filament_consumed",
   "file_tally_rebaselined",
+  "gcode_indexed",
   "intervention_expired",
   "malformed_external_event",
   "obico_failure_alert",
@@ -2545,6 +2870,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "ActionId"
+     }
+    },
+    "file_position_bytes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
      }
     },
     "intervention_id": {
@@ -2779,6 +3113,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "scalar": "string"
      }
     },
+    "disposition": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Disposition"
+     }
+    },
     "escalating": {
      "paired_with": "",
      "required": true,
@@ -2823,6 +3164,298 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      }
     },
     "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentContext": {
+  "struct": {
+   "fields": {
+    "bounds": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EffectiveBounds"
+     }
+    },
+    "detector": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "DetectorHealthStatus"
+     }
+    },
+    "interventions": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "Intervention"
+      },
+      "non_empty": false
+     }
+    },
+    "job_error": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "JobError"
+      }
+     }
+    },
+    "latest_image": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageRef"
+      }
+     }
+    },
+    "newest_event": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
+    "print": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AgentPrint"
+     }
+    },
+    "printer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "AgentPrinter"
+      }
+     }
+    },
+    "recent_events": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "AgentEvent"
+      },
+      "non_empty": false
+     }
+    },
+    "slicer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SlicerPlan"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentEvent": {
+  "struct": {
+   "fields": {
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventKind"
+     }
+    },
+    "payload": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "any": true
+     }
+    },
+    "received_at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentHeater": {
+  "struct": {
+   "fields": {
+    "actual_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "target_c": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentPrint": {
+  "struct": {
+   "fields": {
+    "end_reason": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintId"
+     }
+    },
+    "state": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrinterState"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentPrinter": {
+  "struct": {
+   "fields": {
+    "bed": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "AgentHeater"
+      }
+     }
+    },
+    "tools": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "AgentHeater"
+      },
+      "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "AgentStopUnactedPayload": {
+  "struct": {
+   "fields": {
+    "event_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventId"
+     }
+    },
+    "session_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "summary": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearActor": {
+  "enum": [
+   "operator"
+  ]
+ },
+ "BedClearAnswer": {
+  "struct": {
+   "fields": {
+    "detail": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "event": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "EventRecord"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "BedClearAssertedPayload": {
+  "struct": {
+   "fields": {
+    "actor": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "BedClearActor"
+     }
+    },
+    "reason": {
      "paired_with": "",
      "required": true,
      "shape": {
@@ -3150,7 +3783,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "paired_with": "",
      "required": true,
      "shape": {
-      "ref": "PrintContext"
+      "ref": "AgentContext"
      }
     },
     "image_path": {
@@ -3173,6 +3806,53 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {
     "available": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
+      "since": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "Timestamp"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "scoring_nothing_flagged": {
+     "fields": {
+      "probe_failure": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -3186,6 +3866,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     },
     "unavailable": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -3199,6 +3886,13 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     },
     "unchecked": {
      "fields": {
+      "scoring_unread": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "scalar": "string"
+       }
+      },
       "since": {
        "paired_with": "",
        "required": true,
@@ -3235,10 +3929,26 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "DetectorHealthStatus": {
+  "enum": [
+   "scoring_nothing_flagged",
+   "scoring_flagged",
+   "available",
+   "unavailable",
+   "unchecked"
+  ]
+ },
  "DetectorStatus": {
   "enum": [
    "available",
    "unavailable"
+  ]
+ },
+ "Disposition": {
+  "enum": [
+   "continue",
+   "watch",
+   "stop"
   ]
  },
  "EffectiveBounds": {
@@ -3687,6 +4397,35 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "blank",
    "undecodable"
   ]
+ },
+ "GcodeIndexedPayload": {
+  "struct": {
+   "fields": {
+    "bytes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "file_name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FileName"
+     }
+    },
+    "layers": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
  },
  "HeatedTool": {
   "struct": {
@@ -4331,6 +5070,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       }
      }
     },
+    "image_note": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
     "image_path": {
      "paired_with": "",
      "required": false,
@@ -4932,6 +5680,24 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "PlanFact": {
+  "enum": [
+   "layer",
+   "final_z",
+   "types",
+   "minutes_left",
+   "flow_factor",
+   "fan_percent",
+   "objects",
+   "rise"
+  ]
+ },
+ "PlanMismatch": {
+  "enum": [
+   "fan_off_over_bridges",
+   "flow_low_over_walls"
+  ]
+ },
  "PolicyDecision": {
   "union": {
    "tag_field": "",
@@ -4987,7 +5753,9 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "image_write",
    "supervision_turn",
    "camera_look",
-   "detector_acknowledgement"
+   "detector_acknowledgement",
+   "detector_health_check",
+   "detector_scoring_read"
   ]
  },
  "PositionFreshness": {
@@ -5803,91 +6571,6 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    }
   }
  },
- "PrintContext": {
-  "struct": {
-   "fields": {
-    "bounds": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "EffectiveBounds"
-     }
-    },
-    "detector": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "ref": "DetectorHealth"
-     }
-    },
-    "interventions": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "list": {
-       "ref": "Intervention"
-      },
-      "non_empty": false
-     }
-    },
-    "job": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "JobSnapshot"
-      }
-     }
-    },
-    "latest_image": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "ImageRef"
-      }
-     }
-    },
-    "manifest": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "JobManifest"
-      }
-     }
-    },
-    "print": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "ref": "PrintRecord"
-     }
-    },
-    "printer": {
-     "paired_with": "",
-     "required": false,
-     "shape": {
-      "nullable": {
-       "ref": "PrinterSnapshot"
-      }
-     }
-    },
-    "recent_events": {
-     "paired_with": "",
-     "required": true,
-     "shape": {
-      "list": {
-       "ref": "EventRecord"
-      },
-      "non_empty": false
-     }
-    }
-   },
-   "tag_field": "",
-   "variants": {}
-  }
- },
  "PrintEnded": {
   "struct": {
    "fields": {
@@ -6576,6 +7259,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "ref": "Actor"
      }
     },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
+     }
+    },
     "outcome": {
      "paired_with": "",
      "required": true,
@@ -6820,6 +7512,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "Actor"
+     }
+    },
+    "bed_clear": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "EventId"
+      }
      }
     },
     "reason": {
@@ -7269,6 +7970,57 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "Rise": {
+  "struct": {
+   "fields": {
+    "mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "number"
+      },
+      "non_empty": true
+     }
+    },
+    "since": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SetValue": {
+  "struct": {
+   "fields": {
+    "changed": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "file": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "SheetId": {
   "alias": {
    "scalar": "string"
@@ -7462,6 +8214,129 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "FilePosition"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SlicerPlan": {
+  "struct": {
+   "fields": {
+    "at_odds": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlanMismatch"
+      },
+      "non_empty": false
+     }
+    },
+    "fan_percent": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SetValue"
+      }
+     }
+    },
+    "final_z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "flow_factor": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "SetValue"
+      }
+     }
+    },
+    "layer": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "minutes_left": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "object_count": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "objects": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "list": {
+        "scalar": "integer"
+       },
+       "non_empty": true
+      },
+      "non_empty": false
+     }
+    },
+    "rise": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "Rise"
+      }
+     }
+    },
+    "types": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "scalar": "string"
+      },
+      "non_empty": false
+     }
+    },
+    "unknown": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PlanFact"
+      },
+      "non_empty": false
+     }
+    },
+    "z_mm": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
      }
     }
    },
@@ -9048,9 +9923,12 @@ export class GeneratedClient extends GeneratedSurface {
    * the answer could not be read, and with `Refused` when the supervisor
    * said no.
    */
-  async context(printId: string): Promise<ContextAnswer> {
+  async context(printId: string, since?: EventId): Promise<ContextAnswer> {
     const target = `/v1/prints/${printId}/context`;
     const asked: Array<[string, string]> = [];
+    if (since !== undefined) {
+      asked.push(["since", String(since)]);
+    }
     const sending = undefined;
     return await this.call<ContextAnswer>("GET", target, asked, sending, "ContextAnswer");
   }
@@ -9906,5 +10784,24 @@ export class GeneratedClient extends GeneratedSurface {
     }
     sending.reason = reason;
     return await this.call<RecoveryAnswer>("POST", target, asked, sending, "RecoveryAnswer");
+  }
+
+  /**
+   * Call `bed_clear` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async bedClear(reason: string): Promise<BedClearAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/printer/bed_clear`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    return await this.call<BedClearAnswer>("POST", target, asked, sending, "BedClearAnswer");
   }
 }

@@ -24,6 +24,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use oneharness_core::domain::structured::{self, Schema};
+
 use printobserver_supervisor_api::Confidence;
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort};
 use printobserver_types::{EventBody, PrintId, serde_json};
@@ -79,26 +81,21 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
     let generated = generated_assessment_schema();
     let conforming = assessment("the first layer is down", "high");
 
-    // The schema on the run request is the generated assessment schema's own
-    // checked-in artifact, not a file this crate carries.
+    // The schema a Claude Code turn is held to rides its prompt, as the
+    // engine's own instruction compiled from the generated assessment schema's
+    // checked-in artifact, and no file this crate carries.
     let (accepted, requests) = drive(&schemas, &fixture, &generated, &conforming);
-    let named = requests
-        .first()
-        .expect("the port built a run request")
-        .schema
-        .clone()
-        .expect("the run request names a schema");
+    let request = requests.first().expect("the port built a run request");
     assert_eq!(
-        fs::canonicalize(&named).expect("the named schema exists"),
-        fs::canonicalize(&generated).expect("the generated artifact exists"),
-        "the run request names {} rather than the generated artifact",
-        named.display()
+        request.schema, None,
+        "a Claude Code run passed the schema natively"
     );
+    let compiled =
+        Schema::compile(&fs::read_to_string(&generated).expect("the generated artifact reads"))
+            .expect("the generated artifact compiles");
     assert!(
-        !fs::canonicalize(&named)
-            .expect("the named schema exists")
-            .starts_with(fs::canonicalize(env!("CARGO_MANIFEST_DIR")).expect("this crate exists")),
-        "the schema the answer is constrained by is a file this crate carries"
+        request.prompt[0].ends_with(&structured::prompt_instruction(compiled.as_text())),
+        "the prompt does not carry the generated schema"
     );
 
     // The first of three scripted answers: one conforming, and it reads back
@@ -128,6 +125,7 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
         "did": "looked",
         "why": "it is fine",
         "escalating": false,
+        "disposition": "continue",
     })
     .to_string();
     let outside = assessment("the first layer is down", "certain");

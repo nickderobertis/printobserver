@@ -116,17 +116,15 @@ fn unacceptable(
             "supervisor.prompt_template_path",
             toml::Value::String(unreadable(root).display().to_string()),
         ),
-        // An interval of nothing, which would observe a print without pause.
-        ConfigField::ObservationIntervalS => set(
-            &mut document,
-            "supervisor.observation_interval_s",
-            toml::Value::Integer(0),
-        ),
+        ConfigField::ObservationIntervalS
+        | ConfigField::AutoCompactTokens
+        | ConfigField::IdleCompactTokens => unacceptable_count(field, &mut document),
         ConfigField::ObicoUrl
         | ConfigField::ObicoAccessToken
         | ConfigField::PrinterPollS
         | ConfigField::UnattendedWindowS
         | ConfigField::ObicoMlApiUrl
+        | ConfigField::ObicoPrinterId
         | ConfigField::VisionBlankFrameMaxStddev => unacceptable_watch(field, &mut document),
         ConfigField::IngressAnswerBoundMs => set(
             &mut document,
@@ -163,6 +161,7 @@ fn unacceptable(
                 toml::Value::String("file:///var/lib/camera/frame.jpg".to_owned()),
             )])),
         ),
+        ConfigField::CameraCalibration => unacceptable_calibration(root, &mut document),
         ConfigField::SpoolsPreflight
         | ConfigField::SpoolsBufferPercent
         | ConfigField::SpoolsBufferMinG
@@ -175,6 +174,19 @@ fn unacceptable(
         grants => unacceptable_grants(grants, &mut document),
     }
     document
+}
+
+/// The supervisor's counts, each made unacceptable: an interval of nothing,
+/// which would observe a print without pause; a compaction at a conversation
+/// of no tokens, which every turn has already passed; and one at a size below
+/// nothing.
+fn unacceptable_count(field: ConfigField, document: &mut toml::Value) {
+    let (key, count) = match field {
+        ConfigField::ObservationIntervalS => ("supervisor.observation_interval_s", 0),
+        ConfigField::AutoCompactTokens => ("supervisor.auto_compact_tokens", 0),
+        _ => ("supervisor.idle_compact_tokens", -150_000),
+    };
+    set(document, key, toml::Value::Integer(count));
 }
 
 /// `Obico`'s and the printer watch's fields, each made unacceptable: an
@@ -216,6 +228,15 @@ fn unacceptable_watch(field: ConfigField, document: &mut toml::Value) {
                 toml::Value::String("ftp://127.0.0.1:3333".to_owned()),
             )])),
         ),
+        // Optional: a number no printer of Obico's is.
+        ConfigField::ObicoPrinterId => set(
+            document,
+            "obico",
+            toml::Value::Table(toml::Table::from_iter([(
+                "printer_id".to_owned(),
+                toml::Value::Integer(0),
+            )])),
+        ),
         // A bound below the one grey level it admits.
         ConfigField::VisionBlankFrameMaxStddev => set(
             document,
@@ -227,6 +248,20 @@ fn unacceptable_watch(field: ConfigField, document: &mut toml::Value) {
         ),
         _ => unreachable!("{field} is not one of the watch's fields"),
     }
+}
+
+/// Make the camera calibration unacceptable: a file that is no calibration.
+fn unacceptable_calibration(root: &std::path::Path, document: &mut toml::Value) {
+    let path = root.join("calibration.json");
+    std::fs::write(&path, "{\"schema_version\": 1}").expect("a file is written");
+    set(
+        document,
+        "camera",
+        toml::Value::Table(toml::Table::from_iter([(
+            "calibration".to_owned(),
+            toml::Value::String(path.display().to_string()),
+        )])),
+    );
 }
 
 /// Make the sheet table unacceptable: a material listed on no sheet, which
@@ -822,6 +857,7 @@ fn with_the_examples_taken_up(configuration: &str) -> String {
         "# [obico]",
         "# url = ",
         "# access_token = ",
+        "# ml_api_url = ",
     ];
     let mut taken = 0;
     let lines: Vec<String> = configuration
@@ -901,4 +937,5 @@ fn the_powershell_installers_configuration_reads_with_and_without_its_examples()
     .expect("the configuration reads with its examples taken up");
     assert!(taken_up.camera_snapshot_url.is_some());
     assert!(taken_up.obico_api.is_some());
+    assert!(taken_up.obico_ml_api_url.is_some());
 }

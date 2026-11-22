@@ -139,6 +139,43 @@ def test_each_route_installs_a_program_that_runs(
     contains(said, NO_TOOLCHAIN, describing=f"what `{identifier}` was taken with")
 
 
+#: Every home a per-user install writes its configuration, state or server
+#: registration under, on any platform the script reaches.
+USER_HOMES = ("HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "LOCALAPPDATA", "APPDATA")
+
+
+@ROUTE_PROOF
+def test_proving_the_script_route_registers_no_server_for_the_user_running_it(
+    repo: Repo,
+    program: Path,
+    into: Callable[[str], Path],
+    version: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The route's program runs, and the proof leaves nothing in the user's homes.
+
+    Taken with no switch, the script also installs and starts a supervising
+    server as whoever runs it. So the proof is run with every home a per-user
+    install writes to pointed at an empty directory of this test's own, and
+    that directory is read afterwards: a proof that registered a server there
+    would have registered it in the real home of anybody running this suite.
+    """
+    homes = tmp_path / "homes"
+    homes.mkdir()
+    for name in USER_HOMES:
+        monkeypatch.setenv(name, str(homes))
+
+    said = prove(repo, "release:printobserver", into("release-printobserver"), program)
+
+    contains(said, f"printobserver {version}", describing="what the script route installed")
+    equal(
+        sorted(path.relative_to(homes).as_posix() for path in homes.rglob("*")),
+        [],
+        describing="what proving the route left in the homes of the user running it",
+    )
+
+
 def test_a_stand_in_machine_answers_what_the_adapter_reads(repo: Repo) -> None:
     """The supervisor reaches it over HTTP exactly as it reaches a real machine."""
     machine = Machine()

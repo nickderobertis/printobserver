@@ -87,10 +87,10 @@ use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::server::{CREDENTIAL_ISSUE, OperatorCredential};
 use crate::turns::{TurnBinding, TurnCredentials};
 use crate::wire::{
-    ActionAnswer, ActionBody, ContextAnswer, ErrorAnswer, HistoryAnswer, ImageAnswer,
-    ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer, RecoveryAnswer, SpoolAnswer,
-    SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer, claimed_actor, recovery_of,
-    spool_command_of,
+    ActionAnswer, ActionBody, BedClearAnswer, BedClearBody, ContextAnswer, ErrorAnswer,
+    HistoryAnswer, ImageAnswer, ManifestAnswer, ManifestBody, PreflightAnswer, PrintsAnswer,
+    RecoveryAnswer, SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer, StatusAnswer, TimelineAnswer,
+    claimed_actor, reason_of, recovery_of, spool_command_of,
 };
 
 /// What every handler is given: the supervisor, and the stores the reads
@@ -227,6 +227,30 @@ fn operator_refused(caller: &Caller, command: &str) -> Option<Response> {
     }
 }
 
+/// Refuse a turn's acknowledgement before the turn has taken a look.
+///
+/// The frames a turn's context names are already old when it reads them, so
+/// what a turn writes down of its event is judged from a look it took; the
+/// operator, who is not a turn, is held to nothing here.
+fn unlooked_refused(
+    turns: &TurnCredentials,
+    caller: &Caller,
+    print_id: PrintId,
+) -> Option<Response> {
+    match caller {
+        Caller::Turn(binding) if !turns.has_looked(binding) => Some(refusal(
+            StatusCode::FORBIDDEN,
+            format!(
+                "this request authenticated as {} and acknowledges an event before the turn \
+                 has taken a look: run `printobserver look --print-id {print_id}`, open the \
+                 frames it names, and acknowledge what they show",
+                caller.named()
+            ),
+        )),
+        _ => None,
+    }
+}
+
 /// What [`authenticate`] checks a presented credential against.
 #[derive(Clone)]
 pub struct Admission {
@@ -259,6 +283,16 @@ pub struct HistoryParams {
     /// The limit asked for; absent takes the port's own default window.
     #[serde(default)]
     pub limit: Option<u32>,
+}
+
+/// The event a context read is asked `since`: only the events newer than it
+/// are answered, because the caller has read the rest.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+pub struct ContextParams {
+    /// The newest event the caller has read; absent answers the recent window.
+    #[serde(default)]
+    pub since: Option<printobserver_types::EventId>,
 }
 
 /// How long a look asks to wait for something to arrive, in whole seconds.
@@ -451,7 +485,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         return post(
             move |state: State<ApiState>,
                   caller: Extension<Caller>,
-                  print_id: Path<PrintId>,
+                  print_id: PrintPath,
                   body: Result<Json<ActionBody>, JsonRejection>| async move {
                 act(kind, state, caller, print_id, body).await
             },
@@ -473,6 +507,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("printer_history", Method::Get) => get(printer_history),
         ("preflight", Method::Get) => get(preflight),
         (crate::operations::RECOVERY_STATUS, Method::Get) => get(recover_status),
+        (crate::operations::BED_CLEAR, Method::Post) => post(bed_clear),
         (name, method) => panic!(
             "the operation `{name}` is declared as {method} and this router serves no such route"
         ),
@@ -508,6 +543,32 @@ pub(crate) fn refusal(status: StatusCode, detail: impl core::fmt::Display) -> Re
     answer(status, &ErrorAnswer::saying(detail))
 }
 
+/// What a print id that names no print is refused with, after what was wrong
+/// with it: what to pass instead.
+pub(crate) const PRINT_ID_REFUSED: &str = "a print is named by its id, a UUID, as `printobserver prints` \
+lists it; a start with no print open may name none, and is made under one minted for it";
+
+/// The print a route's path names, refused in this server's own error shape,
+/// saying what to pass, when the path names no print at all.
+pub(crate) struct PrintPath(pub(crate) PrintId);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for PrintPath {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        match Path::<PrintId>::from_request_parts(parts, state).await {
+            Ok(Path(print_id)) => Ok(Self(print_id)),
+            Err(rejected) => Err(refusal(
+                StatusCode::BAD_REQUEST,
+                format!("{}: {PRINT_ID_REFUSED}", rejected.body_text()),
+            )),
+        }
+    }
+}
+
 /// The status a store refusal is answered under.
 pub(crate) fn store_status(error: &StoreError) -> StatusCode {
     match error {
@@ -539,7 +600,7 @@ async fn act(
     kind: ActionKind,
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     body: Result<Json<ActionBody>, JsonRejection>,
 ) -> Response {
     if kind == ActionKind::StartPrint
@@ -556,6 +617,11 @@ async fn act(
         Err(rejected) => return rejected.into_response(),
     };
     if let Some(refused) = claim_refused(&caller, &body.actor) {
+        return refused;
+    }
+    if kind == ActionKind::AcknowledgeFailure
+        && let Some(refused) = unlooked_refused(&state.turns, &caller, print_id)
+    {
         return refused;
     }
     let action = match body.into_action(kind) {
@@ -701,6 +767,75 @@ async fn recover(
             events: vec![issued.requested, issued.settled],
         },
     )
+}
+
+/// What a recorded bed-clear means from now on, in a sentence for a person.
+pub const BED_CLEAR_DETAIL: &str = "recorded: until the next print starts, a Z home is decided \
+    as though it asserted the bed clear, and a heat, a park and an XY home as though they \
+    asserted the nozzle clear of the part, wherever the operator's word counts";
+
+/// Record the operator's word that the bed is clear.
+///
+/// The claimed actor is held to the caller before anything is written, and
+/// the one actor admitted is the operator: a turn claiming the operator, any
+/// claim to the system, and the agent's own word are each refused `403` and
+/// recorded nowhere. A reason that is absent or blank is refused before
+/// anything is written.
+async fn bed_clear(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    body: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejected) => return rejected.into_response(),
+    };
+    let Some(fields) = body.as_object() else {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "the body is not a document carrying an `actor` and a `reason`",
+        );
+    };
+    let actor = match claimed_actor(fields) {
+        Ok(actor) => actor,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    if let Some(refused) = claim_refused(&caller, &actor) {
+        return refused;
+    }
+    if actor != Actor::Operator {
+        return refusal(
+            StatusCode::FORBIDDEN,
+            format!(
+                "{} may not say the bed is clear: an assertion is a person's word for what \
+                 they can see, and only the operator's is recorded",
+                claimed(&actor)
+            ),
+        );
+    }
+    let body: BedClearBody = match printobserver_types::serde_json::from_value(body) {
+        Ok(body) => body,
+        Err(error) => {
+            return refusal(
+                StatusCode::BAD_REQUEST,
+                format!("the body is not an `actor` and a `reason`: {error}"),
+            );
+        }
+    };
+    let reason = match reason_of(body.reason.as_deref()) {
+        Ok(reason) => reason,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    match state.supervisor.assert_bed_clear(reason).await {
+        Ok(event) => answer(
+            StatusCode::OK,
+            &BedClearAnswer {
+                event,
+                detail: BED_CLEAR_DETAIL.to_owned(),
+            },
+        ),
+        Err(error) => refusal(core_status(&error), error),
+    }
 }
 
 /// Everything a recovery is checked against now, and what each action would
@@ -910,7 +1045,7 @@ async fn list_and_adopt_prints(State(state): State<ApiState>) -> Response {
 async fn status(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
@@ -925,9 +1060,9 @@ async fn status(
         }
         Err(error) => return refusal(store_status(&error), error),
     }
-    let context = match state.supervisor.context(print_id).await {
+    let context = match context_of(&state, print_id).await {
         Ok(context) => context,
-        Err(error) => return refusal(core_status(&error), error),
+        Err(refused) => return refused,
     };
     let session = match state.sessions.session(print_id).await {
         Ok(session) => session,
@@ -946,6 +1081,29 @@ async fn status(
     )
 }
 
+/// One print's context, read off the request's own thread.
+///
+/// The first read of a print's context after it starts reads the print's
+/// whole G-code to index it, through a printer port that blocks while it
+/// reads, so it is taken on a blocking thread, as a look is: a request that
+/// held an asynchronous worker for the length of a download would hold every
+/// task queued behind it there too.
+async fn context_of(
+    state: &ApiState,
+    print_id: PrintId,
+) -> Result<printobserver_core::PrintContext, Response> {
+    let supervisor = Arc::clone(&state.supervisor);
+    let read = tokio::task::spawn_blocking(move || {
+        printobserver_core::block_on(supervisor.context(print_id))
+    })
+    .await;
+    match read {
+        Ok(Ok(context)) => Ok(context),
+        Ok(Err(error)) => Err(refusal(core_status(&error), error)),
+        Err(error) => Err(refusal(StatusCode::INTERNAL_SERVER_ERROR, error)),
+    }
+}
+
 /// Read everything a supervision turn is given about one print, with the
 /// latest image materialized.
 ///
@@ -956,14 +1114,23 @@ async fn status(
 async fn context(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
+    Query(params): Query<ContextParams>,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
-    let context = match state.supervisor.context(print_id).await {
-        Ok(context) => context,
-        Err(error) => return refusal(core_status(&error), error),
+    // Off the request's own thread, for the reason `context_of` gives.
+    let supervisor = Arc::clone(&state.supervisor);
+    let since = params.since;
+    let read = tokio::task::spawn_blocking(move || {
+        printobserver_core::block_on(supervisor.agent_context(print_id, since))
+    })
+    .await;
+    let context = match read {
+        Ok(Ok(read)) => read,
+        Ok(Err(error)) => return refusal(core_status(&error), error),
+        Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
     };
     let mut image_path = None;
     if let Some(latest) = context.latest_image.as_ref() {
@@ -991,7 +1158,7 @@ async fn context(
 async fn look(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     Query(params): Query<LookParams>,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
@@ -1011,11 +1178,16 @@ async fn look(
         }
         Err(error) => return refusal(store_status(&error), error),
     }
+    // A look that was asked for counts whatever the camera then gives it: a
+    // turn whose camera is down has still looked, and can say so.
+    if let Caller::Turn(binding) = &caller {
+        state.turns.note_look(binding);
+    }
     let supervisor = Arc::clone(&state.supervisor);
     let taken = tokio::task::spawn_blocking(move || {
-        let started = std::time::Instant::now();
-        let arrived = supervisor.await_arrivals(print_id, Duration::from_secs(u64::from(wait_s)));
-        printobserver_core::block_on(supervisor.take_look(print_id, started.elapsed(), arrived))
+        let (arrived, waited) =
+            supervisor.await_look_arrivals(print_id, Duration::from_secs(u64::from(wait_s)));
+        printobserver_core::block_on(supervisor.take_look(print_id, waited, arrived))
     })
     .await;
     match taken {
@@ -1089,7 +1261,7 @@ async fn image(
 async fn history(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     Query(params): Query<HistoryParams>,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
@@ -1112,7 +1284,7 @@ async fn history(
 async fn manifest_get(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
 ) -> Response {
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
@@ -1145,7 +1317,7 @@ async fn manifest_get(
 async fn manifest_set(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
-    Path(print_id): Path<PrintId>,
+    PrintPath(print_id): PrintPath,
     body: Result<Json<ManifestBody>, JsonRejection>,
 ) -> Response {
     if let Some(refused) =

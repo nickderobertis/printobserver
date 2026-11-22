@@ -32,9 +32,12 @@
 //! Skill's `SKILL.md` with its frontmatter split off by [`skill_prose`] — read
 //! from the configured path when the port is built. The prompt for a turn is the committed template at
 //! [`SupervisorConfig::prompt_template_path`] with its five slots filled — the
-//! triggering event, the situation the turn began in, the materialized path of
-//! its image, the context command and the agent's own actor — and nothing else. This port composes no sentence of its own, so
-//! what a prompt may say is one small file a person reads.
+//! triggering event, the situation the turn began in, the print's facts, the
+//! context command, the agent's own actor and the usage of the commands it may
+//! run — and nothing else. The check's
+//! image is attached to the prompt as an image rather than named in it. This
+//! port composes no sentence of its own, so what a prompt may say is one small
+//! file a person reads.
 //!
 //! # The answer is constrained by the generated schema
 //!
@@ -70,14 +73,17 @@ pub use config::{
     AgentCommand, AssessmentSchema, ConfigError, EnvAssignment, HarnessIdentity, ModelName,
     RunReportObserver, RunRequestObserver, SupervisorConfig, TurnSeam, TurnTimeout,
 };
-pub use ledger::{LedgerFormat, RecordedTurn, SESSIONS_DIRECTORY, SessionName};
+pub use ledger::{
+    CallUsage, CompactionEnd, LedgerFormat, RecordedCompaction, RecordedTurn, SESSIONS_DIRECTORY,
+    SessionName,
+};
 pub use prompt::{
-    ACTOR_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, IMAGE_SLOT, NO_IMAGE, PromptTemplate,
+    ACTOR_SLOT, COMMANDS_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT, PromptTemplate,
     SITUATION_SLOT, SLOTS, TemplateError,
 };
 pub use sign_in::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use skill::{UnclosedFrontmatter, skill_prose};
 pub use turn::{
     ANSWER_CUT, ANSWER_EXCERPT_CHARS, ANSWER_SAID, HARNESS_SESSIONS_DIRECTORY,
-    OneharnessSupervisor, TurnReport,
+    OneharnessSupervisor, SCHEMA_RETRIES, TURN_TOOL_SET, TurnReport,
 };

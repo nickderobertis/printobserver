@@ -103,6 +103,10 @@ pub struct Look {
     /// The absolute path the frame's bytes are at, on the supervisor's host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_path: Option<PathBuf>,
+    /// What the image at `image_path` is, and why it is that one, in one line;
+    /// absent with no image, or when what made it says nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_note: Option<String>,
     /// The printer's state now, absent when it could not be read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printer: Option<PrinterSnapshot>,
@@ -121,6 +125,11 @@ impl Sample for Look {
             arrived: vec![EventRecord::sample_full()],
             frame: Some(ImageRef::sample_full()),
             image_path: Some(PathBuf::from("/var/lib/printobserver/images/look.jpg")),
+            image_note: Some(
+                "the whole camera frame, scaled to fit 1280x720 and uncropped: no print is named, \
+                 so there is no plan to draw on it"
+                    .to_owned(),
+            ),
             printer: Some(PrinterSnapshot::sample_full()),
             job: Some(JobSnapshot::sample_full()),
             detector_paused: true,
@@ -133,6 +142,7 @@ impl Sample for Look {
             arrived: Vec::new(),
             frame: None,
             image_path: None,
+            image_note: None,
             printer: None,
             job: None,
             detector_paused: false,
@@ -149,6 +159,34 @@ impl Supervisor {
     #[must_use]
     pub fn await_arrivals(&self, print_id: PrintId, wait: Duration) -> Vec<Arrival> {
         self.inboxes().wait_and_take(print_id, wait)
+    }
+
+    /// Wait up to `wait` for anything to arrive for one print's running turn,
+    /// take it, and answer how long the wait was.
+    ///
+    /// Nothing pending and the wait passed on a replay's clock
+    /// ([`Timestamp::pass_replay_time`]) answers at once, having waited all of
+    /// `wait`: on that clock nothing arrives during a turn, so the whole wait
+    /// is what waiting it out would have been.
+    ///
+    /// **This blocks the calling thread** for as long as it waits; call it
+    /// where a blocking wait is expected.
+    #[must_use]
+    pub fn await_look_arrivals(
+        &self,
+        print_id: PrintId,
+        wait: Duration,
+    ) -> (Vec<Arrival>, Duration) {
+        let started = std::time::Instant::now();
+        let pending = self.inboxes().wait_and_take(print_id, Duration::ZERO);
+        if !pending.is_empty() {
+            return (pending, started.elapsed());
+        }
+        if printobserver_types::Timestamp::pass_replay_time(wait) {
+            return (pending, wait);
+        }
+        let arrived = self.inboxes().wait_and_take(print_id, wait);
+        (arrived, started.elapsed())
     }
 
     /// Take a frame, write one look down with it, and read the printer.
@@ -207,12 +245,33 @@ impl Supervisor {
                 .record_position_from(&print, job, self.clock().now())
                 .await;
         }
+        // A look's frame is one the plan's rise can later be measured from,
+        // when it was this print's file the job had reached a place in.
+        if let (Some(captured), Some(job)) = (
+            event
+                .payload_as::<CameraLookPayload>()
+                .and_then(Result::ok)
+                .and_then(|look| look.frame_captured_at),
+            &job,
+        ) && print.ended_at.is_none()
+            && job.file_name.is_some()
+            && job.file_name == print.file_name
+            && let Some(position) = job.file_position_bytes
+        {
+            self.gcode_indexes()
+                .note_look(print.id, captured, position, self.clock().now());
+        }
         let detector_paused = self.detector_paused(print.id)
             && printer
                 .as_ref()
                 .is_some_and(|taken| taken.connection == PrinterState::Paused);
+        let plan = if print.ended_at.is_none() {
+            self.plan_position(&print, job.as_ref()).await
+        } else {
+            None
+        };
         Ok(self
-            .answered(event, arrived, printer, job, detector_paused)
+            .answered(event, arrived, printer, job, detector_paused, plan)
             .await)
     }
 
@@ -238,7 +297,9 @@ impl Supervisor {
         let event = self.write_with_frame(None, &payload, fetched).await?;
         let printer = self.read_snapshot().await.ok();
         let job = self.read_job().await.ok();
-        Ok(self.answered(event, Vec::new(), printer, job, false).await)
+        Ok(self
+            .answered(event, Vec::new(), printer, job, false, None)
+            .await)
     }
 
     /// The answer to one look, its frame's path read off the store.
@@ -249,17 +310,31 @@ impl Supervisor {
         printer: Option<PrinterSnapshot>,
         job: Option<JobSnapshot>,
         detector_paused: bool,
+        plan: Option<crate::check_image::PlanPosition>,
     ) -> Look {
         let frame = event.image.clone();
-        let image_path = match &frame {
-            Some(reference) => self.image_path(reference).await,
+        let shown = match &frame {
+            Some(reference) => {
+                let captured_at = crate::check_image::captured_at_of(&event, None);
+                self.shown_image_of(
+                    reference,
+                    event.print_id,
+                    captured_at,
+                    crate::check_image::ImageUse::Look,
+                    plan,
+                )
+                .await
+            }
             None => None,
         };
+        let (image_path, image_note) =
+            shown.map_or((None, None), |shown| (Some(shown.path), shown.note));
         Look {
             event,
             arrived,
             frame,
             image_path,
+            image_note,
             printer,
             job,
             detector_paused,
@@ -280,6 +355,19 @@ impl Supervisor {
             .to_owned();
         let fetched = self.fetch_frame(&url, print_id).await;
         Some((url, fetched))
+    }
+
+    /// One good frame from the configured camera, as its JPEG bytes and the
+    /// URL they came from, fetched as a look fetches one — retried while the
+    /// camera answers a server error and judged by the vision port, each such
+    /// answer written down to the print's history as a look's are. Nothing
+    /// when no camera is configured or no good frame came; the frame itself is
+    /// not recorded.
+    pub async fn fetch_camera_frame(&self, print_id: PrintId) -> Option<(String, Vec<u8>)> {
+        match self.fetch_configured_frame(Some(print_id)).await? {
+            (url, Frame::Good(image)) => Some((url, image.bytes.as_slice().to_vec())),
+            _ => None,
+        }
     }
 
     /// When a fetched frame was captured: what its source says, or now.

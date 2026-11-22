@@ -19,8 +19,16 @@
 //! minted, and no turn survives a restart for one to be owed to. Looking a
 //! presented credential up by its digest takes as long whatever was guessed:
 //! what varies is the digest, which says nothing about the credential.
+//!
+//! # A turn acknowledges only after it has looked
+//!
+//! The registry also notes which turns have taken a look at their print, so
+//! the API can refuse an acknowledgement from a turn that judged its event
+//! without one: the frames a turn's context names are already old when it
+//! reads them. The note is the turn's, shared by every run it issues, and goes
+//! with the turn's credentials when it returns.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -41,6 +49,8 @@ pub struct TurnBinding {
     session: TurnSession,
     /// The print the turn is about.
     print_id: PrintId,
+    /// The turn that issued it.
+    scope: u64,
 }
 
 impl TurnBinding {
@@ -72,6 +82,8 @@ struct Held {
 struct Registry {
     /// The live credentials, keyed by the SHA-256 of each.
     held: Mutex<HashMap<[u8; 32], Held>>,
+    /// The turns that have taken a look at their print, by scope.
+    looked: Mutex<HashSet<u64>>,
     /// The identifier the next scope takes.
     next_scope: AtomicU64,
     /// Where the server answers, as a turn's runs are told.
@@ -94,6 +106,7 @@ impl TurnCredentials {
     pub fn new(server: Option<SocketAddr>) -> Self {
         Self(Arc::new(Registry {
             held: Mutex::new(HashMap::new()),
+            looked: Mutex::new(HashSet::new()),
             next_scope: AtomicU64::new(0),
             server,
         }))
@@ -121,9 +134,29 @@ impl TurnCredentials {
         self.held().len()
     }
 
-    /// Forget every credential one scope issued.
+    /// The turns that have looked, held.
+    fn looked_turns(&self) -> MutexGuard<'_, HashSet<u64>> {
+        self.0
+            .looked
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Note that the turn `binding` belongs to has taken a look at its print.
+    pub fn note_look(&self, binding: &TurnBinding) {
+        self.looked_turns().insert(binding.scope);
+    }
+
+    /// Whether the turn `binding` belongs to has taken a look at its print.
+    #[must_use]
+    pub fn has_looked(&self, binding: &TurnBinding) -> bool {
+        self.looked_turns().contains(&binding.scope)
+    }
+
+    /// Forget every credential one scope issued, and that it looked.
     fn revoke(&self, scope: u64) {
         self.held().retain(|_, held| held.scope != scope);
+        self.looked_turns().remove(&scope);
     }
 }
 
@@ -211,6 +244,7 @@ impl Scope {
                 binding: TurnBinding {
                     session: session.clone(),
                     print_id: self.print_id,
+                    scope: self.id,
                 },
             },
         );
@@ -226,7 +260,7 @@ mod tests {
     use printobserver_supervisor_api::{CREDENTIAL_ENV, SERVER_ENV, TurnPass, TurnSession};
     use printobserver_types::PrintId;
 
-    use super::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};
+    use super::{GENERATED_TURN_CREDENTIAL_BYTES, TurnCredentials};
 
     /// One session, by a name that is one.
     fn session(name: &str) -> TurnSession {
@@ -239,6 +273,49 @@ mod tests {
             .into_iter()
             .find(|(named, _)| *named == name)
             .map_or_else(|| panic!("the pass carries no {name}"), |(_, value)| value)
+    }
+
+    /// A look one run of a turn took counts for every run the turn issues
+    /// after it, and for no other turn; it goes when the turn returns.
+    #[test]
+    fn a_look_is_the_turns_whichever_of_its_runs_took_it() {
+        let registry = TurnCredentials::new(None);
+        let print_id = PrintId::new();
+        let opened = registry.open(print_id);
+        let access = opened.access();
+        let first = value_of(
+            &access.issue(&session("print-a")).expect("minted"),
+            CREDENTIAL_ENV,
+        );
+        let looking = registry.admit(first.as_bytes()).expect("admitted");
+        assert!(!registry.has_looked(&looking));
+        registry.note_look(&looking);
+        let second = value_of(
+            &access.issue(&session("print-a-2")).expect("minted"),
+            CREDENTIAL_ENV,
+        );
+        let moved = registry.admit(second.as_bytes()).expect("admitted");
+        assert!(
+            registry.has_looked(&moved),
+            "the turn's second run lost its look"
+        );
+
+        let other = registry.open(print_id);
+        let elsewhere = value_of(
+            &other.access().issue(&session("print-b")).expect("minted"),
+            CREDENTIAL_ENV,
+        );
+        let unlooked = registry.admit(elsewhere.as_bytes()).expect("admitted");
+        assert!(
+            !registry.has_looked(&unlooked),
+            "another turn took this one's look"
+        );
+
+        drop(opened);
+        assert!(
+            !registry.has_looked(&moved),
+            "a returned turn's look outlived it"
+        );
     }
 
     /// A credential is admitted as the session and print it was issued for
@@ -260,11 +337,10 @@ mod tests {
             (GENERATED_TURN_CREDENTIAL_BYTES * 4).div_ceil(3)
         );
         assert_eq!(
-            registry.admit(first.as_bytes()),
-            Some(TurnBinding {
-                session: session("print-a"),
-                print_id,
-            })
+            registry
+                .admit(first.as_bytes())
+                .map(|binding| (binding.session_name().to_owned(), binding.print_id())),
+            Some(("print-a".to_owned(), print_id))
         );
         let second = value_of(
             &access.issue(&session("print-a-2")).expect("minted"),

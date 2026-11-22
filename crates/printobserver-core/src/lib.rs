@@ -51,6 +51,7 @@ pub mod accounting;
 pub mod actions;
 pub mod block_on;
 pub mod bounds;
+pub mod check_image;
 pub mod clock;
 pub mod closing;
 pub mod config;
@@ -62,6 +63,7 @@ pub mod error;
 pub mod events;
 pub mod expiry;
 pub mod filament;
+pub mod gcode_index;
 pub mod inbox;
 pub mod kinds;
 pub mod listing;
@@ -70,9 +72,11 @@ pub mod observation;
 pub mod preflight;
 pub mod records;
 pub mod recovery;
+pub mod scoring;
 pub mod spools;
 pub mod store;
 pub mod supervisor;
+pub mod toolpath;
 pub mod turn_access;
 pub mod turn_lock;
 pub mod unobserved;
@@ -83,13 +87,17 @@ pub use accounting::{ChargeRule, UNTRACKED_REASON, charge_rule};
 pub use actions::{ActionOutcome, reported_value};
 pub use block_on::block_on;
 pub use bounds::{Bounds, effective_bounds};
+pub use check_image::{CheckImageRequest, CheckImages, ImageUse, PlanPosition, ShownImage};
 pub use clock::{Clock, SystemClock, plus_seconds, seconds_between, unix_seconds};
 pub use config::{
     CoreConfig, DEFAULT_DETECTOR_RESUME_GRACE, DEFAULT_EXPIRY_POLL, DEFAULT_OBSERVATION_INTERVAL,
     DEFAULT_RECENT_EVENTS, DEFAULT_SHEETS, MAX_LOOK_WAIT_S, PRINT_ID_PLACEHOLDER, PreflightMode,
     SheetTable, SpoolPolicy,
 };
-pub use context::PrintContext;
+pub use context::{
+    AgentContext, AgentEvent, AgentHeater, AgentPrint, AgentPrinter, PrintContext, Since,
+    newer_than,
+};
 pub use decision::{DecisionInput, adjustment, changes_the_machine, decide, valid_from};
 pub use error::CoreError;
 pub use events::{PendingTurn, Received, TERMINAL_STATES};
@@ -98,12 +106,16 @@ pub use filament::{
     DEFAULT_DIAMETER_MM, MATERIAL_DENSITIES, MarkClearing, buffer_g, density_for, grams_for_length,
     marks_cleared_by,
 };
+pub use gcode_index::{
+    BedArea, GcodeIndex, IndexBuilder, PlanFact, PlanMismatch, Rise, SetValue, SlicerPlan,
+};
 pub use inbox::{Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, ChargePendedPayload,
-    DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
+    AgentStopUnactedPayload, BedClearActor, BedClearAssertedPayload, CameraDegradedPayload,
+    CameraLookPayload, CameraRetryPayload, ChargePendedPayload, DetectorHealthChangedPayload,
+    DetectorStatus, FilamentChangeSignalledPayload, FilamentConsumedPayload,
+    FileTallyRebaselinedPayload, FrameCause, GcodeIndexedPayload, HeatedTool,
     InterventionExpiredPayload, OperatorAcknowledgementPayload, PeriodicObservationPayload,
     PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload,
     PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
@@ -135,6 +147,7 @@ pub use records::{
     RecoveryField, RecoveryGrants, RecoveryPosition, RecoveryRejection, RecoveryStatus,
     RecoveryTemperatures, ToolTemperature, ZHome, ZTrust,
 };
+pub use scoring::{EVIDENCE_INTERVALS, ScoringProbe, ScoringRead, ScoringReading};
 pub use spools::SpoolCommandOutcome;
 pub use store::{
     ActionStore, AuditPage, Charge, ChargeIdentity, ChargeRecord, DEFAULT_HISTORY_WINDOW,
@@ -144,9 +157,13 @@ pub use store::{
     TimelineStore, resolve_history_limit,
 };
 pub use supervisor::{Issued, RecoveryIssued, Supervisor};
+pub use toolpath::{
+    ExtrusionKind, LayerRef, LayerToolpath, ObjectOutline, SpoolError, ToolpathSegment, spool_path,
+};
 pub use turn_access::{OpenedTurn, TurnAuthority};
 pub use turn_lock::{TurnGuard, TurnLocks};
 pub use watch::{
-    DEFAULT_PRINTER_POLL, DEFAULT_UNATTENDED_WINDOW, DetectorHealth, DetectorHealthStatus,
-    DetectorProbe, HeadPosition, PRINTER_WATCH_KINDS, PUSH_CHANNEL_DOWN, PositionProbe, Watched,
+    ActiveJob, DEFAULT_PRINTER_POLL, DEFAULT_UNATTENDED_WINDOW, DetectorHealth,
+    DetectorHealthStatus, DetectorProbe, HeadPosition, PRINTER_WATCH_KINDS, PUSH_CHANNEL_DOWN,
+    PositionProbe, ScoringVerdict, Watched,
 };

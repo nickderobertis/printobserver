@@ -1,0 +1,141 @@
+schema_version: 1
+budgets:
+  - id: agent-context-added-tokens
+    description: >-
+      Agent tokens added per check by the new context facts: the model input
+      tokens one scheduled check adds to the print's conversation through this
+      plan — the context answer's new fields (layer, Z, extrusion types, final
+      height, slicer time left, flow factor, fan speed, the objects with
+      their bed areas, and — at their longest, as the manager's ruling a9 added
+      them — the height risen since a frame half an hour back and both
+      settings named as at odds with the plan), as the labelled lines `printobserver context` prints
+      them, plus the turn prompt template's bytes beyond its bytes at commit
+      0f1c113e — converted from bytes to tokens at the tokens-per-byte ratio
+      spike-check-costs measured. Detail: added bytes per field, bytes per
+      object, the prompt's added bytes, the ratio and the layer measured.
+      Inner measure, because the approved concern is the tokens these facts
+      add; a whole turn's input, about 64,000 tokens, moves with the frame and
+      history and would hide a change this size. Workload: one scheduled
+      check of a 2.5 h print (76 checks per print at the default 120 s
+      interval, in one conversation that re-reads each check), at the layer
+      with the most extrusion types of the generated long plate (up to 8
+      types), with its 16 labelled objects (8 guards and 8 pads) and flow and
+      fan set; the spike measured the five layer facts at +330 B of context;
+      the agent side runs Claude Code's default model, measured as
+      claude-opus-5-5; text only, no added image. Basis: arithmetic —
+      spike-check-costs (its tokens row) measured +127 input tokens per check
+      for +330 B (median of 2 real `claude-code` turns per variant,
+      claude-opus-5-5, cache included), so 0.385 tokens per byte, on host
+      U-17UN402ICR95C on 2026-11-01; flow, fan and 16 objects as unnamed
+      whole-millimetre rectangles were estimated at about 410 B (about 80 B
+      flow and fan, 18 B per object), about 158 tokens, so about 285 in all.
+      The threshold, 400, is the manager's, replacing an earlier 200 that the
+      new fields make infeasible; arithmetic, because those fields' bytes were
+      estimated. Read from the telemetry the
+      `printobserver-core-index-budget:test` journey records; the command
+      changes to the repository root first, because onebudgetspec runs it in
+      this file's directory.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../../../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - crates/printobserver-core/tests/index_budget/telemetry/agent-context.json
+      - added_tokens
+    unit: tokens
+    direction: max
+    threshold: 400
+    timeout_seconds: 60
+  - id: gcode-index-seconds
+    description: >-
+      Time to index one print's G-code: the CPU time, user and system, of the
+      thread building it, from the first byte of the print's G-code reaching
+      the core's index builder, streamed as the read path streams it, to the
+      index being ready, each 64 KiB piece handed to the builder as fast as a
+      read delivers one. CPU time rather than wall time, because the gate's
+      shared runners swing the wall time with their load — 3.06 to 5.18 s on
+      one linux-aarch64 cell at loads of 6.5 to 7.6 on 4 cores, against 1.2 to
+      2.1 s on the other Linux cell — while a slower index costs CPU time
+      however loaded the host is. Inner
+      measure, because the index is the only new work on the first check's
+      path and that check's whole delay is dominated by an agent turn
+      that varies by minutes; the network read from OctoPrint on the LAN is
+      the same read the server makes today and is not part of the change, so
+      the generator standing in for it writes the whole plate into memory
+      before the timed window opens rather than inside it. Workload: one
+      print's G-code index built once from a deterministic
+      streamed generator shaped like a bed-filling multi-part CORE One slice
+      (PrusaSlicer 2.9.6, HF0.4 nozzle, 0.20mm BALANCED, automatic supports):
+      about 78 MB, 3,349,278 lines, 850 layers, final Z 142.0 mm, 661
+      normal-mode and 745 silent-mode M73 markers, at most 8 extrusion types
+      in one layer, G2/G3 arcs with I/J, streamed once into the builder
+      through the reader interface the OctoPrint read path feeds it, in an
+      unoptimised test build. Detail: bytes, lines, layers, index entries, the
+      elapsed wall time, the throughput in MB/s, and the builder's own share
+      of the elapsed time. Basis: measured — spike-check-costs' index
+      prototype on the real 78 MB slice took a median 1.321 s and at worst
+      1.665 s in an unoptimised build (0.141 s and 0.174 s optimised), at a
+      1-minute load of about 16; the threshold, 5 s, is 3.0 times the debug
+      worst, a margin for slower runners, confirmed by the manager, and kept
+      for CPU time: unloaded it reads as the wall time did (1.66 to 1.84 s on
+      an 8-core host); with 16 busy processes on that host it read 2.9 s
+      where the wall time read 9.9 to 12.0 s; and four times the indexing work
+      read 6.8 s, over the line. Read from
+      the telemetry the `printobserver-core-index-budget:test` journey
+      records.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../../../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - crates/printobserver-core/tests/index_budget/telemetry/gcode-index.json
+      - seconds
+    unit: seconds
+    direction: max
+    threshold: 5
+    timeout_seconds: 60
+  - id: gcode-index-peak-memory-mb
+    description: >-
+      Peak memory to index one print's G-code: the peak heap allocated while
+      one print's G-code is streamed through the core's index builder until
+      the index is ready, the read buffer and the built index included,
+      counted by the counting global allocator the measuring binary runs
+      under from a baseline taken once the generated plate is held in memory,
+      so the held plate — the stand-in for the bytes a read delivers — is
+      outside it. Inner measure, because the print PC's process memory includes the
+      whole server's working set, which this change does not touch. Workload:
+      the same generated long plate as gcode-index-seconds, streamed once in
+      64 KiB pieces. Detail: the peak during the build, the built index's
+      resident size and its entry count. Basis: measured — spike-check-costs'
+      prototype peaked at 99,697 B of heap over the real 78 MB slice, its
+      read buffer and index included, in every run of both builds; the
+      threshold, 10 MB, is 100 times that and fails any build that holds the
+      plate, or a sizeable part of it, in memory; confirmed by the manager.
+      Read from the telemetry the `printobserver-core-index-budget:test`
+      journey records.
+    measure: reported
+    command:
+      - uv
+      - run
+      - --directory
+      - ../../../..
+      - python
+      - -m
+      - repo_checks
+      - telemetry_budget
+      - crates/printobserver-core/tests/index_budget/telemetry/gcode-index.json
+      - peak_mb
+    unit: megabytes
+    direction: max
+    threshold: 10
+    timeout_seconds: 60

@@ -271,6 +271,28 @@ def test_a_file_named_anywhere_in_a_source_must_exist(check: Run, tree: Callable
     )
 
 
+def test_a_camera_calibration_is_a_file_under_cameras(check: Run, tree: Callable[[], Tree]) -> None:
+    """A case may name a calibration under `../cameras/` that is there, or none at all."""
+    copy = tree()
+    data = case_json(copy, "jar-top-petg-healthy")
+    equal(data["camera_calibration"], "../cameras/core-one-2026-09-27.json")
+    data["camera_calibration"] = "../cameras/core-one-1999-01-01.json"
+    write_case(copy, "jar-top-petg-healthy", data)
+    refused_with(
+        check("real-prints-files", copy),
+        "jar-top-petg-healthy",
+        "core-one-1999-01-01.json",
+        "not a file",
+    )
+    data["camera_calibration"] = "calibration.json"
+    write_case(copy, "jar-top-petg-healthy", data)
+    refused_with(check("real-prints-schema", copy), "jar-top-petg-healthy", "camera_calibration")
+    del data["camera_calibration"]
+    write_case(copy, "jar-top-petg-healthy", data)
+    equal(check("real-prints-schema", copy), (0, ""))
+    equal(check("real-prints-files", copy), (0, ""))
+
+
 def test_an_unreferenced_extra_file_is_refused(check: Run, tree: Callable[[], Tree]) -> None:
     """A file in a case that its case.json says nothing about."""
     copy = tree()

@@ -309,6 +309,18 @@ fn finished(
     if !command.is_client() {
         return local(&command.name, config, flagged, machine_readable);
     }
+    let mut values = values;
+    // A call naming no print, to an operation that opens one of its own, is
+    // made under an identifier minted here: the answer names the print it ran
+    // under, which is the one to act on next.
+    if command
+        .operation
+        .is_some_and(|operation| operation.mints_print)
+    {
+        values
+            .entry(PRINT_FIELD.to_owned())
+            .or_insert_with(|| Value::String(printobserver_types::PrintId::new().to_string()));
+    }
     for field in &command.fields {
         if field.required() && !values.contains_key(&field.parameter.name) {
             return refused(format!(

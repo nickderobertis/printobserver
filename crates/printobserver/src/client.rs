@@ -21,7 +21,7 @@
 
 use std::path::Path;
 
-use printobserver_server::CREDENTIAL_ISSUE;
+use printobserver_server::{CREDENTIAL_ISSUE, MAX_LOOK_WAIT_S};
 use printobserver_types::serde_json::{self, Value};
 
 use crate::config::{CREDENTIAL_ENV, ClientConfig, DEFAULT_CONFIG_PATH, load};
@@ -165,9 +165,11 @@ fn rejection_note(document: &Value) -> String {
     let refusal = document
         .pointer("/record/decision/rejected")
         .or_else(|| document.pointer("/decision/rejected"));
-    if let Some(note) =
-        refusal.and_then(|refused| spool_note(refused).or_else(|| pairing_note(refused)))
-    {
+    if let Some(note) = refusal.and_then(|refused| {
+        spool_note(refused)
+            .or_else(|| pairing_note(refused))
+            .or_else(|| interval_note(refused))
+    }) {
         return note;
     }
     let named = |at: &str| {
@@ -271,6 +273,27 @@ const OVERRIDE_MATERIAL: &str = "--override-material-check true";
 
 /// The option a start goes ahead despite the sheet check with.
 const OVERRIDE_SHEET: &str = "--override-sheet-check true";
+
+/// A request the agent's minimum interval held back: how much of it is left,
+/// and that the same command goes again once a look has waited that long.
+fn interval_note(refusal: &Value) -> Option<String> {
+    let held = refusal.get("min_interval_not_elapsed")?;
+    let interval_s = held.get("interval_s")?.as_i64()?;
+    let since_last_s = held.get("since_last_s")?.as_i64()?;
+    // `since_last_s` is rounded down, so waiting this long is always enough.
+    let left_s = interval_s.saturating_sub(since_last_s).max(1);
+    let longest_s = i64::from(MAX_LOOK_WAIT_S);
+    let looks = if left_s <= longest_s {
+        format!("a look with `--wait-s {left_s}` or longer")
+    } else {
+        format!("looks that wait {left_s}s in all, at most `--wait-s {longest_s}` each")
+    };
+    Some(format!(
+        "the supervisor's policy refused this action: min_interval_not_elapsed. The agent last \
+         acted {since_last_s}s ago and its minimum interval is {interval_s}s, so {left_s}s of it \
+         are left: run {looks}, then send this same command again"
+    ))
+}
 
 /// What a refusal of the material or sheet check says to do next, naming
 /// what the check compared; nothing for any other refusal.

@@ -436,6 +436,19 @@ pub struct SupervisorConfig {
     /// The command prefixes the agent may run during a turn. Empty keeps the
     /// turn read-only, with no shell at all.
     pub agent_commands: Vec<AgentCommand>,
+    /// The usage line of every command the program serving the turn has, as
+    /// it prints them: a turn is handed those of its [`Self::agent_commands`],
+    /// so it can act without first reading how. Empty hands it none.
+    pub command_usage: Vec<String>,
+    /// The conversation size, in tokens, at which the harness compacts a
+    /// session on its own during a turn: `OneHarness`'s harness-agnostic
+    /// `auto_compact_tokens`, set on every supervision turn's run request and
+    /// on nothing else. `None` sets nothing, leaving the harness's own default.
+    pub auto_compact_tokens: Option<NonZeroU64>,
+    /// The conversation size, in tokens, at or above which a print's session
+    /// is compacted while the supervisor is idle after a turn. `None` never
+    /// compacts while idle.
+    pub idle_compact_tokens: Option<NonZeroU64>,
 }
 
 /// Receives every run request this port builds.

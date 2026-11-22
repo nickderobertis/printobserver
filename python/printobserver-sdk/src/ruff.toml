@@ -3,6 +3,6 @@
 # the one this repository's tooling runs on, so ruff reports syntax that floor
 # cannot parse and suggests none. Every rule the root configuration selects
 # still runs here; only the target version differs, and
-# `tools/release-artifacts/tests/test_contract_version.py` holds it to that floor.
+# `tools/release-artifacts/tests/independent/test_contract_version.py` holds it to that floor.
 extend = "../../../pyproject.toml"
 target-version = "py311"

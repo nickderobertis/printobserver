@@ -47,7 +47,7 @@ SCHEMAS = Closure(("schemas/",))
 
 #: The workflow file the breaking processes break, and the step each adds to.
 CI = ".github/workflows/ci.yml"
-GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+GATE_STEP = "      - run: just ci-test\n"
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,10 +111,16 @@ def copy(source: Path, into: Path, seconds: float) -> Copied:
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         copies += 1
+        began = time.monotonic()
         copied = copy_tree(into / f"copy{copies}", closure=SCHEMAS, source=source)
         text = (copied / SCHEMA).read_text(encoding="utf-8")
         if text not in (version(1), version(2)):
             torn.append(f"copy{copies}: {len(text)} characters")
+        # As long again between copies: neither `flock` nor `LockFileEx` lets a
+        # waiting writer ahead of a reader, so copiers taking the shared lock
+        # back to back hold it between them almost always once a copy is fast,
+        # and the rewrite they are copying beside stops being made at all.
+        time.sleep(time.monotonic() - began)
     # Only the first few: a run without the lock tears hundreds of copies, and
     # the test's message should still be one a reader can read.
     return Copied(copies, len(torn), torn[:3])

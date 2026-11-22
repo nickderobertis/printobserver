@@ -14,7 +14,7 @@
 //! the agent's before anything is decided.
 
 use printobserver_core::store::PrintStore as _;
-use printobserver_octoprint::standin::JobScript;
+use printobserver_octoprint::standin::{HeldRead, JobReadHold, JobScript};
 use printobserver_types::serde_json::{Value, json};
 
 use crate::binding::agent;
@@ -32,9 +32,9 @@ const RECORDED: &[u8] = include_bytes!(
 const SLICED_FOR_PLA: &str = "; filament_type = PLA\n";
 
 /// The file sliced for PLA, for PETG, and naming no material.
-const PLA_FILE: &str = "bridge-pla.gcode";
+pub(crate) const PLA_FILE: &str = "bridge-pla.gcode";
 /// The same file, sliced for PETG.
-const PETG_FILE: &str = "bridge-petg.gcode";
+pub(crate) const PETG_FILE: &str = "bridge-petg.gcode";
 /// The same file, its `filament_type` line gone.
 const UNNAMED_FILE: &str = "bridge-unnamed.gcode";
 
@@ -50,7 +50,7 @@ fn recorded_as(line: &str) -> Vec<u8> {
 
 /// A server watching a scripted `OctoPrint` that holds the three files, its
 /// configuration edited by a journey.
-async fn watching(edit: impl FnOnce(&mut toml::Value)) -> Watch {
+pub(crate) async fn watching(edit: impl FnOnce(&mut toml::Value)) -> Watch {
     let watch = Watch::start(edit, |config| {
         config.printer_poll = core::time::Duration::from_millis(200);
     })
@@ -68,7 +68,7 @@ async fn watching(edit: impl FnOnce(&mut toml::Value)) -> Watch {
 }
 
 /// One URL of an operation, with its path's identifier filled in.
-fn url_of(watch: &Watch, operation: &str, id: Option<(&str, &str)>) -> String {
+pub(crate) fn url_of(watch: &Watch, operation: &str, id: Option<(&str, &str)>) -> String {
     let mut path = printobserver_server::operation(operation)
         .expect("the operation is declared")
         .full_path();
@@ -79,7 +79,11 @@ fn url_of(watch: &Watch, operation: &str, id: Option<(&str, &str)>) -> String {
 }
 
 /// Post one body, answering the status and the answer.
-async fn posted(client: &reqwest::Client, url: &str, body: &Value) -> (reqwest::StatusCode, Value) {
+pub(crate) async fn posted(
+    client: &reqwest::Client,
+    url: &str,
+    body: &Value,
+) -> (reqwest::StatusCode, Value) {
     let response = client
         .post(url)
         .json(body)
@@ -91,7 +95,7 @@ async fn posted(client: &reqwest::Client, url: &str, body: &Value) -> (reqwest::
 }
 
 /// Register a full roll of one material and load it onto tool 0.
-async fn loaded_with(watch: &Watch, material: &str) {
+pub(crate) async fn loaded_with(watch: &Watch, material: &str) {
     let (status, registered) = posted(
         &watch.client,
         &url_of(watch, "register_spool", None),
@@ -162,7 +166,7 @@ async fn started_by_operator(watch: &Watch, body: &Value) -> (reqwest::StatusCod
 }
 
 /// How many times `OctoPrint` was told to start a job.
-fn starts(watch: &Watch) -> usize {
+pub(crate) fn starts(watch: &Watch) -> usize {
     watch
         .octoprint
         .job_commands()
@@ -172,12 +176,12 @@ fn starts(watch: &Watch) -> usize {
 }
 
 /// The rejection an answer carries.
-fn rejection(answer: &Value) -> &Value {
+pub(crate) fn rejection(answer: &Value) -> &Value {
     &answer["record"]["decision"]["rejected"]
 }
 
 /// One kind of event in one print's history.
-async fn events_of(watch: &Watch, print_id: &str, kind: &str) -> Vec<Value> {
+pub(crate) async fn events_of(watch: &Watch, print_id: &str, kind: &str) -> Vec<Value> {
     watch
         .get(&format!("/prints/{print_id}/history?limit=500"))
         .await["events"]
@@ -192,7 +196,17 @@ async fn events_of(watch: &Watch, print_id: &str, kind: &str) -> Vec<Value> {
 /// A turn held open about a print the scripted printer is running, answering
 /// that print's identifier and a client presenting the turn's credential; the
 /// printer then goes idle, so a start is valid from its state.
+///
+/// The print is opened from before spool tracking, written to the store rather
+/// than started, and a read of the idle printer that settles after it was
+/// opened closes it as over — whereupon its alert claims no turn. So it is
+/// opened while a read of the machine is kept waiting: every read that can
+/// close a print is made under the server's one hold on resolving prints, so
+/// the waiting read is the only one in flight, every read before it has
+/// settled, and it is answered with the print already running. That is the
+/// hold the server's own start takes around the print it opens.
 async fn held_turn(watch: &Watch) -> (String, reqwest::Client) {
+    let waiting = held_read(watch, HeldRead::AsReleased).await;
     watch.octoprint.reports(
         "Printing",
         JobScript::printing(PLA_FILE, 450_468, 4_000, 60),
@@ -202,11 +216,14 @@ async fn held_turn(watch: &Watch) -> (String, reqwest::Client) {
         .open_print(Some(OBICO_PRINT), Some(PLA_FILE.to_owned()))
         .await
         .expect("the store opens a print");
+    watch.octoprint.releases_job_read(&waiting);
     watch.agent.hold_turns();
+    let mut alert = failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg");
+    alert["print"]["filename"] = json!(PLA_FILE);
     let status = reqwest::Client::new()
         .post(format!("{}?token={SECRET}", watch.server.ingress_url()))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg").to_string())
+        .body(alert.to_string())
         .send()
         .await
         .expect("the ingress answers")
@@ -221,6 +238,20 @@ async fn held_turn(watch: &Watch) -> (String, reqwest::Client) {
         .expect("one pass");
     watch.octoprint.reports("Operational", JobScript::idle());
     (print.id.to_string(), presenting(&pass.credential))
+}
+
+/// Hold the next read the server makes of the job, once it has arrived.
+async fn held_read(watch: &Watch, answered: HeldRead) -> JobReadHold {
+    let hold = watch.octoprint.holds_next_job_read(answered);
+    let deadline = tokio::time::Instant::now() + core::time::Duration::from_secs(20);
+    while !watch.octoprint.is_holding(&hold) {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the server never read the job"
+        );
+        tokio::time::sleep(core::time::Duration::from_millis(10)).await;
+    }
+    hold
 }
 
 /// Release the held turn and wait until its handling has finished.
@@ -431,6 +462,56 @@ async fn the_sheet_a_start_declares_must_suit_the_loaded_material() {
         assert_eq!(sheet["objection"]["sheet"], refused_on, "{sheet}");
         watch.server.stop().await;
     }
+}
+
+/// The agent's override is refused when a read of the idle printer is still to
+/// land as its turn is set up: that read lands once the journey has opened the
+/// turn's print or kept a read of its own waiting, whichever it does first,
+/// and the turn is issued all the same.
+///
+/// A read that met the idle machine and landed after the print was opened
+/// closed the print as over, and the alert about it then claimed no turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_agents_override_is_refused_though_a_read_of_the_idle_printer_lands_late() {
+    let watch = watching(|_| {}).await;
+    loaded_with(&watch, "PLA").await;
+    watch.octoprint.reports("Operational", JobScript::idle());
+    let late = held_read(&watch, HeldRead::AsItArrived).await;
+    let landing = async {
+        let deadline = tokio::time::Instant::now() + core::time::Duration::from_secs(20);
+        loop {
+            let opened = !watch
+                .prints
+                .open_prints()
+                .await
+                .expect("the store answers")
+                .is_empty();
+            if opened || watch.octoprint.awaits_a_job_read() {
+                watch.octoprint.releases_job_read(&late);
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the journey neither opened its print nor waited on the machine"
+            );
+            tokio::time::sleep(core::time::Duration::from_millis(5)).await;
+        }
+    };
+    let ((print, turn), ()) = tokio::join!(held_turn(&watch), landing);
+
+    let answer = started_by_agent(
+        &watch,
+        &print,
+        &turn,
+        PLA_FILE,
+        "textured-pei",
+        &["override_sheet_check"],
+    )
+    .await;
+    turn_ended(&watch).await;
+    assert_forbidden_start(&answer);
+    assert_eq!(starts(&watch), 0, "the agent's override started a print");
+    watch.server.stop().await;
 }
 
 /// A configured table replaces the defaults: a pairing it allows passes, and

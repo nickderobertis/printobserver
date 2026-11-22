@@ -1,0 +1,26 @@
+{
+  "name": "printobserver-core-index-budget",
+  "root": "crates/printobserver-core/tests/index_budget",
+  "projectType": "library",
+  "tags": ["type:budget"],
+  "implicitDependencies": ["printobserver-core"],
+  "targets": {
+    "test": {
+      "command": "cargo nextest run -p printobserver-core --test index_budget",
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/**/*",
+        "{workspaceRoot}/crates/printobserver-core/src/gcode_index.rs",
+        "{workspaceRoot}/crates/printobserver-core/src/context.rs",
+        "{workspaceRoot}/crates/printobserver-oneharness/assets/turn-prompt.md",
+        "sharedGlobals"
+      ],
+      "outputs": ["{projectRoot}/telemetry"]
+    },
+    "budgets": {
+      "command": "bunx onebudgetspec check crates/printobserver-core/tests/index_budget/budgets.yaml",
+      "dependsOn": ["test"],
+      "cache": false
+    }
+  }
+}

@@ -24,17 +24,23 @@ mod schema_files;
 use printobserver_core::store::{EventDraft, HistoryQuery};
 use printobserver_core::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
-    CameraDegradedPayload, CameraLookPayload, CameraRetryPayload, ChargePendedPayload,
-    DetectorHealth, DetectorHealthChangedPayload, DetectorStatus, FilamentChangeSignalledPayload,
-    FilamentConsumedPayload, FileTallyRebaselinedPayload, FrameCause, HeatedTool,
-    InterventionExpiredPayload, Look, OperatorAcknowledgementPayload, PeriodicObservationPayload,
-    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
-    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
+    AgentStopUnactedPayload, BedClearActor, BedClearAssertedPayload, CameraDegradedPayload,
+    CameraLookPayload, CameraRetryPayload, ChargePendedPayload, DetectorHealth,
+    DetectorHealthChangedPayload, DetectorHealthStatus, DetectorStatus,
+    FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
+    FrameCause, GcodeIndexedPayload, HeatedTool, InterventionExpiredPayload, Look,
+    OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
+    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext, PrintEndedPayload,
+    PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
     PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
-    RecoveryRequestedPayload, SignalPosition, SpoolAdjustedPayload, SpoolCommandRejectedPayload,
-    SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload, SpoolUnloadedPayload,
-    SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
+    RecoveryRequestedPayload, ScoringVerdict, SignalPosition, SpoolAdjustedPayload,
+    SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
+    SpoolUnloadedPayload, SpoolUnverifiedPayload, TIMELINE_KINDS, UnaccountedPrintPayload,
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
+};
+use printobserver_core::{
+    AgentContext, AgentEvent, AgentHeater, AgentPrint, AgentPrinter, PlanFact, PlanMismatch, Rise,
+    SetValue, SlicerPlan,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
@@ -107,12 +113,14 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<ActionRejectedPayload>("ActionRejectedPayload"),
         kind_of::<InterventionExpiredPayload>("InterventionExpiredPayload"),
         kind_of::<AgentAssessmentPayload>("AgentAssessmentPayload"),
+        kind_of::<AgentStopUnactedPayload>("AgentStopUnactedPayload"),
         kind_of::<OperatorAcknowledgementPayload>("OperatorAcknowledgementPayload"),
         kind_of::<PortFailurePayload>("PortFailurePayload"),
         kind_of::<CameraLookPayload>("CameraLookPayload"),
         kind_of::<PeriodicObservationPayload>("PeriodicObservationPayload"),
         kind_of::<CameraDegradedPayload>("CameraDegradedPayload"),
         kind_of::<CameraRetryPayload>("CameraRetryPayload"),
+        kind_of::<GcodeIndexedPayload>("GcodeIndexedPayload"),
         kind_of::<PrintStartedPayload>("PrintStartedPayload"),
         kind_of::<PrintEndedPayload>("PrintEndedPayload"),
         kind_of::<FilamentConsumedPayload>("FilamentConsumedPayload"),
@@ -136,6 +144,7 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<RecoveryRequestedPayload>("RecoveryRequestedPayload"),
         kind_of::<RecoveryExecutedPayload>("RecoveryExecutedPayload"),
         kind_of::<RecoveryRejectedPayload>("RecoveryRejectedPayload"),
+        kind_of::<BedClearAssertedPayload>("BedClearAssertedPayload"),
     ]
 }
 
@@ -171,6 +180,24 @@ fn generated() -> Vec<(String, Value)> {
         "DetectorHealth.json".to_owned(),
         schema_of::<DetectorHealth>(),
     ));
+    entries.push((
+        "DetectorHealthStatus.json".to_owned(),
+        schema_of::<DetectorHealthStatus>(),
+    ));
+    entries.push((
+        "BedClearActor.json".to_owned(),
+        schema_of::<BedClearActor>(),
+    ));
+    entries.push(("SlicerPlan.json".to_owned(), schema_of::<SlicerPlan>()));
+    entries.push(("SetValue.json".to_owned(), schema_of::<SetValue>()));
+    entries.push(("Rise.json".to_owned(), schema_of::<Rise>()));
+    entries.push(("AgentContext.json".to_owned(), schema_of::<AgentContext>()));
+    entries.push(("AgentPrint.json".to_owned(), schema_of::<AgentPrint>()));
+    entries.push(("AgentPrinter.json".to_owned(), schema_of::<AgentPrinter>()));
+    entries.push(("AgentHeater.json".to_owned(), schema_of::<AgentHeater>()));
+    entries.push(("AgentEvent.json".to_owned(), schema_of::<AgentEvent>()));
+    entries.push(("PlanMismatch.json".to_owned(), schema_of::<PlanMismatch>()));
+    entries.push(("PlanFact.json".to_owned(), schema_of::<PlanFact>()));
     let context = print_context();
     entries.push((format!("{}.json", context.name), context.schema()));
     let look = look();
@@ -212,12 +239,14 @@ fn each_kind_is_written_under_its_own_name() {
             ("ActionRejectedPayload", "action_rejected"),
             ("InterventionExpiredPayload", "intervention_expired"),
             ("AgentAssessmentPayload", "agent_assessment"),
+            ("AgentStopUnactedPayload", "agent_stop_unacted"),
             ("OperatorAcknowledgementPayload", "operator_acknowledgement"),
             ("PortFailurePayload", "port_failure"),
             ("CameraLookPayload", "camera_look"),
             ("PeriodicObservationPayload", "periodic_observation"),
             ("CameraDegradedPayload", "camera_degraded"),
             ("CameraRetryPayload", "camera_retry"),
+            ("GcodeIndexedPayload", "gcode_indexed"),
             ("PrintStartedPayload", "print_started"),
             ("PrintEndedPayload", "print_ended"),
             ("FilamentConsumedPayload", "filament_consumed"),
@@ -250,6 +279,7 @@ fn each_kind_is_written_under_its_own_name() {
             ("RecoveryRequestedPayload", "recovery_requested"),
             ("RecoveryExecutedPayload", "recovery_executed"),
             ("RecoveryRejectedPayload", "recovery_rejected"),
+            ("BedClearAssertedPayload", "bed_clear_asserted"),
         ]
     );
     for declared in declared_kinds() {
@@ -268,7 +298,7 @@ fn each_kind_is_written_under_its_own_name() {
     }
 }
 
-/// The printer timeline is exactly the twenty-three kinds the ledger, the
+/// The printer timeline is exactly the twenty-four kinds the ledger, the
 /// printer watch and recovery declare, in the order the contract lists them,
 /// each written under its payload's own kind.
 #[test]
@@ -305,6 +335,7 @@ fn the_timeline_is_exactly_the_ledgers_the_watchs_and_recoverys_kinds() {
             "recovery_requested",
             "recovery_executed",
             "recovery_rejected",
+            "bed_clear_asserted",
         ]
     );
 }
@@ -381,6 +412,7 @@ fn the_print_context_carries_exactly_the_stated_fields() {
             field("print", "PrintRecord", true),
             field("printer", "PrinterSnapshot", false),
             field("recent_events", "array:EventRecord", true),
+            field("slicer", "SlicerPlan", false),
         ]
     );
     assert_eq!(
@@ -402,6 +434,7 @@ fn a_look_carries_exactly_the_stated_fields() {
             field("detector_paused", "boolean", true),
             field("event", "EventRecord", true),
             field("frame", "ImageRef", false),
+            field("image_note", "string", false),
             field("image_path", "string", false),
             field("job", "JobSnapshot", false),
             field("printer", "PrinterSnapshot", false),
@@ -415,7 +448,14 @@ fn a_look_carries_exactly_the_stated_fields() {
     }
     let minimal = look.minimal();
     let object = minimal.as_object().expect("an object");
-    for name in ["arrived", "frame", "image_path", "printer", "job"] {
+    for name in [
+        "arrived",
+        "frame",
+        "image_path",
+        "image_note",
+        "printer",
+        "job",
+    ] {
         assert!(
             !object.contains_key(name),
             "the minimal look carries {name}"
@@ -477,30 +517,65 @@ fn the_history_query_carries_exactly_the_stated_fields() {
     assert_eq!(wire_fields(&schema_of::<HistoryQuery>()), expected);
 }
 
-/// The detector's health is three states on the wire, as the status and
+/// The detector's status is five states on the wire, as the status and
 /// context reads answer it: `since` is `null` exactly when the status is
-/// `unchecked`. Each state round-trips to that object and back, and an object
-/// pairing them any other way is refused rather than read.
+/// `unchecked`; a scoring status may name its failing health check beside it,
+/// and any other may say why scoring is not read. Each state round-trips to
+/// that object and back, an object the old three statuses wrote still reads,
+/// and an object pairing them any other way is refused rather than read.
 #[test]
-fn the_detectors_health_round_trips_its_three_states_and_refuses_any_other() {
+fn the_detectors_health_round_trips_its_five_states_and_refuses_any_other() {
     use printobserver_types::serde_json::{self, json};
     let since = printobserver_types::Timestamp::sample_full();
     let at = serde_json::to_value(since).expect("an instant renders");
     for (health, wire) in [
         (
-            DetectorHealth::Unchecked,
+            DetectorHealth::Unchecked {
+                scoring_unread: None,
+            },
             json!({ "status": "unchecked", "since": null }),
         ),
         (
-            DetectorHealth::Available { since },
+            DetectorHealth::Unchecked {
+                scoring_unread: Some("no API".to_owned()),
+            },
+            json!({ "status": "unchecked", "since": null, "scoring_unread": "no API" }),
+        ),
+        (
+            DetectorHealth::Available {
+                since,
+                scoring_unread: None,
+            },
             json!({ "status": "available", "since": at }),
         ),
         (
-            DetectorHealth::Unavailable { since },
-            json!({ "status": "unavailable", "since": at }),
+            DetectorHealth::Unavailable {
+                since,
+                scoring_unread: Some("no printer".to_owned()),
+            },
+            json!({ "status": "unavailable", "since": at, "scoring_unread": "no printer" }),
+        ),
+        (
+            DetectorHealth::Scoring {
+                since,
+                verdict: ScoringVerdict::NothingFlagged,
+                probe_failure: None,
+            },
+            json!({ "status": "scoring_nothing_flagged", "since": at }),
+        ),
+        (
+            DetectorHealth::Scoring {
+                since,
+                verdict: ScoringVerdict::Flagged,
+                probe_failure: Some("answered 503".to_owned()),
+            },
+            json!({ "status": "scoring_flagged", "since": at, "probe_failure": "answered 503" }),
         ),
     ] {
-        assert_eq!(serde_json::to_value(health).expect("it renders"), wire);
+        assert_eq!(
+            serde_json::to_value(health.clone()).expect("it renders"),
+            wire
+        );
         let read: DetectorHealth = serde_json::from_value(wire).expect("it reads back");
         assert_eq!(read, health);
     }
@@ -509,6 +584,9 @@ fn the_detectors_health_round_trips_its_three_states_and_refuses_any_other() {
         json!({ "status": "available", "since": null }),
         json!({ "status": "unavailable" }),
         json!({ "status": "unchecked" }),
+        json!({ "status": "scoring_flagged", "since": null }),
+        json!({ "status": "available", "since": at, "probe_failure": "answered 503" }),
+        json!({ "status": "scoring_nothing_flagged", "since": at, "scoring_unread": "x" }),
     ] {
         assert!(
             serde_json::from_value::<DetectorHealth>(refused.clone()).is_err(),

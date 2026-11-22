@@ -261,6 +261,18 @@ pub struct Supervisor {
     /// Where each supervision turn's runs take their credentials from, once
     /// the composition root has installed it.
     turn_authority: std::sync::OnceLock<Arc<dyn TurnAuthority>>,
+    /// What reads the failure detector's own record of the print, once the
+    /// composition root has installed it.
+    scoring_probe: std::sync::OnceLock<Arc<dyn crate::scoring::ScoringProbe>>,
+    /// What makes the image every check is shown, once the composition root
+    /// has installed it.
+    pub(crate) check_images: std::sync::OnceLock<Arc<dyn crate::check_image::CheckImages>>,
+    /// The prints whose running turn acknowledged its event by command, which
+    /// is then not acknowledged again from the turn's answer.
+    pub(crate) acknowledged_by_turn: Mutex<BTreeSet<PrintId>>,
+    /// The prints whose running turn has asked for a pause or a cancel,
+    /// shared with the access each turn's port is handed.
+    pub(crate) stopped_by_turn: Arc<Mutex<BTreeSet<PrintId>>>,
     /// What the printer watch holds between its reads.
     pub(crate) watch: Mutex<WatchState>,
     /// Whether Z is trusted, which this supervisor starts out not doing.
@@ -272,6 +284,9 @@ pub struct Supervisor {
     /// The prints a recovery moved the printer under while they were paused,
     /// and the `recovery_executed` event of the first that did.
     moved_while_paused: Mutex<BTreeMap<PrintId, printobserver_types::EventId>>,
+    /// Every print's G-code index, built once per print for as long as this
+    /// supervisor runs.
+    gcode_indexes: crate::gcode_index::GcodeIndexes,
 }
 
 /// One print's G-code read to one file position, and what it laid down.
@@ -342,12 +357,17 @@ impl Supervisor {
             inboxes: Inboxes::default(),
             detector_pauses: Mutex::new(BTreeMap::new()),
             turn_authority: std::sync::OnceLock::new(),
+            scoring_probe: std::sync::OnceLock::new(),
+            check_images: std::sync::OnceLock::new(),
+            acknowledged_by_turn: Mutex::new(BTreeSet::new()),
+            stopped_by_turn: Arc::new(Mutex::new(BTreeSet::new())),
             watch: Mutex::new(WatchState::default()),
             z_trust: Mutex::new(ZTrust::Untrusted(
                 crate::recovery::UNTRUSTED_AT_START.to_owned(),
             )),
             recovery_extents: Mutex::new(None),
             moved_while_paused: Mutex::new(BTreeMap::new()),
+            gcode_indexes: crate::gcode_index::GcodeIndexes::default(),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
         std::thread::Builder::new()
@@ -368,6 +388,19 @@ impl Supervisor {
     /// from. The first installation stands; answers whether this one did.
     pub fn install_turn_authority(&self, authority: Arc<dyn TurnAuthority>) -> bool {
         self.turn_authority.set(authority).is_ok()
+    }
+
+    /// Install what reads the failure detector's own record of the print,
+    /// which every round of periodic observations asks first. The first
+    /// installation stands; answers whether this one did.
+    pub fn install_scoring_probe(&self, probe: Arc<dyn crate::scoring::ScoringProbe>) -> bool {
+        self.scoring_probe.set(probe).is_ok()
+    }
+
+    /// What reads the failure detector's own record of the print, when one is
+    /// installed.
+    pub(crate) fn scoring_probe(&self) -> Option<Arc<dyn crate::scoring::ScoringProbe>> {
+        self.scoring_probe.get().cloned()
     }
 
     /// Whether Z is trusted, held for one read or write.
@@ -400,6 +433,11 @@ impl Supervisor {
         self.turn_authority
             .get()
             .map_or_else(NoAccess::opened, |authority| authority.open(print_id))
+    }
+
+    /// Every print's G-code index.
+    pub(crate) const fn gcode_indexes(&self) -> &crate::gcode_index::GcodeIndexes {
+        &self.gcode_indexes
     }
 
     /// Durable state, one handle per aggregate.
@@ -545,7 +583,7 @@ impl Supervisor {
         };
         Ok(last.map(|action| {
             self.clock()
-                .elapsed()
+                .paced()
                 .saturating_sub(action.seen_at)
                 .saturating_add(action.already)
         }))
@@ -645,6 +683,17 @@ impl Supervisor {
         position_bytes: i64,
     ) -> Result<Option<PrintedExtent>, PrinterError> {
         self.printer.printed_extent(file_name, position_bytes).await
+    }
+
+    /// Stream one file's whole G-code into a sink.
+    ///
+    /// A read, for the same reason [`Supervisor::read_snapshot`] is.
+    pub(crate) async fn read_gcode(
+        &self,
+        file_name: FileName,
+        sink: &mut dyn printobserver_printer_api::GcodeSink,
+    ) -> Result<(), PrinterError> {
+        self.printer.read_gcode(file_name, sink).await
     }
 
     /// Read where the print head is.
