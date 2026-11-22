@@ -1615,6 +1615,55 @@ def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
         truth(not result.exists(), describing="no figure reported for no suite")
 
 
+def test_a_due_compaction_that_ended_before_the_replay_looked_is_not_waited_for_again(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The last check's compaction is the one begun after it ended, however early it ended.
+
+    Already written down when the replay first reads the ledger, it is the one waited
+    for, rather than a second one nothing will start.
+    """
+    monkeypatch.setattr(replay_module, "COMPACTION_DEADLINE_S", 1)
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    replay = Replay(case, [sys.executable, str(MOCK_TURN), str(scratch / "script.json")])
+    try:
+        replay.print_id = replay_module.PrintId("a-print")
+        session = "print-a-print"
+        ledger = {
+            "sessions": [{"session_name": session, "harness_identity": "claude-code"}],
+            "turns": [
+                {
+                    "session_name": session,
+                    "started_at": "2026-10-31T16:00:00Z",
+                    "ran_at": "2026-10-31T16:01:00Z",
+                    "calls": [
+                        {"input_tokens": 3, "output_tokens": 0, "cache_read_tokens": 150_000}
+                    ],
+                }
+            ],
+            "compactions": [
+                {
+                    "session_name": session,
+                    "started_at": "2026-10-31T16:01:00.500Z",
+                    "ended_at": "2026-10-31T16:01:20Z",
+                    "ended": "completed",
+                    "size_before": 150_003,
+                    "reported_after": 9_000,
+                    "usage": {},
+                }
+            ],
+        }
+        path = replay.state / "supervisor-sessions" / "a-print.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(ledger), encoding="utf-8")
+        started = time.monotonic()
+        replay._wait_out_a_due_compaction(150_000)
+        truth(time.monotonic() - started < 1, describing="the replay waited for a second one")
+    finally:
+        replay.stop()
+        replay.clean_up()
+
+
 def test_a_history_command_that_fails_stops_the_replay(scratch: Path) -> None:
     """An unanswered read is the replay gone wrong, never a print with no events."""
     case = read_case("jar-top-wrong-material-detach-spaghetti")

@@ -1937,11 +1937,16 @@ class Replay:
             if calls
             else 0
         )
-        if size < threshold:
+        if size < threshold or "ran_at" not in last:
             return
-        before = len(ledger["compactions"])
+        # The compaction starts once the turn has ended, so it is the one begun at
+        # or after that end, whether it ended before this first read or ends later.
+        ended = _utc_instant(last["ran_at"])
         deadline = time.monotonic() + COMPACTION_DEADLINE_S
-        while len(self._ledger()["compactions"]) == before:
+        while not any(
+            _utc_instant(compaction["started_at"]) >= ended
+            for compaction in self._ledger()["compactions"]
+        ):
             if time.monotonic() > deadline:
                 msg = (
                     f"the last turn left {size} tokens, at or above {threshold}, and no idle "
