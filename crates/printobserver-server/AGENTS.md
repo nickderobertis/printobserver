@@ -14,3 +14,11 @@ and revoked when the turn returns.
 refuses `403` — whatever the body, and before the policy is asked — a claim to
 another actor or print, any claim to `system`, and a turn starting a print or
 replacing a manifest. `tests/journeys/binding.rs` drives each refusal.
+
+## A journey's print, opened beside a running watch
+
+A read of the idle printer closes every open print, and the server opens prints
+only under the hold its reads take. A journey writing a print straight to the
+store while a watch runs opens it while a read is held unanswered at the
+scripted `OctoPrint` (`held_turn` in `tests/journeys/pairing.rs`), or a read
+from just before can close it and its alert claims no turn.

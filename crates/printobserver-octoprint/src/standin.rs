@@ -200,7 +200,32 @@ struct Script {
     download_delay: core::time::Duration,
     /// A change of state waiting for its request.
     pending: Option<Pending>,
+    /// The read of the job to be held next, and when it is to be answered.
+    job_read_armed: Option<(u64, HeldRead)>,
+    /// Every read of the job being held now.
+    job_reads_held: Vec<u64>,
+    /// The number the next hold on a read of the job is given.
+    next_job_read_hold: u64,
 }
+
+/// When a read of the job [`ScriptedOctoPrint::holds_next_job_read`] holds is
+/// answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeldRead {
+    /// As the machine stood when the read arrived, and told to its reader only
+    /// once released: a read that met the machine before a change and lands
+    /// after it.
+    AsItArrived,
+    /// As the machine stands when the read is released: a reader kept waiting
+    /// on the machine, and holding whatever it holds while it waits.
+    AsReleased,
+}
+
+/// One hold on a read of the job, which only
+/// [`ScriptedOctoPrint::releases_job_read`] lets go.
+#[derive(Debug, PartialEq, Eq)]
+#[must_use = "a held read is answered only once it is released"]
+pub struct JobReadHold(u64);
 
 /// One file the stand-in holds.
 #[derive(Debug, Clone)]
@@ -286,6 +311,9 @@ impl ScriptedOctoPrint {
             whole_downloads: Vec::new(),
             download_delay: core::time::Duration::ZERO,
             pending: None,
+            job_read_armed: None,
+            job_reads_held: Vec::new(),
+            next_job_read_hold: 0,
         }));
         let sockets = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
@@ -412,6 +440,47 @@ impl ScriptedOctoPrint {
             }
             drop(held);
             thread::sleep(core::time::Duration::from_millis(2));
+        }
+    }
+
+    /// Hold the next read of the job until it is released, answered as
+    /// `answered` says.
+    ///
+    /// # Panics
+    ///
+    /// Panics when another hold is still waiting for its read: one read is
+    /// held to be armed at a time.
+    pub fn holds_next_job_read(&self, answered: HeldRead) -> JobReadHold {
+        let mut held = self.held();
+        assert!(
+            held.job_read_armed.is_none(),
+            "another hold is still waiting for its read of the job"
+        );
+        let ticket = held.next_job_read_hold;
+        held.next_job_read_hold += 1;
+        held.job_read_armed = Some((ticket, answered));
+        JobReadHold(ticket)
+    }
+
+    /// Whether `hold`'s read has arrived and is being held now.
+    #[must_use]
+    pub fn is_holding(&self, hold: &JobReadHold) -> bool {
+        self.held().job_reads_held.contains(&hold.0)
+    }
+
+    /// Whether a hold is waiting for the next read of the job to arrive.
+    #[must_use]
+    pub fn awaits_a_job_read(&self) -> bool {
+        self.held().job_read_armed.is_some()
+    }
+
+    /// Let `hold`'s read be answered, or hold no read for it if none came.
+    pub fn releases_job_read(&self, released: &JobReadHold) {
+        let ticket = released.0;
+        let mut held = self.held();
+        held.job_reads_held.retain(|id| *id != ticket);
+        if held.job_read_armed.is_some_and(|(id, _)| id == ticket) {
+            held.job_read_armed = None;
         }
     }
 
@@ -669,6 +738,11 @@ impl ScriptedOctoPrint {
 impl Drop for ScriptedOctoPrint {
     fn drop(&mut self) {
         self.stopped.store(true, Ordering::SeqCst);
+        {
+            let mut held = self.held();
+            held.job_read_armed = None;
+            held.job_reads_held.clear();
+        }
         self.drops_sockets();
         let _ = TcpStream::connect(self.address);
         if let Some(thread) = self.thread.take() {
@@ -804,9 +878,18 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
         if commanded {
             land(script, Landing::Before);
         }
+        let armed = (request.method == "GET" && request.path == "/api/job")
+            .then(|| lock(script).job_read_armed.take())
+            .flatten();
+        if let Some((id, HeldRead::AsReleased)) = armed {
+            hold_until_released(script, id);
+        }
         let answered = answer(&request, script, sockets);
         if commanded {
             land(script, Landing::After);
+        }
+        if let Some((id, HeldRead::AsItArrived)) = armed {
+            hold_until_released(script, id);
         }
         answered
     } else {
@@ -819,6 +902,14 @@ fn serve(mut connection: TcpStream, script: &Mutex<Script>, sockets: &Mutex<Vec<
     );
     let _ = connection.write_all(reply.as_bytes());
     let _ = connection.flush();
+}
+
+/// Hold one read of the job until its hold is released.
+fn hold_until_released(script: &Mutex<Script>, ticket: u64) {
+    lock(script).job_reads_held.push(ticket);
+    while lock(script).job_reads_held.contains(&ticket) {
+        thread::sleep(core::time::Duration::from_millis(2));
+    }
 }
 
 /// Report the change waiting for the command endpoint on `landing`'s side of
