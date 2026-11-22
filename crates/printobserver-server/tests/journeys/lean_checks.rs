@@ -1221,6 +1221,24 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
             "is given twice",
         ),
         (vec!["--config", missing, "--session", ""], "takes a value"),
+        (
+            vec!["--config", missing, "--no-system", "--no-system"],
+            "--no-system is given twice",
+        ),
+        (
+            vec![
+                "--config",
+                missing,
+                "--session",
+                "s",
+                "--prompt",
+                "p",
+                "--no-system",
+                "--image",
+                missing,
+            ],
+            "takes no --image",
+        ),
     ] {
         let done = probe(&arguments);
         assert_eq!(done.status.code(), Some(2), "{arguments:?}");

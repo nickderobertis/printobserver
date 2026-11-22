@@ -1,13 +1,15 @@
 //! One probe of the shipped supervisor configuration, for the real-print suite.
 //!
 //! `printobserver-server-probe --config <path> --session <name> --prompt <text>
-//! [--usage <path>] [--image <path>]`
+//! [--usage <path>] [--image <path> | --no-system]`
 //! loads a server configuration exactly as `printobserver server` does, composes
 //! its supervisor port exactly as the server does, and runs one prompt through
 //! it in a fresh session of its own with no print: the run request a turn is
 //! built as, less everything a check adds — or, with `--image`, less everything
 //! but the one check image a turn attaches, which is how what that image adds
-//! to a call is measured. `--usage` names a file of
+//! to a call is measured; with `--no-system`, less the system text the port
+//! sends as well, which is how what the harness itself sends is measured apart
+//! from it. `--usage` names a file of
 //! the program's usage lines, one per line, as `printobserver --help` prints
 //! them, which the composed port is handed as the server running under
 //! `printobserver server` is. It prints the engine's
@@ -36,14 +38,25 @@ struct Asked {
     usage: Option<PathBuf>,
     /// The image to attach, when one was named.
     image: Option<PathBuf>,
+    /// Whether the run carries none of the port's system text.
+    no_system: bool,
 }
 
 /// The five options, each once and none empty, and `--usage` and `--image`
-/// alone optional.
+/// alone optional; and the `--no-system` switch, which takes no value and
+/// excludes `--image`.
 fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
     let (mut config, mut session, mut prompt, mut usage, mut image) =
         (None, None, None, None, None);
+    let mut no_system = false;
     while let Some(flag) = arguments.next() {
+        if flag == "--no-system" {
+            if no_system {
+                return Err(format!("{flag} is given twice"));
+            }
+            no_system = true;
+            continue;
+        }
         let slot = match flag.as_str() {
             "--config" => &mut config,
             "--session" => &mut session,
@@ -60,7 +73,11 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
             return Err(format!("{flag} is given twice"));
         }
     }
+    if no_system && image.is_some() {
+        return Err("--no-system measures the harness alone, so it takes no --image".to_owned());
+    }
     Ok(Asked {
+        no_system,
         config: PathBuf::from(config.ok_or("--config is required")?),
         session: session.ok_or("--session is required")?,
         prompt: prompt.ok_or("--prompt is required")?,
@@ -120,8 +137,12 @@ fn main() -> ExitCode {
             OneharnessSupervisor::open(composed).map_err(|error| error.to_string())
         })
         .and_then(|port| {
-            port.probe_with_image(&asked.session, &asked.prompt, asked.image.clone())
-                .map_err(|error| error.to_string())
+            if asked.no_system {
+                port.probe_without_system(&asked.session, &asked.prompt)
+            } else {
+                port.probe_with_image(&asked.session, &asked.prompt, asked.image.clone())
+            }
+            .map_err(|error| error.to_string())
         })
         .and_then(|result| serde_json::to_string(&result).map_err(|error| error.to_string()));
     match probed {

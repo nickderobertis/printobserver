@@ -2040,13 +2040,16 @@ def _call_usage(usage: object) -> CallUsage:
     return counted
 
 
-def _probe_turn(harness: str, root: Path, image: Path | None) -> list[CallUsage]:
+def _probe_turn(
+    harness: str, root: Path, image: Path | None, *, system: bool = True
+) -> list[CallUsage]:
     """One probe turn through the shipped configuration laid out under `root`.
 
     The installer's configuration, the installed skill and the shipped harness, as a
     replay lays them out, and the server's own composition of its supervisor port —
     handed the program's usage lines as `printobserver server` hands them — prompted
-    with [`PROBE_PROMPT`], with `image` attached as a check's image is, or none.
+    with [`PROBE_PROMPT`], with `image` attached as a check's image is, or none; with
+    `system` false, carrying none of the port's system text.
     """
     state, home, bin_directory = root / "state", root / "home", root / "bin"
     for directory in (state, home, bin_directory):
@@ -2083,6 +2086,7 @@ def _probe_turn(harness: str, root: Path, image: Path | None) -> list[CallUsage]
             "--usage",
             str(usage),
             *(["--image", str(image)] if image is not None else []),
+            *([] if system else ["--no-system"]),
         ],
         cwd=state,
         env=neutral_environment(bin_directory, home),
@@ -2115,6 +2119,35 @@ def probe(harness: str) -> ProbeRecord:
             "prompt": PROBE_PROMPT,
             "calls": _probe_turn(harness, root, None),
             "skill_bytes": skill_prose_bytes(),
+        }
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+#: The file a run's harness-only probe record is kept in, beside its tests' own.
+BARE_PROBE_RECORD = "bare-probe.json"
+
+
+class BareProbeRecord(TypedDict):
+    """The harness-only probe as `results/latest.json` carries it."""
+
+    prompt: str
+    #: Each model call it made, in order, as the engine reported them.
+    calls: list[CallUsage]
+
+
+def bare_probe(harness: str) -> BareProbeRecord:
+    """The text-only probe's turn with none of the port's system text: the harness alone.
+
+    What its first call reads is what the harness sends of its own beside a turn's
+    prompt — its framing and its tools' definitions; the text probe's first call less
+    this one's is what printobserver's system text adds to every call.
+    """
+    root = Path(tempfile.mkdtemp())
+    try:
+        return {
+            "prompt": PROBE_PROMPT,
+            "calls": _probe_turn(harness, root, None, system=False),
         }
     finally:
         shutil.rmtree(root, ignore_errors=True)

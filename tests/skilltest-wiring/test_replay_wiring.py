@@ -53,6 +53,7 @@ from cases import (
 from mock_turn import ScriptedRun, Seen
 from outside import MILESTONE_WORDS, Outside
 from replay import (
+    BARE_PROBE_RECORD,
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     Assessment,
@@ -2662,6 +2663,142 @@ def test_the_record_works_out_each_figure_the_budgets_read(
     )
 
 
+def test_the_record_splits_each_figure_by_part(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each part of the base and of the median checks is the value worked out by hand.
+
+    One test of three checks — quiet, acting, quiet — beside the three probes: the text
+    probe's first call reads 4,000, the harness-only probe's 2,500 and the image probe's
+    6,443, so the harness's part is 2,500, printobserver's 1,500 and the image 2,443.
+    """
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    finished = tmp_path / "finished"
+    finished.mkdir()
+    name = "jar-top-wrong-material-detach-spaghetti"
+    first, second, third = REPLAYS[name]
+    # 7,500 with the base as its history: the base, the image and 1,057 of facts.
+    quiet = [
+        {
+            "input_tokens": 10,
+            "cache_write_tokens": 3_500,
+            "cache_read_tokens": 3_990,
+            "output_tokens": 100,
+        },
+    ]
+    # After a conversation of 7,600: 11,020 then 11,530, each carrying 3,600 of history.
+    acting = [
+        {"input_tokens": 20, "cache_read_tokens": 11_000, "output_tokens": 50},
+        {"input_tokens": 30, "cache_read_tokens": 11_500, "output_tokens": 60},
+    ]
+    # After a conversation of 11,590: 14,540, carrying 7,590 of history.
+    later = [
+        {
+            "input_tokens": 40,
+            "cache_read_tokens": 14_000,
+            "cache_write_tokens": 500,
+            "output_tokens": 80,
+        },
+    ]
+    points = [
+        _point_with(first, "quiet", quiet),
+        _point_with(second, "acting", acting),
+        _point_with(third, "quiet", later),
+    ]
+    (finished / f"{name}.json").write_text(
+        json.dumps(
+            {
+                "test": name,
+                "passed": True,
+                "turns": 3,
+                "sessions": [],
+                "compound_commands": {},
+                "decision_points": points,
+            }
+        ),
+        encoding="utf-8",
+    )
+    prompt = "Answer with the assessment for a print that is printing normally."
+    for file, calls in (
+        (PROBE_RECORD, [{"input_tokens": 4, "cache_write_tokens": 3_996, "output_tokens": 70}]),
+        (
+            BARE_PROBE_RECORD,
+            [{"input_tokens": 4, "cache_write_tokens": 2_496, "output_tokens": 70}],
+        ),
+    ):
+        written: dict[str, object] = {"prompt": prompt, "calls": calls}
+        if file == PROBE_RECORD:
+            written["skill_bytes"] = 5_983
+        (finished / file).write_text(json.dumps(written), encoding="utf-8")
+    (finished / IMAGE_PROBE_RECORD).write_text(
+        json.dumps(
+            {
+                "prompt": prompt,
+                "calls": [{"input_tokens": 4, "cache_write_tokens": 6_439, "output_tokens": 71}],
+                "case": "jar-top-petg-healthy",
+                "scenario": "carry-on-031-other",
+                "width": 1024,
+                "height": 1848,
+                "bytes": 412_345,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    folded = record.folded(finished, "a-commit")
+    detail = folded["detail"]["figures"]
+    equal(detail["base_context_tokens"]["split"], {"harness": 2_500, "printobserver": 1_500})
+    # Quiet: 7,500 and 14,540 - (11,590 - 4,000) = 6,950; the lower middle is 6,950.
+    equal(folded["figures"]["quiet_check_input_tokens"], 7_225.0)
+    equal(
+        detail["quiet_check_input_tokens"]["split"],
+        {
+            "test": name,
+            "scenario": third,
+            "input": 6_950,
+            "calls": 1,
+            "harness": 2_500,
+            "skill_and_instruction": 1_500,
+            "image": 2_443,
+            "facts_and_framing": 6_950 - 4_000 - 2_443,
+        },
+    )
+    # It left 14,620 - 11,590; the first quiet check has no check before it.
+    equal(detail["quiet_check_input_tokens"]["leaves"], 3_030.0)
+    # Acting: 22,550 - 2 x 3,600 = 15,350, its first call 11,020 - 3,600 = 7,420.
+    equal(folded["figures"]["acting_check_input_tokens"], 15_350.0)
+    equal(
+        detail["acting_check_input_tokens"]["split"],
+        {
+            "test": name,
+            "scenario": second,
+            "input": 15_350,
+            "calls": 2,
+            "harness": 2_500,
+            "skill_and_instruction": 1_500,
+            "image": 2_443,
+            "facts_and_framing": 7_420 - 4_000 - 2_443,
+            "repeated": 7_420,
+            "action_and_result": 15_350 - 2 * 7_420,
+        },
+    )
+    equal(detail["acting_check_input_tokens"]["leaves"], float(11_590 - 7_600))
+    bare = folded["detail"]["bare_probe"]
+    truth(bare is not None, describing="the harness-only probe in the record")
+    equal(bare["calls"][0]["cache_write_tokens"] if bare else None, 2_496)
+
+    # Without the harness-only probe the base stands whole in each split.
+    (finished / BARE_PROBE_RECORD).unlink()
+    without = record.folded(finished, "a-commit")["detail"]["figures"]
+    equal(without["base_context_tokens"]["split"], None)
+    equal(without["quiet_check_input_tokens"]["split"]["base"], 4_000)
+    equal("harness" in without["quiet_check_input_tokens"]["split"], False)
+    # One that is no record is refused.
+    (finished / BARE_PROBE_RECORD).write_text(json.dumps({"prompt": prompt, "calls": []}))
+    with pytest.raises(record.UnreadableRunError, match="no harness-only probe"):
+        record.folded(finished, "a-commit")
+
+
 @pytest.mark.parametrize(
     "usage",
     [
@@ -2895,7 +3032,7 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
         }
     ]
     figures, detail = record.compaction_figures(
-        record.checks_of(tests, 4_000), 4_000, compactions, 150_000
+        record.checks_of(tests, 4_000), 4_000, compactions, 150_000, 2_500
     )
 
     # By hand: the conversation starts at 4,000 and grows 4,000 a check; check c of the
@@ -2918,6 +3055,20 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
         + sum(reads(index) for index in (9, 28, 47, 66))
     )
     equal(figures["tokens_per_print"], float(typical))
+    # Split by part: 76 checks, 4 of them making a second call, is 80 calls, each
+    # reading the 4,000 base (2,500 of it the harness's) and adding 3,000 to it; two
+    # compactions read 150,000 each; the rest is the conversation the calls carried,
+    # 4,000 a check grown from the base: sum over calls of reads - 7,000.
+    split = detail["tokens_per_print"]["split"]
+    equal(split["base"], 80 * 4_000.0)
+    equal(split["base_split"], {"harness": 80 * 2_500.0, "printobserver": 80 * 1_500.0})
+    equal(split["checks"], 80 * 3_000.0)
+    equal(split["compaction"], 2 * 150_000.0)
+    carried = sum(reads(index) - 7_000 for index in range(76)) + sum(
+        reads(index) - 7_000 for index in (9, 28, 47, 66)
+    )
+    equal(split["history"], float(carried))
+    equal(sum(split[part] for part in ("base", "checks", "history", "compaction")), typical)
     equal(detail["tokens_per_print"]["projected_compactions"], 2)
     long_acting = [((2 * index + 1) * 281) // 30 for index in range(15)]
     later = 281 - 37

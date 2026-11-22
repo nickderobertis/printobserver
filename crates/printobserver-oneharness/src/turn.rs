@@ -285,6 +285,23 @@ impl OneharnessSupervisor {
         self.probe_with_image(session, prompt, None)
     }
 
+    /// [`probe`](Self::probe) with no system text of this port's: what the
+    /// harness itself sends beside a turn's prompt — its own framing and its
+    /// tool definitions — apart from the skill this port sends. A text probe's
+    /// first call less this one's is what this port's system text adds to every
+    /// call.
+    ///
+    /// # Errors
+    ///
+    /// As [`probe`](Self::probe)'s.
+    pub fn probe_without_system(
+        &self,
+        session: &str,
+        prompt: &str,
+    ) -> Result<RunResult, SupervisorError> {
+        self.probe_run(session, prompt, None, None)
+    }
+
     /// [`probe`](Self::probe), with `image` attached to the prompt as a turn's
     /// check image is: what one check image adds to a call is this run's first
     /// call less a text-only probe's.
@@ -298,6 +315,17 @@ impl OneharnessSupervisor {
         prompt: &str,
         image: Option<PathBuf>,
     ) -> Result<RunResult, SupervisorError> {
+        self.probe_run(session, prompt, image, Some(self.skill.clone()))
+    }
+
+    /// One probe run, its system text `system`.
+    fn probe_run(
+        &self,
+        session: &str,
+        prompt: &str,
+        image: Option<PathBuf>,
+        system: Option<String>,
+    ) -> Result<RunResult, SupervisorError> {
         let name = SessionName::probe(session)?;
         let by_prompt = self.held_by_prompt()?;
         let request = self.build_request(
@@ -310,6 +338,7 @@ impl OneharnessSupervisor {
         // A probe is no supervision turn, so it carries no compaction setting.
         let request = RunRequest {
             auto_compact_tokens: None,
+            system,
             ..request
         };
         let outcome = self.run(&request).map_err(|error| unavailable(&error))?;

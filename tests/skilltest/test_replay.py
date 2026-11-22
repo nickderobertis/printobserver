@@ -19,9 +19,11 @@ import pytest
 from cases import is_start_case, read_case, read_start_case, replayed_case_names
 from outside import Outside
 from replay import (
+    BARE_PROBE_RECORD,
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     Replay,
+    bare_probe,
     harness_token,
     image_probe,
     installer_compaction,
@@ -111,6 +113,21 @@ def test_the_supervisor_configuration_alone() -> None:
         directory = Path(RUN_DIR)
         directory.mkdir(parents=True, exist_ok=True)
         (directory / PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+
+def test_the_harness_alone() -> None:
+    """The probe turn with none of the port's system text reports what each call read."""
+    program = kept_harness()
+    if program is None:
+        pytest.fail("the shipped harness is not installed: no `claude` is on PATH")
+    if harness_token() is None:
+        pytest.fail("no credential for the harness: set CLAUDE_CODE_OAUTH_TOKEN, or sign in")
+    record = bare_probe(program)
+    expect.truth(record["calls"], describing="the harness-only probe to report its calls")
+    if RUN_DIR:
+        directory = Path(RUN_DIR)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / BARE_PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
 
 
 def test_the_supervisor_configuration_with_one_check_image() -> None:

@@ -397,6 +397,62 @@ fn a_probe_runs_the_turn_configuration_alone_and_answers_its_calls() {
     );
 }
 
+/// The harness-only probe is the text probe's run with none of the port's
+/// system text: the same session store, prompt, tools and schema, and the
+/// engine's per-call usage answered back.
+#[test]
+fn a_probe_without_system_text_is_the_text_probe_less_the_skill() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("lean-probe-bare");
+    let calls = [(2, 2_500, 0, 8)];
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(
+        config(
+            &schemas,
+            &fixture,
+            HARNESS,
+            &generated_assessment_schema(),
+            runs_answering(
+                &fixture.path("attempts"),
+                &[
+                    streamed("SID-TEXT", &assessment("fine", "high"), &calls),
+                    streamed("SID-BARE", &assessment("fine", "high"), &calls),
+                ],
+            ),
+        ),
+        &watch,
+    );
+    let prompt = "Answer with the assessment for a print that is printing normally.";
+    supervisor
+        .probe("text", prompt)
+        .expect("the text probe runs");
+    let result = supervisor
+        .probe_without_system("bare", prompt)
+        .expect("the harness-only probe runs");
+    let usage = result.calls.expect("the probe reports its calls");
+    assert_eq!(usage[0].cache_write_tokens, Some(2_500));
+    let requests = watch.requests();
+    let [text, bare] = requests.as_slice() else {
+        panic!("two probes built {} requests", requests.len());
+    };
+    assert_eq!(bare.session.as_deref(), Some("probe-bare"));
+    assert!(
+        text.system
+            .as_deref()
+            .is_some_and(|system| !system.is_empty()),
+        "the text probe carried no system text"
+    );
+    assert!(
+        bare.system.as_deref().is_none_or(str::is_empty),
+        "the harness-only probe carried system text: {:?}",
+        bare.system
+    );
+    assert_eq!(bare.prompt, text.prompt);
+    assert_eq!(bare.tool_set, text.tool_set);
+    assert_eq!(bare.schema, text.schema);
+    assert!(bare.images.is_empty());
+}
+
 /// A probe whose harness did not complete its run measured nothing, and is
 /// refused naming why rather than answered as a measurement.
 #[test]
