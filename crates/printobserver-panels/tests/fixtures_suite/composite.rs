@@ -148,10 +148,10 @@ fn carries(panel: &RgbImage, at: [f64; 2], colour: Rgb<u8>, tolerance: u8) -> bo
 }
 
 /// The midpoints of a layer's segments of some kinds, projected and scaled
-/// into panel 1, each with its direction there; segments shorter than 5.25
+/// into panel 1, each with its direction there; segments shorter than 4.5
 /// panel pixels are left out, as too short to sample beside, and longer than
-/// 35. Both are the 6 and 40 the 1024-wide panels sampled between, scaled to
-/// the 896-wide ones, so the same segments are sampled.
+/// 30. Both are the 6 and 40 the 1024-wide panels sampled between, scaled to
+/// the 768-wide ones, so the same segments are sampled.
 fn sampled(
     calibration: &CameraCalibration,
     path: &LayerToolpath,
@@ -182,7 +182,7 @@ fn sampled(
             let (a, b) = (ends[0]?, ends[1]?);
             let (a, b) = ([a[0] * sx, a[1] * sy], [b[0] * sx, b[1] * sy]);
             let length = (b[0] - a[0]).hypot(b[1] - a[1]);
-            (5.25..35.0).contains(&length).then(|| {
+            (4.5..30.0).contains(&length).then(|| {
                 (
                     [f64::midpoint(a[0], b[0]), f64::midpoint(a[1], b[1])],
                     [(b[0] - a[0]) / length, (b[1] - a[1]) / length],
@@ -427,14 +427,14 @@ fn drawn_pixels(panel: &RgbImage) -> usize {
         .count()
 }
 
-/// The composite is 896x1620: three panels under three label bands that
+/// The composite is 768x1392: three panels under three label bands that
 /// each carry text, panels 2 and 3 carrying no drawn colour; panel 2 is the
 /// frame cropped to the reported rectangle and not the whole frame; panel 3
 /// is the previous frame scaled whole, or on a first check the placeholder.
 #[test]
 fn the_composite_is_three_labelled_panels() {
     let (image, _) = compose(PETG, PETG_WALLS, Some(PETG_BEFORE), None);
-    assert_eq!((image.width, image.height), (896, 1620));
+    assert_eq!((image.width, image.height), (768, 1392));
     let composite = decode(&image);
     assert_eq!(composite.dimensions(), (PANEL_WIDTH, IMAGE_HEIGHT));
     for n in 0..3 {
