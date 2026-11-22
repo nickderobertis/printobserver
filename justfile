@@ -147,11 +147,9 @@ ci-lint tier="affected":
     just check-repo
 
 # One platform's `test` job's half of the gate: the measured tiers
-# (`ci-measured`) over the tier's projects not tagged `platform:independent`,
-# with the release program built beside them, for the end-to-end tier and the
-# integration tier after it.
+# (`ci-measured`) over the tier's projects not tagged `platform:independent`.
 ci-test tier="affected":
-    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" {{quote(tier)}} release-program
+    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" {{quote(tier)}}
 
 # The project tag every project measuring a timing budget carries: the side of
 # a tier `just ci-measured` measures alone, before it starts anything else.
@@ -171,14 +169,7 @@ TIMED := "type:budget"
 # `coverage-data/<KEEP>`, because a source and the tests measuring it can sit
 # on the two sides, and the `budgets` job rules on the floor over each
 # platform's combined halves (`coverage-combine`).
-# BESIDE names recipes started once the timed projects are done, beside the
-# rest, and waited out before an end-to-end tier run after them: `just ci-test`
-# hands it `release-program`, the release build the end-to-end tier's install
-# journeys and the integration tier both run. Built inside the end-to-end tier,
-# it was the first of those journeys: 513 s of that tier's one serial group on
-# Windows aarch64, where the test tier's single-worker Python suites leave
-# processors to it.
-ci-measured side keep tier="affected" *beside:
+ci-measured side keep tier="affected":
     status=0; export PRINTOBSERVER_GATE_PROJECTS={{quote(side)}}; \
     export PRINTOBSERVER_COVERAGE_KEEP="coverage-data/"{{quote(keep)}}; \
     PRINTOBSERVER_GATE_PROJECTS="$PRINTOBSERVER_GATE_PROJECTS,"{{quote(TIMED)}} \
@@ -187,11 +178,9 @@ ci-measured side keep tier="affected" *beside:
     if {{CI_E2E_BESIDE_TESTS}}; then \
     just test-e2e {{quote(tier)}} & e2e=$!; \
     fi; \
-    for recipe in {{beside}}; do just "$recipe" & started="${started:-} $!"; done; \
     PRINTOBSERVER_GATE_PROJECTS="$tested" just test {{quote(tier)}} && \
     just coverage {{quote(tier)}} && \
     just build {{quote(tier)}} || status=$?; \
-    for pid in ${started:-}; do wait "$pid" || status=$?; done; \
     if {{CI_E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
     elif [ "$status" = 0 ]; then \
     just test-e2e {{quote(tier)}} || status=$?; \

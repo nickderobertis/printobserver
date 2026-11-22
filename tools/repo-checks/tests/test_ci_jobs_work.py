@@ -69,16 +69,11 @@ PASSED_THROUGH = (("repo_checks.gate_tier",), ("repo_checks", "tool-version"))
 RECORD, STEP = "CI_WORK_RECORD", "CI_WORK_STEP"
 #: The variable a side of the project tag is handed in, as `gate_tier` reads it.
 SIDE = "PRINTOBSERVER_GATE_PROJECTS"
-#: The variable that has the doubled end-to-end tier's Nx run, or the doubled
-#: release build, and the Nx run whose side ends in its value each wait, for at
-#: most a minute, until the other has begun: a double finishes at once, so
-#: without that nothing one runs beside is seen beside it, and with it two runs
-#: started together overlap every time.
+#: The variable that has the doubled end-to-end tier's Nx run and the Nx run
+#: whose side ends in its value each wait, for at most a minute, until the other
+#: has begun: a double finishes at once, so without that nothing one runs beside
+#: is seen beside it, and with it two runs started together overlap every time.
 HOLD = "CI_WORK_HOLD_E2E"
-#: The release build `just ci-test` starts beside the test tier's untimed half,
-#: and the task it is recorded as, in Nx's `<target>:<project>` form.
-RELEASE_PROGRAM = ("uv", "run", "-q", "python", "-m", "release_artifacts", "release-program")
-RELEASE_BUILD = "release-program:printobserver"
 
 #: Leaf runs that prepare a runner rather than do the gate's work: every job
 #: repeats them for its own runner, so they are recorded and not compared.
@@ -152,8 +147,6 @@ if hold and name == "bunx":
         role = "e2e"
     elif os.environ.get({SIDE!r}, "").endswith(hold):
         role = "timed"
-elif hold and [name, *argv] == {list(RELEASE_PROGRAM)!r}:
-    role = "e2e"
 if role:
     with open(os.environ[{RECORD!r}], "a", encoding="utf-8") as record:
         record.write(json.dumps({{"marker": role}}) + "\\n")
@@ -442,9 +435,6 @@ def work(record: Path, graph: Mapping[str, set[str]]) -> Work:
         if "marker" in entry:
             continue
         argv: list[str] = entry["argv"]
-        if tuple(argv) == RELEASE_PROGRAM:
-            invocations.append(Invocation((RELEASE_BUILD,), entry["begun"], entry["ended"]))
-            continue
         if any(tuple(argv[: len(one)]) == one for one in PREPARATION):
             continue
         if argv[:2] == ["bunx", "nx"]:
@@ -588,7 +578,6 @@ def timing_findings(test: Work, timed: frozenset[str]) -> list[str]:
         for call in test.invocations
         if any(task.startswith("test-e2e:") for task in call.tasks)
     ]
-    released = [call for call in test.invocations if call.tasks == (RELEASE_BUILD,)]
     for call in test.invocations:
         # Only a measuring task — a test recording the figure, or the check
         # reading it — is a timing budget's run; any other target is not timed.
@@ -602,11 +591,6 @@ def timing_findings(test: Work, timed: frozenset[str]) -> list[str]:
             f"timing projects are tested while the end-to-end tier runs: {call.tasks}"
             for tier in e2e
             if tier.begun < call.ended and call.begun < tier.ended
-        )
-        found.extend(
-            f"timing projects are tested while the release program builds: {call.tasks}"
-            for build in released
-            if build.begun < call.ended and call.begun < build.ended
         )
     return found
 
@@ -704,11 +688,6 @@ E2E_BESIDE = (
     "    just test-e2e {{quote(tier)}} & e2e=$!; \\\n"
     "    fi; \\\n"
 )
-#: The line of the committed `ci-measured` that starts the recipes it is handed
-#: beside the test tier's untimed half: `just ci-test`'s release build.
-RELEASE_BESIDE = (
-    '    for recipe in {{beside}}; do just "$recipe" & started="${started:-} $!"; done; \\\n'
-)
 
 
 @pytest.mark.parametrize(
@@ -726,12 +705,6 @@ RELEASE_BESIDE = (
             "while the end-to-end tier runs",
             id="tested-once-the-end-to-end-tier-started",
         ),
-        pytest.param(
-            TIMED_FIRST + E2E_BESIDE + RELEASE_BESIDE,
-            RELEASE_BESIDE + TIMED_FIRST + E2E_BESIDE,
-            "while the release program builds",
-            id="tested-once-the-release-build-started",
-        ),
     ],
 )
 def test_a_timing_budget_measured_beside_other_work_is_found(
@@ -741,13 +714,13 @@ def test_a_timing_budget_measured_beside_other_work_is_found(
     new: str,
     naming: str,
 ) -> None:
-    """The timing projects tested beside the rest of the tests, the end-to-end tier or a build.
+    """The timing projects tested beside the rest of the test tier, or beside the end-to-end tier.
 
     One `test` cell is run rather than every job: the defect is in the recipe
     every cell runs, and what is found is that cell's own invocations. The
-    doubled end-to-end tier or release build and the timing run each wait until
-    the other has begun (`HOLD`), so a timing run started once either is running
-    is seen beside it every time rather than only when the two starts interleave.
+    doubled end-to-end tier and the timing run each wait until the other has
+    begun (`HOLD`), so a timing run started once that tier is running is seen
+    beside it every time rather than only when the two starts interleave.
     """
     copy = doubled()
     path = copy.root / "justfile"
@@ -758,9 +731,9 @@ def test_a_timing_budget_measured_beside_other_work_is_found(
     graph = {project.name: set(project.targets) for project in projects(repo)}
     timing = evaluated(copy, "TIMED")
     timed = frozenset(project.name for project in projects(repo) if timing in project.tags)
-    if new.startswith(E2E_BESIDE) and evaluated(copy, "CI_E2E_BESIDE_TESTS") != "true":
+    if E2E_BESIDE in new and evaluated(copy, "CI_E2E_BESIDE_TESTS") != "true":
         pytest.skip("this host's `ci-measured` starts no end-to-end tier beside the test tier")
-    if TIMED_FIRST in new and not new.startswith(TIMED_FIRST):
+    if E2E_BESIDE in new:
         monkeypatch.setenv(HOLD, f",{timing}")
     workflow = load_workflow(copy.root / CI)
     cell = next(cell for cell in cells(workflow) if cell.job == TEST_JOB)
@@ -824,7 +797,7 @@ def test_a_step_dropped_changed_or_doubled_is_found(
 LINT_HALF = "    just ci-measured {{quote(PLATFORM_INDEPENDENT)}} lint {{quote(tier)}}\n"
 TEST_HALF = (
     '    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" '
-    "{{quote(tier)}} release-program\n"
+    "{{quote(tier)}}\n"
 )
 
 
