@@ -649,8 +649,9 @@ pub type BedArea = [i64; 4];
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct Rise {
     /// When that earlier frame was captured: the newest frame at least half
-    /// an hour old that a periodic observation or a look at this print was
-    /// given, as that observation or look states its capture time.
+    /// an hour old that a check of this print — a periodic observation or an
+    /// alert — or a look at it was given, as that check or look states its
+    /// capture time.
     pub since: Timestamp,
     /// Two heights of the print's highest point, in millimetres: the first
     /// is where the plan had it when that frame was captured, the second how
@@ -1927,8 +1928,8 @@ impl<'a> Future for Claim<'a> {
 const HELD_INDEXES: usize = 16;
 
 impl GcodeIndexes {
-    /// Remember that a look at one print was given a frame captured at
-    /// `captured`, with the job at `position`, and forget what no rise can be
+    /// Remember that a look or a check of one print was given a frame captured
+    /// at `captured`, with the job at `position`, and forget what no rise can be
     /// measured from any more: every look older than the newest one already
     /// half an hour old before `now`, and the looks of prints beyond
     /// [`HELD_INDEXES`], oldest print first.
@@ -2025,7 +2026,8 @@ impl crate::supervisor::Supervisor {
 
     /// How far the plan has risen since the newest frame at least
     /// [`RISE_WINDOW_S`] old that was seen — a periodic observation's, when it
-    /// carries a position, or a look's — and where the plan had the top then.
+    /// carries a position, or one a check or a look noted — and where the plan
+    /// had the top then.
     async fn rise_of(
         &self,
         print_id: PrintId,

@@ -615,6 +615,21 @@ impl Supervisor {
         };
         let plan = self.plan_position(print, job).await;
         let captured_at = captured_at_of(event, arrival.frame_captured_at);
+        // A check's frame — an alert's as much as an observation's — is one the
+        // agent was shown, so the plan's rise can later be measured from it, as
+        // from a look's. Measured only from observations and looks, a check
+        // after an alert, a pause and a person's resume was told the rise since
+        // the print's first frame hours before, and paused a print growing as
+        // planned for not having risen that far (`warning-after-resume`).
+        if let Some(job) = job
+            && print.ended_at.is_none()
+            && job.file_name.is_some()
+            && job.file_name == print.file_name
+            && let Some(position) = job.file_position_bytes
+        {
+            self.gcode_indexes()
+                .note_look(print.id, captured_at, position, self.clock().now());
+        }
         self.shown_image_of(
             reference,
             Some(print.id),
