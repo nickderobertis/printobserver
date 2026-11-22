@@ -1020,7 +1020,7 @@ reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `impl
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e-independent/project.json"
 site = "test-e2e"
-reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `test-e2e`: the rule is about the edge this project's end-to-end target hangs from, decided here once rather than per journey. It is the tier's own target name, so the shard planner's part selection and Nx's one-at-a-time `test-e2e` run (`nx.json`) hold it as they hold `repo-e2e`'s, and its journeys drive exactly the projects its `implicitDependencies` name. It depends on no build: none of its journeys runs the debug program."
+reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `test-e2e`: the rule is about the edge this project's end-to-end target hangs from, decided here once rather than per journey. It is the tier's own target name, so Nx's one-at-a-time `test-e2e` run (`nx.json`) holds it as it holds `repo-e2e`'s, and its journeys drive exactly the projects its `implicitDependencies` name. It depends on no build: none of its journeys runs the debug program."
 
 [[suppression]]
 rule = "external_service_suite_stays_out_of_the_affected_tier"
@@ -3163,7 +3163,7 @@ reason = "A read-only look at the store the real server wrote, to learn when the
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "The per-user Windows install: installed, upgraded"
-reason = "The task that added this journey requires it under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, which drive the same two installers, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from. Its Windows-only cases need the real Task Scheduler and run on the Windows gate shards, which is where this project's end-to-end tier runs on Windows."
+reason = "The task that added this journey requires it under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, which drive the same two installers, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from. Its Windows-only cases need the real Task Scheduler and run in the Windows `test` jobs, which is where this project's end-to-end tier runs on Windows."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
@@ -3283,7 +3283,7 @@ reason = "This case existed before the change, which renamed it and, as its task
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_place("
-reason = "The task requires this journey under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, and requires its Task Scheduler cases to run on the Windows gate shards, which run that project's end-to-end tier. `AGENTS.md` places every end-to-end journey in that one project, and no per-project end-to-end target exists for a narrower edge to hang from."
+reason = "The task requires this journey under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, and requires its Task Scheduler cases to run in the Windows `test` jobs, which run that project's end-to-end tier. `AGENTS.md` places every end-to-end journey in that one project, and no per-project end-to-end target exists for a narrower edge to hang from."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
