@@ -457,7 +457,9 @@ def job_of(entry: Mapping[str, object], workflow: str, attempt: int = 1) -> Job:
     A job the forge has not handed a runner yet is answered with `started_at`
     equal to its `created_at`; that is no start, so a job still queued, or one
     that completed with no runner — skipped, or cancelled before it started —
-    is read as never having started.
+    is read as never having started. Its recorded times are not held to their
+    order: the forge answers a skipped job completing a second before the
+    creation and start it records for it, and no figure reads them.
 
     A re-run of some of a run's jobs is a later attempt that carries every
     other job over finished, and the forge answers each carried job with the
@@ -517,9 +519,12 @@ def job_of(entry: Mapping[str, object], workflow: str, attempt: int = 1) -> Job:
         and completed is not None
         and created > started
     )
+    # A job no runner picked up is timed by nothing it recorded, and the forge
+    # stamps a skipped one as completing a second before it was created; so
+    # only the times of a job that ran are held to their order.
     stamps = (started, completed) if carried else (created, started, completed)
     ordered = [instant for instant in stamps if instant is not None]
-    if ordered != sorted(ordered):
+    if started is not None and ordered != sorted(ordered):
         msg = (
             f"{where} records created_at={entry.get('created_at')!r}, started_at="
             f"{entry.get('started_at')!r} and completed_at={entry.get('completed_at')!r} out "
@@ -656,9 +661,14 @@ def measure_check_time(
     except BudgetError as error:
         print(f"{CHECK_TIME}: refused: {error}", file=sys.stderr)
         return REFUSED
+    longest = (
+        f"its longest job {figure.longest}"
+        if figure.longest
+        else f"no measured job ran: every job but {MEASURING_JOB} took no runner"
+    )
     print(
         f"{CHECK_TIME}: run {figure.run_id} attempt {figure.run_attempt} ({figure.event}): "
-        f"{figure.seconds:.0f} s, its longest job {figure.longest or 'none'}",
+        f"{figure.seconds:.0f} s, {longest}",
         file=sys.stderr,
     )
     report(figure.seconds, figure.detail())
@@ -677,9 +687,11 @@ def measure_job_count(environ: Mapping[str, str] | None = None) -> int:
     except BudgetError as error:
         print(f"{JOB_COUNT}: refused: {error}", file=sys.stderr)
         return REFUSED
+    measured = [job for job in figure.jobs if job.name != MEASURING_JOB]
     print(
         f"{JOB_COUNT}: {figure.count} jobs took a runner across runs "
-        f"{', '.join(str(one) for one in figure.runs)} of {figure.head_sha[:12]} ({figure.event})",
+        f"{', '.join(str(one) for one in figure.runs)} of {figure.head_sha[:12]} ({figure.event})"
+        + ("" if measured else f"; no measured job ran, only the {MEASURING_JOB} job"),
         file=sys.stderr,
     )
     report(float(figure.count), figure.detail())

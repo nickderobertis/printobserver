@@ -55,6 +55,10 @@ LONGEST = "macos-aarch64 (gate, integration)"
 LONGEST_SECONDS = 2573.0
 #: A second run the same push started, in another workflow.
 SIBLING_RUN = 40235536099
+#: The `ci` run of the push of 7c23c142 to `main`, every job but `budgets`
+#: skipped, each recorded completing a second before it started.
+ALL_SKIPPED_RUN = 45047116425
+ALL_SKIPPED_SHA = "7c23c142a96f44c4476f8009e367cecf0839c1c6"
 #: What `just` exports to every recipe, so a budget's command finds its package.
 PACKAGES = os.pathsep.join(
     str(REPO_ROOT / package)
@@ -103,9 +107,15 @@ def job(recorded: dict[str, Any], name: str) -> dict[str, Any]:
 
 
 def skipped(entry: dict[str, Any]) -> None:
-    """`entry` as the forge records a job its condition skipped: completed with no runner."""
+    """`entry` as the forge records a job its condition skipped: completed with no runner.
+
+    The forge stamps it started at its creation and completed a second before
+    that, as every skipped job of `ALL_SKIPPED_RUN` records.
+    """
     entry.update(status="completed", conclusion="skipped", runner_name=None, runner_id=None)
-    entry["started_at"] = entry["completed_at"] = entry["created_at"]
+    created = datetime.strptime(entry["created_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    entry["started_at"] = entry["created_at"]
+    entry["completed_at"] = _stamped(datetime.fromtimestamp(created.timestamp() - 1, UTC))
     entry["steps"] = []
 
 
@@ -256,6 +266,72 @@ def test_every_job_that_took_a_runner_across_the_pushs_runs_is_counted(
     truth(("ci", "classify") not in counted, describing="a skipped job not counted")
     runner = next(entry for entry in detail["jobs"] if entry["name"] == LONGEST)["runner"]
     equal(runner, "macos-15")
+
+
+def test_a_run_whose_measured_jobs_were_all_skipped_measures_no_job_run(
+    served: Callable[[Forge], str], result: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The recorded push to `main` that ran `budgets` alone: no time, and only `budgets` counted."""
+    forge = Forge(
+        REPOSITORY,
+        [
+            Run(
+                RunId(ALL_SKIPPED_RUN),
+                Attempt(1),
+                CommitSha(ALL_SKIPPED_SHA),
+                "push",
+                "ci",
+                document(ALL_SKIPPED_RUN),
+            )
+        ],
+    )
+    given = environment(served(forge), GITHUB_RUN_ID=str(ALL_SKIPPED_RUN), GITHUB_EVENT_NAME="push")
+
+    equal(measure_check_time(given), 0)
+    value, detail = reported(result)
+    equal((value, detail["longest"], detail["wall_seconds"]), (0.0, None, 0.0))
+    equal(
+        {entry["name"]: entry["seconds"] for entry in detail["jobs"]},
+        {
+            "test (macos-aarch64)": 0.0,
+            "skilltest": 0.0,
+            "test (${{ matrix.platform.id }})": 0.0,
+            "lint": 0.0,
+        },
+        describing="every skipped job in the breakdown, for no time",
+    )
+    contains(
+        capsys.readouterr().err,
+        f"{CHECK_TIME}: run {ALL_SKIPPED_RUN} attempt 1 (push): 0 s, no measured job ran",
+    )
+
+    equal(measure_job_count(given), 0)
+    value, detail = reported(result)
+    equal(value, 1.0, describing="the measuring job alone took a runner")
+    equal([entry["name"] for entry in detail["jobs"]], ["budgets"])
+    contains(capsys.readouterr().err, "no measured job ran, only the budgets job")
+
+
+def test_a_run_mixing_skipped_jobs_with_jobs_that_ran_measures_those_that_ran(
+    served: Callable[[Forge], str], result: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Three jobs skipped as the forge stamps them, the longest among them; the rest measured."""
+    recorded = measuring(document(RECORDED_RUN))
+    for name in (LONGEST, "classify", "pr-title"):
+        skipped(job(recorded, name))
+    address = served(forge_of((RECORDED_RUN, "ci", recorded)))
+
+    equal(measure_check_time(environment(address)), 0)
+    value, detail = reported(result)
+    equal((value, detail["longest"]), (1559.0, "gate (linux-x86_64)"))
+    contains(capsys.readouterr().err, "its longest job gate (linux-x86_64)")
+
+    equal(measure_job_count(environment(address)), 0)
+    value, detail = reported(result)
+    equal(value, 22.0, describing="24 - 3 skipped + budgets")
+    counted = {entry["name"] for entry in detail["jobs"]}
+    truth(not counted & {LONGEST, "classify", "pr-title"}, describing="no skipped job counted")
+    truth("no measured job ran" not in capsys.readouterr().err, describing="jobs did run")
 
 
 def _stamped(instant: datetime) -> str:
@@ -443,6 +519,18 @@ def test_a_forge_refusing_the_read_refuses(
     contains(capsys.readouterr().err, "answered 502")
 
 
+def _ran_ending_before_it_started(recorded: dict[str, Any]) -> None:
+    """`recorded`'s first job, which ran, stamped ending a second before it started.
+
+    That is how the forge stamps a skipped job; on a job a runner took it is
+    still no run to time.
+    """
+    entry = recorded["jobs"][0]
+    ended = datetime.strptime(entry["completed_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    entry["started_at"] = entry["completed_at"]
+    entry["completed_at"] = _stamped(datetime.fromtimestamp(ended.timestamp() - 1, UTC))
+
+
 @pytest.mark.parametrize(
     ("corrupt", "naming"),
     [
@@ -455,6 +543,7 @@ def test_a_forge_refusing_the_read_refuses(
             lambda doc: doc["jobs"][0].update(created_at="2099-01-01T00:00:00Z"),
             "out of order, which time no run",
         ),
+        (_ran_ending_before_it_started, "out of order, which time no run"),
         (lambda doc: doc["jobs"][0].update(steps=[{"status": "x"}]), "a step with no name"),
         (
             lambda doc: doc["jobs"][0].update(status="in_progress", started_at=None),
