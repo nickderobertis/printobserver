@@ -19,7 +19,7 @@ use std::time::Duration;
 use printobserver_core::store::{PrintStore as _, Stores};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
-use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
+use printobserver_octoprint::standin::{HeldRead, JobReadHold, JobScript, ScriptedOctoPrint};
 use printobserver_server::{Ports, Running, Server, ServerConfig};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::{Value, json};
@@ -324,6 +324,21 @@ impl Bench {
         self.until("print_ended", ends + 1).await;
     }
 
+    /// Hold the next read the server makes of the job, answered as the machine
+    /// stands once it is released.
+    async fn held_read(&self) -> JobReadHold {
+        let hold = self.octoprint.holds_next_job_read(HeldRead::AsReleased);
+        let deadline = tokio::time::Instant::now() + PATIENCE;
+        while !self.octoprint.is_holding(&hold) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the server never read the job"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        hold
+    }
+
     /// Home Z on the operator's own word, so Z is trusted.
     async fn home_z_asserted(&self) {
         let (status, answer) = self
@@ -334,15 +349,23 @@ impl Bench {
 
     /// Hold one supervision turn open about a print of one file, answering
     /// the turn's credential and the actor it claims.
+    ///
+    /// The print is written to the store while a read of the machine is kept
+    /// waiting, and that read is answered with the print running: a read of the
+    /// idle printer that settled after the write would close the print as over,
+    /// and the alert about it would then claim no turn, as `recovering`'s held
+    /// turn says.
     async fn agent_turn(&self, file: &str) -> (reqwest::Client, Value) {
+        let waiting = self.held_read().await;
+        let size = i64::try_from(tall_gcode().len()).expect("a small file");
+        self.octoprint
+            .reports("Printing", JobScript::printing(file, size, 0, 5));
         let store = SqliteStore::open(self.root.path().join("state")).expect("the store opens");
         store
             .open_print(Some(OBICO_PRINT), Some(file.to_owned()))
             .await
             .expect("a print opens");
-        let size = i64::try_from(tall_gcode().len()).expect("a small file");
-        self.octoprint
-            .reports("Printing", JobScript::printing(file, size, 0, 5));
+        self.octoprint.releases_job_read(&waiting);
         self.agent.hold_turns();
         let status = reqwest::Client::new()
             .post(format!("{}?token={SECRET}", self.server.ingress_url()))
