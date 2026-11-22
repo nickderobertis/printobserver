@@ -1580,8 +1580,8 @@ fn frame_text(stdin: &str) -> (String, usize) {
 /// harness's own record of it.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_check_replaces_the_harness_prompt_and_is_held_to_the_schema_by_oneharness() {
-    // Checks run every second, each asked twice: first out of the schema, then
-    // conforming, so every check's attempts are one pair of answers.
+    // Each check is asked twice: first out of the schema, then conforming, so
+    // every check's attempts are one pair of answers.
     let out_of_schema = json!({ "summary": "no disposition" });
     let answers: Vec<Value> = (0..200)
         .flat_map(|_| {
@@ -1593,7 +1593,14 @@ async fn every_check_replaces_the_harness_prompt_and_is_held_to_the_schema_by_on
         .collect();
     let log = TempDir::new().expect("a log's own directory");
     let invocations = log.path().join("invocations.jsonl");
-    let lean = Lean::open_composed(INSTALLERS[0], 1, marked_frame(), |config, root| {
+    // The next turn takes the newest event waiting and lists the older ones
+    // beside it, so an alert reaching a running turn with a scheduled
+    // observation behind it would be checked as that observation's situation
+    // rather than as an event of its own. Observations come an interval after
+    // the server starts and after each round, so posting the alert the moment
+    // the first check ends leaves it the next turn alone unless the test stalls
+    // for two intervals.
+    let lean = Lean::open_composed(INSTALLERS[0], 10, marked_frame(), |config, root| {
         mocked_agent(config, root, &answers, &invocations)
     })
     .await;
