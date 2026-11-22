@@ -131,6 +131,9 @@ class Job:
     started_at: datetime | None
     completed_at: datetime | None
     steps: tuple[StepTime, ...]
+    #: Whether it ran in an earlier attempt of the run and was carried into the
+    #: one read, whose `created_at` the forge records for it in place of its own.
+    carried: bool = False
 
     @property
     def ran(self) -> bool:
@@ -145,8 +148,12 @@ class Job:
 
     @property
     def queue_seconds(self) -> float | None:
-        """How long it waited for a runner, or none where none picked it up."""
-        if self.started_at is None:
+        """How long it waited for a runner, or none where none picked it up or it was carried.
+
+        A carried job's recorded creation is the later attempt's, not its own,
+        so how long it waited is not on the record.
+        """
+        if self.started_at is None or self.carried:
             return None
         return max(0.0, (self.started_at - self.created_at).total_seconds())
 
@@ -444,13 +451,20 @@ def _steps(entry: Mapping[str, object], where: str) -> tuple[StepTime, ...]:
     return tuple(read)
 
 
-def job_of(entry: Mapping[str, object], workflow: str) -> Job:
-    """One jobs-API entry, narrowed.
+def job_of(entry: Mapping[str, object], workflow: str, attempt: int = 1) -> Job:
+    """One jobs-API entry of a run's `attempt`, narrowed.
 
     A job the forge has not handed a runner yet is answered with `started_at`
     equal to its `created_at`; that is no start, so a job still queued, or one
     that completed with no runner — skipped, or cancelled before it started —
     is read as never having started.
+
+    A re-run of some of a run's jobs is a later attempt that carries every
+    other job over finished, and the forge answers each carried job with the
+    later attempt's `created_at` beside its own `started_at` and
+    `completed_at`. So past the first attempt, a job completed on a runner and
+    created after it started is that carried job: it is timed by its own start
+    and end, and its queue is not on the record.
 
     Raises:
         BudgetError: If it records no name, no creation, a status that says
@@ -496,7 +510,15 @@ def job_of(entry: Mapping[str, object], workflow: str) -> Job:
             f"completed_at={entry.get('completed_at')!r}, which time no run"
         )
         raise BudgetError(msg)
-    ordered = [instant for instant in (created, started, completed) if instant is not None]
+    carried = (
+        attempt > 1
+        and status == "completed"
+        and started is not None
+        and completed is not None
+        and created > started
+    )
+    stamps = (started, completed) if carried else (created, started, completed)
+    ordered = [instant for instant in stamps if instant is not None]
     if ordered != sorted(ordered):
         msg = (
             f"{where} records created_at={entry.get('created_at')!r}, started_at="
@@ -514,6 +536,7 @@ def job_of(entry: Mapping[str, object], workflow: str) -> Job:
         started_at=started,
         completed_at=completed,
         steps=_steps(entry, where),
+        carried=carried,
     )
 
 
@@ -524,7 +547,7 @@ def run_jobs(found: Forge, run: Run) -> tuple[Job, ...]:
         BudgetError: If the jobs cannot all be read, or one cannot be narrowed.
     """
     entries = _listed(found, f"runs/{run.run_id}/attempts/{run.attempt}/jobs", "jobs")
-    return tuple(job_of(entry, run.workflow) for entry in entries)
+    return tuple(job_of(entry, run.workflow, run.attempt) for entry in entries)
 
 
 def _stamp(instant: datetime | None) -> str | None:

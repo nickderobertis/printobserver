@@ -258,6 +258,84 @@ def test_every_job_that_took_a_runner_across_the_pushs_runs_is_counted(
     equal(runner, "macos-15")
 
 
+def _stamped(instant: datetime) -> str:
+    """An instant as the forge writes one."""
+    return instant.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _rerun(recorded: dict[str, Any], name: str, seconds: int, created: datetime) -> None:
+    """`recorded`'s job `name` re-run: created at `created`, queued a minute, then run `seconds`."""
+    entry = job(recorded, name)
+    began = created.timestamp() + 60
+    entry["created_at"] = _stamped(created)
+    entry["started_at"] = _stamped(datetime.fromtimestamp(began, UTC))
+    entry["completed_at"] = _stamped(datetime.fromtimestamp(began + seconds, UTC))
+    entry["steps"] = []
+
+
+#: The job re-run in the second attempt, and how long that re-run takes: longer
+#: than the recorded longest, so the re-run is the figure.
+RERUN = "gate (linux-x86_64)"
+RERUN_SECONDS = 3000
+
+
+def test_a_partial_re_run_is_measured_as_one_attempt_with_those_job_times(
+    served: Callable[[Forge], str], result: Path
+) -> None:
+    """Attempt 2 re-runs one job and carries the rest over under its own `created_at`.
+
+    The forge answers every carried job of a later attempt with that attempt's
+    creation, after the start and end the job kept from attempt 1. Both figures
+    are the ones a single attempt recording the same starts and ends reports.
+    """
+    finished = measuring(document(RECORDED_RUN))
+    finished["jobs"] = [entry for entry in finished["jobs"] if entry["name"] != "budgets"]
+    last = max(entry["completed_at"] for entry in finished["jobs"])
+    second = datetime.strptime(last, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    second = datetime.fromtimestamp(second.timestamp() + 3600, UTC)
+
+    single = copy.deepcopy(finished)
+    _rerun(single, RERUN, RERUN_SECONDS, second)
+    single = measuring({**single, "total_count": len(single["jobs"])})
+    reattempted = copy.deepcopy(single)
+    for entry in reattempted["jobs"]:
+        if entry["name"] not in {RERUN, "budgets"}:
+            entry["created_at"] = _stamped(second)
+            entry["run_attempt"] = 2
+
+    figures: dict[int, dict[str, tuple[float, dict[str, Any]]]] = {}
+    for attempt, recorded in ((1, single), (2, reattempted)):
+        forge = forge_of((RECORDED_RUN, "ci", recorded))
+        forge.runs = [
+            Run(one.run_id, Attempt(attempt), one.head_sha, one.event, one.workflow, one.document)
+            for one in forge.runs
+        ]
+        address = served(forge)
+        given = environment(address, GITHUB_RUN_ATTEMPT=str(attempt))
+        equal(measure_check_time(given), 0, describing=f"attempt {attempt}'s check time read")
+        timed = reported(result)
+        equal(measure_job_count(given), 0, describing=f"attempt {attempt}'s job count read")
+        figures[attempt] = {CHECK_TIME: timed, JOB_COUNT: reported(result)}
+
+    value, detail = figures[2][CHECK_TIME]
+    equal((value, detail["longest"]), (float(RERUN_SECONDS), RERUN))
+    equal(detail["wall_seconds"], figures[1][CHECK_TIME][1]["wall_seconds"])
+    single_jobs = {entry["name"]: entry for entry in figures[1][CHECK_TIME][1]["jobs"]}
+    for entry in detail["jobs"]:
+        alone = single_jobs[entry["name"]]
+        equal(
+            (entry["started_at"], entry["completed_at"], entry["seconds"]),
+            (alone["started_at"], alone["completed_at"], alone["seconds"]),
+            describing=f"{entry['name']} timed by its own start and end",
+        )
+        if entry["name"] == RERUN:
+            equal(entry["queue_seconds"], 60.0, describing="the re-run job's own queue")
+        else:
+            equal(entry["queue_seconds"], None, describing=f"{entry['name']}'s queue not on record")
+    equal(figures[2][JOB_COUNT][0], 25.0, describing="24 jobs and the measuring one")
+    equal(figures[2][JOB_COUNT], figures[1][JOB_COUNT])
+
+
 def test_a_run_of_another_commit_or_event_is_not_this_pushs(
     served: Callable[[Forge], str], result: Path
 ) -> None:
@@ -373,6 +451,10 @@ def test_a_forge_refusing_the_read_refuses(
         (lambda doc: doc["jobs"][0].update(started_at="soon"), "started_at='soon', not an instant"),
         (lambda doc: doc["jobs"][0].update(status="paused"), "say nothing of whether it ran"),
         (lambda doc: doc["jobs"][0].pop("created_at"), "no created_at"),
+        (
+            lambda doc: doc["jobs"][0].update(created_at="2099-01-01T00:00:00Z"),
+            "out of order, which time no run",
+        ),
         (lambda doc: doc["jobs"][0].update(steps=[{"status": "x"}]), "a step with no name"),
         (
             lambda doc: doc["jobs"][0].update(status="in_progress", started_at=None),
