@@ -819,13 +819,13 @@ def test_a_recorded_alert_reaches_the_agent_at_its_time(scratch: Path) -> None:
     case = read_case("petg-clip-detach-and-stringing-web")
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
     prompts = [turn["prompt"] for turn in done.turns]
-    contains(prompts[0], '"kind": "periodic_observation"')
+    contains(prompts[0], '"kind":"periodic_observation"')
     for prompt in prompts[1:]:
-        contains(prompt, '"kind": "obico_failure_alert"')
-    contains(prompts[2], '"detector_paused_the_print": true')
+        contains(prompt, '"kind":"obico_failure_alert"')
+    contains(prompts[2], '"detector_paused_the_print":true')
     # The alert's picture says when it was taken, and the check's its own frame's.
     alert_taken = instant(case.moments[1].at).strftime("%Y-%m-%dT%H:%M")
-    contains(prompts[1], f'"frame_captured_at": "{alert_taken}')
+    contains(prompts[1], f'"frame_captured_at":"{alert_taken}')
     contains(prompts[0], '"frame_captured_at"')
     equal(
         [point.event_kind for point in done.replayed.points],
@@ -3031,9 +3031,12 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
             "compactions": compactions,
         }
     ]
-    figures, detail = record.compaction_figures(
-        record.checks_of(tests, 4_000), 4_000, compactions, 150_000, 2_500
-    )
+    checks = record.checks_of(tests, 4_000)
+    # A check after a completed compaction carries in what that compaction left,
+    # 10,000, not the call before it: 13,000 - (10,000 - 4,000) and 21,000 - 6,000.
+    equal([check["history"] for check in checks][3:], [10_000, 14_000, 10_000])
+    equal([check["input"] for check in checks][3:], [7_000, 7_000, 15_000])
+    figures, detail = record.compaction_figures(checks, 4_000, compactions, 150_000, 2_500)
 
     # By hand: the conversation starts at 4,000 and grows 4,000 a check; check c of the
     # first cycle reads 7,000 + 4,000c. It passes 150,000 after the 37th check (index

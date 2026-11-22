@@ -10,7 +10,8 @@ them; given none, it runs `just skilltest` to make one, and exits as that did.
 Each check's input figure is held free of the conversation it carries: its calls'
 input, cache included, less `calls x (history - base)`, where `history` is the
 previous check's last-call input plus output in the same test — the base, for a
-test's first check — and `base` is the probe's first-call input. What one check
+test's first check, and what an idle compaction left, for the check after it — and
+`base` is the probe's first-call input. What one check
 image adds to a call is the image probe's first-call input less the text-only
 probe's. A figure the run cannot work out — no probe, or no check of a class — is
 left out of `figures`, which `telemetry_budget` refuses by name.
@@ -304,7 +305,8 @@ class Check(TypedDict):
     raw_input: int
     #: Its first call's input less the history it carried, when there is a base.
     first_call_input: int | None
-    #: The previous check's last-call input plus output, or the base for a first.
+    #: The previous check's last-call input plus output, the base for a first, or
+    #: what a completed compaction left for the check after it.
     history: int | None
     #: `raw_input - calls x (history - base)`, when there is a base.
     input: int | None
@@ -325,14 +327,27 @@ def checks_of(tests: list[TestRecord], base: int | None) -> list[Check]:
     found: list[Check] = []
     for test in tests:
         previous: list[CallUsage] | None = None
+        # Each completed compaction is followed by exactly one check marked as
+        # following it, in the same order, and that check carries in what the
+        # compaction left rather than the previous check's last call.
+        left = iter(
+            [
+                compaction.get("reported_after")
+                for compaction in test.get("compactions", [])
+                if compaction["ended"] == "completed"
+            ]
+        )
         for point in test["decision_points"]:
             if point["trigger"] in CONVERSATION_TRIGGERS:
                 continue
             calls = point["calls"]
             raw = sum(call_input(call) for call in calls)
-            if previous:
+            history: int | None
+            if point.get("follows_compaction", False):
+                history = next(left, None)
+            elif previous:
                 last = previous[-1]
-                history: int | None = call_input(last) + last.get("output_tokens", 0)
+                history = call_input(last) + last.get("output_tokens", 0)
             else:
                 history = base
             found.append(
