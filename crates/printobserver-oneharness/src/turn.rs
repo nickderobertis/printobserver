@@ -22,7 +22,7 @@ use printobserver_supervisor_api::{
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::serde_json::Value;
-use printobserver_types::{PrintId, Timestamp};
+use printobserver_types::{PrintId, Reported, Timestamp};
 
 use crate::config::{HarnessIdentity, SupervisorConfig, TurnSeam};
 use crate::ledger::{
@@ -152,19 +152,23 @@ fn shown<T: serde::Serialize>(value: &T, what: &str) -> Result<String, Superviso
 
 /// Take every content digest out of `value`, at every depth, and show each
 /// in-range reading as its value.
+///
+/// A reading is whatever [`Reported`]'s own deserializer reads as one, which
+/// refuses an object carrying any other field, so the shape is that type's
+/// rather than restated here.
 fn trimmed(value: &mut Value) {
     match value {
         Value::Object(fields) => {
             fields.remove("sha256");
             for field in fields.values_mut() {
                 trimmed(field);
-                let in_range = field.as_object().and_then(|reading| {
-                    (reading.len() == 2 && reading.get("out_of_range") == Some(&Value::Bool(false)))
-                        .then(|| reading.get("value").cloned())
-                        .flatten()
-                });
+                let in_range = field
+                    .is_object()
+                    .then(|| serde_json::from_value::<Reported<f64>>(field.clone()).ok())
+                    .flatten()
+                    .filter(|reading| !reading.out_of_range());
                 if let Some(reading) = in_range {
-                    *field = reading;
+                    *field = Value::from(reading.value());
                 }
             }
         }
@@ -363,7 +367,10 @@ impl OneharnessSupervisor {
         self.probe_run(session, prompt, image, self.system_text())
     }
 
-    /// One probe run, its system text `system`.
+    /// One probe run, built as a turn's request is and with the turn's own
+    /// prompt replaced: only `system` differs between the probes, so the
+    /// difference between two of their first calls is that text and nothing
+    /// the request carries besides.
     fn probe_run(
         &self,
         session: &str,

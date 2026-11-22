@@ -14,7 +14,7 @@ use printobserver_oneharness::{
     OneharnessSupervisor, SITUATION_SLOT, SLOTS, TOOL_FRAMING, UnclosedFrontmatter, skill_prose,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
-use printobserver_types::{EventId, PrintId, PrinterState, RawBytes, serde_json};
+use printobserver_types::{EventId, PrintId, PrinterState, Range, RawBytes, Reported, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
@@ -179,8 +179,8 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
                 "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
                 "latest_image": { "id": "frame-1", "sha256": "ab12" },
                 "bed": {
-                    "actual_c": { "out_of_range": false, "value": 60.0 },
-                    "target_c": { "out_of_range": true, "value": 300.0 },
+                    "actual_c": Reported::new(60.0, Range::new(0.0, 120.0)),
+                    "target_c": Reported::new(300.0, Range::new(0.0, 120.0)),
                 },
             })
             .as_object()
@@ -661,7 +661,7 @@ fn shown_trimmed(found: &[String], order: &[&str], print_id: PrintId, event_id: 
             "latest_image": { "id": "frame-1" },
             "bed": {
                 "actual_c": 60.0,
-                "target_c": { "out_of_range": true, "value": 300.0 },
+                "target_c": Reported::new(300.0, Range::new(0.0, 120.0)),
             },
         }),
         "the facts are shown without the digest, and the reading in range as its value"
@@ -692,10 +692,10 @@ fn as_shown<T: serde::Serialize>(value: &T) -> serde_json::Value {
                 fields.remove("sha256");
                 for field in fields.values_mut() {
                     trim(field);
-                    if field.get("out_of_range") == Some(&serde_json::Value::Bool(false))
-                        && field.as_object().map(serde_json::Map::len) == Some(2)
+                    if let Ok(reading) = serde_json::from_value::<Reported<f64>>(field.clone())
+                        && !reading.out_of_range()
                     {
-                        *field = field["value"].clone();
+                        *field = serde_json::Value::from(reading.value());
                     }
                 }
             }

@@ -87,15 +87,23 @@ const MOCK_RECORDS: &str = "MOCK_INVOCATION_LOG";
 /// The prompt Claude Code is started with to compact a session.
 const COMPACT_PROMPT: &str = "/compact";
 
+/// How a system-prompt flag's value carries the prompt.
+#[derive(Clone, Copy)]
+enum Carried {
+    /// The value is the prompt.
+    Inline,
+    /// The value names a file holding the prompt, which a prompt large enough
+    /// to risk the argument ceiling is handed as.
+    InFile,
+}
+
 /// The flags a Claude Code run is handed its system prompt under, each with
-/// whether it names a file: replacing Claude Code's own prompt or appended to
-/// it, inline or as a file when the prompt is large enough to risk the
-/// argument ceiling.
-const SYSTEM_FLAGS: [(&str, bool); 4] = [
-    ("--system-prompt", false),
-    ("--system-prompt-file", true),
-    ("--append-system-prompt", false),
-    ("--append-system-prompt-file", true),
+/// how it carries it: replacing Claude Code's own prompt or appended to it.
+const SYSTEM_FLAGS: [(&str, Carried); 4] = [
+    ("--system-prompt", Carried::Inline),
+    ("--system-prompt-file", Carried::InFile),
+    ("--append-system-prompt", Carried::Inline),
+    ("--append-system-prompt-file", Carried::InFile),
 ];
 
 /// What the context command in a prompt begins with, which is what a turn is
@@ -409,10 +417,10 @@ fn record_what_was_seen(stdin: &str) {
     // finds no value reads why rather than a bare absence.
     let handed = SYSTEM_FLAGS
         .iter()
-        .find_map(|&(flag, file)| after(flag).map(|value| (file, value)));
+        .find_map(|&(flag, carried)| after(flag).map(|value| (carried, value)));
     let system = match handed {
-        Some((false, inline)) => Ok(inline.clone()),
-        Some((true, path)) => std::fs::read_to_string(path)
+        Some((Carried::Inline, inline)) => Ok(inline.clone()),
+        Some((Carried::InFile, path)) => std::fs::read_to_string(path)
             .map_err(|error| format!("the system prompt file {path} is unreadable: {error}")),
         None => Err("the run handed over no system prompt".to_owned()),
     };

@@ -36,10 +36,18 @@ struct Asked {
     prompt: String,
     /// The file of the program's usage lines, when one was named.
     usage: Option<PathBuf>,
-    /// The image to attach, when one was named.
-    image: Option<PathBuf>,
-    /// Whether the run carries none of the port's system text.
-    no_system: bool,
+    /// Which of the probes this run is.
+    kind: Kind,
+}
+
+/// The probes, each a run of the shipped configuration differing in one thing.
+enum Kind {
+    /// The configuration as shipped, with no image.
+    Text,
+    /// The configuration as shipped, this image attached as a check's is.
+    Image(PathBuf),
+    /// None of the port's system text, so only what the harness sends itself.
+    HarnessAlone,
 }
 
 /// The five options, each once and none empty, and `--usage` and `--image`
@@ -73,16 +81,22 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
             return Err(format!("{flag} is given twice"));
         }
     }
-    if no_system && image.is_some() {
-        return Err("--no-system measures the harness alone, so it takes no --image".to_owned());
-    }
+    let kind = match (no_system, image) {
+        (true, Some(_)) => {
+            return Err(
+                "--no-system measures the harness alone, so it takes no --image".to_owned(),
+            );
+        }
+        (true, None) => Kind::HarnessAlone,
+        (false, Some(image)) => Kind::Image(PathBuf::from(image)),
+        (false, None) => Kind::Text,
+    };
     Ok(Asked {
-        no_system,
+        kind,
         config: PathBuf::from(config.ok_or("--config is required")?),
         session: session.ok_or("--session is required")?,
         prompt: prompt.ok_or("--prompt is required")?,
         usage: usage.map(PathBuf::from),
-        image: image.map(PathBuf::from),
     })
 }
 
@@ -97,7 +111,7 @@ fn main() -> ExitCode {
     // An image named is held to a JPEG that decodes whole here — every check
     // image is one — so a probe never runs a paid turn on an image the engine
     // would refuse or the model could not read.
-    if let Some(image) = &asked.image
+    if let Kind::Image(image) = &asked.kind
         && let Err(error) = std::fs::read(image)
             .map_err(|error| error.to_string())
             .and_then(|bytes| {
@@ -137,10 +151,12 @@ fn main() -> ExitCode {
             OneharnessSupervisor::open(composed).map_err(|error| error.to_string())
         })
         .and_then(|port| {
-            if asked.no_system {
-                port.probe_without_system(&asked.session, &asked.prompt)
-            } else {
-                port.probe_with_image(&asked.session, &asked.prompt, asked.image.clone())
+            match &asked.kind {
+                Kind::Text => port.probe(&asked.session, &asked.prompt),
+                Kind::Image(image) => {
+                    port.probe_with_image(&asked.session, &asked.prompt, Some(image.clone()))
+                }
+                Kind::HarnessAlone => port.probe_without_system(&asked.session, &asked.prompt),
             }
             .map_err(|error| error.to_string())
         })

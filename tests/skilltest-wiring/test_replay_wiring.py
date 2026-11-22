@@ -2967,6 +2967,33 @@ def test_an_idle_compaction_the_last_check_makes_due_is_waited_out_and_recorded(
     equal(replayed.passed, True, describing=replayed.failures())
 
 
+def test_a_due_compaction_that_never_ends_stops_the_replay_naming_why(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A last check's compaction outlasting its deadline is the replay gone wrong.
+
+    It is refused naming the size the check left and the threshold, rather than read
+    as a print that never compacted.
+    """
+    monkeypatch.setattr(replay_module, "COMPACTION_DEADLINE_S", 1)
+    case = read_case(COMPACTING_CASE)
+    checks = sum(1 for moment in case.moments if not moment.is_outside)
+    large = {
+        "input_tokens": 3,
+        "cache_read_input_tokens": 149_000,
+        "cache_creation_input_tokens": 1_000,
+        "output_tokens": 200,
+    }
+    turns: list[ScriptedRun] = [{"commands": [CONTEXT]}] * (checks - 1)
+    with pytest.raises(ReplayError, match="left 150203 tokens, at or above 150000"):
+        mock_replay(
+            case,
+            scripted_for(case, [*turns, {"commands": [CONTEXT], "calls": [large]}]),
+            scratch,
+            compaction={"before": 150_203, "after": 9_000, "stall_s": 30},
+        )
+
+
 def _call(input_tokens: int, output: int, cached: int = 0) -> CallUsage:
     return {"input_tokens": input_tokens, "output_tokens": output, "cache_read_tokens": cached}
 
