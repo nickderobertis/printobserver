@@ -470,12 +470,13 @@ def test_the_test_job_restores_the_directory_the_warm_job_saves_under_the_printe
     )
     # `just ci-test` runs the tier through `just ci-integration`, beside its
     # end-to-end tier, and that recipe prepares the program before the tier.
-    integrating = list(
+    integrating = " ".join(
         recipes((REPO_ROOT / "justfile").read_text(encoding="utf-8"))["ci-integration"].body
     )
     truth(
-        integrating.index("just release-program") < integrating.index("just test-integration"),
-        describing=f"the preparation and the tier in order: {integrating}",
+        integrating.index("just release-program")
+        < integrating.index("just test-integration --projects="),
+        describing=f"the preparation before the clients' tier: {integrating}",
     )
     truth(
         warm_steps.index(warm_restored)

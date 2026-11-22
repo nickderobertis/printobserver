@@ -195,13 +195,22 @@ ci-measured side keep tier="affected" integration="false":
     if [ {{quote(integration)}} = true ]; then wait "$integrated" || status=$?; fi; \
     exit "$status"
 
-# The printer integration tier as a `test` job runs it, from `ci-measured`: the
-# release program its client worlds carry, prepared once, then the tier. The
-# release build shares cargo's lock with the end-to-end tier's own, so whichever
-# starts it second waits and then finds it built.
+# The printer integration tier as a `test` job runs it, from `ci-measured`:
+# every project's tier but the clients', then the release program the clients'
+# worlds carry, then theirs. The end-to-end tier's install journeys build that
+# same program meanwhile, under the cargo lock the preparation then waits on, so
+# the projects needing none no longer wait the build out: on windows-x86_64 the
+# tier started 12 minutes into the end-to-end tier for it (run 44982385451).
+# Every part runs whichever failed before it, as one Nx run runs every task.
 ci-integration:
-    just release-program
-    just test-integration
+    status=0; \
+    just test-integration --exclude={{CLIENT_WORLDS}} || status=$?; \
+    just release-program && just test-integration --projects={{CLIENT_WORLDS}} || status=$?; \
+    exit "$status"
+
+# The integration projects whose journeys stand a supervisor up over the release
+# program, through `release_artifacts world`: the three clients.
+CLIENT_WORLDS := "printobserver-sdk,printobserver-sdk-python-integration,printobserver-sdk-node-integration"
 
 # What one `warm.yml` leg compiles into the cache its platform's `test` job
 # restores: every project's tests not tagged `platform:independent` and its
@@ -687,9 +696,12 @@ octoprint-retain:
 # rather than something every gate run pays for. A tier that fails keeps the
 # instance's logs before anything can tear it down, so the first failing run is
 # the one that is diagnosed.
-test-integration:
+#
+# Extra arguments go to Nx, so `just ci-integration` can run the projects that
+# need no release program before the ones that do.
+test-integration *nx:
     just node-modules
-    if ! bunx nx run-many -t test-integration --output-style=stream; then just octoprint-retain; exit 1; fi
+    if ! bunx nx run-many -t test-integration {{nx}} --output-style=stream; then just octoprint-retain; exit 1; fi
 
 # Rewrite every generated documentation artifact from what the tree declares.
 #

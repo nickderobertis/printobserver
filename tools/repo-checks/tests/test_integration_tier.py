@@ -394,11 +394,7 @@ def test_a_conditional_tier_step_is_refused(tree: Callable[[], Tree]) -> None:
 def test_a_step_whose_recipe_no_longer_runs_the_tier_is_refused(tree: Callable[[], Tree]) -> None:
     """The `test` jobs run the tier from `just ci-test`; a recipe chain dropping it drops it."""
     broken = tree()
-    broken.edit(
-        "justfile",
-        "    just release-program\n    just test-integration\n",
-        "    just release-program\n",
-    )
+    broken.edit("justfile", "then just ci-integration & integrated", "then true & integrated")
 
     findings = integration_tier(broken.repo)
 

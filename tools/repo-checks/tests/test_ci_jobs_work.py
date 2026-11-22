@@ -370,6 +370,7 @@ def planned(argv: list[str], graph: Mapping[str, set[str]]) -> list[str]:
     words = iter(argv[argv.index(verb) + 1 :])
     targets: list[str] = []
     excluded: set[str] = set()
+    chosen: set[str] | None = None
     for word in words:
         if word in {"-t", "--targets"}:
             for following in words:
@@ -379,11 +380,13 @@ def planned(argv: list[str], graph: Mapping[str, set[str]]) -> list[str]:
                 targets.extend(one for one in following.split(",") if one)
         if word.startswith("--exclude="):
             excluded |= set(word.removeprefix("--exclude=").split(","))
+        if word.startswith("--projects="):
+            chosen = set(word.removeprefix("--projects=").split(","))
     return [
         f"{target}:{project}"
         for target in targets
         for project, declared in sorted(graph.items())
-        if target in declared and project not in excluded
+        if target in declared and project not in excluded and (chosen is None or project in chosen)
     ]
 
 
@@ -794,9 +797,9 @@ def test_the_integration_tier_dropped_from_the_test_half_is_found(
     copy = doubled()
     path = copy.root / "justfile"
     text = path.read_text(encoding="utf-8")
-    tier = "    just release-program\n    just test-integration\n"
-    truth(tier in text, describing="the committed `ci-integration` running the tier")
-    path.write_text(text.replace(tier, "    just release-program\n", 1), encoding="utf-8")
+    tier = "then just ci-integration & integrated"
+    truth(tier in text, describing="the committed `ci-measured` starting the tier")
+    path.write_text(text.replace(tier, "then true & integrated", 1), encoding="utf-8")
     ran = ran_in(copy)
     said = "\n".join(findings(ran.lint, ran.tested, ran.whole, ran.tag))
 
