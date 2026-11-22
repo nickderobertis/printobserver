@@ -305,7 +305,9 @@ pub fn turn_facts(
 /// the turn behind that answer ran — after the event that turn answered, which
 /// its acknowledgement names — and was not that turn's own doing: a person's
 /// resume taken as the agent answered, or the printer's own report. The turn's
-/// own requests, their outcomes and what it recorded of itself are left out. A
+/// own requests, their outcomes and what it recorded of itself are left out, and
+/// so is the acknowledgement written from that answer after the turn ended, with
+/// its outcome: the conversation already holds the answer it was written from. A
 /// print the agent has not answered on keeps every event; one whose answered
 /// event cannot be found keeps every event back to the answer before, its
 /// own aside, because one shown twice costs less than one never shown.
@@ -330,7 +332,21 @@ pub fn unseen_events(events: &[AgentEvent]) -> Vec<AgentEvent> {
         .filter(|event| is_agents_request(event))
         .filter_map(|event| event.payload.get("action_id"))
         .collect();
-    let mut unseen = newer.to_vec();
+    let acknowledged: Vec<&Value> = newer
+        .iter()
+        .filter(|event| agents_acknowledged_event(event).is_some())
+        .filter_map(|event| event.payload.get("action_id"))
+        .collect();
+    let mut unseen: Vec<AgentEvent> = newer
+        .iter()
+        .filter(|event| {
+            !event
+                .payload
+                .get("action_id")
+                .is_some_and(|action| acknowledged.contains(&action))
+        })
+        .cloned()
+        .collect();
     unseen.extend(
         during
             .iter()

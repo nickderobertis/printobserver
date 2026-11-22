@@ -212,7 +212,7 @@ def _filled(word: str, prompt: str) -> str:
         r"You started the print (\S+) and follow it", prompt
     )
     actor = re.search(r"--actor '([^']+)'", prompt)
-    event = re.search(r'"id": "([^"]+)"', prompt)
+    event = re.search(r'"id": ?"([^"]+)"', prompt)
     file = re.search(r"start the print (\S+),", prompt)
     frame = re.search(r"as it is now is (\S+?)\. ", prompt)
     if "{new_print}" in word:

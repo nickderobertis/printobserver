@@ -476,7 +476,9 @@ fn facts_event_ids(turn: &printobserver_supervisor_api::TurnRequest) -> Vec<Stri
 
 /// A turn's facts carry what happened since the agent last answered: before
 /// any answer, the print's whole recent window; after one, every event newer
-/// than it and none from before it, its own event among them.
+/// than it and none from before it, its own event among them — but for the
+/// acknowledgement written from that answer and its outcome, which repeat the
+/// answer the conversation already holds.
 #[test]
 fn a_turns_facts_carry_the_events_since_the_agents_last_answer() {
     let world = World::new();
@@ -510,9 +512,39 @@ fn a_turns_facts_carry_the_events_since_the_agents_last_answer() {
         !after.contains(&first.id.to_string()),
         "an event before the answer: {after:?}"
     );
+    let from_the_answer: Vec<&printobserver_types::serde_json::Value> = held[answered + 1..=asked]
+        .iter()
+        .filter(|record| {
+            record.kind().as_str() == "action_requested"
+                && record.body.payload["action"]["action"] == "acknowledge_failure"
+                && record.body.payload["actor"].get("agent").is_some()
+        })
+        .map(|record| &record.body.payload["action_id"])
+        .collect();
+    assert_eq!(
+        from_the_answer.len(),
+        1,
+        "the first turn was not acknowledged from its answer"
+    );
+    let echoed: Vec<String> = held[answered + 1..=asked]
+        .iter()
+        .filter(|record| from_the_answer.contains(&&record.body.payload["action_id"]))
+        .map(|record| record.id.to_string())
+        .collect();
+    assert!(
+        echoed.len() >= 2,
+        "the acknowledgement and its outcome: {echoed:?}"
+    );
+    for id in &echoed {
+        assert!(
+            !after.contains(id),
+            "the acknowledgement written from the answer is back: {id} in {after:?}"
+        );
+    }
     let newer: Vec<String> = held[answered + 1..=asked]
         .iter()
         .map(|record| record.id.to_string())
+        .filter(|id| !echoed.contains(id))
         .collect();
     for id in &newer {
         assert!(

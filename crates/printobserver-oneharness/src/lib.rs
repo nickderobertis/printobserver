@@ -30,7 +30,9 @@
 //!
 //! The system prompt is the prose of the `PrintObserver` skill — the Agent
 //! Skill's `SKILL.md` with its frontmatter split off by [`skill_prose`] — read
-//! from the configured path when the port is built. The prompt for a turn is the committed template at
+//! from the configured path when the port is built, followed by this crate's
+//! [`TOOL_FRAMING`]; it replaces the harness's own system prompt rather than
+//! being appended to it. The prompt for a turn is the committed template at
 //! [`SupervisorConfig::prompt_template_path`] with its five slots filled — the
 //! triggering event, the situation the turn began in, the print's facts, the
 //! context command, the agent's own actor and the usage of the commands it may
@@ -44,7 +46,9 @@
 //! [`SupervisorConfig::assessment_schema`] names the assessment schema the
 //! contracts generate, and the path is what reaches `OneHarness`: this crate
 //! carries no schema of its own and embeds none, so the constraint the agent
-//! answers under is the one the types declare.
+//! answers under is the one the types declare. `OneHarness` hands it to the
+//! harness natively, beside the check's image, and asks again for an answer
+//! that does not conform; this port asks for no schema in its prompt.
 
 mod config;
 mod ledger;
@@ -85,5 +89,5 @@ pub use sign_in::{HARNESS_DIRECTORY, HarnessSignIn, SIGN_INS};
 pub use skill::{UnclosedFrontmatter, skill_prose};
 pub use turn::{
     ANSWER_CUT, ANSWER_EXCERPT_CHARS, ANSWER_SAID, HARNESS_SESSIONS_DIRECTORY,
-    OneharnessSupervisor, SCHEMA_RETRIES, TURN_TOOL_SET, TurnReport,
+    OneharnessSupervisor, TOOL_FRAMING, TURN_TOOL_SET, TurnReport,
 };

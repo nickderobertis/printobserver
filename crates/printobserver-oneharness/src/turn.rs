@@ -8,9 +8,8 @@ use std::thread::JoinHandle;
 use oneharness_core::domain::harness::HarnessIdentity as EngineIdentity;
 use oneharness_core::domain::lean::ToolClass;
 use oneharness_core::domain::mode::PermissionMode;
-use oneharness_core::domain::report::{OutputFormat, RunReport, RunResult, SessionReport, Status};
+use oneharness_core::domain::report::{RunReport, RunResult, SessionReport, Status};
 use oneharness_core::domain::session::SessionPhase as HarnessPhase;
-use oneharness_core::domain::structured::{self, Schema};
 use oneharness_core::errors::OneharnessError;
 use oneharness_core::io::cancel::CancelToken;
 use oneharness_core::io::compact::{CompactRequest, compact_session};
@@ -52,10 +51,11 @@ pub const TURN_TOOL_SET: [ToolClass; 2] = [ToolClass::Shell, ToolClass::Read];
 /// shell is allowed only for the configured commands.
 const CLAUDE_READ_TOOL: &str = "Read";
 
-/// How many times a turn held to the schema by its prompt is asked again for a
-/// conforming answer: the engine's own default for the loop it runs itself,
-/// which it does not export, held to it by a test driving that loop.
-pub const SCHEMA_RETRIES: usize = 2;
+/// What follows the skill's prose in every run's system text: how the agent
+/// uses its tools, which is all a replaced harness prompt told it that a turn
+/// still needs. It is this crate's own committed asset, so the system text is
+/// two files a person reads.
+pub const TOOL_FRAMING: &str = include_str!("../assets/tool-framing.md");
 
 /// What an answer of `stop` that stopped nothing is refused with: the answer
 /// acts on nothing, and the command that stops a print is named.
@@ -285,11 +285,12 @@ impl OneharnessSupervisor {
         self.probe_with_image(session, prompt, None)
     }
 
-    /// [`probe`](Self::probe) with no system text of this port's: what the
-    /// harness itself sends beside a turn's prompt — its own framing and its
-    /// tool definitions — apart from the skill this port sends. A text probe's
-    /// first call less this one's is what this port's system text adds to every
-    /// call.
+    /// [`probe`](Self::probe) with empty system text, which still replaces the
+    /// harness's own prompt: what the harness itself sends beside a turn's
+    /// prompt, its tool definitions and whatever it frames them with, apart
+    /// from the skill this port sends. A text
+    /// probe's first call less this one's is what the skill and the tool
+    /// framing add to every call.
     ///
     /// # Errors
     ///
@@ -299,7 +300,7 @@ impl OneharnessSupervisor {
         session: &str,
         prompt: &str,
     ) -> Result<RunResult, SupervisorError> {
-        self.probe_run(session, prompt, None, None)
+        self.probe_run(session, prompt, None, String::new())
     }
 
     /// [`probe`](Self::probe), with `image` attached to the prompt as a turn's
@@ -315,7 +316,7 @@ impl OneharnessSupervisor {
         prompt: &str,
         image: Option<PathBuf>,
     ) -> Result<RunResult, SupervisorError> {
-        self.probe_run(session, prompt, image, Some(self.skill.clone()))
+        self.probe_run(session, prompt, image, self.system_text())
     }
 
     /// One probe run, its system text `system`.
@@ -324,21 +325,16 @@ impl OneharnessSupervisor {
         session: &str,
         prompt: &str,
         image: Option<PathBuf>,
-        system: Option<String>,
+        system: String,
     ) -> Result<RunResult, SupervisorError> {
         let name = SessionName::probe(session)?;
-        let by_prompt = self.held_by_prompt()?;
-        let request = self.build_request(
-            &name,
-            &instructed(prompt.to_owned(), by_prompt.as_ref()),
-            image.into_iter().collect(),
-            None,
-            by_prompt.as_ref(),
-        );
+        let request = RunRequest {
+            system: Some(system),
+            ..self.build_request(&name, prompt, image.into_iter().collect(), None)
+        };
         // A probe is no supervision turn, so it carries no compaction setting.
         let request = RunRequest {
             auto_compact_tokens: None,
-            system,
             ..request
         };
         let outcome = self.run(&request).map_err(|error| unavailable(&error))?;
@@ -416,17 +412,17 @@ impl OneharnessSupervisor {
         request: &TurnRequest,
         session: &SessionName,
     ) -> Result<String, SupervisorError> {
-        let event = serde_json::to_string_pretty(&request.event).map_err(|error| {
+        let event = serde_json::to_string(&request.event).map_err(|error| {
             SupervisorError::Unavailable {
                 detail: format!("the triggering event cannot be written down: {error}"),
             }
         })?;
-        let situation = serde_json::to_string_pretty(&request.situation).map_err(|error| {
+        let situation = serde_json::to_string(&request.situation).map_err(|error| {
             SupervisorError::Unavailable {
                 detail: format!("the turn's situation cannot be written down: {error}"),
             }
         })?;
-        let facts = serde_json::to_string_pretty(&request.facts).map_err(|error| {
+        let facts = serde_json::to_string(&request.facts).map_err(|error| {
             SupervisorError::Unavailable {
                 detail: format!("the print's facts cannot be written down: {error}"),
             }
@@ -468,28 +464,10 @@ impl OneharnessSupervisor {
             .is_ok_and(|identity| identity.base() == CLAUDE_CODE)
     }
 
-    /// The schema a turn's answer is held to by its prompt, or `None` when the
-    /// engine holds it natively: the one place that chooses.
-    ///
-    /// `oneharness-core` 0.34.0 refuses `images` beside a schema on Claude
-    /// Code, which takes a schema natively only under `--output-format json`,
-    /// and reads Claude Code's per-call usage only under `--output-format
-    /// stream-json`. So a Claude Code turn runs under stream-json with no
-    /// schema handed to the engine, and is held to it through the engine's own
-    /// structured-output functions ([`Self::held_to_the_schema`]); every other
-    /// harness is held natively by the engine's own loop. This goes once
-    /// `OneHarness` accepts images beside a schema on Claude Code and exports
-    /// its retry count, which is the follow-up drafted for it.
-    fn held_by_prompt(&self) -> Result<Option<Schema>, SupervisorError> {
-        if !self.on_claude_code() {
-            return Ok(None);
-        }
-        let path = self.config.assessment_schema.path();
-        Schema::compile(&read(path)?)
-            .map(Some)
-            .map_err(|error| SupervisorError::Unavailable {
-                detail: format!("{}: {error}", path.display()),
-            })
+    /// The system text every run is sent, replacing the harness's own system
+    /// prompt: the skill's prose, then [`TOOL_FRAMING`].
+    fn system_text(&self) -> String {
+        format!("{}\n\n{TOOL_FRAMING}", self.skill)
     }
 
     /// How the harness is permitted to act during a turn, and the arguments that
@@ -523,7 +501,15 @@ impl OneharnessSupervisor {
     /// prompt.
     ///
     /// Every turn is lean: it loads [`TURN_TOOL_SET`] alone, no skills list and
-    /// no MCP server, because each call re-sends whatever a turn loads.
+    /// no MCP server, because each call re-sends whatever a turn loads. Its
+    /// system text replaces the harness's own system prompt rather than being
+    /// appended to it, for the same reason.
+    ///
+    /// The answer is held to the assessment schema by `OneHarness` itself, on
+    /// every harness: it hands the harness the schema natively, beside the
+    /// image, and asks again in the same session for an answer that does not
+    /// conform. This port asks for no schema in its prompt and re-asks for
+    /// none.
     ///
     /// The run's environment carries the configured assignments and then the
     /// pass this run was issued: the server's address and the credential minted
@@ -537,7 +523,6 @@ impl OneharnessSupervisor {
         prompt: &str,
         images: Vec<PathBuf>,
         pass: Option<&TurnPass>,
-        by_prompt: Option<&Schema>,
     ) -> RunRequest {
         let (mode, passthrough) = self.permissions();
         let mut env: Vec<String> = self
@@ -560,13 +545,11 @@ impl OneharnessSupervisor {
             harness: vec![self.config.harness.to_string()],
             prompt: vec![prompt.to_owned()],
             model: self.config.model.iter().map(ToString::to_string).collect(),
-            system: Some(self.skill.clone()),
+            system: Some(self.system_text()),
+            replace_system: Some(true),
             session: Some(session.to_string()),
             session_dir: Some(self.config.state_dir.join(HARNESS_SESSIONS_DIRECTORY)),
-            schema: by_prompt
-                .is_none()
-                .then(|| self.config.assessment_schema.path().to_path_buf()),
-            output_format: by_prompt.map(|_| OutputFormat::StreamJson),
+            schema: Some(self.config.assessment_schema.path().to_path_buf()),
             timeout: Some(self.config.turn_timeout.seconds()),
             auto_compact_tokens: self.config.auto_compact_tokens,
             cwd: Some(self.config.working_dir.clone()),
@@ -598,10 +581,9 @@ impl OneharnessSupervisor {
         prompt: &str,
         images: &[PathBuf],
         access: &dyn TurnAccess,
-        by_prompt: Option<&Schema>,
     ) -> Result<Result<RunOutcome, OneharnessError>, SupervisorError> {
         let pass = access.issue(&TurnSession::new(session.as_str())?)?;
-        let request = self.build_request(session, prompt, images.to_vec(), Some(&pass), by_prompt);
+        let request = self.build_request(session, prompt, images.to_vec(), Some(&pass));
         Ok(self.run(&request))
     }
 
@@ -634,21 +616,12 @@ impl OneharnessSupervisor {
         let mut ledger = self.ledger(print_id)?;
         let mut session = ledger.session_for_next_turn();
         let images: Vec<PathBuf> = request.image_path.iter().cloned().collect();
-        let by_prompt = self.held_by_prompt()?;
-        // The one prompt a turn opens with in a session, whichever session.
-        let prompt_in = |session: &SessionName| -> Result<String, SupervisorError> {
-            Ok(instructed(
-                self.prompt_for(request, session)?,
-                by_prompt.as_ref(),
-            ))
-        };
 
         let outcome = match self.drive(
             &session,
-            &prompt_in(&session)?,
+            &self.prompt_for(request, &session)?,
             &images,
             access,
-            by_prompt.as_ref(),
         )? {
             Ok(outcome) => outcome,
             // The harness binds a session to the identity that created it and
@@ -668,10 +641,9 @@ impl OneharnessSupervisor {
                 // credential, which is bound to that session.
                 self.drive(
                     &session,
-                    &prompt_in(&session)?,
+                    &self.prompt_for(request, &session)?,
                     &images,
                     access,
-                    by_prompt.as_ref(),
                 )?
                 .map_err(|error| unavailable(&error))?
             }
@@ -679,67 +651,23 @@ impl OneharnessSupervisor {
         };
 
         let mut reported = TurnReport::of(outcome.report, &session, &self.config.harness)?;
-        if let Some(schema) = &by_prompt {
-            self.held_to_the_schema(schema, &mut reported, access);
-            self.held_to_its_stop(request, schema, &mut reported, access);
+        if self.on_claude_code() {
+            self.held_to_its_stop(request, &mut reported, access);
         }
         self.record(&mut ledger, print_id, &reported, started_at)
-    }
-
-    /// Hold a turn's answer to the assessment schema by its prompt, as the
-    /// engine holds one for a harness that takes no schema natively: the answer
-    /// is extracted and validated with the engine's own functions, and a
-    /// non-conforming one is asked for again in the same session with the
-    /// engine's own feedback, and no image, up to [`SCHEMA_RETRIES`] times. The
-    /// turn's result is the last answer's, and its calls every run's, in order;
-    /// a run that could not ask again ends the asking, the turn failed with why.
-    fn held_to_the_schema(
-        &self,
-        schema: &Schema,
-        reported: &mut TurnReport,
-        access: &dyn TurnAccess,
-    ) {
-        let mut calls = Vec::new();
-        for asked in 0..=SCHEMA_RETRIES {
-            calls.extend(reported.result.calls.take().into_iter().flatten());
-            let text = reported.result.text.clone().unwrap_or_default();
-            let checked = structured::check(schema, None, &text, "");
-            let valid = checked.is_valid();
-            reported.result.schema_valid = Some(valid);
-            reported.result.schema_error =
-                (!checked.errors.is_empty()).then(|| checked.errors.join("; "));
-            reported.result.structured = checked.value;
-            if valid || asked == SCHEMA_RETRIES || reported.result.status != Status::Ok {
-                break;
-            }
-            let again = structured::retry_instruction(schema.as_text(), &text, &checked.errors);
-            match self.asked_again(&reported.name, &again, schema, access) {
-                Ok(answered) => reported.result = answered,
-                // A run that could not ask again leaves the turn the answer it
-                // has, failed, with why beside the schema's own errors.
-                Err(why) => {
-                    reported.result.schema_error = Some(format!(
-                        "{}; asking again failed: {why}",
-                        checked.errors.join("; ")
-                    ));
-                    break;
-                }
-            }
-        }
-        reported.result.calls = Some(calls);
     }
 
     /// Hold an answer of `stop` to a stop asked for: an answer records a
     /// judgement and acts on nothing, so `stop` on a print that was printing,
     /// from a turn that asked for no pause or cancel, is refused once in the
     /// same session — naming the command that stops a print — and the answer
-    /// to that refusal, held to the schema as the first was, is the turn's.
+    /// to that refusal, which `OneHarness` holds to the schema as it held the
+    /// first, is the turn's.
     /// Whatever it then answers stands; the supervisor writes down a stop that
     /// still stopped nothing.
     fn held_to_its_stop(
         &self,
         request: &TurnRequest,
-        schema: &Schema,
         reported: &mut TurnReport,
         access: &dyn TurnAccess,
     ) {
@@ -757,11 +685,9 @@ impl OneharnessSupervisor {
             return;
         }
         let earlier = reported.result.calls.take().unwrap_or_default();
-        let refused = instructed(UNACTED_STOP.to_owned(), Some(schema));
-        match self.asked_again(&reported.name, &refused, schema, access) {
+        match self.asked_again(&reported.name, UNACTED_STOP, access) {
             Ok(answered) => {
                 reported.result = answered;
-                self.held_to_the_schema(schema, reported, access);
                 let mut calls = earlier;
                 calls.extend(reported.result.calls.take().into_iter().flatten());
                 reported.result.calls = Some(calls);
@@ -777,11 +703,10 @@ impl OneharnessSupervisor {
         &self,
         session: &SessionName,
         again: &str,
-        schema: &Schema,
         access: &dyn TurnAccess,
     ) -> Result<RunResult, SupervisorError> {
         let outcome = self
-            .drive(session, again, &[], access, Some(schema))?
+            .drive(session, again, &[], access)?
             .map_err(|error| unavailable(&error))?;
         Ok(TurnReport::of(outcome.report, session, &self.config.harness)?.result)
     }
@@ -1091,18 +1016,6 @@ fn read(path: &Path) -> Result<String, SupervisorError> {
     std::fs::read_to_string(path).map_err(|error| SupervisorError::Unavailable {
         detail: format!("{} is unreadable: {error}", path.display()),
     })
-}
-
-/// A turn's first prompt, carrying the engine's own instruction to answer to
-/// the schema when the turn is held to it by its prompt.
-fn instructed(prompt: String, by_prompt: Option<&Schema>) -> String {
-    match by_prompt {
-        Some(schema) => format!(
-            "{prompt}\n\n{}",
-            structured::prompt_instruction(schema.as_text())
-        ),
-        None => prompt,
-    }
 }
 
 /// Why an answer was refused, followed by what the agent actually said.

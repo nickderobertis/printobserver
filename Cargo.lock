@@ -1539,9 +1539,9 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "oneharness"
-version = "0.31.0"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99fdc1606dbc954bb9eb051ba70ee767d1a08ab87b96b74545c0622722f6418b"
+checksum = "d45c58ed9d9bc37b1c42248b524ef82de9bec4acd3a1da3fa843e8faa8fb578d"
 dependencies = [
  "clap",
  "libc",
@@ -1553,9 +1553,9 @@ dependencies = [
 
 [[package]]
 name = "oneharness-core"
-version = "0.34.0"
+version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dbfecb065c6e7aa08bb84113c2fd303d744ee9725651a74a89e3771d8ab420c"
+checksum = "1cfd18e381faafa92e2c7b18ea07305dbeee4ecb07078b915d793d927274be86"
 dependencies = [
  "fs2",
  "jsonschema 0.33.0",

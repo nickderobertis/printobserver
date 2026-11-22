@@ -81,21 +81,23 @@ fn the_answer_is_constrained_by_the_generated_assessment_schema() {
     let generated = generated_assessment_schema();
     let conforming = assessment("the first layer is down", "high");
 
-    // The schema a Claude Code turn is held to rides its prompt, as the
-    // engine's own instruction compiled from the generated assessment schema's
-    // checked-in artifact, and no file this crate carries.
+    // The schema a Claude Code turn is held to is the generated assessment
+    // schema's checked-in artifact, handed to the engine by its path, and no
+    // file this crate carries; the prompt asks for no schema of its own.
     let (accepted, requests) = drive(&schemas, &fixture, &generated, &conforming);
     let request = requests.first().expect("the port built a run request");
     assert_eq!(
-        request.schema, None,
-        "a Claude Code run passed the schema natively"
+        request.schema.as_deref(),
+        Some(generated.as_path()),
+        "a Claude Code run was not handed the generated schema"
     );
     let compiled =
         Schema::compile(&fs::read_to_string(&generated).expect("the generated artifact reads"))
             .expect("the generated artifact compiles");
     assert!(
-        request.prompt[0].ends_with(&structured::prompt_instruction(compiled.as_text())),
-        "the prompt does not carry the generated schema"
+        !request.prompt[0].contains(&structured::prompt_instruction(compiled.as_text()))
+            && !request.prompt[0].contains("JSON Schema"),
+        "the prompt carries a schema instruction"
     );
 
     // The first of three scripted answers: one conforming, and it reads back

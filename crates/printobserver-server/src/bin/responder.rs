@@ -80,12 +80,23 @@ const SEEN_ENV: &str = "PRINTOBSERVER_RESPONDER_SEEN_ENV";
 /// what it records of a run, as it held them when the run's process started.
 const SEEN_STORE: &str = "PRINTOBSERVER_RESPONDER_SEEN_STORE";
 
+/// The published mock harness's own variable naming where it records each
+/// process's arguments, standard input and named files.
+const MOCK_RECORDS: &str = "MOCK_INVOCATION_LOG";
+
 /// The prompt Claude Code is started with to compact a session.
 const COMPACT_PROMPT: &str = "/compact";
 
-/// The flags a Claude Code run is handed its system prompt under: inline, or
-/// as a file when the prompt is large enough to risk the argument ceiling.
-const SYSTEM_FLAGS: (&str, &str) = ("--append-system-prompt", "--append-system-prompt-file");
+/// The flags a Claude Code run is handed its system prompt under, each with
+/// whether it names a file: replacing Claude Code's own prompt or appended to
+/// it, inline or as a file when the prompt is large enough to risk the
+/// argument ceiling.
+const SYSTEM_FLAGS: [(&str, bool); 4] = [
+    ("--system-prompt", false),
+    ("--system-prompt-file", true),
+    ("--append-system-prompt", false),
+    ("--append-system-prompt-file", true),
+];
 
 /// What the context command in a prompt begins with, which is what a turn is
 /// told to run and what this responder finds its print in.
@@ -165,9 +176,11 @@ fn turn_from_the_prompt(stdin: &str) -> Option<Turn> {
         .nth(1)?
         .trim()
         .to_owned();
+    // The event's first field, written compact or pretty.
     let event = prompt
-        .split_once("\"id\": \"")
-        .and_then(|(_, rest)| rest.split_once('"'))
+        .split_once("\"id\":")
+        .and_then(|(_, rest)| rest.trim_start().strip_prefix('"'))
+        .and_then(|rest| rest.split_once('"'))
         .map(|(id, _)| id.to_owned());
     Some(Turn {
         server,
@@ -309,6 +322,12 @@ fn compacting() {
 
 /// Issue every action this turn was scripted with, and write down what happened.
 fn act() {
+    // Asked to record what its process received, the published mock harness
+    // reads standard input itself: this responder then steps aside whole and
+    // is that mock alone.
+    if std::env::var_os(MOCK_RECORDS).is_some() {
+        return;
+    }
     let stdin = standard_input();
     record_what_was_seen(&stdin);
     if std::env::args().any(|argument| argument == COMPACT_PROMPT) {
@@ -388,11 +407,14 @@ fn record_what_was_seen(stdin: &str) {
     };
     // Each failure is written down beside the value it cost, so a journey that
     // finds no value reads why rather than a bare absence.
-    let system = match (after(SYSTEM_FLAGS.0), after(SYSTEM_FLAGS.1)) {
-        (Some(inline), _) => Ok(inline.clone()),
-        (None, Some(path)) => std::fs::read_to_string(path)
+    let handed = SYSTEM_FLAGS
+        .iter()
+        .find_map(|&(flag, file)| after(flag).map(|value| (file, value)));
+    let system = match handed {
+        Some((false, inline)) => Ok(inline.clone()),
+        Some((true, path)) => std::fs::read_to_string(path)
             .map_err(|error| format!("the system prompt file {path} is unreadable: {error}")),
-        (None, None) => Err("the run handed over no system prompt".to_owned()),
+        None => Err("the run handed over no system prompt".to_owned()),
     };
     let here = std::env::current_dir()
         .map(|directory| directory.display().to_string())

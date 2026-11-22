@@ -1,20 +1,15 @@
 //! A turn's model calls are recorded, and a turn attaching its check's image is
-//! held to the assessment schema by its prompt.
+//! held to the assessment schema by `OneHarness`, beside that image.
 //!
-//! Claude Code takes the schema natively only where it takes no image, and
-//! reports its calls only where it takes none natively, so a Claude Code turn
-//! passes no schema to the run: its answer is extracted and validated as the
-//! engine does for a harness without a native schema, and a non-conforming one
-//! is asked for again in the same session, with the engine's own feedback and
-//! no image. What the harness reported of each model call it made is written
-//! down with the turn, every run's in order.
+//! The run hands the engine the schema and the image together, and the engine
+//! asks again, in the same session, for an answer that does not conform. What
+//! the harness reported of each model call it made, every attempt's in order,
+//! is written down with the turn.
 
 use std::fs;
 use std::sync::Arc;
 
-use printobserver_oneharness::{
-    CallUsage, EnvAssignment, SCHEMA_RETRIES, SESSIONS_DIRECTORY, SessionName,
-};
+use printobserver_oneharness::{CallUsage, EnvAssignment, SESSIONS_DIRECTORY, SessionName};
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort as _};
 use printobserver_types::{PrintId, serde_json};
 
@@ -139,7 +134,8 @@ fn an_image_turns_conforming_answer_is_taken_and_its_calls_recorded() {
     let requests = watch.requests();
     assert_eq!(requests.len(), 1, "a conforming answer was asked for again");
     assert_eq!(requests[0].images, [image]);
-    assert_eq!(requests[0].schema, None);
+    assert_eq!(requests[0].schema, Some(generated_assessment_schema()));
+    assert_eq!(requests[0].replace_system, Some(true));
     let turns = supervisor
         .recorded_turns(&print_id)
         .expect("the ledger reads");
@@ -147,9 +143,9 @@ fn an_image_turns_conforming_answer_is_taken_and_its_calls_recorded() {
     assert_eq!(turns[0].calls, calls.map(recorded));
 }
 
-/// An image turn's answer out of the schema is asked for again in the same
-/// session, with the engine's own feedback and no image, under the schema; the
-/// turn answers what that run answered, and records both runs' calls in order.
+/// An image turn's answer out of the schema is asked for again by `OneHarness`
+/// under the turn's one request; the turn answers what the second attempt
+/// answered, and records both attempts' calls in order.
 #[test]
 fn an_image_turn_answering_out_of_the_schema_is_asked_again_in_its_session() {
     let schemas = schema_read_lock();
@@ -193,27 +189,15 @@ fn an_image_turn_answering_out_of_the_schema_is_asked_again_in_its_session() {
     .expect("the second answer conforms");
 
     assert_eq!(outcome.assessment.summary, "the print is fine");
-    let requests = watch.requests();
     assert_eq!(
-        requests.len(),
+        watch.requests().len(),
+        1,
+        "the port asked again itself rather than OneHarness"
+    );
+    assert_eq!(
+        watch.programs().len(),
         2,
         "the answer out of schema was not asked again"
-    );
-    let again = &requests[1];
-    assert_eq!(again.session, requests[0].session);
-    assert!(again.images.is_empty(), "the image was attached again");
-    assert_eq!(
-        again.schema, None,
-        "the second run passed the schema natively"
-    );
-    let prompt = again.prompt.first().expect("a prompt");
-    assert!(
-        prompt.starts_with("Your previous response did not conform to the required JSON Schema."),
-        "{prompt}"
-    );
-    assert!(
-        prompt.contains("disposition"),
-        "the feedback names nothing: {prompt}"
     );
     let turns = supervisor
         .recorded_turns(&print_id)
@@ -226,9 +210,10 @@ fn an_image_turn_answering_out_of_the_schema_is_asked_again_in_its_session() {
     );
 }
 
-/// An image turn whose answer never conforms is asked for again
-/// [`SCHEMA_RETRIES`] times and is then refused as an answer that failed
-/// validation, recorded against the turn with every run's calls.
+/// An image turn whose answer never conforms is asked for again by `OneHarness`
+/// as often as it asks, under the turn's one request, and is then refused as an
+/// answer that failed validation, recorded against the turn with every
+/// attempt's calls.
 #[test]
 fn an_image_turn_never_conforming_fails_as_an_invalid_answer() {
     let schemas = schema_read_lock();
@@ -265,7 +250,7 @@ fn an_image_turn_never_conforming_fails_as_an_invalid_answer() {
         panic!("an answer that never conformed was not refused as one: {refused:?}");
     };
     assert!(detail.contains("disposition"), "{detail}");
-    assert_eq!(watch.requests().len(), 1 + SCHEMA_RETRIES);
+    assert_eq!(watch.requests().len(), 1, "the port asked again itself");
     let turns = supervisor
         .recorded_turns(&print_id)
         .expect("the ledger reads");
@@ -274,7 +259,8 @@ fn an_image_turn_never_conforming_fails_as_an_invalid_answer() {
         turns[0].failure.is_some(),
         "the failed turn was not recorded as one"
     );
-    assert_eq!(turns[0].calls, vec![recorded(call); 1 + SCHEMA_RETRIES]);
+    // The engine's own default: two more attempts after the first.
+    assert_eq!(turns[0].calls, vec![recorded(call); 3]);
 }
 
 /// A ledger written in the earlier shape, its session and turn carrying no
@@ -391,7 +377,7 @@ fn a_probe_runs_the_turn_configuration_alone_and_answers_its_calls() {
     assert!(
         request.prompt[0]
             .starts_with("Answer with the assessment for a print that is printing normally.")
-            && request.prompt[0].contains("JSON Schema"),
+            && !request.prompt[0].contains("JSON Schema"),
         "{:?}",
         request.prompt
     );
@@ -514,13 +500,18 @@ impl printobserver_supervisor_api::TurnAccess for IssuesOnce {
     }
 }
 
-/// A turn whose answer could not be asked for again is still written down: a
-/// failed turn naming why asking again failed, with the calls it made.
+/// A turn answering `stop` on a printing print it asked no pause for is
+/// refused once in its session; when that refusal cannot be run, the turn
+/// keeps the answer it had and is written down with the calls it made.
 #[test]
-fn a_turn_that_cannot_ask_again_is_recorded_failed_with_its_calls() {
+fn a_stop_that_cannot_be_asked_again_keeps_its_answer_and_its_calls() {
     let schemas = schema_read_lock();
     let fixture = Fixture::new("lean-cannot-ask-again");
     let call = (3, 1_000, 2_000, 40);
+    let mut stopping: serde_json::Value =
+        serde_json::from_str(&assessment("the part came loose", "high")).expect("JSON");
+    stopping["disposition"] = "stop".into();
+    let stopping = stopping.to_string();
     let watch = Arc::new(Watch::default());
     let supervisor = port(
         config(
@@ -530,33 +521,30 @@ fn a_turn_that_cannot_ask_again_is_recorded_failed_with_its_calls() {
             &generated_assessment_schema(),
             runs_answering(
                 &fixture.path("attempts"),
-                &[streamed(
-                    "SID-ONCE",
-                    &serde_json::json!({ "summary": "no disposition" }).to_string(),
-                    &[call],
-                )],
+                &[streamed("SID-ONCE", &stopping, &[call])],
             ),
         ),
         &watch,
     );
     let print_id = PrintId::new();
-    let refused = block_on(supervisor.run_turn(
-        turn(
-            print_id,
-            event(print_id, failure_alert(7, None)),
-            Some(frame(&fixture)),
-        ),
-        Arc::new(IssuesOnce::default()),
-    ));
-    let Err(SupervisorError::InvalidAnswer { detail }) = refused else {
-        panic!("a turn that could not ask again was not refused as an answer: {refused:?}");
-    };
-    assert!(detail.contains("asking again failed"), "{detail}");
-    assert!(detail.contains("already returned"), "{detail}");
+    let mut request = turn(
+        print_id,
+        event(print_id, failure_alert(7, None)),
+        Some(frame(&fixture)),
+    );
+    request.situation.printer_state = Some(printobserver_types::PrinterState::Printing);
+    let outcome = block_on(supervisor.run_turn(request, Arc::new(IssuesOnce::default())))
+        .expect("the turn keeps the answer it had");
+    assert_eq!(outcome.assessment.summary, "the part came loose");
+    assert_eq!(
+        watch.requests().len(),
+        1,
+        "a run was built for a refusal no pass was issued for"
+    );
     let turns = supervisor
         .recorded_turns(&print_id)
         .expect("the ledger reads");
     assert_eq!(turns.len(), 1, "the turn was not written down");
-    assert!(turns[0].failure.is_some());
+    assert_eq!(turns[0].failure, None);
     assert_eq!(turns[0].calls, vec![recorded(call)]);
 }

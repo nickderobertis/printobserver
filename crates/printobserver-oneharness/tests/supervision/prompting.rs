@@ -11,7 +11,7 @@ use oneharness_core::domain::structured::{self, Schema};
 
 use printobserver_oneharness::{
     ACTOR_SLOT, AgentCommand, COMMANDS_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT,
-    OneharnessSupervisor, SITUATION_SLOT, SLOTS, UnclosedFrontmatter, skill_prose,
+    OneharnessSupervisor, SITUATION_SLOT, SLOTS, TOOL_FRAMING, UnclosedFrontmatter, skill_prose,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
 use printobserver_types::{PrintId, PrinterState, serde_json};
@@ -114,18 +114,19 @@ fn attached_once(watch: &Watch, image: Option<&std::path::PathBuf>) -> String {
         );
     }
     assert_eq!(
-        built.schema, None,
-        "a Claude Code run passed the schema natively"
+        built.schema,
+        Some(generated_assessment_schema()),
+        "a Claude Code run was not handed the schema"
     );
     let schema = Schema::compile(
         &fs::read_to_string(generated_assessment_schema()).expect("the schema is readable"),
     )
     .expect("the schema compiles");
-    let instruction = format!("\n\n{}", structured::prompt_instruction(schema.as_text()));
+    assert!(
+        !prompt.contains(&structured::prompt_instruction(schema.as_text())),
+        "the prompt carries the engine's schema instruction:\n{prompt}"
+    );
     prompt
-        .strip_suffix(&instruction)
-        .unwrap_or_else(|| panic!("the prompt does not end with the schema instruction:\n{prompt}"))
-        .to_owned()
 }
 
 /// Every prompt is the committed template with only its slots differing, the
@@ -177,12 +178,10 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
             .as_object()
             .cloned();
         }
-        let expected_event =
-            serde_json::to_string_pretty(&request.event).expect("the event is writable");
+        let expected_event = serde_json::to_string(&request.event).expect("the event is writable");
         let expected_situation =
-            serde_json::to_string_pretty(&request.situation).expect("the situation is writable");
-        let expected_facts =
-            serde_json::to_string_pretty(&request.facts).expect("the facts are writable");
+            serde_json::to_string(&request.situation).expect("the situation is writable");
+        let expected_facts = serde_json::to_string(&request.facts).expect("the facts are writable");
         let expected_command = request.context_command.clone();
         // A print's first turn runs in that print's first session.
         let expected_actor = actor_in(&format!("print-{print_id}"));
@@ -407,7 +406,9 @@ fn committed_prose(committed: &str) -> &str {
     &rest[closing + "\n---\n".len()..]
 }
 
-/// The system prompt one port sends, built over the skill at `skill`.
+/// The skill's prose in the system text one port sends, built over the skill at
+/// `skill`: everything before the two line breaks and the tool framing that
+/// close it.
 fn system_prompt_over(
     schemas: &crate::support::SchemaHold<crate::support::Shared>,
     fixture: &Fixture,
@@ -429,13 +430,18 @@ fn system_prompt_over(
         crate::support::access(),
     ))
     .expect("the turn runs");
-    watch
+    let sent = watch
         .requests()
         .last()
         .expect("the port built a run request")
         .system
         .clone()
-        .expect("the request carries a system prompt")
+        .expect("the request carries a system prompt");
+    let skill = sent
+        .strip_suffix(TOOL_FRAMING)
+        .and_then(|rest| rest.strip_suffix("\n\n"))
+        .unwrap_or_else(|| panic!("the system text does not end with the tool framing:\n{sent}"));
+    skill.to_owned()
 }
 
 /// The system prompt is the prose of the skill file at the configured path,
