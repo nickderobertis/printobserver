@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.14.1](https://github.com/nickderobertis/printobserver/compare/v0.13.1...v0.14.1) - 2026-11-22
+
+### Fixed
+
+- *(server)* issue a held pairing turn every time, so the loaded-material test cannot hang ([#356](https://github.com/nickderobertis/printobserver/pull/356))
 
 ## [0.13.1](https://github.com/nickderobertis/printobserver/compare/v0.12.0...v0.13.1) - 2026-11-16
 
