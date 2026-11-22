@@ -87,6 +87,14 @@ name = "printobserver-server-responder"
 path = "src/bin/responder.rs"
 required-features = ["test-responder"]
 
+# `OneHarness`'s published deterministic harness alone, which the journeys
+# that read what a harness process was handed run as that process; see its
+# source.
+[[bin]]
+name = "printobserver-server-mock-harness"
+path = "src/bin/mock_harness.rs"
+required-features = ["test-responder"]
+
 # The `oneharness` command line at this workspace's locked release, which the
 # real-print replay's operator conversation runs; see its source.
 [[bin]]

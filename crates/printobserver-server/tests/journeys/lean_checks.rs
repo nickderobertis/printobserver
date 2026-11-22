@@ -4,8 +4,10 @@
 //! install template: the `OctoPrint` adapter against the scripted `OctoPrint`
 //! serving a real slice, the durable store, a camera serving a 1920x1080 frame
 //! with a mark in each corner, and the real supervisor port and `OneHarness`
-//! engine with only the paid provider process replaced by this crate's
-//! responder over `OneHarness`'s published mock harness. What a check's turn
+//! engine with only the paid provider process replaced: by this crate's
+//! responder over `OneHarness`'s published mock harness where a turn acts, and
+//! by that published mock harness alone where a journey reads what a harness
+//! process received. What a check's turn
 //! was handed is read off both sides of the process boundary: the run request
 //! the port built, and the arguments and standard input the harness process
 //! received — the prompt and the image `OneHarness` attached to it.
@@ -1487,10 +1489,8 @@ fn mocked_agent(
     log: &Path,
 ) -> (OneharnessSupervisor, Arc<Requests>) {
     let mut composed = agent_config(config).expect("the agent is composed");
-    // This crate's responder scripted with none of its own variables is the
-    // published mock harness and nothing else.
     composed.harness_bin = Some(PathBuf::from(env!(
-        "CARGO_BIN_EXE_printobserver-server-responder"
+        "CARGO_BIN_EXE_printobserver-server-mock-harness"
     )));
     let mut scripted = vec![
         format!("MOCK_ATTEMPT_FILE={}", root.join("attempts").display()),
