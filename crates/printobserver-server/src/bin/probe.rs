@@ -1,7 +1,8 @@
 //! One probe of the shipped supervisor configuration, for the real-print suite.
 //!
 //! `printobserver-server-probe --config <path> --session <name> --prompt <text>
-//! [--usage <path>] [--image <path> | --no-system]`
+//! [--usage <path>] [--image <path> | --no-system]`, or
+//! `printobserver-server-probe --config <path> --compact-print <print id>`
 //! loads a server configuration exactly as `printobserver server` does, composes
 //! its supervisor port exactly as the server does, and runs one prompt through
 //! it in a fresh session of its own with no print: the run request a turn is
@@ -16,6 +17,12 @@
 //! result for that run as JSON on standard output, its per-call usage among
 //! it, which is what the suite's base-context figure is read from.
 //!
+//! With `--compact-print`, it compacts that print's conversation once, in the
+//! state the configuration names, as the server's idle compaction does, and
+//! prints the compaction as the ledger records it: what the suite's per-print
+//! projection takes its compaction's input and what it left from, when no case's
+//! conversation reached the threshold.
+//!
 //! Exit 0 with the result printed; 2 for arguments it cannot read; 1 for a
 //! configuration it cannot load or a run the port could not take, the reason
 //! on standard error.
@@ -25,23 +32,36 @@ use std::process::ExitCode;
 
 use printobserver_oneharness::OneharnessSupervisor;
 use printobserver_server::{ServerConfig, agent_config_with};
+use printobserver_types::PrintId;
 
 /// What the probe was asked to run.
 struct Asked {
     /// The server configuration.
     config: PathBuf,
-    /// The probe's session name.
-    session: String,
-    /// The prompt.
-    prompt: String,
     /// The file of the program's usage lines, when one was named.
     usage: Option<PathBuf>,
-    /// Which of the probes this run is.
+    /// What it runs.
     kind: Kind,
 }
 
-/// The probes, each a run of the shipped configuration differing in one thing.
+/// What a probe runs: one prompt in a session of its own, or one compaction of
+/// a print's conversation.
 enum Kind {
+    /// One prompt, in the session named.
+    Run {
+        /// The probe's session name.
+        session: String,
+        /// The prompt.
+        prompt: String,
+        /// Which of the run probes this is.
+        probe: Probe,
+    },
+    /// One compaction of this print's conversation, as its idle compaction runs.
+    Compaction(String),
+}
+
+/// The run probes, each a run of the shipped configuration differing in one thing.
+enum Probe {
     /// The configuration as shipped, with no image.
     Text,
     /// The configuration as shipped, this image attached as a check's is.
@@ -50,12 +70,13 @@ enum Kind {
     HarnessAlone,
 }
 
-/// The five options, each once and none empty, and `--usage` and `--image`
-/// alone optional; and the `--no-system` switch, which takes no value and
-/// excludes `--image`.
+/// `--config`, each option once and none empty, and either a run — `--session`
+/// and `--prompt`, `--usage` and `--image` optional, and the `--no-system`
+/// switch, which excludes `--image` — or `--compact-print`, which takes none of
+/// a run's.
 fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
-    let (mut config, mut session, mut prompt, mut usage, mut image) =
-        (None, None, None, None, None);
+    let (mut config, mut session, mut prompt, mut usage, mut image, mut compact) =
+        (None, None, None, None, None, None);
     let mut no_system = false;
     while let Some(flag) = arguments.next() {
         if flag == "--no-system" {
@@ -71,6 +92,7 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
             "--prompt" => &mut prompt,
             "--usage" => &mut usage,
             "--image" => &mut image,
+            "--compact-print" => &mut compact,
             other => return Err(format!("`{other}` is no option of this probe")),
         };
         let value = arguments
@@ -81,22 +103,40 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
             return Err(format!("{flag} is given twice"));
         }
     }
-    let kind = match (no_system, image) {
+    let config = PathBuf::from(config.ok_or("--config is required")?);
+    let usage = usage.map(PathBuf::from);
+    if let Some(print_id) = compact {
+        if session.is_some() || prompt.is_some() || image.is_some() || no_system {
+            return Err(
+                "--compact-print compacts a print's own conversation, so it takes no \
+                 --session, --prompt, --image or --no-system"
+                    .to_owned(),
+            );
+        }
+        return Ok(Asked {
+            config,
+            usage,
+            kind: Kind::Compaction(print_id),
+        });
+    }
+    let probe = match (no_system, image) {
         (true, Some(_)) => {
             return Err(
                 "--no-system measures the harness alone, so it takes no --image".to_owned(),
             );
         }
-        (true, None) => Kind::HarnessAlone,
-        (false, Some(image)) => Kind::Image(PathBuf::from(image)),
-        (false, None) => Kind::Text,
+        (true, None) => Probe::HarnessAlone,
+        (false, Some(image)) => Probe::Image(PathBuf::from(image)),
+        (false, None) => Probe::Text,
     };
     Ok(Asked {
-        kind,
-        config: PathBuf::from(config.ok_or("--config is required")?),
-        session: session.ok_or("--session is required")?,
-        prompt: prompt.ok_or("--prompt is required")?,
-        usage: usage.map(PathBuf::from),
+        config,
+        usage,
+        kind: Kind::Run {
+            session: session.ok_or("--session is required")?,
+            prompt: prompt.ok_or("--prompt is required")?,
+            probe,
+        },
     })
 }
 
@@ -111,7 +151,10 @@ fn main() -> ExitCode {
     // An image named is held to a JPEG that decodes whole here — every check
     // image is one — so a probe never runs a paid turn on an image the engine
     // would refuse or the model could not read.
-    if let Kind::Image(image) = &asked.kind
+    if let Kind::Run {
+        probe: Probe::Image(image),
+        ..
+    } = &asked.kind
         && let Err(error) = std::fs::read(image)
             .map_err(|error| error.to_string())
             .and_then(|bytes| {
@@ -150,17 +193,29 @@ fn main() -> ExitCode {
         .and_then(|composed| {
             OneharnessSupervisor::open(composed).map_err(|error| error.to_string())
         })
-        .and_then(|port| {
-            match &asked.kind {
-                Kind::Text => port.probe(&asked.session, &asked.prompt),
-                Kind::Image(image) => {
-                    port.probe_with_image(&asked.session, &asked.prompt, Some(image.clone()))
-                }
-                Kind::HarnessAlone => port.probe_without_system(&asked.session, &asked.prompt),
+        .and_then(|port| match &asked.kind {
+            Kind::Run {
+                session,
+                prompt,
+                probe,
+            } => match probe {
+                Probe::Text => port.probe(session, prompt),
+                Probe::Image(image) => port.probe_with_image(session, prompt, Some(image.clone())),
+                Probe::HarnessAlone => port.probe_without_system(session, prompt),
             }
             .map_err(|error| error.to_string())
-        })
-        .and_then(|result| serde_json::to_string(&result).map_err(|error| error.to_string()));
+            .and_then(|result| serde_json::to_string(&result).map_err(|error| error.to_string())),
+            Kind::Compaction(print_id) => print_id
+                .parse::<PrintId>()
+                .map_err(|error| format!("--compact-print {print_id} is no print: {error}"))
+                .and_then(|print_id| {
+                    port.compact_once(&print_id)
+                        .map_err(|error| error.to_string())
+                })
+                .and_then(|compaction| {
+                    serde_json::to_string(&compaction).map_err(|error| error.to_string())
+                }),
+        });
     match probed {
         Ok(answered) => {
             println!("{answered}");

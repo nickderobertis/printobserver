@@ -260,6 +260,7 @@ def mock_replay(
     real_waits: bool = False,
     compaction: mock_turn.Compaction | None = None,
     picture: Callable[[str], bytes] = stamped,
+    compaction_probe: bool = False,
 ) -> Scripted:
     """Run one case's whole replay, its turns scripted, and read back what happened.
 
@@ -286,6 +287,7 @@ def mock_replay(
         gcode=gcode,
         real_waits=real_waits,
         outside=lambda replaying: Outside(replaying, target),
+        compaction_probe=compaction_probe,
     )
     try:
         replayed = replay.run()
@@ -2992,6 +2994,55 @@ def test_a_due_compaction_that_never_ends_stops_the_replay_naming_why(
             scratch,
             compaction={"before": 150_203, "after": 9_000, "stall_s": 30},
         )
+
+
+def test_a_print_that_never_reached_the_threshold_has_one_compaction_probed(
+    scratch: Path, tmp_path: Path
+) -> None:
+    """Asked to probe one, the replay has the port compact the conversation once at its end.
+
+    No check reaches the idle threshold, so no idle compaction runs; the probe runs the
+    port's own idle compaction on the last check's session, and the record projects a
+    print from what it read and left, saying a probe measured it and counting it as no
+    idle compaction. The last check pauses, so the run has an acting check to project.
+    """
+    case = read_case(COMPACTING_CASE)
+    checks = sum(1 for moment in case.moments if not moment.is_outside)
+    turns: list[ScriptedRun] = [{"commands": [CONTEXT]}] * (checks - 1)
+    done = mock_replay(
+        case,
+        scripted_for(case, [*turns, {"commands": [PAUSE], "disposition": "stop"}]),
+        scratch,
+        compaction={"before": 12_345, "after": 4_321, "stall_s": 0},
+        compaction_probe=True,
+    )
+    replayed = done.replayed
+    equal(replayed.ledger["compactions"], [], describing="the idle compactions")
+    probed = replayed.compaction_probe
+    truth(probed is not None, describing="the replay probed a compaction")
+    if probed is None:
+        return
+    equal(probed["ended"], "completed")
+    equal(probed.get("reported_after"), 4_321)
+    equal(probed["session_name"], replayed.ledger["turns"][-1]["session_name"])
+
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+    (run_directory / f"{case.name}.json").write_text(
+        json.dumps(replayed.as_record()), encoding="utf-8"
+    )
+    base = {"input_tokens": 1_000, "output_tokens": 1}
+    (run_directory / "probe.json").write_text(
+        json.dumps({"prompt": "p", "skill_bytes": 1, "calls": [base]}), encoding="utf-8"
+    )
+    # As `results/latest.json` holds it.
+    detail = json.loads(json.dumps(record.folded(run_directory, "a-commit")))["detail"]
+    equal(detail["idle_compactions"], 0)
+    projection = detail["figures"]["tokens_per_print"]
+    equal(projection["compaction_measured_by"], "probe")
+    equal(projection["compaction_probe"], [probed])
+    equal(projection["rates"]["after_compaction"], 4_321)
+    equal(projection["rates"]["compaction_input"], record.call_input(probed["usage"]))
 
 
 def _call(input_tokens: int, output: int, cached: int = 0) -> CallUsage:

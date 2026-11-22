@@ -228,6 +228,53 @@ impl OneharnessSupervisor {
         Ok(self.ledger(print_id)?.compactions().to_vec())
     }
 
+    /// Compact a print's conversation once, now, as its idle compaction does
+    /// once a turn leaves it at the threshold, whatever its size: the session
+    /// its last turn ran in, measured as that turn left it. Answers the
+    /// compaction as the ledger holds it.
+    ///
+    /// A measurement, for a host whose conversations end below the threshold:
+    /// what one compaction reads and leaves is otherwise never observed there.
+    /// It runs the idle compaction's own code, so what it measures is that.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SupervisorError::Unavailable`] when the ledger cannot be read,
+    /// records no turn with calls to compact after, or records no compaction
+    /// once it has run.
+    pub fn compact_once(&self, print_id: &PrintId) -> Result<RecordedCompaction, SupervisorError> {
+        let ledger = self.ledger(print_id)?;
+        let (session, size) = ledger
+            .turns()
+            .iter()
+            .rev()
+            .find_map(|turn| {
+                let size = turn.calls.last().and_then(CallUsage::conversation_tokens)?;
+                Some((turn.session_name.clone(), size))
+            })
+            .ok_or_else(|| SupervisorError::Unavailable {
+                detail: format!("print {print_id} records no turn with calls to compact after"),
+            })?;
+        let before = ledger.compactions().len();
+        IdleCompaction {
+            config: self.config.clone(),
+            seam: self.seam.clone(),
+            print_id: *print_id,
+            session,
+            size,
+            cancel: CancelToken::new(),
+            ending: Arc::new(Ending::default()),
+        }
+        .run();
+        self.ledger(print_id)?
+            .compactions()
+            .get(before)
+            .cloned()
+            .ok_or_else(|| SupervisorError::Unavailable {
+                detail: format!("the compaction of print {print_id} was not written down"),
+            })
+    }
+
     /// Wait, while an idle compaction of one print's session runs, until it
     /// ends, and at most its own timeout and [`ENDING_MARGIN`]; answer at once
     /// when none runs. The wait is written down with the compaction's end.

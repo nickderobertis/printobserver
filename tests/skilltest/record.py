@@ -52,6 +52,7 @@ from replay import (
     ProbeRecord,
     TestRecord,
     is_assessment,
+    is_compaction,
 )
 from repo_checks.shell import run
 from turns_per_run import CASES, UnreadableCaseError, replays
@@ -211,6 +212,7 @@ def _test_record(path: Path) -> TestRecord:
         or not all(_decision_point_is_readable(point) for point in document["decision_points"])
         or document["turns"] != len(document["decision_points"])
         or document["passed"] != all(point["passed"] for point in document["decision_points"])
+        or ("compaction_probe" in document and not is_compaction(document["compaction_probe"]))
     ):
         msg = f"{path} is no test's record"
         raise UnreadableRunError(msg)
@@ -516,7 +518,11 @@ def _rates(
     compactions: list[LedgerCompaction],
     threshold: int | None,
 ) -> Rates | None:
-    """The projection's rates, when the run measured every one of them."""
+    """The projection's rates, when the run measured every one of them.
+
+    What a compaction reads and leaves comes from `compactions`: the idle ones the
+    run observed, or, when none completed, the one it probed.
+    """
     quiet = [check["input"] for check in checks if check["check_class"] == "quiet"]
     quiet = [figure for figure in quiet if figure is not None]
     acting = [check["calls"] for check in checks if check["check_class"] == "acting"]
@@ -545,11 +551,18 @@ def compaction_figures(
     compactions: list[LedgerCompaction],
     threshold: int | None,
     harness: int | None = None,
+    probed: list[LedgerCompaction] | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """The token projections and the delayed-check count, and what each was worked out from."""
+    """The token projections and the delayed-check count, and what each was worked out from.
+
+    The projection's compaction is an idle one the run observed; with none completed,
+    the one compaction probe the run made, which its detail says.
+    """
     figures: dict[str, float] = {}
     detail: dict[str, Any] = {}
-    rates = _rates(checks, base, compactions, threshold)
+    observed = any(compaction["ended"] == "completed" for compaction in compactions)
+    measured = compactions if observed or not probed else probed
+    rates = _rates(checks, base, measured, threshold)
     if rates is not None:
         typical, typical_compactions = projected(TYPICAL_PRINT, rates)
         long, long_compactions = projected(LONG_PLATE, rates)
@@ -562,6 +575,8 @@ def compaction_figures(
             "split": projection_parts(TYPICAL_PRINT, rates, harness),
             "projected_compactions": typical_compactions,
             "compactions_observed": compactions,
+            "compaction_measured_by": "an idle compaction" if measured is compactions else "probe",
+            **({"compaction_probe": probed} if probed else {}),
             "long_plate": {"workload": LONG_PLATE, "tokens": long},
             "checks": [
                 {
@@ -951,6 +966,7 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
         compactions,
         configured["idle_compact_tokens"] if configured is not None else None,
         call_input(bare_probe["calls"][0]) if bare_probe is not None else None,
+        [test["compaction_probe"] for test in tests if "compaction_probe" in test],
     )
     return {
         "figures": {"turns": len(points), **figures, **compacted},

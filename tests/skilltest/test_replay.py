@@ -37,6 +37,18 @@ from starts import StartsReplay
 RUN_DIR = os.environ.get("SKILLTEST_RUN_DIR", "").strip()
 
 
+def the_longest_print() -> str:
+    """The replayed print with the most supervision checks: the longest conversation.
+
+    Its replay has the port compact that conversation once after its last check when
+    no idle compaction completed, so every run measures what one reads and leaves.
+    """
+    return max(
+        (name for name in replayed_case_names() if not is_start_case(name)),
+        key=lambda name: sum(1 for moment in read_case(name).moments if not moment.is_outside),
+    )
+
+
 @pytest.mark.parametrize("name", replayed_case_names())
 def test_the_agent_supervises_the_print(name: str) -> None:
     """Every decision point meets an accepted outcome and no step it must never take."""
@@ -54,6 +66,7 @@ def test_the_agent_supervises_the_print(name: str) -> None:
         [program],
         gcode=refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name),
         outside=lambda replaying: Outside(replaying, [program]),
+        compaction_probe=name == the_longest_print(),
     )
     try:
         replayed = replay.run()

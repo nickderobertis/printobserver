@@ -1256,6 +1256,17 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
             ],
             "takes no --image",
         ),
+        (
+            vec![
+                "--config",
+                missing,
+                "--compact-print",
+                "p",
+                "--session",
+                "s",
+            ],
+            "takes no --session, --prompt, --image or --no-system",
+        ),
     ] {
         let done = probe(&arguments);
         assert_eq!(done.status.code(), Some(2), "{arguments:?}");
@@ -1263,10 +1274,15 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
         let stderr = String::from_utf8_lossy(&done.stderr);
         assert!(stderr.contains(said), "{arguments:?}: {stderr}");
     }
-    let done = probe(&["--config", missing, "--session", "s", "--prompt", "p"]);
-    assert_eq!(done.status.code(), Some(1));
-    assert!(done.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&done.stderr).contains("absent.toml"));
+    for arguments in [
+        vec!["--config", missing, "--session", "s", "--prompt", "p"],
+        vec!["--config", missing, "--compact-print", "p"],
+    ] {
+        let done = probe(&arguments);
+        assert_eq!(done.status.code(), Some(1), "{arguments:?}");
+        assert!(done.stdout.is_empty(), "{arguments:?}");
+        assert!(String::from_utf8_lossy(&done.stderr).contains("absent.toml"));
+    }
 
     // A usage file it cannot read stops it before it reads any configuration.
     let unread = root.path().join("no-usage.txt");
