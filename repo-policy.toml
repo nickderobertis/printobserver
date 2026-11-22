@@ -906,7 +906,7 @@ waived_report = "GITHUB_STEP_SUMMARY"
 platform = "macos-aarch64"
 jobs = ["test"]
 carrier = "ci.yml:test-macos"
-runs = ["just bootstrap", "just ci-test", "just octoprint-up", "just test-integration", "just octoprint-down"]
+runs = ["just bootstrap", "just octoprint-up", "just ci-test", "just octoprint-down"]
 reason = "the account's few macOS slots are shared with other repositories, so a pull request's macOS `test` cell runs as a job of its own, whose condition leaves it off release automation's version/changelog pull request without taking a runner, and reports `test (macos-aarch64)` itself"
 
 [[workflows.carried]]

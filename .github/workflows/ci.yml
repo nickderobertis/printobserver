@@ -240,6 +240,19 @@ jobs:
           no-cache: true
       - run: just runner-temp
       - run: just bootstrap
+      # The release program every client's world carries, restored from the
+      # cache `warm.yml` keeps for this platform under the source, toolchain
+      # and profile it is built from; a restored program whose key no longer
+      # holds is built over rather than used, by `just ci-integration`.
+      - id: release-program
+        run: just release-program-key >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        with:
+          path: .release-program
+          key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
+      # The printer the integration tier drives, up before `just ci-test`,
+      # which runs that tier beside its end-to-end tier.
+      - run: just octoprint-up
       - run: just ci-test
       # This platform's half of the Python coverage data, for `budgets`.
       - uses: actions/upload-artifact@v4
@@ -251,19 +264,6 @@ jobs:
       # Only the release pull request pays for the two-build maintenance
       # workload, and only on `linux-x86_64`: everywhere else it does nothing.
       - run: just budgets-release-pr
-      # The release program every client's world carries, restored from the
-      # cache `warm.yml` keeps for this platform under the source, toolchain
-      # and profile it is built from; a restored program whose key no longer
-      # holds is built over rather than used.
-      - id: release-program
-        run: just release-program-key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@v4
-        with:
-          path: .release-program
-          key: release-program-${{ matrix.platform.id }}-${{ steps.release-program.outputs.key }}
-      - run: just release-program
-      - run: just octoprint-up
-      - run: just test-integration
       # Both teardowns run after failure: stop the printer environment, then
       # restore usable temp for post-job actions before removing owned scratch.
       - if: always()
@@ -327,6 +327,13 @@ jobs:
           no-cache: true
       - run: just runner-temp
       - run: just bootstrap
+      - id: release-program
+        run: just release-program-key >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        with:
+          path: .release-program
+          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
+      - run: just octoprint-up
       - run: just ci-test
       - uses: actions/upload-artifact@v4
         with:
@@ -334,15 +341,6 @@ jobs:
           path: coverage-data/macos-aarch64*
           if-no-files-found: error
           retention-days: 1
-      - id: release-program
-        run: just release-program-key >> "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@v4
-        with:
-          path: .release-program
-          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}
-      - run: just release-program
-      - run: just octoprint-up
-      - run: just test-integration
       - if: always()
         run: just octoprint-down
       - if: failure()

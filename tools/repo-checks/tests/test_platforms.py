@@ -348,23 +348,18 @@ def test_a_carried_cell_whose_carrier_runs_on_another_runner_is_refused(
 def test_a_carrier_that_stopped_running_what_it_carries_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """The macOS `test` job owes the integration tier its cell ran."""
+    """The macOS `test` job owes the gate and the integration tier its cell ran."""
     broken = tree()
     # The macOS job's release program, then its bring-up.
     carried = (
         "          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}\n"
-        "      - run: just release-program\n"
         "      - run: just octoprint-up\n"
     )
-    broken.edit(
-        ".github/workflows/ci.yml",
-        carried + "      - run: just test-integration\n",
-        carried + "      - run: just octoprint-down\n",
-    )
+    broken.edit(".github/workflows/ci.yml", carried + "      - run: just ci-test\n", carried)
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "carrier `ci.yml:test-macos`", "does not run `just test-integration`")
+    refused_naming(findings, "carrier `ci.yml:test-macos`", "does not run `just ci-test`")
 
 
 def test_a_carried_record_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:

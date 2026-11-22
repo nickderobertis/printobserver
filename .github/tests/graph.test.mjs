@@ -445,7 +445,8 @@ describe("a failed integration tier", () => {
   )[1];
 
   /**
-   * The steps a job runs, in order, when `just test-integration` ends as `tier`
+   * The steps a job runs, in order, when `just ci-test` — which runs the tier
+   * beside its end-to-end tier — ends as `tier`
    * and every other step that runs succeeds — each step's `if` evaluated by the
    * forge's own rule over the results of the steps before it, under the contexts
    * a pull request gives it and no `steps` outputs at all.
@@ -466,7 +467,7 @@ describe("a failed integration tier", () => {
         continue;
       }
       ran.push(step);
-      results.push(step.run === "just test-integration" ? tier : "success");
+      results.push(step.run === "just ci-test" ? tier : "success");
     }
     return ran;
   }
@@ -896,13 +897,7 @@ describe("the test jobs' own steps, walked as the forge runs them", () => {
   }
 
   for (const key of ["test", "test-macos"]) {
-    for (const failing of [
-      [],
-      ["just bootstrap"],
-      ["just ci-test"],
-      ["just octoprint-up"],
-      ["just test-integration"],
-    ]) {
+    for (const failing of [[], ["just bootstrap"], ["just ci-test"], ["just octoprint-up"]]) {
       test(`${key} with ${failing.join(", ") || "nothing"} failing ${failing.length ? "fails" : "passes"}, and cleans up`, () => {
         const walked = walk(key, failing);
         assert.equal(walked.result, failing.length ? "failure" : "success");

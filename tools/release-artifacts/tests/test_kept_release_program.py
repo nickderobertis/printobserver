@@ -21,7 +21,7 @@ from release_artifacts.reused import DIGEST_FILE, DIRECTORY, IGNORE_FILE, KEY_FI
 from repo_checks import platforms
 from repo_checks.expect import contains, equal, truth
 from repo_checks.model import Repo
-from repo_checks.parsing import jobs_of, load_workflow, steps_of
+from repo_checks.parsing import jobs_of, load_workflow, recipes, steps_of
 from repo_checks.shell import run
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -465,9 +465,17 @@ def test_the_test_job_restores_the_directory_the_warm_job_saves_under_the_printe
     truth(
         runs.index('just release-program-key >> "$GITHUB_OUTPUT"')
         < steps.index(restored)
-        < runs.index("just release-program")
-        < runs.index("just test-integration"),
-        describing=f"the key, the restore, the preparation and the tier in order: {runs}",
+        < runs.index("just ci-test"),
+        describing=f"the key, the restore and the step running the tier in order: {runs}",
+    )
+    # `just ci-test` runs the tier through `just ci-integration`, beside its
+    # end-to-end tier, and that recipe prepares the program before the tier.
+    integrating = list(
+        recipes((REPO_ROOT / "justfile").read_text(encoding="utf-8"))["ci-integration"].body
+    )
+    truth(
+        integrating.index("just release-program") < integrating.index("just test-integration"),
+        describing=f"the preparation and the tier in order: {integrating}",
     )
     truth(
         warm_steps.index(warm_restored)

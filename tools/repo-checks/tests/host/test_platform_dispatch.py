@@ -361,8 +361,8 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
     broken = tree()
     broken.edit(
         CI,
-        "      - run: just test-integration\n",
-        "      - if: github.event_name == 'push'\n        run: just test-integration\n",
+        "      - run: just ci-test\n",
+        "      - if: github.event_name == 'push'\n        run: just ci-test\n",
     )
 
     refused_naming(
@@ -712,12 +712,10 @@ def test_the_test_job_runs_exactly_its_own_commands(
         [
             "just runner-temp",
             "just bootstrap",
+            "just release-program-key",
+            "just octoprint-up",
             "just ci-test",
             "just budgets-release-pr",
-            "just release-program-key",
-            "just release-program",
-            "just octoprint-up",
-            "just test-integration",
             "just octoprint-down",
             "just runner-temp cleanup",
         ],
@@ -728,10 +726,13 @@ def test_the_test_job_runs_exactly_its_own_commands(
 def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
     tree: Callable[[], Tree], tmp_path: Path
 ) -> None:
-    """The integration tier's `always()` bring-down runs after a failing tier, and the job fails."""
+    """The integration tier's `always()` bring-down runs after the step running it fails.
+
+    That step is `just ci-test`, which runs the tier beside its end-to-end tier.
+    """
     copy = tree()
     recording = Recording(tmp_path)
-    recording.program(JUST, failing_on="test-integration", exit_code=9)
+    recording.program(JUST, failing_on="ci-test", exit_code=9)
     # The runner hands every step a file to append its outputs to.
     outputs = tmp_path / "github-output"
     outputs.touch()
@@ -744,18 +745,15 @@ def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
         [
             "just runner-temp",
             "just bootstrap",
-            "just ci-test",
-            "just budgets-release-pr",
             "just release-program-key",
-            "just release-program",
             "just octoprint-up",
-            "just test-integration",
+            "just ci-test",
             "just octoprint-down",
             "just runner-temp cleanup",
         ],
         describing="what ran",
     )
-    contains(said, "`just test-integration` failed with 9", describing=said)
+    contains(said, "`just ci-test` failed with 9", describing=said)
 
 
 def test_a_failure_stops_the_steps_after_it_that_are_not_always(
@@ -777,10 +775,7 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
         [
             "just runner-temp",
             "just bootstrap",
-            "just ci-test",
-            "just budgets-release-pr",
             "just release-program-key",
-            "just release-program",
             "just octoprint-up",
             "just octoprint-down",
             "just runner-temp cleanup",
@@ -1074,12 +1069,10 @@ def test_what_a_step_exports_reaches_every_later_step_with_the_platform_resolved
         [
             "just runner-temp platform=linux-aarch64 scratch=unset owner=unset",
             f"just bootstrap {exported}",
+            f"just release-program-key {exported}",
+            f"just octoprint-up {exported}",
             f"just ci-test {exported}",
             f"just budgets-release-pr {exported}",
-            f"just release-program-key {exported}",
-            f"just release-program {exported}",
-            f"just octoprint-up {exported}",
-            f"just test-integration {exported}",
             f"just octoprint-down {exported}",
             f"just runner-temp cleanup {exported}",
         ],

@@ -410,15 +410,18 @@ that failed are the script's own rules, in `tools/octoprint-env/AGENTS.md`.
 
 `just octoprint-up` and `just octoprint-down` bracket `just test-integration`,
 which is deliberately **not** one of `just check`'s tiers: it installs
-OctoPrint, starts it and waits a print out, so it is steps of continuous
-integration's `test` jobs after their half of the gate. The gate also drives
+OctoPrint, starts it and waits a print out, so in continuous integration's
+`test` jobs the bring-up is a step before `just ci-test`, which runs the tier
+beside its end-to-end tier because the tier mostly waits on the printer's own
+time, and the bring-down is a step after it. The gate also drives
 these recipes to prove process cleanup. The `test` job runs it on every pull
 request, on every platform the supported-platform list above names except those
 excluded below; a push to `main` is the merge of a pull request whose own run
 ran it on the merge of its head into `main`. `repo-policy.toml`'s
 `[integration]` names the three recipes, and `just check-repo` refuses a job
 that runs a recipe the set does not declare, omits the bring-up or bring-down
-recipe, omits a platform with no exclusion recorded, or is narrowed below every
+recipe, runs the tier — as a step, or from the recipe a step runs — anywhere but
+between them, omits a platform with no exclusion recorded, or is narrowed below every
 pull request — a condition other than the pull-request event, or a
 pull-request trigger that leaves out one of GitHub's three default activity
 types. It does
@@ -1554,10 +1557,11 @@ the gate gates. Structural wiring has one deterministic proof instead:
 `check` to invoke every tier in `repo-policy.toml` and refuses empty tiers.
 
 <!-- llmlint: ignore[instruction_layer_localized] This is a repository-wide gate and merge-protection statement spanning the e2e project and CI workflows; neither project subtree alone owns which required job runs the OctoPrint tier. -->
-**The OctoPrint tier runs in the required `test` jobs, after their half of the
-gate.** Every `test (<platform>)` context is a required check, and each runs
-`just octoprint-up`, `just test-integration` and `just octoprint-down` on every
-pull request. The gate's `test_octoprint_tier.py` keeps only what those steps do
+**The OctoPrint tier runs in the required `test` jobs, beside their end-to-end
+tier.** Every `test (<platform>)` context is a required check, and each runs
+`just octoprint-up`, then `just ci-test`, whose `just ci-integration` runs `just
+test-integration`, then `just octoprint-down`, on every pull request. The gate's
+`test_octoprint_tier.py` keeps only what those steps do
 not assert: from a clean copy of the tree, the process the bring-up started is
 running, and the bring-down leaves it gone. It runs no second copy of the tier.
 

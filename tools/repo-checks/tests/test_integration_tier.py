@@ -88,11 +88,11 @@ def test_a_step_naming_a_recipe_the_set_does_not_declare_is_refused(
 ) -> None:
     """The job's steps are this repository's recipes, not commands of their own."""
     broken = tree()
-    broken.edit(CI, "      - run: just test-integration\n", "      - run: just test-integrations\n")
+    broken.edit(CI, "      - run: just ci-test\n", "      - run: just ci-tests\n")
 
     findings = integration_tier(broken.repo)
 
-    refused(findings, "`just test-integrations`, which the recipe set does not declare")
+    refused(findings, "`just ci-tests`, which the recipe set does not declare")
 
 
 def test_a_step_running_something_that_is_not_a_recipe_is_refused(
@@ -102,7 +102,7 @@ def test_a_step_running_something_that_is_not_a_recipe_is_refused(
     broken = tree()
     broken.edit(
         CI,
-        "      - run: just test-integration\n",
+        "      - run: just ci-test\n",
         "      - run: uv run -q pytest tools/octoprint-env/tests\n",
     )
 
@@ -382,13 +382,41 @@ def test_a_conditional_tier_step_is_refused(tree: Callable[[], Tree]) -> None:
     broken = tree()
     broken.edit(
         CI,
-        "      - run: just test-integration\n",
-        "      - if: github.event_name == 'push'\n        run: just test-integration\n",
+        "      - run: just ci-test\n",
+        "      - if: github.event_name == 'push'\n        run: just ci-test\n",
     )
 
     findings = integration_tier(broken.repo)
 
-    refused(findings, "just test-integration` under the condition")
+    refused(findings, "just ci-test` under the condition")
+
+
+def test_a_step_whose_recipe_no_longer_runs_the_tier_is_refused(tree: Callable[[], Tree]) -> None:
+    """The `test` jobs run the tier from `just ci-test`; a recipe chain dropping it drops it."""
+    broken = tree()
+    broken.edit(
+        "justfile",
+        "    just release-program\n    just test-integration\n",
+        "    just release-program\n",
+    )
+
+    findings = integration_tier(broken.repo)
+
+    refused(findings, "does not run `just test-integration`")
+
+
+def test_a_bring_up_after_the_step_running_the_tier_is_refused(tree: Callable[[], Tree]) -> None:
+    """The printer is up before the step that runs the tier beside the end-to-end tier."""
+    broken = tree()
+    broken.edit(
+        CI,
+        "      - run: just octoprint-up\n      - run: just ci-test\n",
+        "      - run: just ci-test\n      - run: just octoprint-up\n",
+    )
+
+    findings = integration_tier(broken.repo)
+
+    refused(findings, "out of order: the tier runs between the bring-up and the bring-down")
 
 
 def test_job_scratch_cleanup_may_run_after_a_failed_tier(tree: Callable[[], Tree]) -> None:
@@ -414,8 +442,9 @@ def test_an_upload_skipped_on_some_changes_is_refused(tree: Callable[[], Tree]) 
     refused(integration_tier(broken.repo), "actions/upload-artifact@v4` under the condition")
 
 
-#: The integration job's step building the release program, as committed.
-RELEASE_PROGRAM = "      - run: just release-program\n"
+#: The integration job's bring-up step, which follows its restore of the release
+#: program its `just ci-test` step builds over where the key no longer holds.
+BRING_UP_STEP = "      - run: just octoprint-up\n"
 #: Its restore of that program, as committed.
 RELEASE_PROGRAM_RESTORE = (
     "      - uses: actions/cache/restore@v4\n        with:\n          path: .release-program\n"
@@ -430,8 +459,8 @@ def test_a_cache_save_taken_only_on_main_is_accepted(tree: Callable[[], Tree]) -
     allowed = tree()
     _integration_matrix_entry(
         allowed,
-        RELEASE_PROGRAM,
-        RELEASE_PROGRAM + "      - if: github.ref == 'refs/heads/main'\n"
+        BRING_UP_STEP,
+        BRING_UP_STEP + "      - if: github.ref == 'refs/heads/main'\n"
         "        uses: actions/cache/save@v4\n"
         "        with:\n"
         "          path: .release-program\n"

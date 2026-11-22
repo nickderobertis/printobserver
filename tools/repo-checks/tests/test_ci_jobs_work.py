@@ -770,12 +770,6 @@ def broken(copy: Copy, old: str, new: str) -> Ran:
             id="the-test-half-changed-to-the-lint-half",
         ),
         pytest.param(
-            "      - run: just test-integration\n",
-            "",
-            "`test-integration:",
-            id="the-integration-tier-dropped",
-        ),
-        pytest.param(
             "      - run: just ci-test\n",
             "      - run: just ci-test\n      - run: just ci-test\n",
             "runs 2 times in test",
@@ -793,11 +787,27 @@ def test_a_step_dropped_changed_or_doubled_is_found(
     truth(naming in said, describing=f"a finding naming {naming!r} in:\n{said}")
 
 
+def test_the_integration_tier_dropped_from_the_test_half_is_found(
+    doubled: Callable[[], Copy],
+) -> None:
+    """The `test` jobs run the tier from `just ci-test`; a recipe that stops running it is found."""
+    copy = doubled()
+    path = copy.root / "justfile"
+    text = path.read_text(encoding="utf-8")
+    tier = "    just release-program\n    just test-integration\n"
+    truth(tier in text, describing="the committed `ci-integration` running the tier")
+    path.write_text(text.replace(tier, "    just release-program\n", 1), encoding="utf-8")
+    ran = ran_in(copy)
+    said = "\n".join(findings(ran.lint, ran.tested, ran.whole, ran.tag))
+
+    truth("`test-integration:" in said, describing=f"a finding naming the tier in:\n{said}")
+
+
 #: The two halves' own lines of the committed justfile.
 LINT_HALF = "    just ci-measured {{quote(PLATFORM_INDEPENDENT)}} lint {{quote(tier)}}\n"
 TEST_HALF = (
     '    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" '
-    "{{quote(tier)}}\n"
+    "{{quote(tier)}} true\n"
 )
 
 

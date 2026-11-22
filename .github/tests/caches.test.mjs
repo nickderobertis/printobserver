@@ -837,8 +837,8 @@ const REFUSED = [
   [
     "ci.yml",
     "the release program saved on a pull request",
-    "      - run: just release-program\n",
-    `      - run: just release-program\n      - uses: actions/cache/save@v4\n        with:\n          path: .release-program\n${RELEASE_KEY}`,
+    "      - run: just octoprint-up\n",
+    `      - uses: actions/cache/save@v4\n        with:\n          path: .release-program\n${RELEASE_KEY}      - run: just octoprint-up\n`,
     "saves on a pull request's ref (cache-hit true)",
   ],
   [

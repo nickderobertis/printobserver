@@ -147,9 +147,11 @@ ci-lint tier="affected":
     just check-repo
 
 # One platform's `test` job's half of the gate: the measured tiers
-# (`ci-measured`) over the tier's projects not tagged `platform:independent`.
+# (`ci-measured`) over the tier's projects not tagged `platform:independent`,
+# and the printer integration tier beside its end-to-end tier, against the
+# OctoPrint the job's `octoprint-up` step started.
 ci-test tier="affected":
-    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" {{quote(tier)}}
+    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" {{quote(tier)}} true
 
 # The project tag every project measuring a timing budget carries: the side of
 # a tier `just ci-measured` measures alone, before it starts anything else.
@@ -169,7 +171,11 @@ TIMED := "type:budget"
 # `coverage-data/<KEEP>`, because a source and the tests measuring it can sit
 # on the two sides, and the `budgets` job rules on the floor over each
 # platform's combined halves (`coverage-combine`).
-ci-measured side keep tier="affected":
+# With INTEGRATION `true`, `ci-integration` starts once the test tier and the
+# build are done, beside what remains of the end-to-end tier, and is waited out
+# with it: the integration tier mostly waits on the virtual printer's own time,
+# and run after the end-to-end tier it was 726 of windows-aarch64's 3608 s.
+ci-measured side keep tier="affected" integration="false":
     status=0; export PRINTOBSERVER_GATE_PROJECTS={{quote(side)}}; \
     export PRINTOBSERVER_COVERAGE_KEEP="coverage-data/"{{quote(keep)}}; \
     PRINTOBSERVER_GATE_PROJECTS="$PRINTOBSERVER_GATE_PROJECTS,"{{quote(TIMED)}} \
@@ -181,11 +187,21 @@ ci-measured side keep tier="affected":
     PRINTOBSERVER_GATE_PROJECTS="$tested" just test {{quote(tier)}} && \
     just coverage {{quote(tier)}} && \
     just build {{quote(tier)}} || status=$?; \
+    if [ {{quote(integration)}} = true ]; then just ci-integration & integrated=$!; fi; \
     if {{CI_E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
     elif [ "$status" = 0 ]; then \
     just test-e2e {{quote(tier)}} || status=$?; \
     fi; \
+    if [ {{quote(integration)}} = true ]; then wait "$integrated" || status=$?; fi; \
     exit "$status"
+
+# The printer integration tier as a `test` job runs it, from `ci-measured`: the
+# release program its client worlds carry, prepared once, then the tier. The
+# release build shares cargo's lock with the end-to-end tier's own, so whichever
+# starts it second waits and then finds it built.
+ci-integration:
+    just release-program
+    just test-integration
 
 # What one `warm.yml` leg compiles into the cache its platform's `test` job
 # restores: every project's tests not tagged `platform:independent` and its
