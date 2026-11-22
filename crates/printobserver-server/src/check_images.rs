@@ -188,18 +188,43 @@ pub fn whole_frame_note(reason: &WholeFrameReason) -> String {
     )
 }
 
-/// The line saying a check was shown the three-panel image: panel 3 empty
-/// when no earlier check's frame is at hand — the print's first check, or one
-/// whose earlier frame is gone from the store.
+/// The line saying a check or a look was shown the three-panel image of the
+/// frame captured at `current_at`, beside the frame `previous_at` names: panel
+/// 3 empty when no earlier check's frame is at hand — the print's first check,
+/// or one whose earlier frame is gone from the store.
+///
+/// It names which frame each panel is and when each was captured, because a
+/// look's panel 3 is the frame the print's last check was asked about — the
+/// running turn's own, during a turn — and an agent reading a later frame as
+/// the one it was asked about lets that frame settle a part that had already
+/// moved. So it says too what the skill says: a part that moved has moved, and
+/// no later frame undoes it.
 #[must_use]
-pub fn composite_note(no_previous: bool) -> String {
-    let previous = if no_previous {
-        "panel 3 empty, no earlier check's frame being at hand"
-    } else {
-        "panel 3 the previous check's frame"
+pub fn composite_note(
+    made_for: ImageUse,
+    current_at: Timestamp,
+    previous_at: Option<Timestamp>,
+) -> String {
+    let current = match made_for {
+        ImageUse::Check => "this check's own frame",
+        ImageUse::Look => "this look's frame",
+    };
+    let (previous, moved) = match (made_for, previous_at) {
+        (_, None) => (
+            "panel 3 empty, no earlier check's frame being at hand".to_owned(),
+            "a part off its drawn walls in panel 1 has moved, and no later frame undoes that",
+        ),
+        (ImageUse::Check, Some(at)) => (
+            format!("panel 3 the previous check's frame, captured {at}"),
+            "a part off its drawn walls in panel 1, or moved since panel 3, has moved, and no later frame undoes that",
+        ),
+        (ImageUse::Look, Some(at)) => (
+            format!("panel 3 the frame the print's last check was asked about, captured {at}"),
+            "a part that frame shows moved has moved, and no later frame, this one included, undoes that",
+        ),
     };
     format!(
-        "{COMPOSITE_NOTE}, {}x{}: panel 1 this layer's planned toolpath drawn on the frame, panel 2 a close-up of the part being printed, {previous}",
+        "{COMPOSITE_NOTE}, {}x{}: panel 1 {current}, captured {current_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up of the part being printed, {previous}; {moved}",
         printobserver_panels::compose::PANEL_WIDTH,
         printobserver_panels::compose::IMAGE_HEIGHT
     )
@@ -384,7 +409,11 @@ impl PanelImages {
         write_image(&self.whole.directory, &destination, &composed.jpeg)?;
         Ok(Ok(ShownImage {
             path: destination,
-            note: Some(composite_note(earlier.is_none())),
+            note: Some(composite_note(
+                request.made_for,
+                request.captured_at,
+                earlier.as_ref().map(|(_, at)| *at),
+            )),
         }))
     }
 

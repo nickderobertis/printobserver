@@ -236,11 +236,12 @@ fn block_under(prompt: &str, heading: &str) -> Value {
     printobserver_types::serde_json::from_str(text).expect("the block is JSON")
 }
 
-/// What one check was handed: its event, its situation's image line, and its
-/// attached image's bytes.
+/// What one check was handed: its event, its situation's image line and
+/// frame capture time, and its attached image's bytes.
 struct Handed {
     event: Value,
     note: String,
+    frame_captured_at: Option<Timestamp>,
     image: Vec<u8>,
 }
 
@@ -254,6 +255,10 @@ fn read_handed(seen: &Value) -> Handed {
             .as_str()
             .unwrap_or_else(|| panic!("the situation says nothing of its image:\n{prompt}"))
             .to_owned(),
+        frame_captured_at: printobserver_types::serde_json::from_value(
+            situation["frame_captured_at"].clone(),
+        )
+        .ok(),
         image,
     }
 }
@@ -579,29 +584,19 @@ async fn scheduled_check_and_look(
         ),
         "{installer}: the scheduled check is its own frame composed at the job's position, panel 3 the first check's placeholder"
     );
-    assert!(
-        scheduled.note.starts_with("the three-panel check image")
-            && scheduled.note.contains("panel 3 empty"),
-        "{installer}: {}",
-        scheduled.note
-    );
     let scheduled_at = captured_at(&scheduled.event);
+    assert_eq!(
+        scheduled.note,
+        format!(
+            "the three-panel check image, 1024x1848: panel 1 this check's own frame, captured \
+             {scheduled_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up \
+             of the part being printed, panel 3 empty, no earlier check's frame being at hand; \
+             a part off its drawn walls in panel 1 has moved, and no later frame undoes that"
+        ),
+        "{installer}: the check's note names its own frame and when it was captured"
+    );
 
-    let deadline = tokio::time::Instant::now() + PATIENCE;
-    let look = loop {
-        if let Some(look) = journey
-            .answered()
-            .into_iter()
-            .find(|done| done["operation"] == "look")
-        {
-            break look;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "{installer}: the look never answered"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    };
+    let look = answered_look(journey).await;
     let look = &look["body"];
     assert_eq!(
         look["event"]["image"]["sha256"],
@@ -622,15 +617,44 @@ async fn scheduled_check_and_look(
         ),
         "{installer}: the look is its own frame composed, the last check's frame as panel 3"
     );
-    assert!(
-        look["image_note"]
-            .as_str()
-            .is_some_and(|note| note.contains("previous check's frame")),
+    // The look's panel 3 is the frame the turn was asked about, and its note
+    // says so, with both capture times: a later frame read as the one asked
+    // about is what lets it settle a part that had already moved.
+    let looked_at = captured_at(&look["event"]);
+    assert_eq!(
+        look["image_note"],
+        json!(format!(
+            "the three-panel check image, 1024x1848: panel 1 this look's frame, captured \
+             {looked_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up of \
+             the part being printed, panel 3 the frame the print's last check was asked about, \
+             captured {scheduled_at}; a part that frame shows moved has moved, and no later \
+             frame, this one included, undoes that"
+        )),
         "{installer}: {look}"
     );
     started.server.stop().await;
     std::fs::remove_file(&hold).expect("the hold is removable");
     scheduled_at
+}
+
+/// The answer of the look a journey's turn asked for, once it is given.
+async fn answered_look(journey: &Journey) -> Value {
+    let installer = journey.installer;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    loop {
+        if let Some(look) = journey
+            .answered()
+            .into_iter()
+            .find(|done| done["operation"] == "look")
+        {
+            return look;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "{installer}: the look never answered"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 /// An alert's check after a restart, its frame the third: composed with the
@@ -673,10 +697,19 @@ async fn alert_check_after_a_restart(
         ),
         "{installer}: the alert's check draws the part layer below its support-only layer, the scheduled check's frame as panel 3"
     );
-    assert!(
-        alerted.note.contains("previous check's frame"),
-        "{installer}: {}",
-        alerted.note
+    let alerted_at = alerted
+        .frame_captured_at
+        .expect("the alert's situation says when its frame was captured");
+    assert_eq!(
+        alerted.note,
+        format!(
+            "the three-panel check image, 1024x1848: panel 1 this check's own frame, captured \
+             {alerted_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up of \
+             the part being printed, panel 3 the previous check's frame, captured \
+             {scheduled_at}; a part off its drawn walls in panel 1, or moved since panel 3, has \
+             moved, and no later frame undoes that"
+        ),
+        "{installer}: the alert's check names its own frame and the previous one, with when each was captured"
     );
     assert_eq!(
         started.requests.all().len(),
