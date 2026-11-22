@@ -60,6 +60,8 @@ CLIENT_DEADLINE_S = 120
 #: this many harness runs per entry has gone wrong.
 RUN_ALLOWANCE_PER_ENTRY = 3
 POLL_S = 0.5
+#: Longer than one idle compaction of a conversation at its threshold takes.
+COMPACTION_DEADLINE_S = 600
 
 #: Set in the server's environment, its looks wait in real time rather than
 #: passing their waits on the replay's clock.
@@ -1827,6 +1829,7 @@ class Replay:
             if first.is_alert:
                 self._post_alert(first)
             self._wait_for_every_turn()
+            self._wait_out_a_due_compaction(configured_compaction(config)["idle_compact_tokens"])
             self._read_alignment()
             events = self._events()
             points = self._judged(events)
@@ -1857,6 +1860,43 @@ class Replay:
             )
         finally:
             self.stop()
+
+    def _wait_out_a_due_compaction(self, threshold: int | None) -> None:
+        """Wait for the idle compaction the last turn's end started, when it started one.
+
+        The port compacts a session in the background once a turn leaves its
+        conversation at or above the idle threshold, and a print goes on idle
+        after its last check. A replay stopped the moment that check ended would
+        cut the compaction short and record none of it.
+        """
+        if threshold is None:
+            return
+        ledger = self._ledger()
+        if not ledger["turns"]:
+            return
+        last = ledger["turns"][-1]
+        calls = last.get("calls", [])
+        size = (
+            sum(
+                calls[-1].get(name, 0)
+                for name in ("input_tokens", "cache_read_tokens", "cache_write_tokens")
+            )
+            + calls[-1].get("output_tokens", 0)
+            if calls
+            else 0
+        )
+        if size < threshold:
+            return
+        before = len(ledger["compactions"])
+        deadline = time.monotonic() + COMPACTION_DEADLINE_S
+        while len(self._ledger()["compactions"]) == before:
+            if time.monotonic() > deadline:
+                msg = (
+                    f"the last turn left {size} tokens, at or above {threshold}, and no idle "
+                    f"compaction ended in {COMPACTION_DEADLINE_S} s: {self._log_tail()}"
+                )
+                raise ReplayError(msg)
+            time.sleep(POLL_S)
 
     def _ledger(self) -> Ledger:
         path = self.state / "supervisor-sessions" / f"{self._print_id()}.json"

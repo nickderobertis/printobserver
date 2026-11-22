@@ -2932,6 +2932,41 @@ def test_an_idle_compaction_runs_between_checks_and_the_next_scheduled_check_wai
     equal(written["detail"]["idle_compactions"], 1)
 
 
+def test_an_idle_compaction_the_last_check_makes_due_is_waited_out_and_recorded(
+    scratch: Path,
+) -> None:
+    """A last check leaving the conversation at the threshold still has its compaction.
+
+    The port starts it in the background as that check ends, and a print goes on idle
+    after it; the replay waits it out rather than stopping the server under it, so the
+    ledger carries what it left and the record can project a print from it.
+    """
+    case = read_case(COMPACTING_CASE)
+    checks = sum(1 for moment in case.moments if not moment.is_outside)
+    large = {
+        "input_tokens": 3,
+        "cache_read_input_tokens": 149_000,
+        "cache_creation_input_tokens": 1_000,
+        "output_tokens": 200,
+    }
+    turns: list[ScriptedRun] = [{"commands": [CONTEXT]}] * (checks - 1)
+    done = mock_replay(
+        case,
+        scripted_for(case, [*turns, {"commands": [CONTEXT], "calls": [large]}]),
+        scratch,
+        compaction={"before": 150_203, "after": 9_000, "stall_s": 2},
+    )
+    replayed = done.replayed
+    compactions = replayed.ledger["compactions"]
+    equal([compaction["ended"] for compaction in compactions], ["completed"])
+    equal(compactions[0].get("reported_after"), 9_000)
+    truth(
+        replayed.ledger["turns"][-1]["ran_at"] <= compactions[0]["started_at"],
+        describing="the compaction ran after the last check",
+    )
+    equal(replayed.passed, True, describing=replayed.failures())
+
+
 def _call(input_tokens: int, output: int, cached: int = 0) -> CallUsage:
     return {"input_tokens": input_tokens, "output_tokens": output, "cache_read_tokens": cached}
 
