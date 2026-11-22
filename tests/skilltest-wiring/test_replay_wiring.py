@@ -2323,7 +2323,7 @@ def test_the_composers_image_line_reads_as_the_composite(tmp_path: Path) -> None
         calibration,
         out,
     )
-    equal((said["width"], said["height"], said["bytes"]), (768, 1392, out.stat().st_size))
+    equal((said["width"], said["height"], said["bytes"]), (1024, 1848, out.stat().st_size))
     equal(check_image(said["note"])["kind"], "composite", describing=said["note"])
     with pytest.raises(ReplayError, match="could not be composed"):
         composed_check_image(b"", tmp_path / "absent.jpg", 1, calibration, tmp_path / "x.jpg")
