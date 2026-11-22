@@ -872,6 +872,44 @@ async fn a_history_that_cannot_say_whether_it_was_flagged_takes_nothing() {
     scoring.store(false, Ordering::SeqCst);
 }
 
+/// The broken-off reads the history holds once the host answers again.
+///
+/// A read the host received before it answered again is broken off however
+/// late it lands, and the watch reads one at a time: once a read made since has
+/// arrived, every failure from before the record came back is written.
+async fn failures_once_answering(world: &World, rest: &Host, history: &str) -> usize {
+    reads(rest, 1).await;
+    failures_saying(world, history, "broke off").await
+}
+
+/// A read broken off a second after it arrived, landing once the host answers
+/// again, is a failure from before the record came back rather than after it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_read_broken_off_as_the_record_comes_back_is_counted_before_it() {
+    let token = minted("obico-token");
+    let rest = Arc::new(Host::rest(&token).await);
+    let (world, print_id) = watching(&rest, None, Some(PRINTER_ID), &token).await;
+    let scoring = keep_scoring(&rest);
+    until_status(&world, print_id, "scoring_nothing_flagged").await;
+    scoring.store(false, Ordering::SeqCst);
+    rest.answers(Mood::BreakingOff);
+    until_not_scoring(&world, print_id).await;
+
+    rest.answers(Mood::BreakingOffLate);
+    reads(&rest, 1).await;
+    rest.scores(1_000_000, 0.0);
+    rest.answers(Mood::Answering);
+    let history = world.operation_url("/v1/prints/{print_id}/history", print_id);
+    let failed = failures_once_answering(&world, &rest, &history).await;
+    reads(&rest, 2).await;
+
+    assert_eq!(
+        failures_saying(&world, &history, "broke off").await,
+        failed,
+        "a read broken off before the record came back was counted after it"
+    );
+}
+
 /// A read that succeeds after reads failed for longer than the evidence
 /// window is compared with nothing stale: the first changed answer after the
 /// outage reads no scoring, in the status or the context, and only a second
@@ -895,11 +933,7 @@ async fn a_read_after_an_outage_is_not_compared_with_one_from_before_it() {
     rest.scores(1_000_000, 0.0);
     rest.answers(Mood::Answering);
     let history = world.operation_url("/v1/prints/{print_id}/history", print_id);
-    // A read the host received before it answered again is broken off however
-    // late it lands, and the watch reads one at a time: once a read made since
-    // has arrived, every failure from before the record came back is written.
-    reads(&rest, 1).await;
-    let failed = failures_saying(&world, &history, "broke off").await;
+    let failed = failures_once_answering(&world, &rest, &history).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     for _ in 0..2 {
         for (read, detector) in [
