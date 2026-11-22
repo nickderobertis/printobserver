@@ -593,7 +593,7 @@ async fn scheduled_check_and_look(
     let decoded = image::load_from_memory(&scheduled.image)
         .expect("an image")
         .to_rgb8();
-    assert_eq!(decoded.dimensions(), (1024, 1848), "{installer}");
+    assert_eq!(decoded.dimensions(), (768, 1392), "{installer}");
     assert_eq!(
         scheduled.image,
         expected_composite(
@@ -1390,8 +1390,8 @@ fn the_composer_writes_the_image_a_first_check_is_shown() {
     );
     let said: Value = printobserver_types::serde_json::from_slice(&done.stdout).expect("JSON");
     let written = std::fs::read(&inputs.out).expect("the image is written");
-    assert_eq!(said["width"], 1024);
-    assert_eq!(said["height"], 1848);
+    assert_eq!(said["width"], 768);
+    assert_eq!(said["height"], 1392);
     assert_eq!(said["bytes"], written.len());
     assert!(
         said["note"]

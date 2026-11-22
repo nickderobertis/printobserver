@@ -1,5 +1,10 @@
-//! The check image: three 1024x576 panels stacked, each under a 40 px label
+//! The check image: three 768x432 panels stacked, each under a 32 px label
 //! band, as one JPEG.
+//!
+//! The size is the one the model reads the frame at, and every call of a
+//! print's conversation re-reads every check image it has seen, so it is the
+//! smallest that keeps the part's position and surface readable: 768x1392 is
+//! about 1,425 image tokens where 1024x1848 was about 2,442.
 //!
 //! 1. The current frame scaled whole, the current layer's planned toolpath
 //!    drawn over it 1 px wide in each segment's kind's colour — and, when that
@@ -29,11 +34,11 @@ use crate::geometry::project_toolpath;
 use crate::text::draw_text;
 
 /// A panel's width.
-pub const PANEL_WIDTH: u32 = 1024;
+pub const PANEL_WIDTH: u32 = 768;
 /// A panel's height.
-pub const PANEL_HEIGHT: u32 = 576;
+pub const PANEL_HEIGHT: u32 = 432;
 /// The label band above each panel.
-pub const BAND_HEIGHT: u32 = 40;
+pub const BAND_HEIGHT: u32 = 32;
 /// The whole image's height: three bands and three panels.
 pub const IMAGE_HEIGHT: u32 = 3 * (BAND_HEIGHT + PANEL_HEIGHT);
 /// The close-up's margin around the active object, in source pixels.
@@ -218,9 +223,9 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
         draw_text(
             &mut image,
             TEXT,
-            40,
-            signed(third + PANEL_HEIGHT / 2 - 16),
-            32.0,
+            30,
+            signed(third + PANEL_HEIGHT / 2 - 12),
+            24.0,
             NO_EARLIER_CHECK,
         );
         band(&mut image, 2, "3 PREVIOUS CHECK: none", false);
@@ -277,19 +282,19 @@ fn line(panel: &mut RgbImage, from: [f64; 2], to: [f64; 2], sx: f64, sy: f64, co
 /// One label band: its text, and for panel 1 the colour key.
 fn band(image: &mut RgbImage, n: u32, text: &str, key: bool) {
     let top = signed(band_top(n));
-    draw_text(image, TEXT, 8, top + 9, 20.0, text);
+    draw_text(image, TEXT, 6, top + 7, 16.0, text);
     if !key {
         return;
     }
-    let mut x = 520;
+    let mut x = 390;
     for (name, kind) in KEY {
         draw_filled_rect_mut(
             image,
-            Rect::at(x, top + 14).of_size(12, 12),
+            Rect::at(x, top + 11).of_size(10, 10),
             colour_of(kind),
         );
-        draw_text(image, TEXT, x + 16, top + 11, 16.0, name);
-        x += 16 + 10 * i32::try_from(name.len()).unwrap_or(0) + 18;
+        draw_text(image, TEXT, x + 13, top + 9, 13.0, name);
+        x += 13 + 8 * i32::try_from(name.len()).unwrap_or(0) + 14;
     }
 }
 

@@ -153,7 +153,7 @@ def test_the_supervisor_configuration_with_one_check_image() -> None:
     record = image_probe(program)
     expect.truth(record["calls"], describing="the image probe to report its calls")
     expect.equal(
-        (record["width"], record["height"]), (1024, 1848), describing="the check image's size"
+        (record["width"], record["height"]), (768, 1392), describing="the check image's size"
     )
     if RUN_DIR:
         directory = Path(RUN_DIR)
