@@ -446,6 +446,33 @@ async fn adopted(server: &Running) -> PrintId {
     }
 }
 
+/// The digest of the frame `event` names, read from the event as the print's
+/// history holds it: a prompt shows an event's image by its identifier alone.
+async fn stored_digest(server: &Running, print_id: PrintId, event: &Value) -> Value {
+    let body: Value = presenting(OPERATOR)
+        .get(format!(
+            "{}/prints/{print_id}/history?limit=1000",
+            server.base_url()
+        ))
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("JSON");
+    let stored = body["events"]
+        .as_array()
+        .expect("a history answers its events")
+        .iter()
+        .find(|stored| stored["id"] == event["id"])
+        .unwrap_or_else(|| panic!("the shown event is not in the history: {event}"));
+    assert_eq!(
+        stored["image"]["id"], event["image"]["id"],
+        "the shown event names another image"
+    );
+    stored["image"]["sha256"].clone()
+}
+
 /// Wait until a print's alignment is decided, and answer it.
 async fn decided(server: &Running, print_id: PrintId) -> PrintAlignment {
     let deadline = tokio::time::Instant::now() + PATIENCE;
@@ -559,7 +586,7 @@ async fn scheduled_check_and_look(
         "{installer}"
     );
     assert_eq!(
-        scheduled.event["image"]["sha256"],
+        stored_digest(&started.server, print_id, &scheduled.event).await,
         json!(sha256(&frames[0])),
         "{installer}: the scheduled check's frame is the one taken before its turn"
     );
@@ -657,7 +684,7 @@ async fn alert_check_after_a_restart(
     let alerted = read_handed(&seen[1]);
     assert_eq!(alerted.event["kind"], "obico_failure_alert", "{installer}");
     assert_eq!(
-        alerted.event["image"]["sha256"],
+        stored_digest(&started.server, print_id, &alerted.event).await,
         json!(sha256(&frames[2])),
         "{installer}: the alert's check is shown the alert's own frame"
     );

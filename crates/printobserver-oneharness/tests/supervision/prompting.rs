@@ -14,7 +14,7 @@ use printobserver_oneharness::{
     OneharnessSupervisor, SITUATION_SLOT, SLOTS, TOOL_FRAMING, UnclosedFrontmatter, skill_prose,
 };
 use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
-use printobserver_types::{PrintId, PrinterState, serde_json};
+use printobserver_types::{EventId, PrintId, PrinterState, RawBytes, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
@@ -169,22 +169,30 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         let print_id = PrintId::new();
         let mut request = turn(print_id, event(print_id, payload), image.clone());
         // The first turn knew everything, and came after an event never taken.
+        // It also arrived with the producer's own body, and its facts name an
+        // image by digest and carry one reading in range and one outside it.
         if index == 0 {
             request.situation = knowing_everything(print_id);
+            request.event.raw = Some(RawBytes::new(b"{\"as\":\"posted\"}".to_vec()));
             request.facts = serde_json::json!({
                 "print": { "id": print_id, "state": "printing" },
                 "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
+                "latest_image": { "id": "frame-1", "sha256": "ab12" },
+                "bed": {
+                    "actual_c": { "out_of_range": false, "value": 60.0 },
+                    "target_c": { "out_of_range": true, "value": 300.0 },
+                },
             })
             .as_object()
             .cloned();
         }
-        let expected_event = serde_json::to_string(&request.event).expect("the event is writable");
-        let expected_situation =
-            serde_json::to_string(&request.situation).expect("the situation is writable");
-        let expected_facts = serde_json::to_string(&request.facts).expect("the facts are writable");
+        let expected_event = as_shown(&request.event);
+        let expected_situation = as_shown(&request.situation);
+        let expected_facts = as_shown(&request.facts);
         let expected_command = request.context_command.clone();
         // A print's first turn runs in that print's first session.
         let expected_actor = actor_in(&format!("print-{print_id}"));
+        let event_id = request.event.id;
         block_on(supervisor.run_turn(request, crate::support::access())).expect("the turn runs");
 
         let prompt = attached_once(&watch, image.as_ref());
@@ -193,15 +201,18 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         });
         for (slot, filling) in order.iter().zip(&found) {
             match *slot {
-                EVENT_SLOT => assert_eq!(filling, &expected_event),
-                SITUATION_SLOT => assert_eq!(filling, &expected_situation),
-                FACTS_SLOT => assert_eq!(filling, &expected_facts),
+                EVENT_SLOT => assert_eq!(parsed(filling), expected_event),
+                SITUATION_SLOT => assert_eq!(parsed(filling), expected_situation),
+                FACTS_SLOT => assert_eq!(parsed(filling), expected_facts),
                 CONTEXT_COMMAND_SLOT => assert_eq!(filling, &expected_command),
                 ACTOR_SLOT => assert_eq!(filling, &expected_actor),
                 // This port is configured with no command a turn may run.
                 COMMANDS_SLOT => assert_eq!(filling, ""),
                 other => panic!("the template declares an unknown slot {other}"),
             }
+        }
+        if index == 0 {
+            shown_trimmed(&found, &order, print_id, event_id);
         }
         seen.push(found);
     }
@@ -630,4 +641,72 @@ fn a_turn_is_handed_the_usage_of_the_commands_it_may_run_and_no_other() {
         "printobserver context --print-id <value> [--since <value>]\n\
          printobserver set-fan-percent --print-id <value> --actor <json> --percent <value> --reason <value>"
     );
+}
+
+/// Hold the first turn's slots to what it was handed less what no turn reads:
+/// its facts without the image's digest and with the reading in range as its
+/// value, and its event without the producer's own body.
+fn shown_trimmed(found: &[String], order: &[&str], print_id: PrintId, event_id: EventId) {
+    let at = |wanted: &str| {
+        order
+            .iter()
+            .position(|slot| *slot == wanted)
+            .unwrap_or_else(|| panic!("the template declares no {wanted}"))
+    };
+    assert_eq!(
+        parsed(&found[at(FACTS_SLOT)]),
+        serde_json::json!({
+            "print": { "id": print_id, "state": "printing" },
+            "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
+            "latest_image": { "id": "frame-1" },
+            "bed": {
+                "actual_c": 60.0,
+                "target_c": { "out_of_range": true, "value": 300.0 },
+            },
+        }),
+        "the facts are shown without the digest, and the reading in range as its value"
+    );
+    let shown_event = parsed(&found[at(EVENT_SLOT)]);
+    assert_eq!(shown_event["id"], serde_json::json!(event_id));
+    assert!(
+        shown_event.get("raw").is_none(),
+        "the event is shown with its producer's own body: {shown_event}"
+    );
+}
+
+/// One JSON slot of a prompt, which is compact: written on one line.
+fn parsed(filling: &str) -> serde_json::Value {
+    assert!(
+        !filling.contains('\n'),
+        "a JSON slot spans lines:\n{filling}"
+    );
+    serde_json::from_str(filling).expect("a JSON slot is JSON")
+}
+
+/// `value` as a turn's prompt shows it: no event's `raw` body, no image's
+/// content digest at any depth, and a reading inside its range as its value.
+fn as_shown<T: serde::Serialize>(value: &T) -> serde_json::Value {
+    fn trim(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                fields.remove("sha256");
+                for field in fields.values_mut() {
+                    trim(field);
+                    if field.get("out_of_range") == Some(&serde_json::Value::Bool(false))
+                        && field.as_object().map(serde_json::Map::len) == Some(2)
+                    {
+                        *field = field["value"].clone();
+                    }
+                }
+            }
+            serde_json::Value::Array(items) => items.iter_mut().for_each(trim),
+            _ => {}
+        }
+    }
+    let mut shown = serde_json::to_value(value).expect("it is writable");
+    if let Some(fields) = shown.as_object_mut() {
+        fields.remove("raw");
+    }
+    trim(&mut shown);
+    shown
 }

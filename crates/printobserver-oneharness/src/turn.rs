@@ -129,6 +129,50 @@ struct EndingState {
 /// it: the margin for writing its end down once its harness process is gone.
 const ENDING_MARGIN: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// `value` as a turn's prompt shows it: compact JSON with what the agent never
+/// reads taken out.
+///
+/// Every call of the session re-reads every check's prompt, so a field no
+/// judgement or command uses is paid for again on each of them. Out are an
+/// image's content digest, which identifies stored bytes the agent opens by
+/// path, and an event's `raw` body, the producer's own undecoded copy of the
+/// payload beside it; a reading inside its range is shown as its value alone,
+/// and one outside it keeps its flag.
+fn shown<T: serde::Serialize>(value: &T, what: &str) -> Result<String, SupervisorError> {
+    let unavailable = |error: serde_json::Error| SupervisorError::Unavailable {
+        detail: format!("{what} cannot be written down: {error}"),
+    };
+    let mut value = serde_json::to_value(value).map_err(unavailable)?;
+    if let Value::Object(fields) = &mut value {
+        fields.remove("raw");
+    }
+    trimmed(&mut value);
+    serde_json::to_string(&value).map_err(unavailable)
+}
+
+/// Take every content digest out of `value`, at every depth, and show each
+/// in-range reading as its value.
+fn trimmed(value: &mut Value) {
+    match value {
+        Value::Object(fields) => {
+            fields.remove("sha256");
+            for field in fields.values_mut() {
+                trimmed(field);
+                let in_range = field.as_object().and_then(|reading| {
+                    (reading.len() == 2 && reading.get("out_of_range") == Some(&Value::Bool(false)))
+                        .then(|| reading.get("value").cloned())
+                        .flatten()
+                });
+                if let Some(reading) = in_range {
+                    *field = reading;
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(trimmed),
+        _ => {}
+    }
+}
+
 impl OneharnessSupervisor {
     /// Build the port, reading the skill and the prompt template from the tree.
     ///
@@ -412,21 +456,9 @@ impl OneharnessSupervisor {
         request: &TurnRequest,
         session: &SessionName,
     ) -> Result<String, SupervisorError> {
-        let event = serde_json::to_string(&request.event).map_err(|error| {
-            SupervisorError::Unavailable {
-                detail: format!("the triggering event cannot be written down: {error}"),
-            }
-        })?;
-        let situation = serde_json::to_string(&request.situation).map_err(|error| {
-            SupervisorError::Unavailable {
-                detail: format!("the turn's situation cannot be written down: {error}"),
-            }
-        })?;
-        let facts = serde_json::to_string(&request.facts).map_err(|error| {
-            SupervisorError::Unavailable {
-                detail: format!("the print's facts cannot be written down: {error}"),
-            }
-        })?;
+        let event = shown(&request.event, "the triggering event")?;
+        let situation = shown(&request.situation, "the turn's situation")?;
+        let facts = shown(&request.facts, "the print's facts")?;
         let actor = serde_json::json!({ "agent": { "session_name": session.as_str() } });
         Ok(self.template.fill(
             &event,
