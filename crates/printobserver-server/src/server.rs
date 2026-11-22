@@ -852,7 +852,7 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
         materialize(
             &assets,
             SCHEMA_FILE,
-            &printobserver_types::serde_json::to_string_pretty(&without_dialect(
+            &printobserver_types::serde_json::to_string_pretty(&AssessmentSchema::as_handed(
                 printobserver_types::contract::schema_of::<
                     printobserver_supervisor_api::AgentAssessment,
                 >(),
@@ -915,27 +915,6 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
         auto_compact_tokens: config.auto_compact_tokens,
         idle_compact_tokens: config.idle_compact_tokens,
     })
-}
-
-/// The key a JSON Schema declares its dialect under.
-const DIALECT_KEY: &str = "$schema";
-
-/// A schema with its dialect declaration taken off, and nothing else changed.
-///
-/// The generated assessment schema declares draft 2020-12, and Claude Code
-/// refuses a `--json-schema` naming a dialect its validator was not given ("no
-/// schema with key or ref `https://json-schema.org/draft/2020-12/schema`"), so
-/// every turn ended before the agent was asked anything. Left undeclared, the
-/// harness reads the schema in its own dialect and `OneHarness` in its default,
-/// and the keywords this schema uses mean the same in both. The checked-in
-/// schema keeps its declaration: only the copy a turn is handed drops it.
-fn without_dialect(
-    mut schema: printobserver_types::serde_json::Value,
-) -> printobserver_types::serde_json::Value {
-    if let Some(object) = schema.as_object_mut() {
-        object.remove(DIALECT_KEY);
-    }
-    schema
 }
 
 /// The commands the supervising agent may run: this program's own, one per

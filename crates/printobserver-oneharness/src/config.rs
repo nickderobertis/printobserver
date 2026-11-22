@@ -352,7 +352,46 @@ impl fmt::Display for ModelName {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssessmentSchema(PathBuf);
 
+/// The key a JSON Schema declares its dialect under.
+const DIALECT_KEY: &str = "$schema";
+
 impl AssessmentSchema {
+    /// A schema as a turn is handed it: its dialect declaration, its title and
+    /// the descriptions of its types taken off, and nothing else changed.
+    ///
+    /// The generated assessment schema declares draft 2020-12, and Claude Code
+    /// refuses a `--json-schema` naming a dialect its validator was not given ("no
+    /// schema with key or ref `https://json-schema.org/draft/2020-12/schema`"), so
+    /// every turn ended before the agent was asked anything. Left undeclared, the
+    /// harness reads the schema in its own dialect and `OneHarness` in its default,
+    /// and the keywords this schema uses mean the same in both.
+    ///
+    /// The harness carries the handed schema in every call of a session, and a
+    /// type's description is written for this repository's readers — why a field
+    /// is a vocabulary, what else reads it — so it is taken off too. What each
+    /// field and each value means stays. The checked-in schema keeps all of it:
+    /// only the copy a turn is handed drops them.
+    #[must_use]
+    pub fn as_handed(mut schema: serde_json::Value) -> serde_json::Value {
+        if let Some(object) = schema.as_object_mut() {
+            object.remove(DIALECT_KEY);
+            object.remove("title");
+            object.remove("description");
+            if let Some(types) = object
+                .get_mut("$defs")
+                .and_then(|types| types.as_object_mut())
+            {
+                for declared in types
+                    .values_mut()
+                    .filter_map(|declared| declared.as_object_mut())
+                {
+                    declared.remove("description");
+                }
+            }
+        }
+        schema
+    }
+
     /// The schema at this path, read and compiled to be sure it is one.
     ///
     /// # Errors

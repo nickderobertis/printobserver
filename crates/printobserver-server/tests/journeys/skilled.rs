@@ -272,10 +272,10 @@ async fn a_turns_path_leads_with_the_serving_programs_own_directory() {
 }
 
 /// The assessment schema a turn's answer is held to is the checked-in one less
-/// its dialect, handed to the harness process natively on its arguments, and
+/// its dialect, title and type descriptions, handed to the harness process natively on its arguments, and
 /// the prompt it was handed carries no schema.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_schema_a_turn_is_held_to_is_the_checked_in_one_without_its_dialect() {
+async fn the_schema_a_turn_is_held_to_is_the_checked_in_one_less_what_only_its_readers_read() {
     let root = TempDir::new().expect("a journey's own root");
     let (recorded, _, _) = one_composed_turn(root.path()).await;
     let arguments = arguments_of(&recorded);
@@ -314,9 +314,37 @@ async fn the_schema_a_turn_is_held_to_is_the_checked_in_one_without_its_dialect(
             .is_some(),
         "the checked-in schema no longer declares a dialect, so this proves nothing"
     );
+    // Its title and the descriptions of its types are this repository's
+    // readers' and go too; what each field and value means stays.
+    let checked_in = checked_in.as_object_mut().expect("an object");
+    for key in ["title", "description"] {
+        assert!(
+            checked_in.remove(key).is_some(),
+            "the checked-in schema has no {key}"
+        );
+    }
+    for declared in checked_in["$defs"]
+        .as_object_mut()
+        .expect("the checked-in schema declares types")
+        .values_mut()
+    {
+        assert!(
+            declared
+                .as_object_mut()
+                .and_then(|declared| declared.remove("description"))
+                .is_some(),
+            "a declared type carries no description, so this proves nothing"
+        );
+    }
     assert_eq!(
-        handed, checked_in,
-        "the schema a turn is held to differs from the checked-in one by more than its dialect"
+        handed["properties"]["summary"]["description"], "One line saying what is happening.",
+        "a field's own description was taken off"
+    );
+    assert_eq!(
+        handed,
+        Value::Object(checked_in.clone()),
+        "the schema a turn is held to differs from the checked-in one by more than its \
+         dialect, title and type descriptions"
     );
 }
 
