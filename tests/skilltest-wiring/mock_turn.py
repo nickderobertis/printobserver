@@ -119,6 +119,8 @@ class Compaction(TypedDict):
     before: NotRequired[int]
     after: NotRequired[int]
     stall_s: NotRequired[float]
+    #: The harness fails it, as a compaction Claude Code could not complete.
+    fail: NotRequired[bool]
 
 
 def _run_is_whole(run_of: object) -> bool:
@@ -359,6 +361,9 @@ def _compacted(script: Script, directory: Path, arguments: list[str]) -> int:
     ]
     with (directory / COMPACTIONS_FILE).open("a", encoding="utf-8") as log:
         log.write(json.dumps({"resumed": resumed, "started": started, "ended": time.time()}) + "\n")
+    if compaction.get("fail", False):
+        print("the scripted compaction failed", file=sys.stderr)
+        return 1
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
     return run(
         [script["responder"], *arguments],

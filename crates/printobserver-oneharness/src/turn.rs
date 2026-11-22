@@ -231,7 +231,7 @@ impl OneharnessSupervisor {
     /// Compact a print's conversation once, now, as its idle compaction does
     /// once a turn leaves it at the threshold, whatever its size: the session
     /// its last turn ran in, measured as that turn left it. Answers the
-    /// compaction as the ledger holds it.
+    /// compaction as it is written down, however it ended.
     ///
     /// A measurement, for a host whose conversations end below the threshold:
     /// what one compaction reads and leaves is otherwise never observed there.
@@ -239,9 +239,8 @@ impl OneharnessSupervisor {
     ///
     /// # Errors
     ///
-    /// Returns [`SupervisorError::Unavailable`] when the ledger cannot be read,
-    /// records no turn with calls to compact after, or records no compaction
-    /// once it has run.
+    /// Returns [`SupervisorError::Unavailable`] when the ledger cannot be read
+    /// or records no turn with calls to compact after.
     pub fn compact_once(&self, print_id: &PrintId) -> Result<RecordedCompaction, SupervisorError> {
         let ledger = self.ledger(print_id)?;
         let (session, size) = ledger
@@ -255,8 +254,7 @@ impl OneharnessSupervisor {
             .ok_or_else(|| SupervisorError::Unavailable {
                 detail: format!("print {print_id} records no turn with calls to compact after"),
             })?;
-        let before = ledger.compactions().len();
-        IdleCompaction {
+        Ok(IdleCompaction {
             config: self.config.clone(),
             seam: self.seam.clone(),
             print_id: *print_id,
@@ -265,14 +263,7 @@ impl OneharnessSupervisor {
             cancel: CancelToken::new(),
             ending: Arc::new(Ending::default()),
         }
-        .run();
-        self.ledger(print_id)?
-            .compactions()
-            .get(before)
-            .cloned()
-            .ok_or_else(|| SupervisorError::Unavailable {
-                detail: format!("the compaction of print {print_id} was not written down"),
-            })
+        .run())
     }
 
     /// Wait, while an idle compaction of one print's session runs, until it
@@ -349,7 +340,9 @@ impl OneharnessSupervisor {
         };
         // A thread of this process, not a child process: the compaction's own
         // harness is started by `OneHarness`, as a turn's is.
-        let thread = std::thread::spawn(move || compaction.run());
+        let thread = std::thread::spawn(move || {
+            compaction.run();
+        });
         self.compacting
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -874,8 +867,9 @@ struct IdleCompaction {
 }
 
 impl IdleCompaction {
-    /// Compact the session through `OneHarness`, and write down how it ended.
-    fn run(self) {
+    /// Compact the session through `OneHarness`, write down how it ended, and
+    /// answer that.
+    fn run(self) -> RecordedCompaction {
         let started_at = Timestamp::now();
         let (ended, reported_before, reported_after, usage, error) = match self.compact() {
             Ok(outcome) => (
@@ -917,12 +911,13 @@ impl IdleCompaction {
         // A ledger that cannot be read or written loses this record alone; the
         // next turn reads the same ledger and is refused naming why.
         if let Ok(mut ledger) = PrintLedger::read(&self.config.state_dir, &self.print_id) {
-            ledger.record_compaction(compaction);
+            ledger.record_compaction(compaction.clone());
             let _ = ledger.write(&self.config.state_dir);
         }
         state.ended = true;
         drop(state);
         self.ending.ended.notify_all();
+        compaction
     }
 
     /// The compaction itself, in the session store and the working directory

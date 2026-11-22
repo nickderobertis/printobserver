@@ -423,13 +423,22 @@ class Rates(TypedDict):
     threshold: int
 
 
+class BaseSplit(TypedDict):
+    """A projection's base context, as the harness's part and printobserver's."""
+
+    #: Calls x the harness-only probe's first call.
+    harness: float
+    #: Calls x the base less that.
+    printobserver: float
+
+
 class Projection(TypedDict):
     """One print's projected input, split by what each part of it re-reads."""
 
     #: Every call's base context: calls x the base.
     base: float
     #: The base's harness part and printobserver's, when the harness-only probe ran.
-    base_split: dict[str, float] | None
+    base_split: BaseSplit | None
     #: What each check adds to its calls with no history: calls x (quiet - base).
     checks: float
     #: The conversation each call carries beyond the base.

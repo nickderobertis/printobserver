@@ -1267,6 +1267,10 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
             ],
             "takes no --session, --prompt, --image or --no-system",
         ),
+        (
+            vec!["--config", missing, "--compact-print", "not-a-print"],
+            "--compact-print not-a-print is no print",
+        ),
     ] {
         let done = probe(&arguments);
         assert_eq!(done.status.code(), Some(2), "{arguments:?}");
@@ -1276,7 +1280,12 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
     }
     for arguments in [
         vec!["--config", missing, "--session", "s", "--prompt", "p"],
-        vec!["--config", missing, "--compact-print", "p"],
+        vec![
+            "--config",
+            missing,
+            "--compact-print",
+            "01a20510-3f62-7c81-afe6-af9b8e1a2d0d",
+        ],
     ] {
         let done = probe(&arguments);
         assert_eq!(done.status.code(), Some(1), "{arguments:?}");

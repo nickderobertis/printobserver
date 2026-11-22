@@ -30,7 +30,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use printobserver_oneharness::OneharnessSupervisor;
+use printobserver_oneharness::{CompactionEnd, OneharnessSupervisor};
 use printobserver_server::{ServerConfig, agent_config_with};
 use printobserver_types::PrintId;
 
@@ -57,7 +57,7 @@ enum Kind {
         probe: Probe,
     },
     /// One compaction of this print's conversation, as its idle compaction runs.
-    Compaction(String),
+    Compaction(PrintId),
 }
 
 /// The run probes, each a run of the shipped configuration differing in one thing.
@@ -113,6 +113,9 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
                     .to_owned(),
             );
         }
+        let print_id = print_id
+            .parse::<PrintId>()
+            .map_err(|error| format!("--compact-print {print_id} is no print: {error}"))?;
         return Ok(Asked {
             config,
             usage,
@@ -205,15 +208,20 @@ fn main() -> ExitCode {
             }
             .map_err(|error| error.to_string())
             .and_then(|result| serde_json::to_string(&result).map_err(|error| error.to_string())),
-            Kind::Compaction(print_id) => print_id
-                .parse::<PrintId>()
-                .map_err(|error| format!("--compact-print {print_id} is no print: {error}"))
-                .and_then(|print_id| {
-                    port.compact_once(&print_id)
-                        .map_err(|error| error.to_string())
-                })
+            Kind::Compaction(print_id) => port
+                .compact_once(print_id)
+                .map_err(|error| error.to_string())
                 .and_then(|compaction| {
-                    serde_json::to_string(&compaction).map_err(|error| error.to_string())
+                    // A compaction that did not complete measured nothing.
+                    if compaction.ended == CompactionEnd::Completed {
+                        serde_json::to_string(&compaction).map_err(|error| error.to_string())
+                    } else {
+                        Err(format!(
+                            "the compaction of print {print_id} ended {:?}: {}",
+                            compaction.ended,
+                            compaction.error.as_deref().unwrap_or("no detail")
+                        ))
+                    }
                 }),
         });
     match probed {

@@ -3045,6 +3045,23 @@ def test_a_print_that_never_reached_the_threshold_has_one_compaction_probed(
     equal(projection["rates"]["compaction_input"], record.call_input(probed["usage"]))
 
 
+def test_a_compaction_probe_that_does_not_complete_stops_the_replay(scratch: Path) -> None:
+    """A probed compaction the harness failed measured nothing, and the replay says so.
+
+    The probe program refuses it on its error stream rather than printing it as a
+    compaction, and the replay stops naming that rather than projecting from it.
+    """
+    case = read_case(COMPACTING_CASE)
+    with pytest.raises(ReplayError, match=r"the compaction probe answered 1: .*ended Failed"):
+        mock_replay(
+            case,
+            scripted_for(case, [{"commands": [CONTEXT]}]),
+            scratch,
+            compaction={"fail": True},
+            compaction_probe=True,
+        )
+
+
 def _call(input_tokens: int, output: int, cached: int = 0) -> CallUsage:
     return {"input_tokens": input_tokens, "output_tokens": output, "cache_read_tokens": cached}
 

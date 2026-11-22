@@ -548,3 +548,35 @@ fn a_stop_that_cannot_be_asked_again_keeps_its_answer_and_its_calls() {
     assert_eq!(turns[0].failure, None);
     assert_eq!(turns[0].calls, vec![recorded(call)]);
 }
+
+/// A print with no turn to compact after is refused naming why, and no
+/// harness is started for it.
+#[test]
+fn compacting_a_print_with_no_turn_is_refused() {
+    let schemas = schema_read_lock();
+    let fixture = Fixture::new("lean-compact-nothing");
+    let watch = Arc::new(Watch::default());
+    let supervisor = port(
+        config(
+            &schemas,
+            &fixture,
+            HARNESS,
+            &generated_assessment_schema(),
+            runs_answering(&fixture.path("attempts"), &[]),
+        ),
+        &watch,
+    );
+    let refused = supervisor
+        .compact_once(&PrintId::new())
+        .expect_err("a print with no turn has nothing to compact");
+    assert!(
+        refused
+            .to_string()
+            .contains("records no turn with calls to compact after"),
+        "{refused}"
+    );
+    assert!(
+        !fixture.path("attempts").exists(),
+        "a harness was started for a print with nothing to compact"
+    );
+}
