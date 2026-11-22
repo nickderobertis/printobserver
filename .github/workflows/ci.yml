@@ -433,7 +433,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: skilltest-report
-          path: tests/skilltest/results/latest.json
+          # The record, and each failed test's transcript and server log.
+          path: tests/skilltest/results/
           if-no-files-found: warn
 
   # This run's own two lines, measured once every other job has ended however

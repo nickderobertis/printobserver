@@ -21,6 +21,7 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import shutil
 import statistics
 import sys
 import tempfile
@@ -47,6 +48,11 @@ from turns_per_run import CASES, UnreadableCaseError, replays
 
 REPO = Path(__file__).resolve().parents[2]
 RESULT = REPO / "tests" / "skilltest" / "results" / "latest.json"
+#: The directory beside the record a failed test's transcript and server log are
+#: kept in, for the job's report to carry: what the record keeps of a turn is counts.
+FAILED_DIRECTORY = "failed"
+#: What a test's own transcript and server log are called in a run's directory.
+KEPT_SUFFIXES = (".transcript.jsonl", ".server.log")
 HARNESS = "claude-code"
 
 
@@ -763,6 +769,24 @@ def _configured(tests: list[TestRecord]) -> Compaction | None:
     return found[0]
 
 
+def keep_the_failed(directory: Path, written: RunRecord, into: Path) -> list[Path]:
+    """Copy each failed test's transcript and server log from a run's directory into `into`.
+
+    `into` is emptied first, so it holds this run's failures and no earlier one's.
+    """
+    shutil.rmtree(into, ignore_errors=True)
+    kept: list[Path] = []
+    for test in written["detail"]["tests"]:
+        if test["passed"]:
+            continue
+        for suffix in KEPT_SUFFIXES:
+            source = directory / f"{test['test']}{suffix}"
+            if source.is_file():
+                into.mkdir(parents=True, exist_ok=True)
+                kept.append(Path(shutil.copy2(source, into / source.name)))
+    return kept
+
+
 def main(arguments: list[str]) -> int:
     """Run the suite, or read a finished run, write the record, and exit as the run went."""
     directory = Path(arguments[0]) if arguments and Path(arguments[0]).is_dir() else None
@@ -784,6 +808,12 @@ def main(arguments: list[str]) -> int:
     RESULT.parent.mkdir(parents=True, exist_ok=True)
     RESULT.write_text(json.dumps(written, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {RESULT.relative_to(REPO)}", file=sys.stderr)
+    failed = RESULT.parent / FAILED_DIRECTORY
+    kept = keep_the_failed(directory, written, failed)
+    if kept:
+        print(
+            f"kept {len(kept)} files of failed tests in {failed.relative_to(REPO)}", file=sys.stderr
+        )
     if status:
         return status
     if not written["detail"]["tests"] or not written["detail"]["passed"]:

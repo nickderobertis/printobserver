@@ -44,3 +44,6 @@ dist/
 # The metadata uv builds for the calibration tool, a workspace member whose
 # version is dynamic because release automation owns every version field.
 *.egg-info/
+
+# A failed real-print test's transcript and server log, kept for the job's report.
+/tests/skilltest/results/failed/

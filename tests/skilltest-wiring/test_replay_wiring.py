@@ -1940,6 +1940,49 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return points, test_record
 
 
+def test_a_failed_tests_transcript_and_server_log_are_kept_beside_the_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed test's transcript and server log are kept beside the record; a pass, none.
+
+    The record carries counts of each turn, so the job's report carries these
+    for a failure to be read: what the agent did and what the server said.
+    """
+    written = tmp_path / "results" / "latest.json"
+    monkeypatch.setattr(record, "RESULT", written)
+    monkeypatch.setattr(record, "REPO", tmp_path)
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    name = "jar-top-wrong-material-first-layer-detach"
+    points, test_record = _a_finished_test()
+    failing_run = tmp_path / "failing"
+    failing_run.mkdir()
+    failing = {**points[1], "passed": False, "why_not": "it paused"}
+    (failing_run / f"{name}.json").write_text(
+        json.dumps({**test_record, "passed": False, "decision_points": [points[0], failing]}),
+        encoding="utf-8",
+    )
+    (failing_run / f"{name}.transcript.jsonl").write_text('{"type": "x"}\n', encoding="utf-8")
+    (failing_run / f"{name}.server.log").write_text("the server said\n", encoding="utf-8")
+
+    equal(record.main([str(failing_run)]), 1)
+
+    kept = written.parent / record.FAILED_DIRECTORY
+    equal(
+        sorted(path.name for path in kept.iterdir()),
+        [f"{name}.server.log", f"{name}.transcript.jsonl"],
+    )
+    equal((kept / f"{name}.server.log").read_text("utf-8"), "the server said\n")
+
+    passing_run = tmp_path / "passing"
+    passing_run.mkdir()
+    (passing_run / f"{name}.json").write_text(json.dumps(test_record), encoding="utf-8")
+    (passing_run / f"{name}.transcript.jsonl").write_text("{}\n", encoding="utf-8")
+
+    equal(record.main([str(passing_run)]), 0)
+
+    equal(kept.exists(), False)
+
+
 def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
