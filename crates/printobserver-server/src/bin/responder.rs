@@ -80,10 +80,6 @@ const SEEN_ENV: &str = "PRINTOBSERVER_RESPONDER_SEEN_ENV";
 /// what it records of a run, as it held them when the run's process started.
 const SEEN_STORE: &str = "PRINTOBSERVER_RESPONDER_SEEN_STORE";
 
-/// The published mock harness's own variable naming where it records each
-/// process's arguments, standard input and named files.
-const MOCK_RECORDS: &str = "MOCK_INVOCATION_LOG";
-
 /// The prompt Claude Code is started with to compact a session.
 const COMPACT_PROMPT: &str = "/compact";
 
@@ -330,12 +326,6 @@ fn compacting() {
 
 /// Issue every action this turn was scripted with, and write down what happened.
 fn act() {
-    // Asked to record what its process received, the published mock harness
-    // reads standard input itself: this responder then steps aside whole and
-    // is that mock alone.
-    if std::env::var_os(MOCK_RECORDS).is_some() {
-        return;
-    }
     let stdin = standard_input();
     record_what_was_seen(&stdin);
     if std::env::args().any(|argument| argument == COMPACT_PROMPT) {
