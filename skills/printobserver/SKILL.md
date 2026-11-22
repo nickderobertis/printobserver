@@ -11,6 +11,9 @@ Supervise one print, an event a turn: is it right, and what bounded change fits?
 
 ## The normal workflow
 
+Commands: [the command surface](reference/command-surface.md),
+[common operations](reference/common-operations.md).
+
 1. **Decide from what is in front of you:** event, facts, frame; full context only if needed.
 2. **Judge the frame.** Too dark, blurred or aimed at nothing is uncertain.
 3. **Look again only when the frame is genuinely ambiguous.** Open each look; a repeated capture
@@ -26,8 +29,9 @@ Name no configuration: the environment names it. Give an actor only where a comm
 ## The decision order
 
 1. A clear defect a setting addresses gets it: flow for under-extruded walls, fan for sagging
-   bridges; nothing else has one. Change one only for a defect its stated value explains, or a
-   value the plan calls wrong, seen or not: flow one, fan full.
+   bridges; nothing else has one. Read the stated flow and fan first, settings, never design;
+   change one only for a clear defect its stated value explains, or one the plan calls at odds,
+   wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
 2. A clear defect with no setting, or a part moved, gone or not risen as planned: pause.
 3. Uncertain: watch and look again, never pause, unless clearly worsening.
 4. Nothing there: carry on.
@@ -37,13 +41,17 @@ A person's resume settles what they resumed over; judge only what is new or wors
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
   layer); 2 a close-up; 3 the last check. Lines are plan, not plastic. A part off its drawn walls,
   bare sheet inside them, or moved since 3 came loose.
-- **The plan** sets shape and place, not quality. Rough, porous or strung material is a defect
-  even where planned.
+- **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
+  bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
+  Rough, porous or strung material is a defect even where planned: judge it in the close-up.
 - **Walls** visibly thin, gappy or see-through where solid are under-extruded; ribs are not.
 - **Strands** are a defect only inside the part's outline and new or growing, or out of place.
-- **Position:** judge growth only against the frame the plan's rise names, never by Z or apparent
-  height. Risen less, or unsure, is a clear defect, never watched. A part off the bed, unstuck or
-  off its place: pause now, before any look. The facts' X and Y are the bed's.
+- **Position:** judge growth only against the frame the plan's rise names, never by Z or how tall
+  parts look; the rise is what should show, not proof it did: compare the tallest printing part's
+  top then and now. Risen less than the rise, likely, unsure or unclear is not printing: a clear
+  defect, never watched. A part off the bed, a first layer not sticking, or one off its own place,
+  left empty, has moved: pause now on the image in hand, before any look or wait; no later frame
+  undoes it, only a person's resume. The facts' X and Y are the bed's, placing nothing in a frame.
 
 ## When the detector has already paused the print
 
@@ -52,11 +60,15 @@ the supervisor resumes, never you. Else change nothing; answer stop.
 
 ## When you are asked to start a print
 
-Open the current frame. Start only on a clear bed, naming its sheet in the manifest: textured-pei
-(bronze, gold) or smooth-pei (grey, dark). Never PLA on textured or PETG on smooth. Lines, logo,
-glare or a flat mark without height, shadow or colour are no debris; anything raised is. Any
-usable sheet hidden, not its rim, stops a start. Not starting, ask nothing; tell a person why.
-Never set an override.
+Open the camera's current frame first. Start only on a clear bed, naming in the
+manifest the sheet it shows: textured-pei, bronze or gold, or smooth-pei, grey or
+dark, each labelled. Never PLA on textured or PETG on smooth, per the spool and
+the file. Lines, logo and glare are no debris; a strand, part or blob is. A flat
+mark in the sheet, with no height, shadow, loose end or filament colour, is wear;
+anything raised is debris. Any of the sheet an object could sit on hidden, as
+behind a beam, stops a start; its rim past the frame or under a beam or head does
+not. Not starting, ask nothing; tell a person what stops it. Never set an
+override.
 
 ## The boundaries you work inside
 
@@ -68,7 +80,7 @@ pipe, redirection, `cd` or usage listing; rewrite a refused one.
 
 Beyond what you may ask: pause, naming what a person must check.
 
-[Commands](reference/command-surface.md), [operations](reference/common-operations.md) (outside
-supervisors take their own frames), [API](reference/api-and-clients.md),
-[policy](reference/intervention-policy.md), [schemas](reference/schemas.md),
-[architecture](reference/architecture.md), [testing](reference/testing.md).
+[API](reference/api-and-clients.md), [policy](reference/intervention-policy.md),
+[schemas](reference/schemas.md), [architecture](reference/architecture.md),
+[testing](reference/testing.md).
+An outside supervisor takes its own frames: [see](reference/common-operations.md).
