@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 from closures import closure
 from repo_checks.checks_ci import continuous_integration
-from repo_checks.expect import accepted, refused
+from repo_checks.expect import accepted, refused, refused_naming
 from repo_checks.model import Repo
 from treecopy import Tree
 
@@ -72,8 +72,12 @@ brew install printobserver
 ```
 """
 
-#: The gate job's step that runs the gate, as the committed workflow spells it.
-GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+#: The gate job's step that runs its half of the gate, as the committed workflow
+#: spells it: the `test` job's first, and `test-macos`'s after it.
+GATE_STEP = "      - run: just ci-test\n"
+
+#: The `lint` job's step that runs the gate's other half.
+LINT_STEP = "      - run: just ci-lint\n"
 
 
 def test_the_committed_configuration_is_accepted(committed: Repo) -> None:
@@ -82,9 +86,9 @@ def test_the_committed_configuration_is_accepted(committed: Repo) -> None:
 
 
 def test_a_missing_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
-    """A configuration with no complete-gate job proves nothing.
+    """A configuration with no gate job proves nothing.
 
-    The gate's cells and the macOS gate each run it, so it is taken from every one.
+    The `test` cells and `test-macos` each run it, so it is taken from every one.
     """
     broken = tree()
     while GATE_STEP in broken.read(CI):
@@ -92,7 +96,19 @@ def test_a_missing_gate_job_is_refused(tree: Callable[[], Tree]) -> None:
 
     findings = continuous_integration(broken.repo)
 
-    refused(findings, "no complete-gate job")
+    refused(findings, "declares no gate job")
+
+
+def test_a_tree_with_no_job_running_the_lint_half_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """The gate is two halves, and a tree running only `just ci-test` runs one of them."""
+    broken = tree()
+    broken.edit(CI, LINT_STEP, "")
+
+    findings = continuous_integration(broken.repo)
+
+    refused_naming(findings, "no job running the gate's other half", "just ci-lint")
 
 
 def test_a_gate_job_omitting_the_bootstrap_recipe_is_refused(
@@ -105,7 +121,7 @@ def test_a_gate_job_omitting_the_bootstrap_recipe_is_refused(
 
     findings = continuous_integration(broken.repo)
 
-    refused(findings, "no complete-gate job")
+    refused(findings, "declares no gate job")
 
 
 def test_a_gate_step_naming_an_undeclared_recipe_is_refused(

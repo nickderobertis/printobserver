@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from journey import REPO_ROOT, GateCopy, clean_environment
@@ -76,6 +76,35 @@ def test_every_gate_target_is_reached_by_the_check_recipe(project: str, target: 
     contains(fanned_out, target, describing=f"the Nx targets `just {target}` fans out over")
 
 
+@pytest.fixture(scope="module")
+def committed_clone(tmp_path_factory: pytest.TempPathFactory, shared_venv: Path) -> GateCopy:
+    """One clone of the committed tree, with its linked `node_modules` ignored.
+
+    `.gitignore` names `node_modules/`, which matches the directory an install
+    writes and not the symbolic link a copy is handed in its place, so the link
+    is excluded the way a clone's installed one is ignored: putting the clone
+    back removes nothing a clone would keep.
+    """
+    copy = GateCopy(tmp_path_factory.mktemp("sdk-targets") / "copy", shared_venv)
+    with (copy.root / ".git" / "info" / "exclude").open("a", encoding="utf-8") as exclude:
+        exclude.write("node_modules\n")
+    return copy
+
+
+@pytest.fixture
+def sdk_clone(committed_clone: GateCopy) -> GateCopy:
+    """The clone put back at its committed tree, for one journey to carry its defect.
+
+    Every journey here runs one target over the committed project or over it
+    with one defect written in, so they share the clone a contributor would
+    have, each starting from the committed tree, rather than each paying for a
+    copy of its own.
+    """
+    committed_clone.git("reset", "-q", "--hard")
+    committed_clone.git("clean", "-q", "-fd")
+    return committed_clone
+
+
 def _with_one_test(copy: GateCopy, body: str) -> GateCopy:
     """The copy with the Python client's suite reduced to one test, `body`'s.
 
@@ -94,14 +123,14 @@ def _with_one_test(copy: GateCopy, body: str) -> GateCopy:
 
 
 def test_the_committed_project_passes_every_python_target(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """The clean project the defect copies are made from passes its own targets.
 
     Its `test` target passes over the suite the failing-test copy is made from:
     the same one test, holding.
     """
-    clean = gate_copy()
+    clean = sdk_clone
 
     for target in GATE_TARGETS:
         if target == "test":
@@ -110,20 +139,20 @@ def test_the_committed_project_passes_every_python_target(
 
 
 def test_the_committed_project_passes_every_typescript_target(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """The same, for the Node client."""
-    clean = gate_copy()
+    clean = sdk_clone
 
     for target in GATE_TARGETS:
         passing(_run_target(clean, NODE_PROJECT, target), describing=f"{NODE_PROJECT}:{target}")
 
 
 def test_the_python_format_target_fails_on_an_unformatted_file(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """`ruff format --check` over the project, failing on the file it would rewrite."""
-    broken = gate_copy()
+    broken = sdk_clone
     broken.write(PY_SOURCE, '"""A module."""\n\n\nx  =  1\n')
 
     code, said = _run_target(broken, PYTHON_PROJECT, "format-check")
@@ -132,10 +161,10 @@ def test_the_python_format_target_fails_on_an_unformatted_file(
 
 
 def test_the_python_lint_target_fails_on_a_lint_finding(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """`ruff check` over the project, failing on an unused import."""
-    broken = gate_copy()
+    broken = sdk_clone
     broken.write(PY_SOURCE, '"""A module."""\n\nimport json\n')
 
     code, said = _run_target(broken, PYTHON_PROJECT, "lint")
@@ -144,10 +173,10 @@ def test_the_python_lint_target_fails_on_a_lint_finding(
 
 
 def test_the_python_typecheck_target_fails_on_a_type_error(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """`ty check` over the project, failing on a return that is not the declared type."""
-    broken = gate_copy()
+    broken = sdk_clone
     broken.write(
         PY_SOURCE,
         '"""A module."""\n\n\ndef count() -> int:\n    """Return a count."""\n'
@@ -160,7 +189,7 @@ def test_the_python_typecheck_target_fails_on_a_type_error(
 
 
 def test_the_python_typecheck_target_fails_on_an_unguarded_posix_only_attribute(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """The target's `win32` pass, failing on an attribute only a POSIX host has.
 
@@ -171,7 +200,7 @@ def test_the_python_typecheck_target_fails_on_an_unguarded_posix_only_attribute(
     pass is itself a `win32` pass and refuses the module first, so the target
     failing is all that host can show.
     """
-    broken = gate_copy()
+    broken = sdk_clone
     broken.write(
         PY_SOURCE,
         '"""A module."""\n\nimport os\n\n\ndef owner() -> int:\n'
@@ -187,7 +216,7 @@ def test_the_python_typecheck_target_fails_on_an_unguarded_posix_only_attribute(
 
 
 def test_the_python_typecheck_target_passes_a_guarded_windows_only_attribute(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """Both passes, over an attribute the module reaches only where it exists.
 
@@ -195,7 +224,7 @@ def test_the_python_typecheck_target_passes_a_guarded_windows_only_attribute(
     unguarded fails the default pass; under the guard both passes accept it,
     and both say so, which is how this journey sees two passes rather than one.
     """
-    guarded = gate_copy()
+    guarded = sdk_clone
     guarded.write(
         PY_SOURCE,
         '"""A module."""\n\nimport os\nimport sys\n\n\ndef reveal(path: str) -> None:\n'
@@ -214,11 +243,11 @@ def test_the_python_typecheck_target_passes_a_guarded_windows_only_attribute(
 
 
 def test_the_python_test_target_fails_on_a_failing_test(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """`pytest` over the project, failing on a red assertion."""
     broken = _with_one_test(
-        gate_copy(), '    """This assertion is meant to fail."""\n    assert 1 + 1 == 3\n'
+        sdk_clone, '    """This assertion is meant to fail."""\n    assert 1 + 1 == 3\n'
     )
 
     code, said = _run_target(broken, PYTHON_PROJECT, "test")
@@ -227,10 +256,10 @@ def test_the_python_test_target_fails_on_a_failing_test(
 
 
 def test_the_typescript_format_target_fails_on_an_unformatted_file(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """`biome format` over the project, failing on the file it would rewrite."""
-    broken = gate_copy()
+    broken = sdk_clone
     broken.write(TS_SOURCE, "export  const   defect    =        1;\n")
 
     code, said = _run_target(broken, NODE_PROJECT, "format-check")
@@ -239,10 +268,10 @@ def test_the_typescript_format_target_fails_on_an_unformatted_file(
 
 
 def test_the_typescript_lint_target_fails_on_a_lint_finding(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """`biome lint` over the project, failing on an unused local."""
-    broken = gate_copy()
+    broken = sdk_clone
     broken.write(
         TS_SOURCE, "export function defect(): number {\n  const unused = 1;\n  return 2;\n}\n"
     )
@@ -253,10 +282,10 @@ def test_the_typescript_lint_target_fails_on_a_lint_finding(
 
 
 def test_the_typescript_typecheck_target_fails_on_a_type_error(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """`tsc --noEmit` over the project, failing on a mismatched type."""
-    broken = gate_copy()
+    broken = sdk_clone
     broken.write(TS_SOURCE, 'export const defect: number = "not a number";\n')
 
     code, said = _run_target(broken, NODE_PROJECT, "typecheck")
@@ -265,10 +294,10 @@ def test_the_typescript_typecheck_target_fails_on_a_type_error(
 
 
 def test_the_typescript_test_target_fails_on_a_failing_test(
-    gate_copy: Callable[[], GateCopy],
+    sdk_clone: GateCopy,
 ) -> None:
     """`bun test` over the project, failing on a red assertion."""
-    broken = gate_copy()
+    broken = sdk_clone
     broken.write(
         TS_TESTS,
         'import { expect, test } from "bun:test";\n\n'

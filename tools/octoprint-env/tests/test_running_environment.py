@@ -32,6 +32,12 @@ from environment import (
 from repo_checks.expect import contains, equal, truth
 
 STATE_DIR = Path(os.environ.get("OCTOPRINT_ENV_STATE_DIR", ".octoprint-env"))
+
+#: Every journey here acts on the one instance the bring-up started, and one of
+#: them drives its print, so under the tier's xdist workers they all run on one,
+#: one after another, while the suite's other journeys — each over an instance
+#: of its own — run beside them.
+pytestmark = pytest.mark.xdist_group("brought-up")
 AUTHENTICATED = "/api/settings"
 CONNECTED = frozenset({"Operational", "Printing"})
 REFUSED = frozenset({401, 403})

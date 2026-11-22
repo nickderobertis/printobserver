@@ -418,3 +418,20 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
     rejected(world, &idle, &ran, "print_already_ended");
     assert_eq!(of_kind(world, &idle, "print_ended").len(), 1);
 }
+
+/// A record left open with the machine idle is ended by the operator's close
+/// however long after the close comes: the world's printer watch reads the
+/// machine on no default poll in between to end it first.
+///
+/// # Panics
+///
+/// Panics when the close was refused, or ended the record in another state.
+pub fn a_record_left_open_past_a_default_poll_is_ended_by_its_close(world: &World) {
+    let idle = world.open_record_with_a_session(Some(STALE_FILE), None);
+    world.wants(Reports::Operational);
+    std::thread::sleep(
+        printobserver_core::DEFAULT_PRINTER_POLL + core::time::Duration::from_secs(2),
+    );
+    let ran = close(world, &idle, "failed", REASON);
+    closed(world, &idle, &ran, "failed", "operational");
+}

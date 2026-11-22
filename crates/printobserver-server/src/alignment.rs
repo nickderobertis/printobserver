@@ -332,6 +332,12 @@ impl Alignments {
     /// Delete the verdict and the last check's record of every print that is
     /// not open.
     ///
+    /// An open print's record still being written — the `.json.part` beside it
+    /// that [`replace_file`] renames over it — is its own, and kept: the watch
+    /// sweeps after every read, so a sweep removing it between the write and the
+    /// rename lost that record, and the print's next check showed no previous
+    /// frame.
+    ///
     /// A store that cannot list the open prints, a directory that cannot be
     /// listed and a file that cannot be removed each leave a verdict behind,
     /// which the next read's sweep tries again. No test makes either refuse,
@@ -344,7 +350,12 @@ impl Alignments {
         };
         let open: Vec<String> = open
             .iter()
-            .map(|print| format!("{}.json", print.id))
+            .flat_map(|print| {
+                [
+                    format!("{}.json", print.id),
+                    format!("{}.json.part", print.id),
+                ]
+            })
             .collect();
         for directory in [&self.directory, &self.previous_directory] {
             let Ok(entries) = std::fs::read_dir(directory) else {

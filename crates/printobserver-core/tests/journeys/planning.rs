@@ -741,6 +741,77 @@ fn the_rise_is_measured_from_the_newest_half_hour_old_frame_a_look_was_given_too
     );
 }
 
+/// An alert's frame is one the agent was shown, so once it is half an hour old
+/// the plan's rise is measured from it rather than from an observation older
+/// still: a check after an alert, a pause and a person's resume was told the
+/// rise since the print's first frame hours before, and paused a print that
+/// had grown as planned since the alert's frame (`warning-after-resume`).
+#[test]
+fn the_rise_is_measured_from_an_alerts_frame_too() {
+    let world = World::with_camera();
+    world.printer.holds_gcode(FILE, PLAN);
+    world
+        .printer
+        .reports_job(Some(FILE), PrinterState::Printing);
+    world.printer.reports_state(PrinterState::Printing);
+    let size = Some(i64::try_from(PLAN.len()).expect("small"));
+    world
+        .printer
+        .reports_position(Some(past("G1 X20 Y10 E1")), size);
+    let print = world.open_print(7);
+    let observed = block_on(world.core.observe_active_prints()).expect("the open prints are read");
+    assert!(observed.refused.is_empty(), "{:?}", observed.refused);
+    for turn in observed.turns {
+        block_on(world.core.run_supervision(turn)).expect("the turn is supervised");
+    }
+    let observation = world
+        .store
+        .events_of(print.id)
+        .iter()
+        .find_map(|event| event.payload_as::<PeriodicObservationPayload>()?.ok())
+        .and_then(|observed| observed.frame_captured_at)
+        .expect("the observation was given a frame");
+
+    world.clock.advance(60);
+    world.printer.reports_position(Some(past(";Z:0.4")), size);
+    world
+        .handle(crate::world::failure_alert_with_image(7))
+        .expect("the alert is handled");
+    let turns = world.agent.turns();
+    assert_eq!(turns.len(), 2, "the alert was given no turn");
+    let alerted = turns[1]
+        .situation
+        .frame_captured_at
+        .expect("the alert's check was given a frame");
+    assert!(alerted > observation);
+
+    world.clock.advance(30 * 60 - 30);
+    world.printer.reports_position(Some(past("M221 S95")), size);
+    let rise = |world: &World| {
+        world
+            .context(print.id)
+            .expect("the context reads")
+            .slicer
+            .expect("the job is planned")
+            .rise
+    };
+    assert_eq!(
+        rise(&world).map(|rise| rise.since),
+        Some(observation),
+        "an alert's frame under half an hour old was measured from"
+    );
+
+    world.clock.advance(60);
+    assert_eq!(
+        rise(&world),
+        Some(Rise {
+            since: alerted,
+            mm: [0.4, 0.0],
+        }),
+        "the newer half-hour-old frame, the alert's, was not measured from"
+    );
+}
+
 /// An observation whose job had no position says nothing of how far the plan
 /// has risen since, and the context is answered all the same.
 ///

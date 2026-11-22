@@ -38,6 +38,9 @@
     "test-integration": {
       "command": "cargo nextest run -p printobserver-server --features test-responder --no-fail-fast -E \"binary(integration)\""
     },
+    "compile-integration": {
+      "command": "cargo nextest run -p printobserver-server --features test-responder --no-run"
+    },
     "budgets": {
       "command": "bunx onebudgetspec check crates/printobserver-server/budgets.yaml",
       "dependsOn": ["test"],

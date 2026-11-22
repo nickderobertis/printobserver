@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from repo_checks import gate_shards, windows_lint, workers
+from repo_checks import gate_tier, windows_lint, workers
 from repo_checks.model import Repo
 from repo_checks.shell import DISCOVERY_CEILING, discovered_no_higher_than
 from treecopy import REPO_ROOT, Closure, Tree, copy_tree, strayed
@@ -56,15 +56,14 @@ def no_ambient_host_independence(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def no_ambient_shard_part(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Drop the part of the gate a shard ran this suite under before any test starts.
+def no_ambient_project_side(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Drop the side of a project tag a CI job ran this suite under before any test starts.
 
-    A sharded gate runs this suite with `PRINTOBSERVER_GATE_PROJECTS` naming
+    `just ci-measured` runs this suite with `PRINTOBSERVER_GATE_PROJECTS` naming
     its side of the test tier, and every tier a test drives would inherit it;
-    a test that means a part names it itself.
+    a test that means a side names it itself.
     """
-    for name in gate_shards.PARTS:
-        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv(gate_tier.PROJECTS_VARIABLE, raising=False)
 
 
 @pytest.fixture(autouse=True)

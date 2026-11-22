@@ -8076,7 +8076,7 @@ Declared by `printobserver-core`.
         },
         "since": {
           "$ref": "#/$defs/Timestamp",
-          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a periodic observation or a look at this print was\ngiven, as that observation or look states its capture time."
+          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a check of this print \u2014 a periodic observation or an\nalert \u2014 or a look at it was given, as that check or look states its\ncapture time."
         }
       },
       "required": [
@@ -10222,7 +10222,7 @@ Declared by `printobserver-server`.
         },
         "since": {
           "$ref": "#/$defs/Timestamp",
-          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a periodic observation or a look at this print was\ngiven, as that observation or look states its capture time."
+          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a check of this print \u2014 a periodic observation or an\nalert \u2014 or a look at it was given, as that check or look states its\ncapture time."
         }
       },
       "required": [
@@ -25229,7 +25229,7 @@ Declared by `printobserver-core`.
         },
         "since": {
           "$ref": "#/$defs/Timestamp",
-          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a periodic observation or a look at this print was\ngiven, as that observation or look states its capture time."
+          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a check of this print \u2014 a periodic observation or an\nalert \u2014 or a look at it was given, as that check or look states its\ncapture time."
         }
       },
       "required": [
@@ -33068,7 +33068,7 @@ Declared by `printobserver-core`.
     },
     "since": {
       "$ref": "#/$defs/Timestamp",
-      "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a periodic observation or a look at this print was\ngiven, as that observation or look states its capture time."
+      "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a check of this print \u2014 a periodic observation or an\nalert \u2014 or a look at it was given, as that check or look states its\ncapture time."
     }
   },
   "required": [
@@ -34109,7 +34109,7 @@ Declared by `printobserver-core`.
         },
         "since": {
           "$ref": "#/$defs/Timestamp",
-          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a periodic observation or a look at this print was\ngiven, as that observation or look states its capture time."
+          "description": "When that earlier frame was captured: the newest frame at least half\nan hour old that a check of this print \u2014 a periodic observation or an\nalert \u2014 or a look at it was given, as that check or look states its\ncapture time."
         }
       },
       "required": [

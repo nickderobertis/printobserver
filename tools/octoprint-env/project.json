@@ -12,6 +12,6 @@
       "command": "uv run -q ty check tools/octoprint-env && uv run -q ty check --python-platform win32 tools/octoprint-env"
     },
     "test": { "command": "uv run -q pytest tools/octoprint-env/tests/test_device_refusal.py tools/octoprint-env/tests/test_host_answers.py::test_command_lookup_reads_a_real_childs_entire_command_line" },
-    "test-integration": { "command": "uv run -q pytest tools/octoprint-env/tests" }
+    "test-integration": { "command": "uv run -q pytest tools/octoprint-env/tests -n 2 --dist loadgroup --durations=10" }
   }
 }

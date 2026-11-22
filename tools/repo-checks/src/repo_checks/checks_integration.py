@@ -28,6 +28,7 @@ was there, and the tier that failed was the one that had done nothing wrong.
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 from typing import Any
@@ -35,6 +36,7 @@ from typing import Any
 from repo_checks.model import Repo, policy_table
 from repo_checks.parsing import (
     MarkerBlockMissingError,
+    Recipe,
     jobs_of,
     load_workflow,
     marker_block,
@@ -61,6 +63,10 @@ PATH_FILTERS = ("paths", "paths-ignore")
 # check reports on the commit, so the draft's run already answers for it.
 PULL_REQUEST_TYPES = ("opened", "synchronize", "reopened")
 BRANCH_FILTERS = ("branches", "branches-ignore")
+#: The one condition the job may carry: it runs on every pull request, and a
+#: push to the base branch is the merge of a pull request whose own run ran the
+#: tier on the merge of its head into that branch.
+PULL_REQUEST_ONLY = "github.event_name == 'pull_request'"
 
 
 def integration_tier(repo: Repo, base: str | None = None) -> list[str]:
@@ -229,8 +235,18 @@ def _step_findings(
             )
 
     required = [str(policy["bring_up"]), str(policy["tier"]), str(policy["bring_down"])]
+    parsed = recipes(repo.justfile)
     positions = [
-        commands.index(f"just {recipe}") if f"just {recipe}" in commands else -1
+        next(
+            (
+                index
+                for index, command in enumerate(commands)
+                if command.split()[:1] == ["just"]
+                and len(command.split()) > 1
+                and _reaches(parsed, command.split()[1], recipe)
+            ),
+            -1,
+        )
         for recipe in required
     ]
     findings.extend(
@@ -244,6 +260,32 @@ def _step_findings(
             f"order: the tier runs between the bring-up and the bring-down"
         )
     return findings
+
+
+def _reaches(parsed: dict[str, Recipe], recipe: str, wanted: str) -> bool:
+    """Whether `just <recipe>` runs `just <wanted>`: it is that recipe, or its body runs it.
+
+    The `test` jobs run the tier from `just ci-test`, beside the end-to-end tier
+    rather than as a step after it, because steps cannot overlap; the order the
+    step is held to is that step's.
+    """
+    seen: set[str] = set()
+    pending = [recipe]
+    while pending:
+        name = pending.pop()
+        if name == wanted:
+            return True
+        if name in seen or name not in parsed:
+            continue
+        seen.add(name)
+        for line in parsed[name].body:
+            words = line.replace(";", " ").split()
+            pending.extend(
+                called.strip("'\"")
+                for before, called in itertools.pairwise(words)
+                if before == "just"
+            )
+    return False
 
 
 def _matrix_findings(
@@ -328,7 +370,7 @@ def _trigger_findings(
                 f"({', '.join(named) or branches}), so {where} does not run on every change"
             )
 
-    if "if" in job:
+    if "if" in job and str(job["if"]).strip() != PULL_REQUEST_ONLY:
         findings.append(
             f"{where} carries the condition `{job['if']}`, which skips it for some changes"
         )
