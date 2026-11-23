@@ -76,7 +76,8 @@ DETERMINING = "determining next version for"
 
 #: A bound on a hang rather than a budget. Drafting every crate of this
 #: workspace downloads and diffs each published package, which took 282-333 s
-#: by hand on a loaded development host and 125 s on a base tree, so the bound
+#: by hand on a loaded development host while `cargo-semver-checks` also ran,
+#: and 41-77 s with that check off beside a cold coverage build, so the bound
 #: sits well above the longest complete draft seen.
 DRAFT_TIMEOUT_SECONDS = 600
 
@@ -185,6 +186,36 @@ def tagged(gate_copy: Callable[..., GateCopy], versions: tuple[str, ...]) -> Gat
     # cannot remove a loose object between that copy's enumeration and read.
     shell_run(["git", "repack", "-ad"], cwd=copy.root, check=True)
     return copy
+
+
+#: The committed configuration's line asking for `cargo-semver-checks`.
+SEMVER_CHECKED = "\nsemver_check = true\n"
+
+
+def without_semver_check(copy: GateCopy) -> Path:
+    """The copy's committed `release-plz.toml` with the API check turned off.
+
+    `semver_check` runs `cargo-semver-checks` when the host carries it, and
+    release-plz only warns and skips when it does not. The gate's runners carry
+    none, but a developer host may: there each draft built rustdoc for every
+    changed crate twice, the release and the draft, in target directories of
+    their own with every dependency cold, and a full local check compiling the
+    coverage build beside that ran the drafts past their bound. The commits
+    these journeys draft change no API, so the check has nothing to find, and
+    the version is the subjects' alone wherever they run. Every other line is
+    the committed one, and the file lives beside the copy so the draft's own
+    diff is the tool's.
+    """
+    committed = (copy.root / "release-plz.toml").read_text(encoding="utf-8")
+    truth(
+        SEMVER_CHECKED in committed,
+        describing="the committed release-plz.toml to ask for the semver check",
+    )
+    configured = copy.root.parent / f"{copy.root.name}-release-plz.toml"
+    configured.write_text(
+        committed.replace(SEMVER_CHECKED, "\nsemver_check = false\n", 1), encoding="utf-8"
+    )
+    return configured
 
 
 # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
@@ -491,6 +522,8 @@ def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes(
             "--no-changelog",
             "--registry-manifest-path",
             str(released.root / "Cargo.toml"),
+            "--config",
+            str(without_semver_check(drafted_copy)),
         ],
         drafted_copy.root,
         timeout=DRAFT_TIMEOUT_SECONDS,
@@ -582,6 +615,8 @@ def test_a_release_of_one_crate_moves_every_crate_and_every_requirement_together
             "--no-changelog",
             "--registry-manifest-path",
             str(released.root / "Cargo.toml"),
+            "--config",
+            str(without_semver_check(drafted_copy)),
         ],
         drafted_copy.root,
         timeout=DRAFT_TIMEOUT_SECONDS,
