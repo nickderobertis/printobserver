@@ -54,7 +54,8 @@ millimetres apart between prints.
    length far from the other, or `k1` at its bound. Pass `--start` naming an
    earlier calibration of the same camera, at the same resolution, and the fit
    starts from it alone. `core-one-2026-10-10.json` was fitted that way, from
-   `core-one-2026-09-27.json`.
+   `core-one-2026-09-27.json`, and `core-one-2026-10-09.json` from it: one
+   camera position, but each fit trustworthy only near its own print's parts.
 6. **Put it in place**: name the file in the service configuration's
    `[camera] calibration` and restart the service, which refuses an invalid
    file at start.

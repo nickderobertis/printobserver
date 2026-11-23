@@ -36,6 +36,7 @@ import shell_lines
 from cases import (
     CASES,
     REPO,
+    UNCALIBRATED,
     Case,
     MachineState,
     Milestone,
@@ -70,6 +71,7 @@ from replay import (
     RunReport,
     alignment_of,
     calibration_copy,
+    calibration_fallback,
     check_image,
     check_wait,
     composed_check_image,
@@ -1178,6 +1180,52 @@ def test_a_first_layer_down_before_the_first_event_is_decided_before_it(scratch:
     equal(done.replayed.fetches[:2], [passing.file, first.event_image])
     truth(done.replayed.alignment is not None, describing="the verdict decided before it")
     equal(len(done.replayed.ledger["turns"]), len(case.moments))
+
+
+def test_a_frame_away_from_the_print_height_is_never_the_one_aligned_on(scratch: Path) -> None:
+    """The alignment is decided on the first frame past the first layer showing the bed in place.
+
+    The case marks the frame just past its first layer, taken before its first event,
+    as one whose bed is not where its progress puts it, as a parked toolhead leaves
+    it. The replay passes over it, so nothing is decided before the first event; the
+    server decides on the next frame past the layer, which falls between the first
+    two events, and the camera is asked for it right after the first check's own.
+    """
+    case = read_case(TIMELINE_CASE)
+    first, second = case.moments[:2]
+    layer = b";LAYER_CHANGE\n;Z:0.2\nM83\n;TYPE:Perimeter\nG1 X1 Y1 E1\n"
+    gcode = layer + b";LAYER_CHANGE\n;Z:0.4\n"
+    gcode += b";\n" * ((case.moments[-1].file_position_bytes - len(gcode)) // 2 + 1000)
+    ends = first_layer_end(gcode) or 0
+    past = [
+        index
+        for index, frame in enumerate(case.frames)
+        if frame.progress_pct is not None and int(frame.progress_pct / 100 * case.gcode_size) > ends
+    ]
+    times = case.frame_times()
+    truth(
+        times[past[0]] <= instant(first.at) < times[past[1]] <= instant(second.at),
+        describing="a frame past the first layer before the first event, the next after it",
+    )
+    away = replace(
+        case,
+        frames=tuple(
+            replace(frame, at_print_height=False) if index == past[0] else frame
+            for index, frame in enumerate(case.frames)
+        ),
+    )
+    done = mock_replay(away, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
+    equal(done.replayed.fetches[:2], [first.event_image, case.frames[past[1]].file])
+    truth(done.replayed.alignment is not None, describing="the verdict decided on that frame")
+
+
+def test_a_frame_a_case_says_is_away_from_the_print_height_is_read_so() -> None:
+    """A case's `not_at_print_height` is read as such, and every other frame as in place."""
+    case = read_case("petg-clip-detach-and-stringing-web")
+    equal(
+        [frame.file for frame in case.frames if not frame.at_print_height],
+        ["frame-075200-p00.9.jpg"],
+    )
 
 
 def test_a_timeline_passing_its_first_layer_answers_that_until_the_next_event(
@@ -2398,6 +2446,54 @@ def test_each_image_line_the_server_writes_is_read_as_its_kind() -> None:
     equal((whole["kind"], whole["why"]), ("whole_frame", "no camera calibration is configured"))
     stored = check_image("the frame as the camera took it, because its check image could not be")
     equal(stored["kind"], "stored_frame")
+
+
+@pytest.mark.parametrize(
+    ("why", "fell_back"),
+    [
+        ("no camera calibration is configured", True),
+        (
+            "the print's first-layer alignment failed: the camera's frames are 1280x720 and the "
+            "calibration's 1920x1080",
+            True,
+        ),
+        ("the frame's resolution is 1280x720, and the calibration's is 1920x1080", True),
+        (
+            "the print's first-layer alignment failed: the printed first layer lies 51.0 px from "
+            "where the calibration projects it",
+            False,
+        ),
+        ("the print's G-code index gives no file position for this check", False),
+        ("no print is named, so there is no planned toolpath to draw on it", False),
+    ],
+)
+def test_a_whole_frame_for_want_of_a_fitting_calibration_is_told_from_any_other(
+    why: str, fell_back: bool
+) -> None:
+    """Only a missing calibration, or one of another size than the frames, is a fallback.
+
+    The live suite fails a check shown the whole frame for either; every other reason
+    the server gives, and the three-panel image, is what the latest code itself sends.
+    """
+    image = check_image(
+        f"the whole camera frame, scaled to fit 1280x720 and uncropped, because {why}"
+    )
+    equal(calibration_fallback(image), why if fell_back else None)
+    equal(calibration_fallback(check_image("the three-panel check image, 1024x1848: ...")), None)
+
+
+def test_every_replayed_print_names_a_calibration_or_says_why_it_has_none() -> None:
+    """A print's replay names its calibration, unless `UNCALIBRATED` gives the reason it can't.
+
+    A case losing its calibration would send every check the whole frame, which the
+    live suite fails only once it runs; this fails it in the gate.
+    """
+    prints = [name for name in replayed_case_names() if not is_start_case(name)]
+    equal(
+        {name for name in prints if read_case(name).camera_calibration is None},
+        set(UNCALIBRATED),
+    )
+    truth(all(UNCALIBRATED.values()), describing="a reason for every case without one")
 
 
 @pytest.mark.parametrize(

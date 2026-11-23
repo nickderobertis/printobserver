@@ -1,0 +1,244 @@
+{
+ "about": "Marks on printed parts' edges, in pixels of 1920x1080 frames of the Prusa CORE One's camera as it stood for the 2026-10-09 print of petg-clip-detach-and-stringing-web, from that print's own operator frames. The camera stood where it did for core-one-2026-10-10.json (that calibration's drift check finds its landmarks in place on these frames), but that fit's marks all lie on the 10 October parts at the back of the bed, and it projects this print's parts up to 80 px off them, so its first-layer alignment refuses this print. Each curve's points lie on the planned outline `what` names at height `z` (`top`: that layer's outer walls, here their top edges at the print's height; `first`: every first-layer extrusion, here the purge pan's edge against the sheet, which is thinner than the frame's height). `zc_mm` is the height the print had reached when the frame was taken, read off the slice at the frame's recorded progress. On the 0.8 mm frame the points were read by hand off part corners and edges; on the others they were placed on part edges where the outline runs, every point moved to the strongest brightness edge within a few pixels of it, and only points whose crop shows them on that edge are kept. The landmarks are core-one-2026-10-10.marks.json's. The calibration beside this file is the tool's fit of these marks, started from core-one-2026-10-10.json.",
+ "frames": [
+  {
+   "case": "petg-clip-detach-and-stringing-web",
+   "file": "frame-082213-p01.9.jpg",
+   "frame": "../petg-clip-detach-and-stringing-web/frame-082213-p01.9.jpg",
+   "gcode": "../petg-clip-detach-and-stringing-web/plate2-pan-bin-scraper-clips-r2.gcode",
+   "zc_mm": 0.8,
+   "curves": [
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       670.5,
+       325.9
+      ],
+      [
+       730.0,
+       319.5
+      ],
+      [
+       879.0,
+       296.7
+      ],
+      [
+       920.1,
+       294.5
+      ],
+      [
+       436.0,
+       368.0
+      ]
+     ]
+    },
+    {
+     "what": "top",
+     "z": 0.8,
+     "px": [
+      [
+       980.1,
+       350.3
+      ],
+      [
+       998.6,
+       359.3
+      ],
+      [
+       1020.0,
+       363.2
+      ],
+      [
+       1266.4,
+       492.1
+      ],
+      [
+       1308.3,
+       522.5
+      ],
+      [
+       1233.0,
+       458.0
+      ],
+      [
+       1356.0,
+       550.0
+      ],
+      [
+       1521.0,
+       354.0
+      ],
+      [
+       1421.0,
+       285.0
+      ],
+      [
+       1184.0,
+       467.0
+      ],
+      [
+       811.0,
+       783.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-clip-detach-and-stringing-web",
+   "file": "frame-105257-p20.7.jpg",
+   "frame": "../petg-clip-detach-and-stringing-web/frame-105257-p20.7.jpg",
+   "gcode": "../petg-clip-detach-and-stringing-web/plate2-pan-bin-scraper-clips-r2.gcode",
+   "zc_mm": 12.8,
+   "curves": [
+    {
+     "what": "top",
+     "z": 12.8,
+     "px": [
+      [
+       1239.8,
+       288.3
+      ],
+      [
+       968.7,
+       121.4
+      ],
+      [
+       1209.0,
+       160.0
+      ],
+      [
+       1259.5,
+       443.1
+      ],
+      [
+       955.9,
+       361.1
+      ],
+      [
+       1318.9,
+       387.8
+      ],
+      [
+       1302.4,
+       281.0
+      ],
+      [
+       1174.3,
+       296.3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-clip-detach-and-stringing-web",
+   "file": "frame-132350-p55.1.jpg",
+   "frame": "../petg-clip-detach-and-stringing-web/frame-132350-p55.1.jpg",
+   "gcode": "../petg-clip-detach-and-stringing-web/plate2-pan-bin-scraper-clips-r2.gcode",
+   "zc_mm": 53.2,
+   "curves": [
+    {
+     "what": "top",
+     "z": 53.2,
+     "px": [
+      [
+       1147.4,
+       444.4
+      ],
+      [
+       1198.4,
+       486.3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-clip-detach-and-stringing-web",
+   "file": "frame-155427-p89.9.jpg",
+   "frame": "../petg-clip-detach-and-stringing-web/frame-155427-p89.9.jpg",
+   "gcode": "../petg-clip-detach-and-stringing-web/plate2-pan-bin-scraper-clips-r2.gcode",
+   "zc_mm": 102.4,
+   "curves": [
+    {
+     "what": "top",
+     "z": 102.4,
+     "px": [
+      [
+       1250.3,
+       514.7
+      ],
+      [
+       1122.3,
+       776.4
+      ],
+      [
+       1167.3,
+       732.2
+      ],
+      [
+       1212.2,
+       683.8
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-clip-detach-and-stringing-web",
+   "file": "frame-163728-p99.9.jpg",
+   "frame": "../petg-clip-detach-and-stringing-web/frame-163728-p99.9.jpg",
+   "gcode": "../petg-clip-detach-and-stringing-web/plate2-pan-bin-scraper-clips-r2.gcode",
+   "zc_mm": 128.8,
+   "curves": [
+    {
+     "what": "top",
+     "z": 128.8,
+     "px": [
+      [
+       998.2,
+       641.6
+      ],
+      [
+       939.2,
+       692.6
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "landmarks": [
+  {
+   "name": "rail-bracket-top-right",
+   "center_px": [
+    1825,
+    107
+   ]
+  },
+  {
+   "name": "frame-label-right",
+   "center_px": [
+    1591,
+    670
+   ]
+  },
+  {
+   "name": "frame-screws-right-front",
+   "center_px": [
+    1470,
+    778
+   ]
+  },
+  {
+   "name": "panel-right",
+   "center_px": [
+    1708,
+    550
+   ]
+  }
+ ]
+}

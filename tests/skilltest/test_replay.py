@@ -17,12 +17,15 @@ import shutil
 from pathlib import Path
 
 import pytest
-from cases import is_start_case, read_case, read_start_case, replayed_case_names
+from cases import UNCALIBRATED, is_start_case, read_case, read_start_case, replayed_case_names
 from outside import Outside
 from replay import (
     IMAGE_PROBE_RECORD,
+    NO_CALIBRATION,
     PROBE_RECORD,
     Replay,
+    calibration_fallback,
+    check_image,
     harness_token,
     image_probe,
     installer_compaction,
@@ -89,6 +92,20 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             replayed.configured,
             installer_compaction(),
             describing="the replay's compaction settings, as the installer writes them",
+        )
+        # A check the latest code would show the three-panel image on a calibrated
+        # printer is judged on that image, not on a whole frame the replay fell back
+        # to for want of a calibration fitting the case's frames.
+        fell_back = {
+            point.moment.id: why
+            for point in replayed.points
+            if point.image_note is not None
+            and (why := calibration_fallback(check_image(point.image_note))) is not None
+        }
+        expect.equal(
+            fell_back,
+            {} if name not in UNCALIBRATED else dict.fromkeys(fell_back, NO_CALIBRATION),
+            describing=f"{name}'s checks shown no whole frame for want of a fitting calibration",
         )
         for turn in replayed.ledger["turns"]:
             for compaction in replayed.ledger["compactions"]:

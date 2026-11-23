@@ -618,6 +618,33 @@ def check_image(note: str) -> CheckImage:
     return {"kind": "stored_frame", "why": note, "note": note}
 
 
+#: Why the server shows a print's check the whole frame when no calibration is configured.
+NO_CALIBRATION = "no camera calibration is configured"
+#: Why a print's check is shown the whole frame when no calibration is configured or
+#: its frames are of another size than the calibration: the server's own wording, of
+#: its own reason and of the alignment's and the composer's refusals on resolution.
+CALIBRATION_FALLBACKS = (
+    re.compile(re.escape(NO_CALIBRATION)),
+    re.compile(
+        r"the print's first-layer alignment failed: the camera's frames are \d+x\d+"
+        r" and the calibration's \d+x\d+"
+    ),
+    re.compile(r"the frame's resolution is \S+, and the calibration's is \S+"),
+)
+
+
+def calibration_fallback(image: CheckImage) -> str | None:
+    """Why a check fell back to the whole frame for want of a calibration fitting its frames.
+
+    Nothing for the three-panel image, or for a whole frame the server sends for any
+    other reason, such as a check with no print or no position to draw.
+    """
+    why = image["why"]
+    if image["kind"] != "whole_frame" or why is None:
+        return None
+    return why if any(pattern.fullmatch(why) for pattern in CALIBRATION_FALLBACKS) else None
+
+
 class Alignment(TypedDict):
     """One case's first-layer alignment verdict, as the server kept it."""
 
@@ -1488,8 +1515,10 @@ class Replay:
         A live watch reads the job every poll and decides once the first layer laying
         the part is down, on the frame it takes then: the first frame the recording's
         supervisor took on its own schedule — one carrying the progress the printer
-        reported — whose progress puts the job past that layer. Nothing for a case
-        naming no calibration, or a slice laying no such layer.
+        reported — whose progress puts the job past that layer. A frame the case says
+        shows the bed away from that height is passed over: the live watch's own frame
+        was taken while the layer went down. Nothing for a case naming no calibration,
+        or a slice laying no such layer.
         """
         ends = self.first_layer_end
         if self.case.camera_calibration is None or ends is None:
@@ -1497,7 +1526,7 @@ class Replay:
         for index, (frame, when) in enumerate(
             zip(self.case.frames, self.timeline.frame_times, strict=True)
         ):
-            if frame.progress_pct is None:
+            if frame.progress_pct is None or not frame.at_print_height:
                 continue
             position = int(frame.progress_pct / 100 * self.case.gcode_size)
             if position > ends:
