@@ -51,6 +51,11 @@ GIT_LOCATION_VARIABLES = (
 )
 
 
+#: The Windows process-creation flag that leaves a new process's main thread
+#: suspended until something resumes it. `subprocess` names no constant for it.
+CREATE_SUSPENDED = 0x00000004
+
+
 #: The variable bounding git's upward search for a repository. It names no
 #: repository — only where looking for one stops — so it is never dropped with
 #: the variables above, and a bound a caller set reaches every program started
@@ -158,6 +163,7 @@ def start(
     env: dict[str, str] | None = None,
     own_group: bool = False,
     own_session: bool = False,
+    suspended: bool = False,
 ) -> subprocess.Popen[str]:
     """Start a long-running program by absolute path, and answer it.
 
@@ -183,6 +189,11 @@ def start(
             it leaves: one signal to that group then reaches every descendant,
             including one left running after the program itself exited.
             Windows has no such group, so there it changes nothing.
+        suspended: On Windows, create it with its main thread suspended, for a
+            caller that must place it in a job object before it runs a single
+            instruction, so that every process it starts is born in that job.
+            The caller resumes it. Every other host has no such state, so there
+            it changes nothing.
 
     Returns:
         The running process, with both of its streams captured.
@@ -209,7 +220,10 @@ def start(
         encoding="utf-8",
         errors="replace",
         creationflags=(
-            subprocess.CREATE_NEW_PROCESS_GROUP if own_group and sys.platform == "win32" else 0
+            (subprocess.CREATE_NEW_PROCESS_GROUP if own_group else 0)
+            | (CREATE_SUSPENDED if suspended else 0)
+            if sys.platform == "win32"
+            else 0
         ),
         start_new_session=own_session and sys.platform != "win32",
     )

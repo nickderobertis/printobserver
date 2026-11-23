@@ -7,14 +7,23 @@ here, over stand-in drafting tools, each of which starts a child of its own: one
 that says a line and then waits with its child, both doing nothing, and one
 that keeps talking while its child spins. Each child beats into a file, and a
 tree that was stopped is one whose child never beats again.
+
+Two more are about what the runner owns rather than what it measures. A tool
+that starts a child and exits at once — before the runner has read anything of
+it — still has that child stopped with it, which on Windows is what placing the
+tool in a job object before it runs makes true. And a runner that cannot read
+the tree at all still stops it, rather than leaving it running behind an error.
 """
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Protocol
 
+import bounded as runner
 import pytest
 from bounded import Bounds, DraftStoppedError, bounded
 from journey import clean_environment
@@ -159,3 +168,73 @@ def test_a_draft_whose_tree_runs_away_is_stopped_whole_and_reported(tmp_path: Pa
     after_stop = beat_count(beats)
     time.sleep(1.5)
     equal(beat_count(beats), after_stop, describing="beats from a child of a stopped draft")
+
+
+class UnreadableError(RuntimeError):
+    """What a tree that cannot be read raises in the test below."""
+
+
+class Owned(Protocol):
+    """Everything a draft's tool started, as the runner owns it."""
+
+    def stop(self) -> None:
+        """Stop every process in it."""
+        ...
+
+    def close(self) -> None:
+        """Let go of whatever held it."""
+        ...
+
+
+class Unreadable:
+    """The runner's own ownership of a real tool, whose every reading fails."""
+
+    def __init__(self, owned: Owned) -> None:
+        """Own what the runner owns, reading none of it."""
+        self.owned = owned
+
+    def sample(self) -> tuple[float, object]:
+        """Fail, as a process table that could not be read fails."""
+        message = "the process table could not be read"
+        raise UnreadableError(message)
+
+    def stop(self) -> None:
+        """Stop it as the runner would."""
+        self.owned.stop()
+
+    def close(self) -> None:
+        """Let go of it as the runner would."""
+        self.owned.close()
+
+
+def test_a_draft_whose_tree_cannot_be_read_is_still_stopped_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure to read the tree is raised, and the tree it could not read is stopped.
+
+    The failure is injected into the one reading the runner takes of the tree
+    it really started; the launch, the stop and the stand-in are all real.
+    """
+    command, beats = stand_in(tmp_path, SPINNING_CHILD, "talk")
+    launch = runner._launch
+
+    def launching_unreadably(
+        command: list[str], cwd: Path, env: dict[str, str]
+    ) -> tuple[subprocess.Popen[str], Unreadable]:
+        process, owned = launch(command, cwd, env)
+        return process, Unreadable(owned)
+
+    monkeypatch.setattr(runner, "_launch", launching_unreadably)
+
+    with pytest.raises(UnreadableError):
+        bounded(
+            command,
+            tmp_path,
+            bounds=QUICK_IDLE,
+            env=clean_environment(),
+            describing="an unreadable draft",
+        )
+
+    after_stop = beat_count(beats)
+    time.sleep(1.5)
+    equal(beat_count(beats), after_stop, describing="beats from a child of an unreadable draft")
