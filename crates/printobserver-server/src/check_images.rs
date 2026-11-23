@@ -350,6 +350,7 @@ impl PanelImages {
         Ok(ShownImage {
             path: self.whole.check_image(None, frame)?,
             note: Some(whole_frame_note(reason)),
+            composite: false,
         })
     }
 
@@ -430,6 +431,7 @@ impl PanelImages {
                 request.captured_at,
                 earlier.as_ref().map(|(_, at)| *at),
             )),
+            composite: true,
         }))
     }
 
@@ -456,6 +458,15 @@ impl PanelImages {
 impl CheckImages for PanelImages {
     fn check_image(&self, print_id: Option<PrintId>, frame: &Path) -> Result<PathBuf, String> {
         self.whole.check_image(print_id, frame)
+    }
+
+    fn composes(&self, print_id: PrintId) -> bool {
+        self.alignments.calibration().is_some()
+            && self.camera_snapshot_url.is_some()
+            && matches!(
+                self.alignments.print_alignment(print_id),
+                PrintAlignment::Passed { .. }
+            )
     }
 
     fn shown_image(&self, request: &CheckImageRequest<'_>) -> Result<ShownImage, String> {

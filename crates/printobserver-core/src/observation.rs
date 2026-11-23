@@ -237,12 +237,14 @@ impl Supervisor {
                 event: degraded,
                 detection: None,
                 frame_captured_at: None,
+                camera_frame: crate::inbox::AlertCameraFrame::NotAsked,
             });
         }
         Ok(Arrival {
             event,
             detection: None,
             frame_captured_at: None,
+            camera_frame: crate::inbox::AlertCameraFrame::NotAsked,
         })
     }
 }

@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::sync::{Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use printobserver_types::{EventRecord, PrintId};
+use printobserver_types::{EventRecord, ImageRef, PrintId};
 use printobserver_vision_api::Detection;
 
 /// One event waiting for a running turn, with what the detector did about it.
@@ -29,6 +29,28 @@ pub struct Arrival {
     pub event: EventRecord,
     /// What the detector did, when the event is one of its detections.
     pub detection: Option<Detection>,
+    /// What came of asking the server's own camera for a frame as a detector's
+    /// alert arrived, which its check is composed from where it can be.
+    pub camera_frame: AlertCameraFrame,
+}
+
+/// What came of asking the server's own camera for a frame as a detector's
+/// alert arrived.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum AlertCameraFrame {
+    /// Nothing was asked: the event is no detector's alert, or its check could
+    /// not be composed whatever frame it had.
+    #[default]
+    NotAsked,
+    /// The camera's frame, stored against the alert, and when it was captured.
+    Had {
+        /// The stored frame.
+        image: ImageRef,
+        /// When it was captured.
+        captured_at: printobserver_types::Timestamp,
+    },
+    /// The camera gave no frame, or it could not be stored, and why.
+    Missing(String),
 }
 
 /// One print's inbox.
@@ -186,6 +208,7 @@ mod tests {
                 raw: None,
             },
             detection: None,
+            camera_frame: super::AlertCameraFrame::NotAsked,
         }
     }
 

@@ -1088,6 +1088,7 @@ impl Supervisor {
             frame_captured_at: None,
             event,
             detection: None,
+            camera_frame: crate::inbox::AlertCameraFrame::NotAsked,
         };
         if self.inboxes().claim_or_hand_over(print_id, arrival.clone()) {
             self.watch_state()
@@ -1289,6 +1290,7 @@ impl Supervisor {
             frame_captured_at: None,
             event,
             detection: None,
+            camera_frame: crate::inbox::AlertCameraFrame::NotAsked,
         };
         Ok(self
             .inboxes()
