@@ -1,5 +1,6 @@
 // Generated git histories the classifier is driven over, and the classifier
-// itself, run as the workflows run it: `node .github/macos-policy.mjs`.
+// itself, run as its command line runs: `node .github/macos-policy.mjs`. No
+// workflow runs it any longer; its own tests, `classifier.test.mjs`, do.
 //
 // Each history is a fresh repository holding this tree's own release-relevant
 // files — release-plz.toml, the workspace and crate manifests, the lockfile, a
@@ -367,7 +368,7 @@ export function policy(args, options = {}) {
 }
 
 /**
- * Classify one event over one history, as the `classify` job does.
+ * Classify one event over one history, as `node .github/macos-policy.mjs classify` does.
  *
  * @param {string} eventName
  * @param {Record<string, any>} payload
@@ -385,20 +386,6 @@ export function classified(eventName, payload, where) {
     throw new Error(`classify exited ${ran.status}: ${ran.stderr}`);
   }
   return JSON.parse(ran.stdout);
-}
-
-/**
- * Every classifier's outputs `ci.yml` reads for one classification. These
- * scenarios change nothing the real-print suite is owed for.
- *
- * @param {object} classification
- * @returns {Record<string, Record<string, string>>}
- */
-export function ciOutputsOf(classification) {
-  return {
-    classify: outputsOf(classification),
-    "skilltest-classify": { owed: "false", reason: "no owed path changed" },
-  };
 }
 
 /**

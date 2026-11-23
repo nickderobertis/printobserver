@@ -24,6 +24,7 @@
     "test": { "cache": false, "inputs": ["default", "^default"] },
     "test-e2e": { "cache": false, "parallelism": false },
     "test-integration": { "cache": false, "parallelism": false },
+    "compile-integration": { "cache": false },
     "test-obico": { "cache": false },
     "test-skill-install": { "cache": false },
     "budgets": {

@@ -20,7 +20,7 @@ use std::time::Duration;
 use printobserver_core::store::{PrintStore as _, Stores};
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
-use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
+use printobserver_octoprint::standin::{HeldRead, JobReadHold, JobScript, ScriptedOctoPrint};
 use printobserver_printer_api::{
     BoxFuture, JobSnapshot, PrinterError, PrinterPort, PrinterSnapshot,
 };
@@ -387,17 +387,27 @@ impl Recovering {
 
     /// Hold one supervision turn open about a print of its own, answering
     /// the agent's credential and its actor.
+    ///
+    /// The print is written to the store rather than started, and a read of
+    /// the idle printer that settles after it was written closes it as over —
+    /// whereupon its alert claims no turn. So it is written while a read of the
+    /// machine is kept waiting: every read that can close a print is made under
+    /// the server's one hold on resolving prints, so the waiting read is the only
+    /// one in flight, every read before it has settled, and it is answered with
+    /// the print already running, as `pairing`'s held turn is.
     async fn agent_turn(&self) -> (reqwest::Client, Value) {
+        let waiting = self.held_read(HeldRead::AsReleased).await;
+        // A turn is given about a print the machine is running; once its
+        // credential is issued the turn holds it, whatever the print does.
+        self.octoprint
+            .reports("Printing", JobScript::printing(FILE, 816, 0, 5));
         let state = self.root.path().join("state");
         let store = SqliteStore::open(&state).expect("the store opens");
         store
             .open_print(Some(OBICO_PRINT), Some(FILE.to_owned()))
             .await
             .expect("a print opens");
-        // A turn is given about a print the machine is running; once its
-        // credential is issued the turn holds it, whatever the print does.
-        self.octoprint
-            .reports("Printing", JobScript::printing(FILE, 816, 0, 5));
+        self.octoprint.releases_job_read(&waiting);
         self.agent.hold_turns();
         let status = reqwest::Client::new()
             .post(format!("{}?token={SECRET}", self.server.ingress_url()))
@@ -421,6 +431,20 @@ impl Recovering {
             presenting(&pass.credential),
             json!({ "agent": { "session_name": pass.session_name } }),
         )
+    }
+
+    /// Hold the next read the server makes of the job, once it has arrived.
+    async fn held_read(&self, answered: HeldRead) -> JobReadHold {
+        let hold = self.octoprint.holds_next_job_read(answered);
+        let deadline = tokio::time::Instant::now() + PATIENCE;
+        while !self.octoprint.is_holding(&hold) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the server never read the job"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        hold
     }
 }
 
@@ -755,6 +779,52 @@ async fn with_no_recovery_facts_every_action_is_refused_as_not_configured() {
         assert_eq!(entry["allowed"], false, "{entry}");
         assert_eq!(entry["refusal"], "recovery_not_configured", "{entry}");
     }
+}
+
+/// A turn is still issued when a read of the idle printer is to land as it is
+/// set up: that read lands once the journey has opened the turn's print or kept
+/// a read of its own waiting, whichever it does first.
+///
+/// A read that met the idle machine and landed after the print was opened
+/// closed the print as over, and the alert about it then claimed no turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_is_issued_though_a_read_of_the_idle_printer_lands_late() {
+    let world = Recovering::start(with_recovery(|_| {})).await;
+    world.reads("operational").await;
+    let late = world.held_read(HeldRead::AsItArrived).await;
+    let state = world.root.path().join("state");
+    let landing = async {
+        let store = SqliteStore::open(&state).expect("the store opens");
+        let deadline = tokio::time::Instant::now() + PATIENCE;
+        loop {
+            let opened = !store
+                .open_prints()
+                .await
+                .expect("the store answers")
+                .is_empty();
+            if opened || world.octoprint.awaits_a_job_read() {
+                world.octoprint.releases_job_read(&late);
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the journey neither opened its print nor waited on the machine"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    };
+    let ((turn, actor), ()) = tokio::join!(world.agent_turn(), landing);
+
+    let (action, fields) = every_action()
+        .into_iter()
+        .find(|(action, _)| *action == "recover_heat")
+        .expect("a heat recovery among every action");
+    let (status, answer) = world.ask_as(&turn, action, with_actor(fields, actor)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{answer:#}");
+    assert_eq!(
+        answer["decision"]["rejected"],
+        json!({ "actor_may_not_request": { "action": "recover_heat" } })
+    );
 }
 
 /// The agent is granted no recovery by default, and is refused each as an

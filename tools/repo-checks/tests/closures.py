@@ -40,7 +40,7 @@ CHECKS: dict[str, Closure] = {
     "graph-edges": Closure(
         (PROJECTS, "**/*.py", "**/Cargo.toml", "**/package.json", "pyproject.toml")
     ),
-    "project-tags": Closure((POLICY, PROJECTS)),
+    "project-tags": Closure((POLICY, PROJECTS, JUSTFILE)),
     "module-names": Closure(("pyproject.toml", "**/*.py")),
     "octoprint-client": Closure((POLICY, "crates/**/*.rs", "crates/*/Cargo.toml")),
     "supervisor-spawn-free": Closure((POLICY, "crates/printobserver-oneharness/src/")),
@@ -66,7 +66,6 @@ CHECKS: dict[str, Closure] = {
     ),
     "unmatrixed-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
     "platform-dispatch": Closure((WORKFLOWS, AGENTS, POLICY)),
-    "sharded-jobs": Closure((WORKFLOWS, AGENTS, JUSTFILE, POLICY)),
     "install-path": Closure(
         (
             WORKFLOWS,

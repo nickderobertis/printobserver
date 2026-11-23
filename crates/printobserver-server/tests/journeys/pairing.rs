@@ -218,10 +218,12 @@ async fn held_turn(watch: &Watch) -> (String, reqwest::Client) {
         .expect("the store opens a print");
     watch.octoprint.releases_job_read(&waiting);
     watch.agent.hold_turns();
+    let mut alert = failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg");
+    alert["print"]["filename"] = json!(PLA_FILE);
     let status = reqwest::Client::new()
         .post(format!("{}?token={SECRET}", watch.server.ingress_url()))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg").to_string())
+        .body(alert.to_string())
         .send()
         .await
         .expect("the ingress answers")

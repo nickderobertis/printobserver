@@ -1,8 +1,9 @@
 // Every event class one change meets, resolved against the committed workflow
 // graph: the scenarios `github-workflows:test` records as telemetry.
 //
-// A pull request's classification is the real classifier's answer over a
-// generated history of that diff class; a platform dispatch's runner is the
+// No workflow reads a classification: whether a pull request runs the macOS
+// job is `ci.yml`'s own condition on its head branch and repository, so every
+// scenario's `classification` is null. A platform dispatch's runner is the
 // real `just dispatch-resolve`'s; every other job output a condition reads is
 // the scenario's, named here, and a condition reading one no scenario names
 // fails the run rather than reading empty. What the release workflow answered
@@ -17,21 +18,10 @@
 // fire. Dispatches are outside it: a person starts each one.
 
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadWorkflows, plan, triggers } from "../../lib/graph.mjs";
 import { isObject } from "../../lib/util.mjs";
-import {
-  bumped,
-  classified,
-  cleanEnvironment,
-  fixture,
-  GITHUB,
-  history,
-  ciOutputsOf,
-  ROOT,
-  workspaceVersion,
-} from "./histories.mjs";
+import { bumped, cleanEnvironment, fixture, GITHUB, ROOT, workspaceVersion } from "./histories.mjs";
 
 export const WORKFLOWS = join(GITHUB, "workflows");
 
@@ -54,6 +44,9 @@ export const EVENT_CLASSES = [
 export const DIFF_CLASSES = ["source", "version", "dependency"];
 export const OWNERSHIPS = ["same-repository", "fork"];
 export const BRANCHES = ["ordinary", "release"];
+
+/** The commits a scenario's payload names; no scenario reads a history. */
+const COMMITS = { base: "a".repeat(40), head: "b".repeat(40) };
 
 /**
  * The runner `just dispatch-resolve` answers for one job on one platform.
@@ -222,30 +215,13 @@ export function scenarios() {
     }
   };
 
-  // Pull requests: every action, diff class, ownership and branch convention,
-  // each classified by the real classifier over a history of that diff.
-  const classifications = new Map();
-  for (const diff of DIFF_CLASSES) {
-    const made = history(diff);
-    for (const ownership of OWNERSHIPS) {
-      for (const branch of BRANCHES) {
-        const payload = pullRequestPayload("opened", branch, ownership, made);
-        classifications.set(
-          `${diff}/${ownership}/${branch}`,
-          classified("pull_request", payload, made),
-        );
-      }
-    }
-  }
+  // Pull requests: every action, diff class, ownership and branch convention.
+  // The diff class names the workload rather than routing it: no job reads it.
   for (const action of ["opened", "synchronize", "reopened"]) {
     for (const diff of DIFF_CLASSES) {
       for (const ownership of OWNERSHIPS) {
         for (const branch of BRANCHES) {
-          const classification = classifications.get(`${diff}/${ownership}/${branch}`);
-          const payload = pullRequestPayload(action, branch, ownership, {
-            base: "a".repeat(40),
-            head: "b".repeat(40),
-          });
+          const payload = pullRequestPayload(action, branch, ownership, COMMITS);
           const step =
             action === "opened" && ownership === "same-repository"
               ? diff === "source" && branch === "ordinary"
@@ -263,66 +239,14 @@ export function scenarios() {
               branch,
               lifecycle_step: step,
               manual: false,
-              classification,
+              classification: null,
             },
-            runsFor(
-              workflows,
-              { name: "pull_request", action, payload },
-              {
-                "ci.yml": ciOutputsOf(classification),
-              },
-            ),
+            runsFor(workflows, { name: "pull_request", action, payload }, {}),
           );
         }
       }
     }
   }
-
-  // A pull request whose event cannot be read: the classifier owes macOS.
-  const unreadable = history("source");
-  const garbled = join(unreadable.dir, "garbled.event.json");
-  writeFileSync(garbled, "{ this is not an event");
-  const unknown = JSON.parse(
-    spawnSync(
-      process.execPath,
-      [
-        join(GITHUB, "macos-policy.mjs"),
-        "classify",
-        "--event",
-        garbled,
-        "--base",
-        unreadable.base,
-        "--head",
-        unreadable.head,
-      ],
-      {
-        cwd: unreadable.dir,
-        encoding: "utf8",
-        env: cleanEnvironment({ GITHUB_EVENT_NAME: "pull_request" }),
-      },
-    ).stdout,
-  );
-  add(
-    {
-      id: "pull_request.opened/unreadable-event",
-      event_class: "pull_request.opened",
-      diff: "source",
-      ownership: "same-repository",
-      branch: "ordinary",
-      lifecycle_step: null,
-      manual: false,
-      classification: unknown,
-    },
-    runsFor(
-      workflows,
-      {
-        name: "pull_request",
-        action: "opened",
-        payload: pullRequestPayload("opened", "ordinary", "same-repository", unreadable),
-      },
-      { "ci.yml": ciOutputsOf(unknown) },
-    ),
-  );
 
   // Pushes to `main`: the change's own merge, release automation's merge, and
   // a dependency bump; then the tag and the release the cut leaves.
@@ -353,9 +277,7 @@ export function scenarios() {
     },
   ];
   for (const push of pushes) {
-    const made = history(push.diff);
-    const payload = fixture(push.fixture, made);
-    const classification = classified("push", payload, made);
+    const payload = fixture(push.fixture, COMMITS);
     followed(
       {
         id: push.id,
@@ -365,15 +287,12 @@ export function scenarios() {
         branch: "main",
         lifecycle_step: push.step,
         manual: false,
-        classification,
+        classification: null,
       },
       runsFor(
         workflows,
         { name: "push", ref: payload.ref, payload },
-        {
-          "ci.yml": ciOutputsOf(classification),
-          "release-plz.yml": { release: { released: push.released } },
-        },
+        { "release-plz.yml": { release: { released: push.released } } },
       ),
       push.released.replace(/^v/, ""),
     );

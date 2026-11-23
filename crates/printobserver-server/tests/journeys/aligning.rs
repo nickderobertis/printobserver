@@ -349,6 +349,54 @@ async fn a_print_is_checked_once_its_first_layer_is_down_and_keeps_its_verdict_w
     drop(world);
 }
 
+/// A sweep leaves an open print's record that is still being written: each is
+/// written beside its file and renamed over it, and the watch sweeps after
+/// every read, so a sweep landing between the two removed the half it had not
+/// renamed yet — and the last check's frame was lost, its next check showing
+/// none as the previous (`test (macos-aarch64)`, run 44992224273).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sweep_leaves_an_open_prints_record_part_way_through_its_write() {
+    let bytes = slice("jar-top-petg.gcode");
+    let journey = start(
+        &bytes,
+        vec![Scripted::frame(frame(
+            "jar-top-petg-healthy",
+            "agent-007-obs-121230-p01.3.jpg",
+        ))],
+        Some(as_committed),
+    )
+    .await;
+    let print_id = adopted(&journey.world).await;
+    let state = journey.world.root.path().join("state");
+    let writing: Vec<PathBuf> = ["alignment", "previous-check"]
+        .iter()
+        .map(|directory| {
+            let directory = state.join(directory);
+            std::fs::create_dir_all(&directory).expect("the record directory");
+            let part = directory.join(format!("{print_id}.json.part"));
+            std::fs::write(&part, b"{").expect("a record part-way through its write");
+            part
+        })
+        .collect();
+    let closed = state
+        .join("previous-check")
+        .join(format!("{}.json", printobserver_types::PrintId::new()));
+    std::fs::write(&closed, b"{}").expect("a closed print's record");
+
+    until("a sweep removes a closed print's record", || {
+        !closed.exists()
+    })
+    .await;
+
+    for part in &writing {
+        assert!(
+            part.exists(),
+            "{} was swept while its print was open",
+            part.display()
+        );
+    }
+}
+
 /// A calibration whose projection is off by 49 px fails with its offset; a
 /// camera of another resolution fails naming it; and with no calibration, or
 /// a slice laying no object, a print is unavailable.

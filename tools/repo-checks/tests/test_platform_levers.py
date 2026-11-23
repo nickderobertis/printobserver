@@ -134,17 +134,11 @@ def test_a_job_that_does_not_take_a_route_still_carries_a_platform_answered_no(
         AARCH64,
         AARCH64.replace("install path: yes", "install path: no — no runner has been proven yet"),
     )
-    # Swapped for another platform's cell rather than deleted: it is the gate
-    # job's one unsharded cell, and an empty matrix is a different refusal.
-    broken.edit(
-        ".github/workflows/ci.yml",
-        MATRIX_AARCH64,
-        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
-    )
+    narrow(broken, ".github/workflows/ci.yml", "test", "linux-aarch64")
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "omits platform `linux-aarch64`")
+    refused_naming(findings, "job `test`", "omits platform `linux-aarch64`")
 
 
 def test_an_install_route_job_omitting_a_platform_answered_yes_is_refused(
@@ -324,7 +318,7 @@ def test_a_matrix_naming_one_platform_in_two_cells_is_refused(
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "`linux-aarch64` in more than one cell")
+    refused_naming(findings, "job `test`", "`linux-aarch64` in more than one cell")
 
 
 def test_an_entry_whose_identifier_is_not_shaped_like_one_is_refused(
@@ -437,18 +431,16 @@ def test_the_integration_job_omitting_a_cell_no_entry_records_is_refused(
 ) -> None:
     """The integration job reads this block beside its virtual-printer one.
 
-    The committed job carries the cell and no entry records it, so the cell is
-    taken out of the job's own matrix — the second occurrence of it in the
-    workflow, the gate's being the first — and nothing excuses the omission.
+    The `test` job runs the printer integration tier in every cell, so it is the
+    integration job: the committed job carries the cell and no entry records it,
+    so the cell is taken out of its matrix and nothing excuses the omission.
     """
     broken = tree()
-    narrow(broken, ".github/workflows/ci.yml", "integration")
+    narrow(broken, ".github/workflows/ci.yml", "test")
 
     findings = integration_tier(broken.repo)
 
-    refused_naming(
-        findings, "the integration job `integration`", f"omits platform `{LAST_BROUGHT_UP}`"
-    )
+    refused_naming(findings, "the integration job `test`", f"omits platform `{LAST_BROUGHT_UP}`")
 
 
 def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
@@ -462,14 +454,14 @@ def test_the_integration_job_carrying_a_cell_an_entry_excludes_is_refused(
     broken = tree()
     record(
         broken,
-        f"- `{LAST_BROUGHT_UP}` on `integration` — the virtual printer is being brought up",
+        f"- `{LAST_BROUGHT_UP}` on `test` — the virtual printer is being brought up",
     )
 
     findings = integration_tier(broken.repo)
 
     refused_naming(
         findings,
-        "the integration job `integration`",
+        "the integration job `test`",
         f"names platform `{LAST_BROUGHT_UP}`",
         "a cell that does not run",
     )
