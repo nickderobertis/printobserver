@@ -47,6 +47,14 @@ millimetres apart between prints.
 
    It prints the RMS reprojection error and the worst mark. Open the
    verification image: every red mark should sit on its green outline.
+
+   The fit starts from a fixed grid of cameras looking at the marks from above
+   the bed's front. When every mark lies on a few parts near the bed's middle,
+   each of those starts can settle far from the camera: a high RMS, a focal
+   length far from the other, or `k1` at its bound. Pass `--start` naming an
+   earlier calibration of the same camera, at the same resolution, and the fit
+   starts from it alone. `core-one-2026-10-10.json` was fitted that way, from
+   `core-one-2026-09-27.json`.
 6. **Put it in place**: name the file in the service configuration's
    `[camera] calibration` and restart the service, which refuses an invalid
    file at start.

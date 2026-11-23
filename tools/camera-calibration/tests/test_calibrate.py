@@ -223,6 +223,67 @@ def test_the_fit_reproduces_the_committed_calibration(
     expect.truth(outlines > 1000, describing=f"the outlines are drawn in green ({outlines} pixels)")
 
 
+def test_a_fit_started_from_the_committed_calibration_reproduces_it(tmp_path: Path) -> None:
+    """`--start` naming the committed file fits the committed marks back to it."""
+    run = _run(_fixture_marks(tmp_path), tmp_path, "--start", str(COMMITTED))
+    expect.passing(run, describing="the calibration tool started from the committed file")
+    written = json.loads((tmp_path / "calibration.json").read_text(encoding="utf-8"))
+    committed = json.loads(COMMITTED.read_text(encoding="utf-8"))
+    jsonschema.validate(written, json.loads(SCHEMA.read_text(encoding="utf-8")))
+    rms = written["fit"]["rms_reprojection_px"]
+    expect.truth(rms <= RMS_BOUND_PX, describing=f"the fit's RMS {rms} px is within the bound")
+    outlines = np.vstack(
+        [one.segments[:, :3] for one in fitting.observations(load(_fixture_marks(tmp_path)))]
+    )
+    moved = np.linalg.norm(
+        _camera_of(written).project(outlines) - _camera_of(committed).project(outlines), axis=1
+    )
+    worst = float(np.nanmax(moved))
+    expect.truth(
+        worst <= PROJECTION_PX,
+        describing=f"a marked outline lies {worst} px from the file's, over {PROJECTION_PX}",
+    )
+
+
+def _resized(calibration: dict[str, Any]) -> dict[str, Any]:
+    calibration["image_size_px"] = [1280, 720]
+    return calibration
+
+
+def _poseless(calibration: dict[str, Any]) -> dict[str, Any]:
+    del calibration["bed_pose"]
+    return calibration
+
+
+def _flat_pose(calibration: dict[str, Any]) -> dict[str, Any]:
+    calibration["bed_pose"]["rotation_rodrigues"] = [0.0, 0.0]
+    return calibration
+
+
+@pytest.mark.parametrize(
+    ("change", "refusal"),
+    [
+        (_resized, "is a calibration of 1280x720 frames, and the marked frames are 1920x1080"),
+        (_poseless, "is no calibration file this tool reads"),
+        (_flat_pose, "states no three-component bed pose"),
+    ],
+)
+def test_a_start_that_is_no_calibration_of_the_stream_is_refused(
+    tmp_path: Path, change: Callable[[dict[str, Any]], dict[str, Any]], refusal: str
+) -> None:
+    """`--start` naming a calibration of other frames, or no calibration, is refused with exit 2."""
+    start = tmp_path / "start.json"
+    start.write_text(
+        json.dumps(change(json.loads(COMMITTED.read_text(encoding="utf-8")))), encoding="utf-8"
+    )
+    run = _run(_fixture_marks(tmp_path), tmp_path, "--start", str(start))
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, refusal, describing="the refusal")
+    expect.truth(
+        not (tmp_path / "calibration.json").exists(), describing="no calibration was written"
+    )
+
+
 def _camera_of(calibration: dict[str, Any]) -> Camera:
     lens, pose = calibration["intrinsics"], calibration["bed_pose"]
     return Camera(

@@ -7,6 +7,11 @@ the marked outlines from above the bed's front, fits each against outlines
 thinned to a few hundred segments, and refines the best against the whole
 outline near each mark. The grid is fixed, so the same marks fit the same
 camera.
+
+Marks all lying on a few parts near the bed's middle can leave every start of
+that grid in a minimum far from the camera. An earlier calibration of the same
+camera is a start already near it, so a fit given one refines it alone, against
+the whole outline near each mark.
 """
 
 from __future__ import annotations
@@ -181,9 +186,19 @@ def near_segments(camera: Camera, one: Observation) -> np.ndarray:
     return kept if len(kept) >= 3 else one.segments
 
 
-def fit(marks: Marks, image_size: tuple[int, int]) -> Fitted:
-    """Fit the camera to every mark."""
+def fit(marks: Marks, image_size: tuple[int, int], start: Camera | None = None) -> Fitted:
+    """Fit the camera to every mark, refining `start` alone when one is given."""
     observed = observations(marks)
+    best = start if start is not None else _best_start(observed, image_size)
+    near = [near_segments(best, one) for one in observed]
+    refined = _solve(best, observed, near, image_size, FINE_EVALUATIONS)
+    near = [near_segments(refined, one) for one in observed]
+    final = _solve(refined, observed, near, image_size, FINE_EVALUATIONS)
+    return Fitted(final, residuals_px(final, observed, near), tuple(one.frame for one in observed))
+
+
+def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Camera:
+    """The best of the fixed grid of starts, each fitted against thinned outlines."""
     points = np.vstack([one.segments[:, :3] for one in observed])
     target = points.mean(axis=0)
     thinned: dict[int, np.ndarray] = {}
@@ -197,9 +212,4 @@ def fit(marks: Marks, image_size: tuple[int, int]) -> Fitted:
     ]
     fitted = [_solve(start, observed, coarse, image_size, COARSE_EVALUATIONS) for start in starts]
     above = [camera for camera in fitted if camera_position(camera)[2] > target[2]] or fitted
-    best = min(above, key=lambda camera: float(np.sum(residuals_px(camera, observed, coarse) ** 2)))
-    near = [near_segments(best, one) for one in observed]
-    refined = _solve(best, observed, near, image_size, FINE_EVALUATIONS)
-    near = [near_segments(refined, one) for one in observed]
-    final = _solve(refined, observed, near, image_size, FINE_EVALUATIONS)
-    return Fitted(final, residuals_px(final, observed, near), tuple(one.frame for one in observed))
+    return min(above, key=lambda camera: float(np.sum(residuals_px(camera, observed, coarse) ** 2)))
