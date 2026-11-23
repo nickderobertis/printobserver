@@ -590,18 +590,7 @@ async fn scheduled_check_and_look(
         "{installer}: the check's note names its own frame and when it was captured"
     );
 
-    let look: Value = presenting(OPERATOR)
-        .get(format!(
-            "{}/prints/{print_id}/look",
-            started.server.base_url()
-        ))
-        .send()
-        .await
-        .expect("the server answers")
-        .json()
-        .await
-        .expect("JSON");
-    let look = &look;
+    let look = &operator_look(&started.server, print_id).await;
     assert_eq!(
         look["event"]["image"]["sha256"],
         json!(sha256(&frames[1])),
@@ -633,6 +622,18 @@ async fn scheduled_check_and_look(
     started.server.stop().await;
     std::fs::remove_file(&hold).expect("the hold is removable");
     scheduled_at
+}
+
+/// The look the operator takes at one print, as the server answers it.
+async fn operator_look(server: &Running, print_id: PrintId) -> Value {
+    presenting(OPERATOR)
+        .get(format!("{}/prints/{print_id}/look", server.base_url()))
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("JSON")
 }
 
 /// An alert's check after a restart, its frame the third: composed with the
