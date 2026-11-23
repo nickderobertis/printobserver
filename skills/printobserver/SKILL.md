@@ -16,8 +16,8 @@ Commands: [the command surface](reference/command-surface.md),
 
 1. **Decide from what is in front of you:** event, facts, frame; full context only if needed.
 2. **Judge the frame.** Too dark, blurred or aimed at nothing is uncertain.
-3. **Look again only when the frame is genuinely ambiguous.** Open each look; a repeated capture
-   time is no newer frame, no defect.
+3. **Look again only when the frame is genuinely ambiguous.** A look can wait up to a minute and a
+   half first; open each. A repeated capture time is no newer frame, no defect.
 4. **Decide.** By the order below, saying how sure.
 5. **To act, ask for the change, then answer.** Give a reason, and a duration if temporary.
    Asking is acting, taken or refused: never look after it.
@@ -56,7 +56,8 @@ A person's resume settles what they resumed over; judge only what is new or wors
 ## When the detector has already paused the print
 
 A look settles nothing, so uncertain is stop. Ask only for a setting that addresses all you see;
-the supervisor resumes, never you. Else change nothing; answer stop.
+the supervisor resumes the print itself twenty seconds after your last such change, never you.
+Else change nothing; answer stop.
 
 ## When you are asked to start a print
 
