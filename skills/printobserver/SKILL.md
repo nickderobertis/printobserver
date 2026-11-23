@@ -44,7 +44,8 @@ only where a command's usage asks who.
    it clearly getting worse.
 4. **Nothing there gets nothing:** carry on.
 
-A person's resume settles what they resumed over: after it, judge only what is new or worse.
+A person's resume settles what they resumed over: after it, judge only what is new or worse;
+a part moved after it is new.
 
 Reading frames:
 
@@ -67,8 +68,8 @@ Reading frames:
   part's top then and now. Risen less than the rise, likely, unsure or unclear is not printing:
   a clear defect, never watched.
   A part off the bed, a first layer not sticking, or one off its own place, left empty, has
-  moved: pause now on the image in hand, before any look or wait; no later frame undoes it, only
-  a person's resume. The facts' X and Y are the bed's, placing nothing in a frame.
+  moved: pause now on the image in hand, before any look or wait; no later frame undoes it. The
+  facts' X and Y are the bed's, not a frame's.
 
 ## When the detector has already paused the print
 
