@@ -250,6 +250,16 @@ class Scripted:
         return self.images[Path(json.loads(ran[look]["out"])["image_path"]).name]
 
 
+def unseen(case: Case) -> frozenset[int]:
+    """Every event of a case, each check's own frame refused so that its turn may look.
+
+    A check handed its event's image is allowed no look: the server withholds it. A
+    check whose frame the camera would not give is handed none, and may look, which
+    is the one turn the look double still answers.
+    """
+    return frozenset(range(len(case.moments)))
+
+
 def mock_replay(
     case: Case,
     turns: list[ScriptedRun],
@@ -259,11 +269,13 @@ def mock_replay(
     real_waits: bool = False,
     compaction: mock_turn.Compaction | None = None,
     picture: Callable[[str], bytes] = stamped,
+    refused_event_frames: frozenset[int] = frozenset(),
 ) -> Scripted:
     """Run one case's whole replay, its turns scripted, and read back what happened.
 
     Each frame is `picture`'s bytes for its name, by default the plain fixture
-    stamped with it.
+    stamped with it. `refused_event_frames` names the events whose own frame the
+    camera refuses, so each of their checks is handed no image and may look.
     """
     script = scratch / "script.json"
     script.write_text(
@@ -285,6 +297,7 @@ def mock_replay(
         gcode=gcode,
         real_waits=real_waits,
         outside=lambda replaying: Outside(replaying, target),
+        refused_event_frames=refused_event_frames,
     )
     try:
         replayed = replay.run()
@@ -662,7 +675,7 @@ def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch
     """Over a window with frames to spare, every look is a newer frame than the last."""
     case = read_case("petg-clip-detach-and-stringing-web")
     turn: ScriptedRun = {"commands": [LOOK, LOOK, LOOK]}
-    done = mock_replay(case, [turn], scratch)
+    done = mock_replay(case, [turn], scratch, refused_event_frames=unseen(case))
     names = [frame.file for frame in case.frames]
     start = names.index(case.moments[0].event_image)
     equal(
@@ -674,7 +687,9 @@ def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch
 def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
     """With no frame left before the next event a look repeats the newest."""
     case = _timeline()
-    done = mock_replay(case, [{"commands": [LOOK, LOOK]}], scratch)
+    done = mock_replay(
+        case, [{"commands": [LOOK, LOOK]}], scratch, refused_event_frames=unseen(case)
+    )
     first, second = case.moments
     between = case.frames[case.frame_at_or_before(first.at, first.event_image) + 1].file
     equal([done.seen_frame(0, 0), done.seen_frame(0, 1)], [between, between])
@@ -699,7 +714,12 @@ def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Pat
         faulty = case.moments[-1].event_image
         directory = scratch / name
         directory.mkdir()
-        done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], directory)
+        done = mock_replay(
+            case,
+            [{"commands": [LOOK, LOOK, LOOK]}],
+            directory,
+            refused_event_frames=unseen(case),
+        )
         seen = [done.seen_frame(0, look) for look in range(3)]
         truth(faulty not in seen, describing=f"{faulty} not to be among {seen}")
 
@@ -709,7 +729,12 @@ def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
     case = _timeline()
     first, second = case.moments
     waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
-    done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
+    done = mock_replay(
+        case,
+        [{"commands": [waiting, waiting, waiting]}],
+        scratch,
+        refused_event_frames=unseen(case),
+    )
     looks = [json.loads(entry["out"]) for entry in done.turns[0]["ran"]]
     # The one frame between the event's and the fault's, repeated with its own time.
     captured = {look["event"]["payload"]["frame_captured_at"] for look in looks}
@@ -737,7 +762,9 @@ def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path)
     """A look after the last event does not jump to the print's end."""
     case = read_case("jar-top-wrong-material-detach-spaghetti")
     last = case.moments[-1]
-    done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], scratch)
+    done = mock_replay(
+        case, [{"commands": [LOOK, LOOK, LOOK]}], scratch, refused_event_frames=unseen(case)
+    )
     equal(done.replayed.fetches[-3:], [last.looks[-1]] * 3)
 
 
@@ -778,7 +805,12 @@ def test_a_look_after_the_last_replayed_event_stops_short_of_the_recordings_next
     if later is None:
         pytest.fail(f"{name} has no recording after its last event")
     waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
-    done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
+    done = mock_replay(
+        case,
+        [{"commands": [waiting, waiting, waiting]}],
+        scratch,
+        refused_event_frames=unseen(case),
+    )
     answered = [json.loads(entry["out"]) for entry in done.turns[-1]["ran"]]
     positions = [look["job"]["file_position_bytes"] for look in answered]
     truth(
@@ -1263,10 +1295,12 @@ def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
     for each in ("real", "jumped"):
         (tmp_path / each).mkdir()
     real_at = time.monotonic()
-    real = mock_replay(case, [turn], tmp_path / "real", real_waits=True)
+    real = mock_replay(
+        case, [turn], tmp_path / "real", real_waits=True, refused_event_frames=unseen(case)
+    )
     real_s = time.monotonic() - real_at
     jumped_at = time.monotonic()
-    jumped = mock_replay(case, [turn], tmp_path / "jumped")
+    jumped = mock_replay(case, [turn], tmp_path / "jumped", refused_event_frames=unseen(case))
     jumped_s = time.monotonic() - jumped_at
     looked, expected = _looked(jumped), _looked(real)
     equal(
@@ -1816,8 +1850,39 @@ def test_a_harnesss_own_bookkeeping_is_no_model_a_turn_answered_with() -> None:
 def test_a_turn_says_how_many_looks_it_took(scratch: Path) -> None:
     """The record counts the server's own looks for that turn, and only those."""
     case = read_case("jar-top-wrong-material-detach-spaghetti")
-    done = mock_replay(case, [{"commands": [LOOK, LOOK]}, {"commands": [CONTEXT]}], scratch)
+    done = mock_replay(
+        case,
+        [{"commands": [LOOK, LOOK]}, {"commands": [CONTEXT]}],
+        scratch,
+        refused_event_frames=unseen(case),
+    )
     equal([point.looks for point in done.replayed.points], [2, 0, 0])
+
+
+def test_a_check_handed_its_frame_cannot_reach_the_look_double(scratch: Path) -> None:
+    """A check carrying its event's image is allowed no look: the harness refuses it.
+
+    The camera is asked for the event's frame and for nothing more, so the look
+    double answers nothing, and the turn's decision point counts no look.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    done = mock_replay(case, [{"commands": [LOOK, CONTEXT]}], scratch)
+    looked, read = done.turns[0]["ran"]
+    equal(looked["status"], mock_turn.REFUSED, describing="the look the rules do not allow")
+    equal(read["status"], 0, describing="the context read beside it")
+    equal(
+        done.images[Path(json.loads(read["out"])["image_path"]).name], case.moments[0].event_image
+    )
+    equal([point.looks for point in done.replayed.points], [0] * len(case.moments))
+    equal(
+        done.replayed.fetches[: len(case.moments)],
+        [moment.event_image for moment in case.moments],
+        describing="one fetch per check, each its own frame",
+    )
+    truth(
+        all("printobserver look" not in rule for rule in done.turns[0]["arguments"]),
+        describing="no rule allowing the look",
+    )
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
@@ -1889,14 +1954,17 @@ def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: P
             {"commands": [CONTEXT]},
         ],
         scratch,
+        # The first check is handed no image, so its re-prompted run may look.
+        refused_event_frames=frozenset({0}),
     )
     usage = done.replayed.points[0].usage
     equal(usage, {"input_tokens": 11, "output_tokens": 22})
     equal(len(done.replayed.ledger["turns"]), 2)
     first, second = case.moments
     equal(
-        done.images[Path(json.loads(done.turns[0]["ran"][0]["out"])["image_path"]).name],
-        first.event_image,
+        json.loads(done.turns[0]["ran"][0]["out"]).get("image_path"),
+        None,
+        describing="the first check's context, whose frame the camera refused",
     )
     equal(
         done.seen_frame(1, 0),
