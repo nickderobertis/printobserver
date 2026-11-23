@@ -18,8 +18,8 @@ Commands: [the command surface](reference/command-surface.md),
 1. **Decide from what is in front of you:** the event, the print's facts and the frame. Read the
    whole context only when the facts lack what you need.
 2. **Judge the frame.** A picture too dark, blurred or aimed at nothing is uncertain: say so.
-3. **Decide on the image in hand;** a turn with one has no look. With none, look; open each,
-   which states its capture time: one time twice is a camera with nothing newer, no defect.
+3. **Decide on the image in hand;** a turn with one has no look. With none, a look can wait up
+   to a minute and a half first; open each: its time twice is no newer frame, no defect.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **To act, ask for the change, then answer.** Give a reason a reader can act on and, if
    temporary, how long. Asking is acting, taken or refused: never look after it.
