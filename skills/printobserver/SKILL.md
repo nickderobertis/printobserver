@@ -18,9 +18,8 @@ Commands: [the command surface](reference/command-surface.md),
 1. **Decide from what is in front of you:** the event, the print's facts and the frame. Read the
    whole context only when the facts lack what you need.
 2. **Judge the frame.** A picture too dark, blurred or aimed at nothing is uncertain: say so.
-3. **Decide on the image in hand;** a turn with one offers no look. With none, a look can wait
-   up to a minute and a half; open each, which states its capture time. One time twice is a camera
-   with nothing newer, no defect: say so.
+3. **Decide on the image in hand;** a turn with one has no look. With none, look; open each,
+   which states its capture time: one time twice is a camera with nothing newer, no defect.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **To act, ask for the change, then answer.** Give a reason a reader can act on and, if
    temporary, how long. Asking is acting, taken or refused: never look after it.
@@ -45,16 +44,16 @@ only where a command's usage asks who.
 4. **Nothing there gets nothing:** carry on.
 
 A person's resume settles what they resumed over: after it, judge only what is new or worse.
-No person puts a part anywhere new, nor back exactly: one off its own place, or moved since
-panel 3, moved by itself, resumed or not: pause.
+No person puts a part anywhere new or back exactly: one off its own place or moved since panel 3
+moved by itself, resumed or not: pause.
 
 Reading frames:
 
 - **The check image.** In print, three panels: 1 the frame, this layer's planned toolpath
   drawn on it, coloured by kind; 2 a close-up of where the part should be; 3 the last check's
   view. Drawn lines are the plan, never plastic; grey ones, the part layer under a support-only
-  one. A part off its drawn walls, bare sheet inside them, or a part moved since 3: it shifted or
-  came loose.
+  one. The camera never shifts and the drawing follows the bed: a part off its drawn walls, bare
+  sheet inside them, or one moved since 3 shifted or came loose, unless strongly shown not.
 - **The plan.** Features and toolpath plan shape and place, never surface quality; the frame
   shows layers below too: a support, bridge or overhang listed is designed; supports, bridges and
   infill look open and straight. Rough, porous or strung material is a defect even where

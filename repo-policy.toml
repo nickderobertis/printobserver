@@ -1193,7 +1193,7 @@ marker = "2. **Judge the frame.**"
 
 [[docs.skill_element]]
 name = "the workflow step that decides on the image in hand, with no look beside it"
-marker = "3. **Decide on the image in hand;** a turn with one offers no look."
+marker = "3. **Decide on the image in hand;** a turn with one has no look."
 
 [[docs.skill_element]]
 name = "the workflow step that decides"

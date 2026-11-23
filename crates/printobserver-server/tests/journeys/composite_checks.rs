@@ -583,7 +583,9 @@ async fn scheduled_check_and_look(
             "the three-panel check image, 1024x1848: panel 1 this check's own frame, captured \
              {scheduled_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up \
              of the part being printed, panel 3 empty, no earlier check's frame being at hand; \
-             a part off its drawn walls in panel 1 has moved, and no later frame undoes that"
+             the camera does not shift in regular operation and the drawing already accounts \
+             for the bed's travel, so a part off its drawn walls in panel 1 has moved unless \
+             there is strong evidence otherwise, and no later frame undoes that"
         ),
         "{installer}: the check's note names its own frame and when it was captured"
     );
@@ -682,8 +684,10 @@ async fn alert_check_after_a_restart(
             "the three-panel check image, 1024x1848: panel 1 this check's own frame, captured \
              {alerted_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up of \
              the part being printed, panel 3 the previous check's frame, captured \
-             {scheduled_at}; a part off its drawn walls in panel 1, or moved since panel 3, has \
-             moved, and no later frame undoes that"
+             {scheduled_at}; the camera does not shift in regular operation and the drawing \
+             already accounts for the bed's travel, so a part off its drawn walls in panel 1, or \
+             moved since panel 3, has moved unless there is strong evidence otherwise, and no \
+             later frame undoes that"
         ),
         "{installer}: the alert's check names its own frame and the previous one, with when each was captured"
     );

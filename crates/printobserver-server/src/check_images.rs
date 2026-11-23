@@ -188,14 +188,20 @@ pub fn whole_frame_note(reason: &WholeFrameReason) -> String {
     )
 }
 
+/// What a check's note says of the drawing before it says what a part off it
+/// means: an agent shown a part off its walls otherwise explains the
+/// difference as the camera or the bed having shifted in view.
+const CAMERA_HOLDS: &str = "the camera does not shift in regular operation and the drawing already accounts for the bed's travel, so ";
+
 /// The line saying a check or a look was shown the three-panel image of the
 /// frame captured at `current_at`, beside the frame `previous_at` names: panel
 /// 3 empty when no earlier check's frame is at hand — the print's first check,
 /// or one whose earlier frame is gone from the store.
 ///
 /// A check's names which frame each panel is and when each was captured, and
-/// says what the skill says: a part that moved has moved, and no later frame
-/// undoes it. A turn handed a check's image decides on it, with no look to
+/// says what the skill says: the camera does not shift and the drawing follows
+/// the bed, so a part off it has moved unless there is strong evidence
+/// otherwise, and no later frame undoes it. A turn handed a check's image decides on it, with no look to
 /// stall on, so this is what it decides from. A look's says only what each
 /// panel is.
 #[must_use]
@@ -215,15 +221,22 @@ pub fn composite_note(
             String::new(),
         ),
         (ImageUse::Check, None) => (
-            format!("this check's own frame, captured {current_at}, with this layer's planned toolpath drawn on it"),
+            format!(
+                "this check's own frame, captured {current_at}, with this layer's planned toolpath drawn on it"
+            ),
             "panel 3 empty, no earlier check's frame being at hand".to_owned(),
-            "; a part off its drawn walls in panel 1 has moved, and no later frame undoes that"
-                .to_owned(),
+            format!(
+                "; {CAMERA_HOLDS}a part off its drawn walls in panel 1 has moved unless there is strong evidence otherwise, and no later frame undoes that"
+            ),
         ),
         (ImageUse::Check, Some(at)) => (
-            format!("this check's own frame, captured {current_at}, with this layer's planned toolpath drawn on it"),
+            format!(
+                "this check's own frame, captured {current_at}, with this layer's planned toolpath drawn on it"
+            ),
             format!("panel 3 the previous check's frame, captured {at}"),
-            "; a part off its drawn walls in panel 1, or moved since panel 3, has moved, and no later frame undoes that".to_owned(),
+            format!(
+                "; {CAMERA_HOLDS}a part off its drawn walls in panel 1, or moved since panel 3, has moved unless there is strong evidence otherwise, and no later frame undoes that"
+            ),
         ),
     };
     format!(
