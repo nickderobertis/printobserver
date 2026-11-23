@@ -135,9 +135,9 @@ budgets:
       2.1.330): 20,665 (the quiet split plus repeat 9,983 and action and
       result 699). The original target, 15,000, was not reached; the user
       restated it on 2026-11-23, in their words: "did the cuts not work
-      out? I'm ok to increase budgets by 10%", to 22,700, about 10% over
-      the measured figure. The median varies from run to run with how many
-      calls an acting check takes: the run before measured 18,678. Workload: last full suite run
+      out? I'm ok to increase budgets by 10%", to 20,500, about 10% over
+      the run before's 18,678. This run is 165 over it: the median varies
+      with how many calls an acting check takes. Workload: last full suite run
       after po-lean-composite and po-auto-compact: 9 replays, ~66 checks
       (6 acting), one image each, 3 probes; claude-code,
       claude-sonnet-5-5. Check runtime approximately 3 seconds.
@@ -155,7 +155,7 @@ budgets:
       - acting_check_input_tokens
     unit: tokens
     direction: max
-    threshold: 22700
+    threshold: 20500
     timeout_seconds: 60
   - id: supervisor-base-context-tokens
     description: >-
