@@ -1192,8 +1192,8 @@ name = "the workflow step that inspects the image"
 marker = "2. **Judge the frame.**"
 
 [[docs.skill_element]]
-name = "the workflow step that looks again only for an ambiguous frame"
-marker = "3. **Look again only when the frame is genuinely ambiguous.**"
+name = "the workflow step that decides on the image in hand, with no look beside it"
+marker = "3. **Decide on the image in hand;** a turn with one offers no look."
 
 [[docs.skill_element]]
 name = "the workflow step that decides"

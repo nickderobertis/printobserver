@@ -18,12 +18,12 @@ Commands: [the command surface](reference/command-surface.md),
 1. **Decide from what is in front of you:** the event, the print's facts and the frame. Read the
    whole context only when the facts lack what you need.
 2. **Judge the frame.** A picture too dark, blurred or aimed at nothing is uncertain: say so.
-3. **Look again only when the frame is genuinely ambiguous.** A look can wait up to a minute and a
-   half first; a few show a defect growing. Open each; each states its capture time. One time twice
-   is a camera with nothing newer, no defect: say so and judge the frame.
+3. **Decide on the image in hand;** a turn with one offers no look. With none, a look can wait
+   up to a minute and a half; open each, which states its capture time. One time twice is a camera
+   with nothing newer, no defect: say so.
 4. **Decide.** Follow the order below, saying which way and how sure.
 5. **To act, ask for the change, then answer.** Give a reason a reader can act on and, if
-   temporary, how long. Asking is acting, taken or refused: never look again after it.
+   temporary, how long. Asking is acting, taken or refused: never look after it.
 6. **Your answer's disposition records the check,** its reason what you saw and made of it: stop
    with every pause, yours or the detector's; watch after a setting, or when uncertain on a running
    print; continue when nothing is there, a false alarm included.
@@ -40,12 +40,13 @@ only where a command's usage asks who.
    it stands, seen or not: put it back to normal, flow one, the fan full.
 2. **A clear defect no setting addresses, or a part that has moved, gone or not risen as planned,
    gets a pause,** also beside a defect with a setting.
-3. **An uncertain reading gets a watch and another look, never a pause,** unless the frames show
-   it clearly getting worse.
+3. **An uncertain reading gets a watch, never a pause,** unless the frames show it clearly
+   getting worse.
 4. **Nothing there gets nothing:** carry on.
 
-A person's resume settles what they resumed over: after it, judge only what is new or worse;
-a part moved after it is new.
+A person's resume settles what they resumed over: after it, judge only what is new or worse.
+No person puts a part anywhere new, nor back exactly: one off its own place, or moved since
+panel 3, moved by itself, resumed or not: pause.
 
 Reading frames:
 
@@ -68,13 +69,12 @@ Reading frames:
   part's top then and now. Risen less than the rise, likely, unsure or unclear is not printing:
   a clear defect, never watched.
   A part off the bed, a first layer not sticking, or one off its own place, left empty, has
-  moved: pause now on the image in hand, before any look or wait; no later frame undoes it. The
-  facts' X and Y are the bed's, not a frame's.
+  moved: pause now on the image in hand; no later frame undoes it. The facts' X and Y are the
+  bed's, not a frame's.
 
 ## When the detector has already paused the print
 
-The order holds
-with that pause standing; a look settles nothing on a paused print: an uncertain reading is stopped, not watched.
+The order holds with that pause standing: an uncertain reading is stopped, not watched.
 
 - **If a clear defect a setting addresses is all you see**, ask for it while paused; the
   supervisor resumes the print itself twenty seconds after your last such change, or when your
