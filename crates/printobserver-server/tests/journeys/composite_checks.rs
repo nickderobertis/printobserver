@@ -236,11 +236,12 @@ fn block_under(prompt: &str, heading: &str) -> Value {
     printobserver_types::serde_json::from_str(text).expect("the block is JSON")
 }
 
-/// What one check was handed: its event, its situation's image line, and its
-/// attached image's bytes.
+/// What one check was handed: its event, its situation's image line and
+/// frame capture time, and its attached image's bytes.
 struct Handed {
     event: Value,
     note: String,
+    frame_captured_at: Option<Timestamp>,
     image: Vec<u8>,
 }
 
@@ -254,6 +255,10 @@ fn read_handed(seen: &Value) -> Handed {
             .as_str()
             .unwrap_or_else(|| panic!("the situation says nothing of its image:\n{prompt}"))
             .to_owned(),
+        frame_captured_at: printobserver_types::serde_json::from_value(
+            situation["frame_captured_at"].clone(),
+        )
+        .ok(),
         image,
     }
 }
@@ -414,15 +419,6 @@ impl Journey {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
-
-    /// What the responder's actions were answered, in order.
-    fn answered(&self) -> Vec<Value> {
-        std::fs::read_to_string(self.root.path().join("responder.log"))
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| printobserver_types::serde_json::from_str::<Value>(line).ok())
-            .collect()
-    }
 }
 
 /// The print the scripted job is, once the server has adopted it.
@@ -524,8 +520,11 @@ struct Plan<'a> {
 }
 
 /// The print's first scheduled check, held open until it is read so no further
-/// check moves the print's previous frame along, and a look it takes: answers
-/// when the check's frame was captured.
+/// check moves the print's previous frame along, and a look the operator takes
+/// while it is: answers when the check's frame was captured.
+///
+/// The look is the operator's because a turn handed a check's image is allowed
+/// none: it decides on the image in hand.
 async fn scheduled_check_and_look(
     journey: &Journey,
     plan: &Plan<'_>,
@@ -548,9 +547,7 @@ async fn scheduled_check_and_look(
     };
     let url = checking.host.url();
     let calibrated = calibration_at(calibration, &url);
-    let started = journey
-        .start(&checking, 1, &json!([{ "operation": "look", "body": {} }]))
-        .await;
+    let started = journey.start(&checking, 1, &json!([])).await;
     assert_eq!(adopted(&started.server).await, print_id, "{installer}");
     let seen = journey.runs(1).await;
     let scheduled = read_handed(&seen[0]);
@@ -579,30 +576,21 @@ async fn scheduled_check_and_look(
         ),
         "{installer}: the scheduled check is its own frame composed at the job's position, panel 3 the first check's placeholder"
     );
-    assert!(
-        scheduled.note.starts_with("the three-panel check image")
-            && scheduled.note.contains("panel 3 empty"),
-        "{installer}: {}",
-        scheduled.note
-    );
     let scheduled_at = captured_at(&scheduled.event);
+    assert_eq!(
+        scheduled.note,
+        format!(
+            "the three-panel check image, 1024x1848: panel 1 this check's own frame, captured \
+             {scheduled_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up \
+             of the part being printed, panel 3 empty, no earlier check's frame being at hand; \
+             the camera does not shift in regular operation and the drawing already accounts \
+             for the bed's travel, so a part off its drawn walls in panel 1 has moved unless \
+             there is strong evidence otherwise, and no later frame undoes that"
+        ),
+        "{installer}: the check's note names its own frame and when it was captured"
+    );
 
-    let deadline = tokio::time::Instant::now() + PATIENCE;
-    let look = loop {
-        if let Some(look) = journey
-            .answered()
-            .into_iter()
-            .find(|done| done["operation"] == "look")
-        {
-            break look;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "{installer}: the look never answered"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    };
-    let look = &look["body"];
+    let look = &operator_look(&started.server, print_id).await;
     assert_eq!(
         look["event"]["image"]["sha256"],
         json!(sha256(&frames[1])),
@@ -622,15 +610,30 @@ async fn scheduled_check_and_look(
         ),
         "{installer}: the look is its own frame composed, the last check's frame as panel 3"
     );
-    assert!(
-        look["image_note"]
-            .as_str()
-            .is_some_and(|note| note.contains("previous check's frame")),
+    assert_eq!(
+        look["image_note"],
+        json!(
+            "the three-panel check image, 1024x1848: panel 1 this layer's planned toolpath \
+             drawn on the frame, panel 2 a close-up of the part being printed, panel 3 the \
+             previous check's frame"
+        ),
         "{installer}: {look}"
     );
     started.server.stop().await;
     std::fs::remove_file(&hold).expect("the hold is removable");
     scheduled_at
+}
+
+/// The look the operator takes at one print, as the server answers it.
+async fn operator_look(server: &Running, print_id: PrintId) -> Value {
+    presenting(OPERATOR)
+        .get(format!("{}/prints/{print_id}/look", server.base_url()))
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("JSON")
 }
 
 /// An alert's check after a restart, its frame the third: composed with the
@@ -673,10 +676,22 @@ async fn alert_check_after_a_restart(
         ),
         "{installer}: the alert's check draws the part layer below its support-only layer, the scheduled check's frame as panel 3"
     );
-    assert!(
-        alerted.note.contains("previous check's frame"),
-        "{installer}: {}",
-        alerted.note
+    let alerted_at = alerted
+        .frame_captured_at
+        .expect("the alert's situation says when its frame was captured");
+    assert_eq!(
+        alerted.note,
+        format!(
+            "the three-panel check image, 1024x1848: panel 1 this check's own frame, captured \
+             {alerted_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up of \
+             the part being printed, panel 3 the previous check's frame, captured \
+             {scheduled_at}; the camera does not shift in regular operation and the drawing \
+             already accounts for the bed's travel, so a part off its drawn walls in panel 1, or \
+             moved since panel 3, has moved unless there is strong evidence otherwise, and no \
+             later frame undoes that; panel 1 is the printer's camera's own frame, taken as the \
+             detector's alert arrived, not the detector's picture"
+        ),
+        "{installer}: the alert's check names its own frame and the previous one, with when each was captured"
     );
     assert_eq!(
         started.requests.all().len(),
@@ -688,11 +703,11 @@ async fn alert_check_after_a_restart(
 
 /// A print whose alignment passed is shown the three-panel image at every
 /// check: its first scheduled check composed of its own frame at the job's
-/// position with an empty panel 3; a look during it composed of the look's
-/// frame with that check's frame as the previous; and an alert's check, on a
-/// layer laying supports alone, composed of the alert's frame with the part
-/// layer below in grey and that scheduled check's frame as the previous — the
-/// record of which stands through a restart.
+/// position with an empty panel 3; the operator's look during it composed of
+/// the look's frame with that check's frame as the previous; and an alert's
+/// check, on a layer laying supports alone, composed of the alert's frame with
+/// the part layer below in grey and that scheduled check's frame as the
+/// previous — the record of which stands through a restart.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_print_whose_alignment_passed_is_shown_the_three_panel_image() {
     let bytes = slice("jar-top-petg.gcode");
@@ -732,6 +747,133 @@ async fn a_print_whose_alignment_passed_is_shown_the_three_panel_image() {
             (print_id, scheduled_at),
         )
         .await;
+    }
+}
+
+/// The detector's picture of an alert: 1280x720 of the camera's 1920x1080
+/// stream, as Obico's is, which no calibration of the stream composes.
+const DETECTOR_PICTURE: (u32, u32) = (1280, 720);
+
+/// One alert about the print, its picture the detector's own at `picture_url`,
+/// with the camera answering `camera`; answers what its check was handed.
+async fn alert_with_detector_picture(
+    journey: &Journey,
+    calibration: &Value,
+    camera: Scripted,
+    picture_url: &str,
+    (print_id, runs): (PrintId, usize),
+) -> (Handed, String) {
+    let installer = journey.installer;
+    let alerting = Camera {
+        host: ScriptedHost::answering(vec![camera]).await,
+        calibration: Some(calibration.clone()),
+        snapshot: true,
+    };
+    let url = alerting.host.url();
+    let started = journey.start(&alerting, 3600, &json!([])).await;
+    assert_eq!(adopted(&started.server).await, print_id, "{installer}");
+    alert(&started.server, picture_url).await;
+    let seen = journey.runs(runs).await;
+    let alerted = read_handed(&seen[runs - 1]);
+    started.server.stop().await;
+    assert_eq!(alerted.event["kind"], "obico_failure_alert", "{installer}");
+    (alerted, url)
+}
+
+/// A detector's alert on a print whose alignment passed is shown the
+/// three-panel image of the server's own camera frame, taken as the alert
+/// arrived, whatever the detector's picture is: Obico's is 1280x720 of a
+/// 1920x1080 stream, which no calibration of that stream composes. The event
+/// keeps the detector's picture, and the image line says panel 1 is the
+/// camera's frame and when it was captured. Where the camera gives no frame,
+/// the check is shown the detector's picture whole, saying why.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_alert_is_shown_the_cameras_own_frame_composed_whatever_the_detectors_picture() {
+    let bytes = slice("jar-top-petg.gcode");
+    let calibration = committed();
+    let camera_frame = frame(PETG, FRAMES[1]);
+    let picture = marked_frame_of(DETECTOR_PICTURE);
+    for installer in INSTALLERS {
+        let spool = TempDir::new().expect("a spool directory");
+        let index = index_of(&bytes, &spool.path().join("index.gcode"));
+        let past_first = position_at(&index, bytes.len(), 0.6);
+        let walls = laying_walls(&index, bytes.len());
+        let journey = Journey::new(installer, &bytes, past_first);
+        let (print_id, verdict) =
+            aligned(&journey, &calibration, frame(PETG, FIRST_LAYER), past_first).await;
+        assert!(
+            passed(&verdict),
+            "{installer}: the healthy first layer did not pass: {verdict:?}"
+        );
+        journey.at(walls);
+        let detector = ScriptedHost::answering(vec![Scripted::frame(picture.clone())]).await;
+
+        let (alerted, url) = alert_with_detector_picture(
+            &journey,
+            &calibration,
+            Scripted::frame(camera_frame.clone()),
+            &detector.url(),
+            (print_id, 1),
+        )
+        .await;
+        assert_eq!(
+            alerted.event["image"]["sha256"],
+            json!(sha256(&picture)),
+            "{installer}: the alert's event keeps the detector's own picture"
+        );
+        assert_eq!(
+            alerted.image,
+            expected_composite(
+                &index,
+                walls,
+                &camera_frame,
+                None,
+                &url,
+                &calibration_at(&calibration, &url),
+            ),
+            "{installer}: the alert's check is the three-panel image of the camera's own frame"
+        );
+        let captured = alerted
+            .frame_captured_at
+            .expect("the alert's situation says when its frame was captured");
+        assert_eq!(
+            alerted.note,
+            format!(
+                "the three-panel check image, 1024x1848: panel 1 this check's own frame, captured \
+                 {captured}, with this layer's planned toolpath drawn on it, panel 2 a close-up \
+                 of the part being printed, panel 3 empty, no earlier check's frame being at \
+                 hand; the camera does not shift in regular operation and the drawing already \
+                 accounts for the bed's travel, so a part off its drawn walls in panel 1 has \
+                 moved unless there is strong evidence otherwise, and no later frame undoes \
+                 that; panel 1 is the printer's camera's own frame, taken as the detector's \
+                 alert arrived, not the detector's picture"
+            ),
+            "{installer}: the alert's image line names the camera's frame and when it was captured"
+        );
+
+        let (fallen_back, _) = alert_with_detector_picture(
+            &journey,
+            &calibration,
+            Scripted::refusing("404 Not Found", "no such stream"),
+            &detector.url(),
+            (print_id, 2),
+        )
+        .await;
+        is_the_whole_frame_scaled(
+            &fallen_back.image,
+            &format!("{installer}: an alert the camera gave no frame for"),
+        );
+        assert!(
+            fallen_back.note.starts_with(
+                "the whole camera frame, scaled to fit 1280x720 and uncropped, because "
+            ) && fallen_back.note.contains("resolution")
+                && fallen_back.note.contains(
+                    "; the detector's own picture, because the camera gave no frame of its own \
+                     as the alert arrived: "
+                ),
+            "{installer}: the alert's check is shown the detector's picture whole, saying why: {}",
+            fallen_back.note
+        );
     }
 }
 
@@ -1175,10 +1317,14 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
         snapshot: true,
     };
     let url = camera.host.url();
+    // Each alert's check is composed of the camera's own frame, the next of
+    // the script, whatever the detector's picture is.
+    let detector =
+        ScriptedHost::answering(vec![Scripted::frame(marked_frame_of(DETECTOR_PICTURE))]).await;
     let calibrated = calibration_at(&calibration, &url);
     let started = journey.start(&camera, 3600, &json!([])).await;
     assert_eq!(adopted(&started.server).await, print_id);
-    alert(&started.server, &url).await;
+    alert(&started.server, &detector.url()).await;
     let first = read_handed(&journey.runs(1).await[0]);
     assert_eq!(
         first.image,
@@ -1193,7 +1339,7 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
             .expect("the record is JSON");
     std::fs::remove_file(named["frame"].as_str().expect("a frame path"))
         .expect("the stored frame is removable");
-    alert(&started.server, &url).await;
+    alert(&started.server, &detector.url()).await;
     let second = read_handed(&journey.runs(2).await[1]);
     assert_eq!(
         second.image,
@@ -1211,7 +1357,7 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
         b"these bytes are no image",
     )
     .expect("the stored frame is writable");
-    alert(&started.server, &url).await;
+    alert(&started.server, &detector.url()).await;
     let third = read_handed(&journey.runs(3).await[2]);
     assert_eq!(
         third.image,

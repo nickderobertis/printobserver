@@ -41,6 +41,10 @@ MANIFEST = {"nozzle_diameter_mm": 0.4, "slicer_profile": "0.20mm", "allowed": {}
 LOOK = ["printobserver", "look", "--json"]
 
 
+#: The rule a supervision turn handed its event's image is not given.
+WITHHELD_BESIDE_AN_IMAGE = "Bash(printobserver look:*)"
+
+
 def manifest(material: str, sheet: str | None) -> str:
     """The manifest a scripted start declares, naming a sheet or none."""
     declared: dict[str, object] = {**MANIFEST, "file_name": "{file}", "material": material}
@@ -163,7 +167,12 @@ def test_each_message_names_the_file_its_material_and_the_frame_of_that_moment(
 def test_the_conversation_has_the_skill_and_a_supervision_turns_permissions(
     scratch: Path,
 ) -> None:
-    """The skill is where Claude Code finds one, and the rules are a supervision turn's."""
+    """The skill is where Claude Code finds one, and the rules are a supervision turn's.
+
+    A supervision turn handed its event's image is allowed every rule but the look,
+    which the server withholds from it; the start conversation keeps the look, which
+    is how it sees the bed.
+    """
     case = requests_of("bed-clear-check", "clear-01-bed-lowered-1727")
     done = conversed(case, [{"commands": [LOOK], "reply": "looked"}], scratch)
     committed = (Path(__file__).resolve().parents[2] / "skills/printobserver/SKILL.md").read_text(
@@ -184,13 +193,19 @@ def test_the_conversation_has_the_skill_and_a_supervision_turns_permissions(
         dataclasses.replace(one_check, moments=one_check.moments[:1]), [{}], supervised
     ).turns[0]
     supervision = turn["arguments"]
-    equal(agent_rules(), [word for word in supervision if word.startswith("Bash(")])
-    # Beyond a supervision turn's, the skill tool, for the one skill installed.
+    equal(
+        [rule for rule in agent_rules() if rule != WITHHELD_BESIDE_AN_IMAGE],
+        [word for word in supervision if word.startswith("Bash(")],
+    )
+    contains(" ".join(agent_rules()), WITHHELD_BESIDE_AN_IMAGE)
+    # Beyond a supervision turn's, the skill tool, for the one skill installed, and the
+    # look a turn handed an image is not allowed.
     granted = tail[tail.index("--allowedTools") + 1 : len(harness_arguments())]
     supervision_granted = supervision[supervision.index("--allowedTools") + 1 :]
+    beyond = {"Skill(printobserver)", WITHHELD_BESIDE_AN_IMAGE}
     equal(
-        [rule for rule in granted if rule != "Skill(printobserver)"],
-        supervision_granted[: len(granted) - 1],
+        [rule for rule in granted if rule not in beyond],
+        supervision_granted[: len(granted) - len(beyond)],
     )
     # The engine writes a supervision turn's one tool list up to its next option.
     after_tools = supervision[supervision.index("--tools") + 1 :]

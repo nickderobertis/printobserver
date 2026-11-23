@@ -109,7 +109,7 @@ pub use filament::{
 pub use gcode_index::{
     BedArea, GcodeIndex, IndexBuilder, PlanFact, PlanMismatch, Rise, SetValue, SlicerPlan,
 };
-pub use inbox::{Arrival, Inboxes};
+pub use inbox::{AlertCameraFrame, Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     AgentStopUnactedPayload, BedClearActor, BedClearAssertedPayload, CameraDegradedPayload,

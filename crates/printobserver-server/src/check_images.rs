@@ -188,18 +188,59 @@ pub fn whole_frame_note(reason: &WholeFrameReason) -> String {
     )
 }
 
-/// The line saying a check was shown the three-panel image: panel 3 empty
-/// when no earlier check's frame is at hand — the print's first check, or one
-/// whose earlier frame is gone from the store.
+/// What a check's note says of the drawing before it says what a part off it
+/// means: an agent shown a part off its walls otherwise explains the
+/// difference as the camera or the bed having shifted in view.
+const CAMERA_HOLDS: &str = "the camera does not shift in regular operation and the drawing already accounts for the bed's travel, so ";
+
+/// The line saying a check or a look was shown the three-panel image of the
+/// frame captured at `current_at`, beside the frame `previous_at` names: panel
+/// 3 empty when no earlier check's frame is at hand — the print's first check,
+/// or one whose earlier frame is gone from the store.
+///
+/// A check's names which frame each panel is and when each was captured, and
+/// says what the skill says: the camera does not shift and the drawing follows
+/// the bed, so a part off it has moved unless there is strong evidence
+/// otherwise, and no later frame undoes it. A turn handed a check's image decides on it, with no look to
+/// stall on, so this is what it decides from. A look's says only what each
+/// panel is.
 #[must_use]
-pub fn composite_note(no_previous: bool) -> String {
-    let previous = if no_previous {
-        "panel 3 empty, no earlier check's frame being at hand"
-    } else {
-        "panel 3 the previous check's frame"
+pub fn composite_note(
+    made_for: ImageUse,
+    current_at: Timestamp,
+    previous_at: Option<Timestamp>,
+) -> String {
+    let (current, previous, moved) = match (made_for, previous_at) {
+        (ImageUse::Look, at) => (
+            "this layer's planned toolpath drawn on the frame".to_owned(),
+            if at.is_none() {
+                "panel 3 empty, no earlier check's frame being at hand".to_owned()
+            } else {
+                "panel 3 the previous check's frame".to_owned()
+            },
+            String::new(),
+        ),
+        (ImageUse::Check, None) => (
+            format!(
+                "this check's own frame, captured {current_at}, with this layer's planned toolpath drawn on it"
+            ),
+            "panel 3 empty, no earlier check's frame being at hand".to_owned(),
+            format!(
+                "; {CAMERA_HOLDS}a part off its drawn walls in panel 1 has moved unless there is strong evidence otherwise, and no later frame undoes that"
+            ),
+        ),
+        (ImageUse::Check, Some(at)) => (
+            format!(
+                "this check's own frame, captured {current_at}, with this layer's planned toolpath drawn on it"
+            ),
+            format!("panel 3 the previous check's frame, captured {at}"),
+            format!(
+                "; {CAMERA_HOLDS}a part off its drawn walls in panel 1, or moved since panel 3, has moved unless there is strong evidence otherwise, and no later frame undoes that"
+            ),
+        ),
     };
     format!(
-        "{COMPOSITE_NOTE}, {}x{}: panel 1 this layer's planned toolpath drawn on the frame, panel 2 a close-up of the part being printed, {previous}",
+        "{COMPOSITE_NOTE}, {}x{}: panel 1 {current}, panel 2 a close-up of the part being printed, {previous}{moved}",
         printobserver_panels::compose::PANEL_WIDTH,
         printobserver_panels::compose::IMAGE_HEIGHT
     )
@@ -309,6 +350,7 @@ impl PanelImages {
         Ok(ShownImage {
             path: self.whole.check_image(None, frame)?,
             note: Some(whole_frame_note(reason)),
+            composite: false,
         })
     }
 
@@ -384,7 +426,12 @@ impl PanelImages {
         write_image(&self.whole.directory, &destination, &composed.jpeg)?;
         Ok(Ok(ShownImage {
             path: destination,
-            note: Some(composite_note(earlier.is_none())),
+            note: Some(composite_note(
+                request.made_for,
+                request.captured_at,
+                earlier.as_ref().map(|(_, at)| *at),
+            )),
+            composite: true,
         }))
     }
 
@@ -411,6 +458,15 @@ impl PanelImages {
 impl CheckImages for PanelImages {
     fn check_image(&self, print_id: Option<PrintId>, frame: &Path) -> Result<PathBuf, String> {
         self.whole.check_image(print_id, frame)
+    }
+
+    fn composes(&self, print_id: PrintId) -> bool {
+        self.alignments.calibration().is_some()
+            && self.camera_snapshot_url.is_some()
+            && matches!(
+                self.alignments.print_alignment(print_id),
+                PrintAlignment::Passed { .. }
+            )
     }
 
     fn shown_image(&self, request: &CheckImageRequest<'_>) -> Result<ShownImage, String> {

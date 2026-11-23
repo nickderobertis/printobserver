@@ -562,12 +562,13 @@ fn an_acknowledgement_neither_waits_on_the_interval_nor_restarts_it() {
     world.journal.assert_no_violations();
 }
 
-/// Every action that changes the machine still waits on the interval an
-/// agent's earlier change started, and still starts it again itself.
+/// Every action that changes the machine but a pause still waits on the
+/// interval an agent's earlier change started, and still starts it again
+/// itself.
 #[test]
 fn every_change_to_the_machine_still_waits_on_the_interval_and_restarts_it() {
     for kind in ACTION_KINDS {
-        if !changes_the_machine(kind) {
+        if !changes_the_machine(kind) || kind == ActionKind::Pause {
             continue;
         }
         let mut envelope = permissive_envelope();

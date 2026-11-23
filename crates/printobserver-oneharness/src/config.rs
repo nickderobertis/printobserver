@@ -436,6 +436,11 @@ pub struct SupervisorConfig {
     /// The command prefixes the agent may run during a turn. Empty keeps the
     /// turn read-only, with no shell at all.
     pub agent_commands: Vec<AgentCommand>,
+    /// Those of [`Self::agent_commands`] a turn handed an image is neither
+    /// allowed to run nor told of: what a fresh frame would only stall a
+    /// decision the image in hand already settles. A turn handed no image is
+    /// allowed every agent command. Empty withholds nothing.
+    pub withheld_beside_an_image: Vec<AgentCommand>,
     /// The usage line of every command the program serving the turn has, as
     /// it prints them: a turn is handed those of its [`Self::agent_commands`],
     /// so it can act without first reading how. Empty hands it none.

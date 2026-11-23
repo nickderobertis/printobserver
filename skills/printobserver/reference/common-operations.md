@@ -581,6 +581,8 @@ watch a defect grow or settle. A look inside a turn returns the moment a new
 event arrives for its print and answers it under `arrived`: that is how a later
 alert reaches the agent already watching the print rather than a second one.
 `detector_paused` says whether the detector's pause is what is holding the print.
+A supervision turn handed its event's image is allowed no look: it decides on
+the image in hand.
 
 ```console
 $ printobserver look --print-id PRINT_ID --wait-s 1

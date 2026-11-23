@@ -76,6 +76,7 @@ ASSIGNED = {
     INDEPENDENT: frozenset(
         {
             "test_actions_runner.py",
+            "test_bounded_drafting.py",
             "test_end_to_end_projects.py",
             "test_llmlint_harness_journey.py",
             "test_platform_dispatch_journey.py",

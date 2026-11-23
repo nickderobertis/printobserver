@@ -17,7 +17,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use printobserver_core::IndexBuilder;
+use printobserver_core::{ImageUse, IndexBuilder};
 use printobserver_printer_api::GcodeSink as _;
 use printobserver_server::{PlanAt, ServerConfig, compose_at, composite_note};
 use printobserver_types::Timestamp;
@@ -93,12 +93,13 @@ fn composed(asked: &Asked) -> Result<String, String> {
         .map_err(|error| format!("{} cannot be written: {error}", spool.display()))?;
     let _ = builder.take(&gcode);
     let index = builder.finish();
+    let captured_at = Timestamp::now();
     let image = compose_at(
         PlanAt {
             index: &index,
             file_position_bytes: asked.position,
         },
-        (&frame, Timestamp::now()),
+        (&frame, captured_at),
         None,
         url.as_str(),
         calibration,
@@ -111,7 +112,7 @@ fn composed(asked: &Asked) -> Result<String, String> {
         "width": image.width,
         "height": image.height,
         "bytes": image.jpeg.len(),
-        "note": composite_note(true),
+        "note": composite_note(ImageUse::Check, captured_at, None),
     })
     .to_string())
 }

@@ -36,6 +36,7 @@ from typing import Self
 from urllib.parse import urlsplit
 
 import pytest
+from bounded import Bounds, Drafted, bounded
 from journey import (
     COMMIT_IDENTITY,
     RELEASE_DRAFTING,
@@ -74,11 +75,24 @@ WEDGED = "not found in the registry, but the git tag"
 #: What it says as it reaches the computation that state stops, once per crate.
 DETERMINING = "determining next version for"
 
-#: A bound on a hang rather than a budget. Drafting every crate of this
-#: workspace downloads and diffs each published package, which took 282-333 s
-#: by hand on a loaded development host and 125 s on a base tree, so the bound
-#: sits well above the longest complete draft seen.
+#: A bound on a hang rather than a budget, for the drafts against the empty
+#: stand-in registry and the opening of the release pull request: with no
+#: release to compare against, none of them runs `cargo-semver-checks`, and
+#: each takes well under a minute.
 DRAFT_TIMEOUT_SECONDS = 600
+
+#: What a draft against a release is held to instead of a deadline. Those drafts
+#: run `cargo-semver-checks` wherever the host carries it, as the release
+#: workflow does, which documents every changed crate twice; beside a coverage
+#: build the draft of every crate ran past a 600 s deadline, and finished in
+#: 297-394 s at lower loads, so its wall time is the host's load rather than the
+#: draft. Measured beside a cold coverage compile on 2026-11-23, the draft of
+#: every crate consumed 246 s of CPU with `sccache` compiling for it out of the
+#: tree, and 540 s with every compile in the tree; the drafts of one crate
+#: 27-40 s. The longest its tree went without doing anything was 16 s, while
+#: `sccache` compiled for it, and under a second without. The CPU bound is
+#: about three times the most measured, and the idle bound about nineteen times.
+DRAFT_BOUNDS = Bounds(cpu_seconds=1_800, idle_seconds=300)
 
 pytestmark = [
     RELEASE_DRAFTING,
@@ -185,6 +199,28 @@ def tagged(gate_copy: Callable[..., GateCopy], versions: tuple[str, ...]) -> Gat
     # cannot remove a loose object between that copy's enumeration and read.
     shell_run(["git", "repack", "-ad"], cwd=copy.root, check=True)
     return copy
+
+
+def against_the_release(drafted_copy: GateCopy, released: GateCopy, *, describing: str) -> Drafted:
+    """Draft the copy against the untouched one, where the registry's packages would be.
+
+    `--registry-manifest-path` is the drafting tool's own way of reading a
+    release that is already available locally. The draft is held to
+    `DRAFT_BOUNDS` rather than to a deadline.
+    """
+    return bounded(
+        [
+            "release-plz",
+            "update",
+            "--no-changelog",
+            "--registry-manifest-path",
+            str(released.root / "Cargo.toml"),
+        ],
+        drafted_copy.root,
+        bounds=DRAFT_BOUNDS,
+        env=clean_environment(),
+        describing=describing,
+    )
 
 
 # llmlint: ignore[tests_mirror_real_usage] suppressions.toml has the reason.
@@ -484,19 +520,13 @@ def test_the_bump_the_suites_apply_is_what_the_drafting_tool_writes(
     shell_run(["git", "repack", "-ad"], cwd=drafted_copy.root, check=True)
     was = bumping.workspace_version(released.root)
 
-    result = capture(
-        [
-            "release-plz",
-            "update",
-            "--no-changelog",
-            "--registry-manifest-path",
-            str(released.root / "Cargo.toml"),
-        ],
-        drafted_copy.root,
-        timeout=DRAFT_TIMEOUT_SECONDS,
-        env=clean_environment(),
+    result = against_the_release(
+        drafted_copy, released, describing="drafting a release of every crate"
     )
-    passing(result, describing="drafting a release of every crate")
+    passing(
+        (result.returncode, result.stdout + result.stderr),
+        describing="drafting a release of every crate",
+    )
     version = bumping.workspace_version(drafted_copy.root)
     truth(version != was, describing=f"the tool to have moved the workspace from {was}")
 
@@ -575,21 +605,12 @@ def test_a_release_of_one_crate_moves_every_crate_and_every_requirement_together
     major, minor, patch = (int(part) for part in was.split("."))
     expected = f"{major}.{minor}.{patch + 1}" if bump == "patch" else bumping.next_minor(was)
 
-    result = capture(
-        [
-            "release-plz",
-            "update",
-            "--no-changelog",
-            "--registry-manifest-path",
-            str(released.root / "Cargo.toml"),
-        ],
-        drafted_copy.root,
-        timeout=DRAFT_TIMEOUT_SECONDS,
-        env=clean_environment(),
+    result = against_the_release(
+        drafted_copy, released, describing=f"drafting a release of `{PARTIALLY_RELEASED}` alone"
     )
 
     passing(
-        (result.returncode, output(result)),
+        (result.returncode, result.stdout + result.stderr),
         describing=f"drafting a release of `{PARTIALLY_RELEASED}` alone",
     )
     equal(

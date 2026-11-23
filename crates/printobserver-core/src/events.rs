@@ -54,12 +54,13 @@ use printobserver_vision_api::NormalizedAlert;
 use crate::check_image::{ImageUse, captured_at_of};
 use crate::context::{AgentContext, PrintContext, Since, newer_than};
 use crate::error::CoreError;
-use crate::inbox::Arrival;
+use crate::inbox::{AlertCameraFrame, Arrival};
 use crate::kinds::{
     AgentAssessmentPayload, AgentStopUnactedPayload, PortFailurePayload, PortFailureSite,
     system_source,
 };
 use crate::listing::{self, ObservedJob, reached_reason};
+use crate::look::Frame;
 use crate::supervisor::Supervisor;
 use crate::watch::{concerns_its_end, noticed_of};
 
@@ -136,6 +137,11 @@ pub const TERMINAL_STATES: [PrinterState; 3] = [
     PrinterState::Error,
     PrinterState::Offline,
 ];
+
+/// What an alert's three-panel image says of its first panel's frame: the
+/// printer's camera's, taken as the alert arrived, rather than the detector's
+/// picture the event carries.
+pub const ALERT_CAMERA_FRAME_NOTE: &str = "panel 1 is the printer's camera's own frame, taken as the detector's alert arrived, not the detector's picture";
 
 impl Supervisor {
     /// Handle one normalized event, from the store's own append to the turn.
@@ -218,10 +224,16 @@ impl Supervisor {
         {
             self.note_detector_pause(print.id, event.id, detection);
         }
+        let camera_frame = if alert.detection.is_some() && carried.image.is_some() {
+            self.alert_camera_frame(&print, &event).await
+        } else {
+            AlertCameraFrame::NotAsked
+        };
         let arrival = Arrival {
             event: carried,
             detection: alert.detection,
             frame_captured_at,
+            camera_frame,
         };
         let turn = self
             .inboxes()
@@ -398,6 +410,69 @@ impl Supervisor {
         }
     }
 
+    /// A frame from the server's own camera as a detector's alert arrives,
+    /// stored against the alert: what the alert's check is composed from, as a
+    /// scheduled check is composed from the frame it took.
+    ///
+    /// The detector's picture is not necessarily the camera's stream at the
+    /// calibration's resolution — Obico's is 1280x720 of a 1920x1080 stream —
+    /// so on a print whose check would be composed, the alert's own frame is
+    /// the camera's. Nothing is asked where no check of the print would be.
+    async fn alert_camera_frame(
+        &self,
+        print: &PrintRecord,
+        event: &EventRecord,
+    ) -> AlertCameraFrame {
+        if !self
+            .check_images
+            .get()
+            .is_some_and(|images| images.composes(print.id))
+        {
+            return AlertCameraFrame::NotAsked;
+        }
+        let image = match self.fetch_configured_frame(Some(print.id)).await {
+            Some((url, Frame::Good(image))) => (url, image),
+            Some((_, Frame::Failed(detail))) => return AlertCameraFrame::Missing(detail),
+            Some((_, Frame::Degraded(degraded))) => {
+                return AlertCameraFrame::Missing(degraded.detail);
+            }
+            None => return AlertCameraFrame::Missing("no camera is configured".to_owned()),
+        };
+        let (url, image) = image;
+        let captured_at = image.captured_at.unwrap_or_else(|| self.clock().now());
+        match self
+            .stores()
+            .images
+            .put_image(
+                print.id,
+                event.id,
+                Some(url),
+                image.content_type,
+                image.bytes,
+            )
+            .await
+        {
+            Ok(record) => AlertCameraFrame::Had {
+                image: ImageRef {
+                    id: record.id,
+                    sha256: record.sha256,
+                },
+                captured_at,
+            },
+            Err(error) => {
+                let detail = error.to_string();
+                self.record_port_failure(
+                    print.id,
+                    event.id,
+                    PortFailureSite::ImageWrite,
+                    detail.clone(),
+                )
+                .await;
+                AlertCameraFrame::Missing(detail)
+            }
+        }
+    }
+
     /// Collect the context, run one turn on it, and persist what it answered.
     ///
     /// `earlier` is what arrived for the print before `arrival` while an
@@ -429,7 +504,7 @@ impl Supervisor {
         let terminal = printer_state
             .clone()
             .filter(|state| TERMINAL_STATES.contains(state));
-        let (image_path, image) = self
+        let (image_path, image, frame_captured_at) = self
             .check_image_for(print, arrival, context.job.as_ref())
             .await;
         let facts = crate::context::turn_facts(&context.for_agent(None));
@@ -441,13 +516,13 @@ impl Supervisor {
                 .map(|detection| detection.paused_the_print),
             arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
             noticed: noticed_of(event),
-            frame_captured_at: arrival.frame_captured_at,
+            frame_captured_at,
             image,
         };
         // The turn's credentials are bound to it from here, and revoked the
         // moment it returns — whatever it returned — and when this future is
         // abandoned, because dropping what was opened revokes too.
-        let opened = self.open_turn(print.id);
+        let opened = self.open_turn(print.id, image_path.is_some());
         self.forget_acknowledged_by_turn(print.id);
         let running = situation.printer_state == Some(PrinterState::Printing);
         self.forget_stop_asked(print.id);
@@ -600,27 +675,85 @@ impl Supervisor {
         Ok(())
     }
 
-    /// The image a check of one arrival is shown and the line saying what it
-    /// is, made where the job stood in the print's own file: none when the
-    /// arrival carries no frame.
+    /// The image a check of one arrival is shown, the line saying what it is,
+    /// and when the frame it shows was captured, made where the job stood in
+    /// the print's own file: none when the arrival carries no frame.
+    ///
+    /// A detector's alert whose camera frame was had is shown that frame's
+    /// three-panel image; where it was not had or not composed, the detector's
+    /// own picture, as any check is shown its frame.
     async fn check_image_for(
         &self,
         print: &PrintRecord,
         arrival: &Arrival,
         job: Option<&JobSnapshot>,
-    ) -> (Option<std::path::PathBuf>, Option<String>) {
+    ) -> (
+        Option<std::path::PathBuf>,
+        Option<String>,
+        Option<Timestamp>,
+    ) {
         let event = &arrival.event;
         let Some(reference) = &event.image else {
-            return (None, None);
+            return (None, None, arrival.frame_captured_at);
         };
         let plan = self.plan_position(print, job).await;
+        if let AlertCameraFrame::Had { image, captured_at } = &arrival.camera_frame {
+            let shown = self
+                .shown_image_of(
+                    image,
+                    Some(print.id),
+                    *captured_at,
+                    ImageUse::Check,
+                    plan.clone(),
+                )
+                .await;
+            if let Some(shown) = shown.filter(|shown| shown.composite) {
+                self.note_check_frame(print, job, *captured_at);
+                let note = shown
+                    .note
+                    .map(|note| format!("{note}; {ALERT_CAMERA_FRAME_NOTE}"));
+                return (Some(shown.path), note, Some(*captured_at));
+            }
+        }
         let captured_at = captured_at_of(event, arrival.frame_captured_at);
-        // A check's frame — an alert's as much as an observation's — is one the
-        // agent was shown, so the plan's rise can later be measured from it, as
-        // from a look's. Measured only from observations and looks, a check
-        // after an alert, a pause and a person's resume was told the rise since
-        // the print's first frame hours before, and paused a print growing as
-        // planned for not having risen that far (`warning-after-resume`).
+        self.note_check_frame(print, job, captured_at);
+        let missing = match &arrival.camera_frame {
+            AlertCameraFrame::Missing(why) => Some(why.as_str()),
+            AlertCameraFrame::NotAsked | AlertCameraFrame::Had { .. } => None,
+        };
+        self.shown_image_of(
+            reference,
+            Some(print.id),
+            captured_at,
+            ImageUse::Check,
+            plan,
+        )
+        .await
+        .map_or((None, None, arrival.frame_captured_at), |shown| {
+            let note = match (shown.note, missing) {
+                (Some(note), Some(why)) => Some(format!(
+                    "{note}; the detector's own picture, because the camera gave no frame of its own as the alert arrived: {why}"
+                )),
+                (note, _) => note,
+            };
+            (Some(shown.path), note, arrival.frame_captured_at)
+        })
+    }
+
+    /// Note the frame a check was shown, so the plan's rise can later be
+    /// measured from it, as from a look's.
+    ///
+    /// A check's frame — an alert's as much as an observation's — is one the
+    /// agent was shown. Measured only from observations and looks, a check
+    /// after an alert, a pause and a person's resume was told the rise since
+    /// the print's first frame hours before, and paused a print growing as
+    /// planned for not having risen that far (`warning-after-resume`).
+    fn note_check_frame(
+        &self,
+        print: &PrintRecord,
+        job: Option<&JobSnapshot>,
+        captured_at: Timestamp,
+    ) {
         if let Some(job) = job
             && print.ended_at.is_none()
             && job.file_name.is_some()
@@ -630,15 +763,6 @@ impl Supervisor {
             self.gcode_indexes()
                 .note_look(print.id, captured_at, position, self.clock().now());
         }
-        self.shown_image_of(
-            reference,
-            Some(print.id),
-            captured_at,
-            ImageUse::Check,
-            plan,
-        )
-        .await
-        .map_or((None, None), |shown| (Some(shown.path), shown.note))
     }
 
     /// Note that the running turn on one print asked to pause or cancel it,

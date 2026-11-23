@@ -509,7 +509,7 @@ Reached at `POST /v1/prints/{print_id}/actions/acknowledge_failure`.
 
 **Output.** The action record, carrying the request, who asked, the reason and the policy's decision; the bounded intervention it opened, when it opened one; and what the printer said, when the request reached it and it refused.
 
-**Failures.** `rejected` when the policy refuses: the answer is still the record, and it carries the rejection's reason, the value asked for and the range allowed, which is what a second request is composed from. `refused` when the policy accepted it and the machine did not, and for a supervision turn's credential before that turn has run `look`, saying so. `unreachable` when nothing answers at the configured address.
+**Failures.** `rejected` when the policy refuses: the answer is still the record, and it carries the rejection's reason, the value asked for and the range allowed, which is what a second request is composed from. `refused` when the policy accepted it and the machine did not, and for a supervision turn's credential before that turn has run `look`, saying so; a turn handed its event's image is allowed no look, and that image counts as its look. `unreachable` when nothing answers at the configured address.
 
 ### close-print
 

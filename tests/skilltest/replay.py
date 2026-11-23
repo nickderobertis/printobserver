@@ -1330,13 +1330,16 @@ class Replay:
         *,
         real_waits: bool = False,
         outside: Callable[[Replay], OutsideSupervisor] | None = None,
+        refused_event_frames: frozenset[int] = frozenset(),
     ) -> None:
         """Lay the install out and start the doubles; nothing runs until [`Replay.run`].
 
         A look's wait passes on the replay's clock at once; `real_waits` has the
         server wait it out in real time instead, which is what a jumped replay is
         compared against. `outside` makes the outside supervisor a case's watch lines
-        are handed to, once the install is laid out.
+        are handed to, once the install is laid out. `refused_event_frames` names the
+        events whose scheduled check's own frame the camera refuses, so each of their
+        turns is handed no image.
         """
         self.case = case
         self.make_outside = outside
@@ -1357,6 +1360,7 @@ class Replay:
             picture=picture or real_picture(case),
             clock=self.bin / "clock",
             gcode=gcode,
+            refused_event_frames=refused_event_frames,
         )
         self.runs: list[Run] = []
         #: Each idle compaction's harness run, which serves no replay entry.
@@ -1434,6 +1438,7 @@ class Replay:
 
     def _harness_started(self) -> str:
         """Note one harness run, and say where its output is to be kept."""
+        self.timeline.turn_started()
         if self._trigger_count() <= self._agents_before(self.timeline.index):
             self.timeline.harness_started()
         else:

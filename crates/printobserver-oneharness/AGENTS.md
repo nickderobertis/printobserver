@@ -54,6 +54,12 @@ have. A denylist is walked past by every tool Claude Code adds after it was
 written — and by `Task`, whose subagent would carry a shell of its own — while a
 named set gains nothing until somebody adds to it here.
 
+A turn handed an image is neither allowed nor told of the commands the
+configuration withholds beside one — the server withholds `look` — on every
+run of that turn, the answer asked again included. A look there only stalls a
+decision the image settles, and a later frame can show a moved part dragged
+back under its walls.
+
 The rules are written for Claude Code alone. Another harness keeps the
 read-only mode until its own narrowing is written and proven.
 

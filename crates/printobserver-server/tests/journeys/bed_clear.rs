@@ -16,10 +16,10 @@ use core::fmt::Write as _;
 use std::sync::Arc;
 use std::time::Duration;
 
-use printobserver_core::store::{PrintStore as _, Stores};
+use printobserver_core::store::Stores;
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
-use printobserver_octoprint::standin::{HeldRead, JobReadHold, JobScript, ScriptedOctoPrint};
+use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
 use printobserver_server::{Ports, Running, Server, ServerConfig};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::{Value, json};
@@ -324,21 +324,6 @@ impl Bench {
         self.until("print_ended", ends + 1).await;
     }
 
-    /// Hold the next read the server makes of the job, answered as the machine
-    /// stands once it is released.
-    async fn held_read(&self) -> JobReadHold {
-        let hold = self.octoprint.holds_next_job_read(HeldRead::AsReleased);
-        let deadline = tokio::time::Instant::now() + PATIENCE;
-        while !self.octoprint.is_holding(&hold) {
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "the server never read the job"
-            );
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        hold
-    }
-
     /// Home Z on the operator's own word, so Z is trusted.
     async fn home_z_asserted(&self) {
         let (status, answer) = self
@@ -350,27 +335,26 @@ impl Bench {
     /// Hold one supervision turn open about a print of one file, answering
     /// the turn's credential and the actor it claims.
     ///
-    /// The print is written to the store while a read of the machine is kept
-    /// waiting, and that read is answered with the print running: a read of the
-    /// idle printer that settled after the write would close the print as over,
-    /// and the alert about it would then claim no turn, as `recovering`'s held
-    /// turn says.
+    /// The print is the one the watch opens for the job it finds running, and
+    /// the alert names that job's file, so it takes that print as an alert
+    /// about a job started at the printer does. A print opened in the store
+    /// beside the watch would race it: a read that found the printer idle just
+    /// before the job was reported ends that print, and the alert then lands
+    /// on an ended print and claims no turn.
     async fn agent_turn(&self, file: &str) -> (reqwest::Client, Value) {
-        let waiting = self.held_read().await;
+        let starts = self.of_kind("print_started").await.len();
         let size = i64::try_from(tall_gcode().len()).expect("a small file");
         self.octoprint
             .reports("Printing", JobScript::printing(file, size, 0, 5));
-        let store = SqliteStore::open(self.root.path().join("state")).expect("the store opens");
-        store
-            .open_print(Some(OBICO_PRINT), Some(file.to_owned()))
-            .await
-            .expect("a print opens");
-        self.octoprint.releases_job_read(&waiting);
+        self.until("print_started", starts + 1).await;
         self.agent.hold_turns();
+        let mut alert = failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg");
+        alert["print"]["filename"] = json!(file);
+        alert["print"]["started_at"] = Value::Null;
         let status = reqwest::Client::new()
             .post(format!("{}?token={SECRET}", self.server.ingress_url()))
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg").to_string())
+            .body(alert.to_string())
             .send()
             .await
             .expect("the ingress answers")

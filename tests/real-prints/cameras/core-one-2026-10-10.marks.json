@@ -1,0 +1,640 @@
+{
+ "about": "Marks on printed parts' edges, in pixels of 1920x1080 frames of the Prusa CORE One's camera as it stood for the 2026-10-10 print of petg-printer-reset-nozzle-on-part, from that print's own operator frames. Each curve's points lie on the planned outline `what` names at height `z` (`top`: that layer's outer walls, here the silver outer faces' top edges; `first`: every first-layer extrusion, here the parts' edges against the sheet), and `zc_mm` is the height the print had reached when the frame was taken, read off the slice at the frame's recorded progress. Each point was placed on a part's edge and moved to the strongest brightness edge within a few pixels of it, and only points whose crop shows them on that edge are kept. The landmarks are chassis features that hold within a pixel across every operator frame of the print.",
+ "frames": [
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-070010-p01.2.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-070010-p01.2.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 0.8,
+   "curves": [
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       753.5,
+       576.9
+      ],
+      [
+       893.9,
+       571.6
+      ],
+      [
+       947.9,
+       493.7
+      ],
+      [
+       951.1,
+       310.0
+      ],
+      [
+       854.9,
+       246.3
+      ],
+      [
+       763.1,
+       189.3
+      ],
+      [
+       1217.5,
+       356.1
+      ],
+      [
+       1301.8,
+       283.8
+      ],
+      [
+       1251.9,
+       184.5
+      ],
+      [
+       1198.7,
+       122.7
+      ],
+      [
+       1436.3,
+       173.5
+      ],
+      [
+       1402.7,
+       83.2
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-080040-p08.9.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-080040-p08.9.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 6.2,
+   "curves": [
+    {
+     "what": "top",
+     "z": 6.2,
+     "px": [
+      [
+       929.6,
+       533.7
+      ],
+      [
+       950.9,
+       496.8
+      ],
+      [
+       972.6,
+       460.3
+      ],
+      [
+       1196.1,
+       380.6
+      ],
+      [
+       1231.2,
+       351.8
+      ],
+      [
+       1265.6,
+       322.3
+      ],
+      [
+       1300.1,
+       292.7
+      ],
+      [
+       1334.8,
+       263.5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-093114-p20.1.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-093114-p20.1.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 14.0,
+   "curves": [
+    {
+     "what": "top",
+     "z": 14.0,
+     "px": [
+      [
+       932.9,
+       531.1
+      ],
+      [
+       975.7,
+       457.9
+      ],
+      [
+       1198.6,
+       378.5
+      ],
+      [
+       1233.7,
+       349.1
+      ],
+      [
+       1268.2,
+       318.8
+      ],
+      [
+       1338.6,
+       260.3
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       926.6,
+       589.8
+      ],
+      [
+       968.2,
+       516.8
+      ],
+      [
+       988.2,
+       479.6
+      ],
+      [
+       1043.0,
+       365.3
+      ],
+      [
+       1182.9,
+       433.7
+      ],
+      [
+       1217.9,
+       403.7
+      ],
+      [
+       1427.2,
+       217.6
+      ],
+      [
+       1464.7,
+       182.9
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-103517-p28.1.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-103517-p28.1.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 20.2,
+   "curves": [
+    {
+     "what": "top",
+     "z": 20.2,
+     "px": [
+      [
+       957.2,
+       467.5
+      ],
+      [
+       1220.6,
+       359.7
+      ],
+      [
+       1256.8,
+       329.0
+      ],
+      [
+       1293.3,
+       298.6
+      ],
+      [
+       1329.7,
+       268.3
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       822.8,
+       709.7
+      ],
+      [
+       1078.9,
+       413.4
+      ],
+      [
+       1115.9,
+       439.1
+      ],
+      [
+       1242.6,
+       398.4
+      ],
+      [
+       1332.7,
+       317.2
+      ],
+      [
+       1394.5,
+       261.4
+      ],
+      [
+       1427.3,
+       231.6
+      ],
+      [
+       1460.1,
+       201.7
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-103917-p28.6.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-103917-p28.6.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 20.4,
+   "curves": [
+    {
+     "what": "top",
+     "z": 20.4,
+     "px": [
+      [
+       1219.7,
+       358.5
+      ],
+      [
+       1257.4,
+       329.7
+      ],
+      [
+       1293.3,
+       298.6
+      ],
+      [
+       1329.8,
+       268.3
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       1078.6,
+       414.7
+      ],
+      [
+       1332.9,
+       318.3
+      ],
+      [
+       1394.6,
+       262.6
+      ],
+      [
+       1460.2,
+       202.8
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-104317-p29.1.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-104317-p29.1.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 20.8,
+   "curves": [
+    {
+     "what": "top",
+     "z": 20.8,
+     "px": [
+      [
+       966.6,
+       480.2
+      ],
+      [
+       1220.8,
+       359.5
+      ],
+      [
+       1257.0,
+       328.8
+      ],
+      [
+       1293.4,
+       298.5
+      ],
+      [
+       1329.6,
+       267.8
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       1078.7,
+       416.0
+      ],
+      [
+       1115.3,
+       442.1
+      ],
+      [
+       1212.7,
+       427.5
+      ],
+      [
+       1332.1,
+       319.6
+      ],
+      [
+       1393.8,
+       263.6
+      ],
+      [
+       1425.8,
+       233.0
+      ],
+      [
+       1459.5,
+       203.6
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-120208-p41.9.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-120208-p41.9.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 27.2,
+   "curves": [
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       906.6,
+       674.8
+      ],
+      [
+       950.8,
+       593.5
+      ],
+      [
+       983.9,
+       533.5
+      ],
+      [
+       1206.6,
+       451.1
+      ],
+      [
+       1254.5,
+       407.7
+      ],
+      [
+       1317.5,
+       349.6
+      ],
+      [
+       1097.5,
+       456.2
+      ],
+      [
+       1061.6,
+       429.2
+      ],
+      [
+       1447.6,
+       227.6
+      ]
+     ]
+    },
+    {
+     "what": "top",
+     "z": 27.2,
+     "px": [
+      [
+       938.6,
+       525.1
+      ],
+      [
+       978.3,
+       457.6
+      ],
+      [
+       1218.0,
+       363.0
+      ],
+      [
+       1279.3,
+       310.9
+      ],
+      [
+       1329.1,
+       268.8
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-150255-p72.3.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-150255-p72.3.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 41.4,
+   "curves": [
+    {
+     "what": "top",
+     "z": 41.4,
+     "px": [
+      [
+       964.7,
+       485.7
+      ],
+      [
+       1205.7,
+       373.9
+      ],
+      [
+       1236.8,
+       346.5
+      ],
+      [
+       1268.7,
+       320.4
+      ],
+      [
+       1300.3,
+       293.8
+      ],
+      [
+       1331.7,
+       266.9
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       1004.3,
+       539.7
+      ],
+      [
+       1059.8,
+       479.8
+      ],
+      [
+       1095.6,
+       507.1
+      ],
+      [
+       1132.9,
+       532.4
+      ],
+      [
+       1199.6,
+       494.1
+      ],
+      [
+       1233.4,
+       462.7
+      ],
+      [
+       1403.8,
+       300.7
+      ],
+      [
+       1441.0,
+       263.8
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "case": "petg-printer-reset-nozzle-on-part",
+   "file": "frame-155514-p80.2.jpg",
+   "frame": "../petg-printer-reset-nozzle-on-part/frame-155514-p80.2.jpg",
+   "gcode": "../petg-printer-reset-nozzle-on-part/plate1-side-bins-screws-clip.gcode",
+   "zc_mm": 45.4,
+   "curves": [
+    {
+     "what": "top",
+     "z": 45.4,
+     "px": [
+      [
+       945.6,
+       520.6
+      ],
+      [
+       1206.7,
+       372.4
+      ],
+      [
+       1238.5,
+       345.7
+      ],
+      [
+       1270.6,
+       319.4
+      ],
+      [
+       1334.0,
+       265.6
+      ]
+     ]
+    },
+    {
+     "what": "first",
+     "z": 0.2,
+     "px": [
+      [
+       1003.8,
+       552.7
+      ],
+      [
+       851.7,
+       798.4
+      ],
+      [
+       1058.2,
+       494.2
+      ],
+      [
+       1094.6,
+       520.2
+      ],
+      [
+       1263.7,
+       444.3
+      ],
+      [
+       1362.9,
+       348.7
+      ],
+      [
+       1437.6,
+       275.0
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "landmarks": [
+  {
+   "name": "rail-bracket-top-right",
+   "center_px": [
+    1825,
+    107
+   ]
+  },
+  {
+   "name": "frame-label-right",
+   "center_px": [
+    1591,
+    670
+   ]
+  },
+  {
+   "name": "frame-screws-right-front",
+   "center_px": [
+    1470,
+    778
+   ]
+  },
+  {
+   "name": "panel-right",
+   "center_px": [
+    1708,
+    550
+   ]
+  }
+ ]
+}
