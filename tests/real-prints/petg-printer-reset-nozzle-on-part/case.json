@@ -1,5 +1,6 @@
 {
   "case": "petg-printer-reset-nozzle-on-part",
+  "camera_calibration": "../cameras/core-one-2026-10-10.json",
   "verdict": "real failure: the printer reset at 82.5%, leaving the nozzle on a part; then the printer heated it on its own, welding nozzle to part",
   "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1280x720), textured sheet",
   "printed_on": "2026-10-10, 06:29 to 16:10 (reset), aftermath to about 17:58",
