@@ -98,9 +98,12 @@ budgets:
       split: harness (harness-only probe), skill and instruction, image
       (composite probe), facts and framing (rest). Inner measure: part of
       `supervisor-tokens-per-print`, whose total hides one check growing.
-      Basis: arithmetic, record of 2026-11-20: median 13,416, base ~8.1k
-      plus ~5.3k per check (1280x720 frame ~1.2k). 7,500 with the
-      2,442-token composite needs base ~4.0k, facts and framing ~1.0k.
+      Basis: measured, last full suite run (14/14 at c2a1f28, Claude Code
+      2.1.330): 9,851 (harness 3,672, skill 1,671, image 2,524, facts and
+      framing 1,984). The original target, 7,500, was not reached; the
+      user restated it on 2026-11-23, in their words: "did the cuts not
+      work out? I'm ok to increase budgets by 10%", to 10,850, about 10%
+      over the measured figure.
       Workload: last full suite run after po-lean-composite and
       po-auto-compact: 9 replays, ~66 checks (6 acting), one image each, 3
       probes; claude-code, claude-sonnet-5-5. Check runtime approximately
@@ -119,7 +122,7 @@ budgets:
       - quiet_check_input_tokens
     unit: tokens
     direction: max
-    threshold: 15000
+    threshold: 10850
     timeout_seconds: 60
   - id: acting-check-input-tokens
     description: >-
@@ -128,9 +131,12 @@ budgets:
       Detail: figure, calls and history per check; the quiet split plus
       the second call's repeat and action result. Inner measure: part of
       `supervisor-tokens-per-print`, whose total hides one check growing.
-      Basis: arithmetic, record of 2026-11-20: median 27,745, ~two quiet
-      checks plus the action result. 15,000 over two calls needs quiet
-      checks ~7.25k, action result ~0.5k. Workload: last full suite run
+      Basis: measured, last full suite run (14/14 at c2a1f28, Claude Code
+      2.1.330): 18,678 (the quiet split plus repeat 9,083 and action and
+      result 512). The original target, 15,000, was not reached; the user
+      restated it on 2026-11-23, in their words: "did the cuts not work
+      out? I'm ok to increase budgets by 10%", to 20,500, about 10% over
+      the measured figure. Workload: last full suite run
       after po-lean-composite and po-auto-compact: 9 replays, ~66 checks
       (6 acting), one image each, 3 probes; claude-code,
       claude-sonnet-5-5. Check runtime approximately 3 seconds.
@@ -148,7 +154,7 @@ budgets:
       - acting_check_input_tokens
     unit: tokens
     direction: max
-    threshold: 31000
+    threshold: 20500
     timeout_seconds: 60
   - id: supervisor-base-context-tokens
     description: >-
@@ -160,11 +166,12 @@ budgets:
       (a no-system-text probe's first call) and printobserver (the rest:
       skill, answer instruction). Inner measure: every call re-reads this
       base, so it is measured alone; `supervisor-tokens-per-print` holds
-      the whole. Basis: arithmetic, record of 2026-11-20 (8,082, Claude
-      Code 2.1.329): its prompt ~2,633, Read ~1,091, Bash ~1,606,
-      6,000-character skill ~2,038, instruction and probe prompt ~742.
-      Replacing the prompt leaves ~5,450; the last ~450 comes from skill,
-      instruction or Read, as measured. Workload: last full suite run
+      the whole. Basis: measured, last full suite run (14/14 at c2a1f28,
+      Claude Code 2.1.330): 5,343 (harness 3,672, printobserver 1,671).
+      The original target, 5,000, was not reached; the user restated it
+      on 2026-11-23, in their words: "did the cuts not work out? I'm ok to
+      increase budgets by 10%", to 5,900, about 10% over the measured
+      figure. Workload: last full suite run
       after po-lean-composite and po-auto-compact: 9 replays, ~66 checks
       (6 acting), one image each, 3 probes; claude-code,
       claude-sonnet-5-5. Check runtime approximately 3 seconds.
@@ -182,7 +189,7 @@ budgets:
       - base_context_tokens
     unit: tokens
     direction: max
-    threshold: 9000
+    threshold: 5900
     timeout_seconds: 60
   - id: agent-frame-image-tokens
     description: >-
