@@ -16,7 +16,7 @@ use core::fmt::Write as _;
 use std::sync::Arc;
 use std::time::Duration;
 
-use printobserver_core::store::{PrintStore as _, Stores};
+use printobserver_core::store::Stores;
 use printobserver_obico::{ObicoVision, ObicoVisionConfig};
 use printobserver_octoprint::OctoPrintPrinter;
 use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
@@ -334,20 +334,27 @@ impl Bench {
 
     /// Hold one supervision turn open about a print of one file, answering
     /// the turn's credential and the actor it claims.
+    ///
+    /// The print is the one the watch opens for the job it finds running, and
+    /// the alert names that job's file, so it takes that print as an alert
+    /// about a job started at the printer does. A print opened in the store
+    /// beside the watch would race it: a read that found the printer idle just
+    /// before the job was reported ends that print, and the alert then lands
+    /// on an ended print and claims no turn.
     async fn agent_turn(&self, file: &str) -> (reqwest::Client, Value) {
-        let store = SqliteStore::open(self.root.path().join("state")).expect("the store opens");
-        store
-            .open_print(Some(OBICO_PRINT), Some(file.to_owned()))
-            .await
-            .expect("a print opens");
+        let starts = self.of_kind("print_started").await.len();
         let size = i64::try_from(tall_gcode().len()).expect("a small file");
         self.octoprint
             .reports("Printing", JobScript::printing(file, size, 0, 5));
+        self.until("print_started", starts + 1).await;
         self.agent.hold_turns();
+        let mut alert = failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg");
+        alert["print"]["filename"] = json!(file);
+        alert["print"]["started_at"] = Value::Null;
         let status = reqwest::Client::new()
             .post(format!("{}?token={SECRET}", self.server.ingress_url()))
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(failure_alert(OBICO_PRINT, "http://127.0.0.1:1/frame.jpg").to_string())
+            .body(alert.to_string())
             .send()
             .await
             .expect("the ingress answers")
