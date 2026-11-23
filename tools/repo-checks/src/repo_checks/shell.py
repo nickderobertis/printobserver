@@ -157,6 +157,7 @@ def start(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
     own_group: bool = False,
+    own_session: bool = False,
 ) -> subprocess.Popen[str]:
     """Start a long-running program by absolute path, and answer it.
 
@@ -177,6 +178,11 @@ def start(
             this caller shares it would stop the caller too. Every other host
             addresses a signal to the process alone, so there it changes
             nothing.
+        own_session: On a POSIX host, start it as the leader of a session and
+            process group of its own, which everything it starts joins unless
+            it leaves: one signal to that group then reaches every descendant,
+            including one left running after the program itself exited.
+            Windows has no such group, so there it changes nothing.
 
     Returns:
         The running process, with both of its streams captured.
@@ -205,4 +211,5 @@ def start(
         creationflags=(
             subprocess.CREATE_NEW_PROCESS_GROUP if own_group and sys.platform == "win32" else 0
         ),
+        start_new_session=own_session and sys.platform != "win32",
     )
