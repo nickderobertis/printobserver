@@ -295,8 +295,9 @@ fn an_acknowledgement_the_detector_refuses_is_recorded_against_the_detection() {
 }
 
 /// While the print is paused the agent's interval does not hold adjustments
-/// back; pausing, resuming and cancelling still wait on it, and once the print
-/// is moving every change does.
+/// back; resuming and cancelling still wait on it, and once the print is
+/// moving every change but a pause does. A pause is never held back: it is how
+/// the agent stops a print going wrong.
 #[test]
 fn the_interval_spaces_out_changes_to_a_moving_print_alone() {
     let mut envelope = permissive_envelope();
@@ -329,23 +330,29 @@ fn the_interval_spaces_out_changes_to_a_moving_print_alone() {
         );
     }
     world.printer.reports_state(PrinterState::Printing);
-    for moving in [
-        fan_up(),
-        PrintAction::Pause {
-            reason: "hold it".to_owned(),
-            actor: agent(),
-        },
-    ] {
-        let outcome = world.request(print, moving).expect("recorded");
-        assert!(
-            matches!(
-                outcome.record.decision,
-                PolicyDecision::Rejected(RejectionReason::MinIntervalNotElapsed { .. })
-            ),
-            "a change to a moving print did not wait on the interval: {:?}",
-            outcome.record.decision
-        );
-    }
+    let outcome = world.request(print, fan_up()).expect("recorded");
+    assert!(
+        matches!(
+            outcome.record.decision,
+            PolicyDecision::Rejected(RejectionReason::MinIntervalNotElapsed { .. })
+        ),
+        "a change to a moving print did not wait on the interval: {:?}",
+        outcome.record.decision
+    );
+    let paused = world
+        .request(
+            print,
+            PrintAction::Pause {
+                reason: "the part came loose".to_owned(),
+                actor: agent(),
+            },
+        )
+        .expect("recorded");
+    assert_eq!(
+        paused.record.decision,
+        PolicyDecision::Accepted,
+        "a pause inside the interval was held back"
+    );
 }
 
 /// A print an operator resumed is no longer the detector's to hold: the

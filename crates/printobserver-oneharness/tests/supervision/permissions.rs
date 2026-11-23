@@ -28,7 +28,7 @@ use printobserver_types::{EventBody, PrintId};
 
 use crate::support::{
     Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
-    generated_assessment_schema, port, schema_read_lock, turn, unreadable,
+    generated_assessment_schema, in_turn, port, schema_read_lock, turn, unreadable,
 };
 
 /// An event to hang a turn off.
@@ -260,6 +260,80 @@ fn a_turn_without_rules_for_its_harness_stays_read_only() {
         assert!(
             !started.iter().any(|argument| argument.starts_with("Bash")),
             "{harness} was started with a shell: {started:?}"
+        );
+    }
+}
+
+/// A turn handed an image is neither allowed nor told of a command withheld
+/// beside one — on its first run and on the run that asks its answer again —
+/// and a turn handed none keeps every command it is configured with.
+#[test]
+fn a_turn_handed_an_image_is_neither_allowed_nor_told_a_withheld_command() {
+    let schemas = schema_read_lock();
+    let invalid = printobserver_types::serde_json::json!({ "summary": "the part moved" });
+    for handed_image in [true, false] {
+        let fixture = Fixture::new(&format!("permissions-withheld-{handed_image}"));
+        let watch = Arc::new(Watch::default());
+        let mut configured = config(
+            &schemas,
+            &fixture,
+            HARNESS,
+            &generated_assessment_schema(),
+            in_turn(
+                "SID-WITHHELD",
+                &[&invalid.to_string(), &assessment("the part moved", "high")],
+                &fixture.path("attempts"),
+            ),
+        );
+        configured.agent_commands = allowed(&[
+            "printobserver context",
+            "printobserver look",
+            "printobserver pause",
+        ]);
+        configured.withheld_beside_an_image = allowed(&["printobserver look"]);
+        configured.command_usage = [
+            "printobserver context --print-id <value> [--since <value>]",
+            "printobserver look [--print-id <value>] [--wait-s <value>]",
+            "printobserver pause --print-id <value> --actor <json> --reason <value>",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        let image = handed_image.then(|| {
+            let picture = fixture.path("frame.jpg");
+            std::fs::write(&picture, b"\xff\xd8\xff\xe0 not really a picture")
+                .expect("a scratch picture");
+            picture
+        });
+        let supervisor = port(configured, &watch);
+        let print_id = PrintId::new();
+        block_on(supervisor.run_turn(
+            turn(print_id, event(print_id, payload()), image),
+            crate::support::access(),
+        ))
+        .expect("the turn runs");
+
+        let requests = watch.requests();
+        assert_eq!(requests.len(), 2, "the answer was not asked for again");
+        let mut expected = vec!["--allowedTools", "Read", "Bash(printobserver context:*)"];
+        if !handed_image {
+            expected.push("Bash(printobserver look:*)");
+        }
+        expected.push("Bash(printobserver pause:*)");
+        for request in &requests {
+            assert_eq!(
+                request.passthrough, expected,
+                "handed an image: {handed_image}"
+            );
+        }
+        let prompt = requests[0].prompt.first().expect("a prompt").clone();
+        assert_eq!(
+            prompt.contains("printobserver look [--print-id"),
+            !handed_image,
+            "handed an image: {handed_image}, and the prompt's commands disagree:\n{prompt}"
+        );
+        assert!(
+            prompt.contains("printobserver pause --print-id"),
+            "the prompt lost a command the turn may run:\n{prompt}"
         );
     }
 }

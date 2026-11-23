@@ -230,8 +230,10 @@ fn operator_refused(caller: &Caller, command: &str) -> Option<Response> {
 /// Refuse a turn's acknowledgement before the turn has taken a look.
 ///
 /// The frames a turn's context names are already old when it reads them, so
-/// what a turn writes down of its event is judged from a look it took; the
-/// operator, who is not a turn, is held to nothing here.
+/// what a turn writes down of its event is judged from a look it took — or
+/// from the image it was handed, which counts as its look, because a turn
+/// handed one is allowed no other; the operator, who is not a turn, is held to
+/// nothing here.
 fn unlooked_refused(
     turns: &TurnCredentials,
     caller: &Caller,

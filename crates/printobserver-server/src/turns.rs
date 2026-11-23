@@ -161,13 +161,18 @@ impl TurnCredentials {
 }
 
 impl TurnAuthority for TurnCredentials {
-    fn open(&self, print_id: PrintId) -> OpenedTurn {
+    /// A turn handed its event's image has looked from the start: it decides
+    /// on that image and is allowed no look of its own.
+    fn open(&self, print_id: PrintId, handed_image: bool) -> OpenedTurn {
         let scope = Arc::new(Scope {
             registry: self.clone(),
             id: self.0.next_scope.fetch_add(1, Ordering::Relaxed),
             print_id,
             closed: Mutex::new(false),
         });
+        if handed_image {
+            self.looked_turns().insert(scope.id);
+        }
         let closing = Arc::clone(&scope);
         OpenedTurn::new(scope, Box::new(move || closing.close()))
     }
@@ -281,7 +286,7 @@ mod tests {
     fn a_look_is_the_turns_whichever_of_its_runs_took_it() {
         let registry = TurnCredentials::new(None);
         let print_id = PrintId::new();
-        let opened = registry.open(print_id);
+        let opened = registry.open(print_id, false);
         let access = opened.access();
         let first = value_of(
             &access.issue(&session("print-a")).expect("minted"),
@@ -300,7 +305,7 @@ mod tests {
             "the turn's second run lost its look"
         );
 
-        let other = registry.open(print_id);
+        let other = registry.open(print_id, false);
         let elsewhere = value_of(
             &other.access().issue(&session("print-b")).expect("minted"),
             CREDENTIAL_ENV,
@@ -318,6 +323,28 @@ mod tests {
         );
     }
 
+    /// A turn handed its event's image has looked from the start, on every
+    /// run it issues; a turn handed none has not.
+    #[test]
+    fn a_turn_handed_an_image_has_looked_from_the_start() {
+        let registry = TurnCredentials::new(None);
+        let print_id = PrintId::new();
+        for (handed_image, session_name) in [(true, "print-a"), (false, "print-b")] {
+            let opened = registry.open(print_id, handed_image);
+            let access = opened.access();
+            let credential = value_of(
+                &access.issue(&session(session_name)).expect("minted"),
+                CREDENTIAL_ENV,
+            );
+            let binding = registry.admit(credential.as_bytes()).expect("admitted");
+            assert_eq!(
+                registry.has_looked(&binding),
+                handed_image,
+                "handed an image: {handed_image}"
+            );
+        }
+    }
+
     /// A credential is admitted as the session and print it was issued for
     /// while its turn runs, a second issue replaces the first, and revoking
     /// the turn admits none of them and issues no more.
@@ -325,7 +352,7 @@ mod tests {
     fn a_turns_credential_lives_exactly_as_long_as_its_turn() {
         let registry = TurnCredentials::new(Some("127.0.0.1:1".parse().expect("an address")));
         let print_id = PrintId::new();
-        let opened = registry.open(print_id);
+        let opened = registry.open(print_id, false);
         let access = opened.access();
         let pass = access.issue(&session("print-a")).expect("one is minted");
         let first = value_of(&pass, CREDENTIAL_ENV);
@@ -386,12 +413,12 @@ mod tests {
     #[test]
     fn dropping_one_turn_revokes_its_own_credential_and_no_other() {
         let registry = TurnCredentials::new(None);
-        let kept = registry.open(PrintId::new());
+        let kept = registry.open(PrintId::new(), false);
         let kept_credential = value_of(
             &kept.access().issue(&session("kept")).expect("minted"),
             CREDENTIAL_ENV,
         );
-        let dropped = registry.open(PrintId::new());
+        let dropped = registry.open(PrintId::new(), false);
         let dropped_credential = value_of(
             &dropped.access().issue(&session("gone")).expect("minted"),
             CREDENTIAL_ENV,

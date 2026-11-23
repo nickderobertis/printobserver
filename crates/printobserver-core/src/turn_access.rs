@@ -74,8 +74,10 @@ impl core::fmt::Debug for OpenedTurn {
 
 /// Opens one issuer per supervision turn.
 pub trait TurnAuthority: Send + Sync {
-    /// The issuer for one turn about one print.
-    fn open(&self, print_id: PrintId) -> OpenedTurn;
+    /// The issuer for one turn about one print, `handed_image` whether the
+    /// turn is handed its event's image: the image it decides on, which
+    /// counts as the turn's look.
+    fn open(&self, print_id: PrintId, handed_image: bool) -> OpenedTurn;
 }
 
 /// The issuer a supervisor with no authority installed hands its turns: one

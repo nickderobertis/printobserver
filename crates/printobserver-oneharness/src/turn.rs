@@ -25,7 +25,7 @@ use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::serde_json::Value;
 use printobserver_types::{PrintId, Timestamp};
 
-use crate::config::{HarnessIdentity, SupervisorConfig, TurnSeam};
+use crate::config::{AgentCommand, HarnessIdentity, SupervisorConfig, TurnSeam};
 use crate::ledger::{
     CallUsage, CompactionEnd, PrintLedger, RecordedCompaction, RecordedTurn, SessionName,
 };
@@ -300,10 +300,12 @@ impl OneharnessSupervisor {
     ) -> Result<RunResult, SupervisorError> {
         let name = SessionName::probe(session)?;
         let by_prompt = self.held_by_prompt()?;
+        let handed_image = image.is_some();
         let request = self.build_request(
             &name,
             &instructed(prompt.to_owned(), by_prompt.as_ref()),
             image.into_iter().collect(),
+            handed_image,
             None,
             by_prompt.as_ref(),
         );
@@ -409,18 +411,31 @@ impl OneharnessSupervisor {
             &facts,
             &request.context_command,
             &actor.to_string(),
-            &self.commands_a_turn_runs(),
+            &self.commands_a_turn_runs(request.image_path.is_some()),
         ))
+    }
+
+    /// The agent commands a turn may run: every configured one, less those
+    /// withheld beside an image when the turn is handed one.
+    ///
+    /// The one place both the turn's permissions and the commands its prompt
+    /// lists are chosen from, so a command one of them withholds the other
+    /// cannot name.
+    fn agent_commands(&self, handed_image: bool) -> impl Iterator<Item = &AgentCommand> {
+        self.config.agent_commands.iter().filter(move |command| {
+            !(handed_image && self.config.withheld_beside_an_image.contains(command))
+        })
     }
 
     /// The usage line of each command a turn may run, one per line, in the
     /// order the program prints them.
-    fn commands_a_turn_runs(&self) -> String {
+    fn commands_a_turn_runs(&self, handed_image: bool) -> String {
+        let commands: Vec<&AgentCommand> = self.agent_commands(handed_image).collect();
         self.config
             .command_usage
             .iter()
             .filter(|line| {
-                self.config.agent_commands.iter().any(|command| {
+                commands.iter().any(|command| {
                     let prefix = command.as_str();
                     line.as_str() == prefix || line.starts_with(&format!("{prefix} "))
                 })
@@ -474,16 +489,17 @@ impl OneharnessSupervisor {
     /// reading outright and the shell only for a command beginning with one of
     /// the configured prefixes. Which tools load at all is the run request's
     /// [`TURN_TOOL_SET`], not an argument here.
-    fn permissions(&self) -> (PermissionMode, Vec<String>) {
+    ///
+    /// A turn handed an image is allowed no command withheld beside one, on
+    /// every run it makes: the answer asked for again is the same turn's.
+    fn permissions(&self, handed_image: bool) -> (PermissionMode, Vec<String>) {
         if !self.on_claude_code() || self.config.agent_commands.is_empty() {
             return (PermissionMode::ReadOnly, Vec::new());
         }
         // llmlint: ignore[least_privilege_grants] suppressions.toml has the reason.
         let mut arguments = vec!["--allowedTools".to_owned(), CLAUDE_READ_TOOL.to_owned()];
         arguments.extend(
-            self.config
-                .agent_commands
-                .iter()
+            self.agent_commands(handed_image)
                 // llmlint: ignore[least_privilege_grants] suppressions.toml has the reason.
                 .map(|command| format!("Bash({command}:*)")),
         );
@@ -507,10 +523,11 @@ impl OneharnessSupervisor {
         session: &SessionName,
         prompt: &str,
         images: Vec<PathBuf>,
+        handed_image: bool,
         pass: Option<&TurnPass>,
         by_prompt: Option<&Schema>,
     ) -> RunRequest {
-        let (mode, passthrough) = self.permissions();
+        let (mode, passthrough) = self.permissions(handed_image);
         let mut env: Vec<String> = self
             .config
             .harness_env
@@ -568,11 +585,19 @@ impl OneharnessSupervisor {
         session: &SessionName,
         prompt: &str,
         images: &[PathBuf],
+        handed_image: bool,
         access: &dyn TurnAccess,
         by_prompt: Option<&Schema>,
     ) -> Result<Result<RunOutcome, OneharnessError>, SupervisorError> {
         let pass = access.issue(&TurnSession::new(session.as_str())?)?;
-        let request = self.build_request(session, prompt, images.to_vec(), Some(&pass), by_prompt);
+        let request = self.build_request(
+            session,
+            prompt,
+            images.to_vec(),
+            handed_image,
+            Some(&pass),
+            by_prompt,
+        );
         Ok(self.run(&request))
     }
 
@@ -605,6 +630,7 @@ impl OneharnessSupervisor {
         let mut ledger = self.ledger(print_id)?;
         let mut session = ledger.session_for_next_turn();
         let images: Vec<PathBuf> = request.image_path.iter().cloned().collect();
+        let handed_image = !images.is_empty();
         let by_prompt = self.held_by_prompt()?;
         // The one prompt a turn opens with in a session, whichever session.
         let prompt_in = |session: &SessionName| -> Result<String, SupervisorError> {
@@ -618,6 +644,7 @@ impl OneharnessSupervisor {
             &session,
             &prompt_in(&session)?,
             &images,
+            handed_image,
             access,
             by_prompt.as_ref(),
         )? {
@@ -641,6 +668,7 @@ impl OneharnessSupervisor {
                     &session,
                     &prompt_in(&session)?,
                     &images,
+                    handed_image,
                     access,
                     by_prompt.as_ref(),
                 )?
@@ -651,7 +679,7 @@ impl OneharnessSupervisor {
 
         let mut reported = TurnReport::of(outcome.report, &session, &self.config.harness)?;
         if let Some(schema) = &by_prompt {
-            self.held_to_the_schema(schema, &mut reported, access);
+            self.held_to_the_schema(schema, &mut reported, handed_image, access);
             self.held_to_its_stop(request, schema, &mut reported, access);
         }
         self.record(&mut ledger, print_id, &reported, started_at)
@@ -668,6 +696,7 @@ impl OneharnessSupervisor {
         &self,
         schema: &Schema,
         reported: &mut TurnReport,
+        handed_image: bool,
         access: &dyn TurnAccess,
     ) {
         let mut calls = Vec::new();
@@ -684,7 +713,7 @@ impl OneharnessSupervisor {
                 break;
             }
             let again = structured::retry_instruction(schema.as_text(), &text, &checked.errors);
-            match self.asked_again(&reported.name, &again, schema, access) {
+            match self.asked_again(&reported.name, &again, schema, handed_image, access) {
                 Ok(answered) => reported.result = answered,
                 // A run that could not ask again leaves the turn the answer it
                 // has, failed, with why beside the schema's own errors.
@@ -729,10 +758,11 @@ impl OneharnessSupervisor {
         }
         let earlier = reported.result.calls.take().unwrap_or_default();
         let refused = instructed(UNACTED_STOP.to_owned(), Some(schema));
-        match self.asked_again(&reported.name, &refused, schema, access) {
+        let handed_image = request.image_path.is_some();
+        match self.asked_again(&reported.name, &refused, schema, handed_image, access) {
             Ok(answered) => {
                 reported.result = answered;
-                self.held_to_the_schema(schema, reported, access);
+                self.held_to_the_schema(schema, reported, handed_image, access);
                 let mut calls = earlier;
                 calls.extend(reported.result.calls.take().into_iter().flatten());
                 reported.result.calls = Some(calls);
@@ -749,10 +779,11 @@ impl OneharnessSupervisor {
         session: &SessionName,
         again: &str,
         schema: &Schema,
+        handed_image: bool,
         access: &dyn TurnAccess,
     ) -> Result<RunResult, SupervisorError> {
         let outcome = self
-            .drive(session, again, &[], access, Some(schema))?
+            .drive(session, again, &[], handed_image, access, Some(schema))?
             .map_err(|error| unavailable(&error))?;
         Ok(TurnReport::of(outcome.report, session, &self.config.harness)?.result)
     }

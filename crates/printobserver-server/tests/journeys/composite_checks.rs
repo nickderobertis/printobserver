@@ -419,15 +419,6 @@ impl Journey {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
-
-    /// What the responder's actions were answered, in order.
-    fn answered(&self) -> Vec<Value> {
-        std::fs::read_to_string(self.root.path().join("responder.log"))
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| printobserver_types::serde_json::from_str::<Value>(line).ok())
-            .collect()
-    }
 }
 
 /// The print the scripted job is, once the server has adopted it.
@@ -529,8 +520,11 @@ struct Plan<'a> {
 }
 
 /// The print's first scheduled check, held open until it is read so no further
-/// check moves the print's previous frame along, and a look it takes: answers
-/// when the check's frame was captured.
+/// check moves the print's previous frame along, and a look the operator takes
+/// while it is: answers when the check's frame was captured.
+///
+/// The look is the operator's because a turn handed a check's image is allowed
+/// none: it decides on the image in hand.
 async fn scheduled_check_and_look(
     journey: &Journey,
     plan: &Plan<'_>,
@@ -553,9 +547,7 @@ async fn scheduled_check_and_look(
     };
     let url = checking.host.url();
     let calibrated = calibration_at(calibration, &url);
-    let started = journey
-        .start(&checking, 1, &json!([{ "operation": "look", "body": {} }]))
-        .await;
+    let started = journey.start(&checking, 1, &json!([])).await;
     assert_eq!(adopted(&started.server).await, print_id, "{installer}");
     let seen = journey.runs(1).await;
     let scheduled = read_handed(&seen[0]);
@@ -596,8 +588,18 @@ async fn scheduled_check_and_look(
         "{installer}: the check's note names its own frame and when it was captured"
     );
 
-    let look = answered_look(journey).await;
-    let look = &look["body"];
+    let look: Value = presenting(OPERATOR)
+        .get(format!(
+            "{}/prints/{print_id}/look",
+            started.server.base_url()
+        ))
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("JSON");
+    let look = &look;
     assert_eq!(
         look["event"]["image"]["sha256"],
         json!(sha256(&frames[1])),
@@ -617,44 +619,18 @@ async fn scheduled_check_and_look(
         ),
         "{installer}: the look is its own frame composed, the last check's frame as panel 3"
     );
-    // The look's panel 3 is the frame the turn was asked about, and its note
-    // says so, with both capture times: a later frame read as the one asked
-    // about is what lets it settle a part that had already moved.
-    let looked_at = captured_at(&look["event"]);
     assert_eq!(
         look["image_note"],
-        json!(format!(
-            "the three-panel check image, 1024x1848: panel 1 this look's frame, captured \
-             {looked_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up of \
-             the part being printed, panel 3 the frame the print's last check was asked about, \
-             captured {scheduled_at}; a part that frame shows moved has moved, and no later \
-             frame, this one included, undoes that"
-        )),
+        json!(
+            "the three-panel check image, 1024x1848: panel 1 this layer's planned toolpath \
+             drawn on the frame, panel 2 a close-up of the part being printed, panel 3 the \
+             previous check's frame"
+        ),
         "{installer}: {look}"
     );
     started.server.stop().await;
     std::fs::remove_file(&hold).expect("the hold is removable");
     scheduled_at
-}
-
-/// The answer of the look a journey's turn asked for, once it is given.
-async fn answered_look(journey: &Journey) -> Value {
-    let installer = journey.installer;
-    let deadline = tokio::time::Instant::now() + PATIENCE;
-    loop {
-        if let Some(look) = journey
-            .answered()
-            .into_iter()
-            .find(|done| done["operation"] == "look")
-        {
-            return look;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "{installer}: the look never answered"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
 }
 
 /// An alert's check after a restart, its frame the third: composed with the
@@ -721,11 +697,11 @@ async fn alert_check_after_a_restart(
 
 /// A print whose alignment passed is shown the three-panel image at every
 /// check: its first scheduled check composed of its own frame at the job's
-/// position with an empty panel 3; a look during it composed of the look's
-/// frame with that check's frame as the previous; and an alert's check, on a
-/// layer laying supports alone, composed of the alert's frame with the part
-/// layer below in grey and that scheduled check's frame as the previous — the
-/// record of which stands through a restart.
+/// position with an empty panel 3; the operator's look during it composed of
+/// the look's frame with that check's frame as the previous; and an alert's
+/// check, on a layer laying supports alone, composed of the alert's frame with
+/// the part layer below in grey and that scheduled check's frame as the
+/// previous — the record of which stands through a restart.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_print_whose_alignment_passed_is_shown_the_three_panel_image() {
     let bytes = slice("jar-top-petg.gcode");

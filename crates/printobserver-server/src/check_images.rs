@@ -193,38 +193,41 @@ pub fn whole_frame_note(reason: &WholeFrameReason) -> String {
 /// 3 empty when no earlier check's frame is at hand — the print's first check,
 /// or one whose earlier frame is gone from the store.
 ///
-/// It names which frame each panel is and when each was captured, because a
-/// look's panel 3 is the frame the print's last check was asked about — the
-/// running turn's own, during a turn — and an agent reading a later frame as
-/// the one it was asked about lets that frame settle a part that had already
-/// moved. So it says too what the skill says: a part that moved has moved, and
-/// no later frame undoes it.
+/// A check's names which frame each panel is and when each was captured, and
+/// says what the skill says: a part that moved has moved, and no later frame
+/// undoes it. A turn handed a check's image decides on it, with no look to
+/// stall on, so this is what it decides from. A look's says only what each
+/// panel is.
 #[must_use]
 pub fn composite_note(
     made_for: ImageUse,
     current_at: Timestamp,
     previous_at: Option<Timestamp>,
 ) -> String {
-    let current = match made_for {
-        ImageUse::Check => "this check's own frame",
-        ImageUse::Look => "this look's frame",
-    };
-    let (previous, moved) = match (made_for, previous_at) {
-        (_, None) => (
+    let (current, previous, moved) = match (made_for, previous_at) {
+        (ImageUse::Look, at) => (
+            "this layer's planned toolpath drawn on the frame".to_owned(),
+            if at.is_none() {
+                "panel 3 empty, no earlier check's frame being at hand".to_owned()
+            } else {
+                "panel 3 the previous check's frame".to_owned()
+            },
+            String::new(),
+        ),
+        (ImageUse::Check, None) => (
+            format!("this check's own frame, captured {current_at}, with this layer's planned toolpath drawn on it"),
             "panel 3 empty, no earlier check's frame being at hand".to_owned(),
-            "a part off its drawn walls in panel 1 has moved, and no later frame undoes that",
+            "; a part off its drawn walls in panel 1 has moved, and no later frame undoes that"
+                .to_owned(),
         ),
         (ImageUse::Check, Some(at)) => (
+            format!("this check's own frame, captured {current_at}, with this layer's planned toolpath drawn on it"),
             format!("panel 3 the previous check's frame, captured {at}"),
-            "a part off its drawn walls in panel 1, or moved since panel 3, has moved, and no later frame undoes that",
-        ),
-        (ImageUse::Look, Some(at)) => (
-            format!("panel 3 the frame the print's last check was asked about, captured {at}"),
-            "a part that frame shows moved has moved, and no later frame, this one included, undoes that",
+            "; a part off its drawn walls in panel 1, or moved since panel 3, has moved, and no later frame undoes that".to_owned(),
         ),
     };
     format!(
-        "{COMPOSITE_NOTE}, {}x{}: panel 1 {current}, captured {current_at}, with this layer's planned toolpath drawn on it, panel 2 a close-up of the part being printed, {previous}; {moved}",
+        "{COMPOSITE_NOTE}, {}x{}: panel 1 {current}, panel 2 a close-up of the part being printed, {previous}{moved}",
         printobserver_panels::compose::PANEL_WIDTH,
         printobserver_panels::compose::IMAGE_HEIGHT
     )

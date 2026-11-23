@@ -447,7 +447,7 @@ impl Supervisor {
         // The turn's credentials are bound to it from here, and revoked the
         // moment it returns — whatever it returned — and when this future is
         // abandoned, because dropping what was opened revokes too.
-        let opened = self.open_turn(print.id);
+        let opened = self.open_turn(print.id, image_path.is_some());
         self.forget_acknowledged_by_turn(print.id);
         let running = situation.printer_state == Some(PrinterState::Printing);
         self.forget_stop_asked(print.id);

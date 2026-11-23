@@ -443,6 +443,7 @@ fn agent(config: &ServerConfig) -> OneharnessSupervisor {
         // This tier's responder issues its actions itself rather than through a
         // shell, so the turn keeps the read-only mode.
         agent_commands: Vec::new(),
+        withheld_beside_an_image: Vec::new(),
         command_usage: Vec::new(),
         auto_compact_tokens: None,
         idle_compact_tokens: None,

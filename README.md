@@ -292,7 +292,8 @@ Windows:
   alert through this API, which re-arms Obico's detection for the rest of the
   print. The token is never printed or logged.
 - `safety.agent_min_interval_s` is the minimum time between agent actions that
-  change a moving print; adjustments to a paused print do not wait on it.
+  change a moving print; adjustments to a paused print, and a pause, do not
+  wait on it.
   Under `safety.allowed`, set the allowed range for feedrate factor, flowrate
   factor, fan percentage, bed target, and each tool target. Under
   `safety.actions`, grant action names separately to `operator`, `agent`, and
@@ -384,7 +385,7 @@ ends — on success, failure or timeout — or the service restarts. It acts as 
 agent, in that turn's session, on that turn's print, and nothing else: a request
 claiming to be the operator or the system, naming another print, starting a
 print or replacing a manifest is refused with `403` before anything is decided,
-and the agent's minimum interval holds every change it asks for. The service no
+and the agent's minimum interval holds every change it asks for but a pause. The service no
 longer writes `client.toml` into its state directory, and deletes one an earlier
 version left there.
 
