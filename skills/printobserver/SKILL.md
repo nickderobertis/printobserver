@@ -49,12 +49,12 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 - **Strands** are a defect only inside the part's outline and new or growing, or out of place.
 - **Position:** judge growth only against the frame the plan's rise names, never by Z or how tall
   parts look; the rise is what should show, not proof it did: a part has risen only where its top
-  edge plainly sits higher against the sheet's marks now than then. Lines are drawn at this
-  layer's height, on the top edge of a part printing to plan and clear of one that stopped below
-  it. Risen less than the rise, likely, unsure or unclear is not printing: a clear defect, never
-  watched. A part off the bed, a first layer not sticking, or one off its own place, left empty,
-  has moved: pause now on the image in hand; no later frame undoes it. The facts' X and Y are the
-  bed's, placing nothing in a frame.
+  edge plainly sits higher against the sheet's marks now than then. Lines are drawn at this layer's
+  height, on the top edge of a part printing to plan and clear of one that stopped below it; a part
+  this layer draws is not finished. Risen less than the rise, likely, unsure or unclear is not
+  printing: a clear defect, never watched. A part off the bed, a first layer not sticking, or one
+  off its own place, left empty, has moved: pause now on the image in hand; no later frame undoes
+  it. The facts' X and Y are the bed's, placing nothing in a frame.
 
 ## When the detector has already paused the print
 
