@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tomllib
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -220,6 +221,67 @@ def test_the_fit_reproduces_the_committed_calibration(
     outlines = int(((green > 150) & (red < 100) & (blue < 100)).sum())
     expect.truth(marks > 50, describing=f"the marks are drawn in red ({marks} pixels)")
     expect.truth(outlines > 1000, describing=f"the outlines are drawn in green ({outlines} pixels)")
+
+
+def test_a_fit_started_from_the_committed_calibration_reproduces_it(tmp_path: Path) -> None:
+    """`--start` naming the committed file fits the committed marks back to it."""
+    run = _run(_fixture_marks(tmp_path), tmp_path, "--start", str(COMMITTED))
+    expect.passing(run, describing="the calibration tool started from the committed file")
+    written = json.loads((tmp_path / "calibration.json").read_text(encoding="utf-8"))
+    committed = json.loads(COMMITTED.read_text(encoding="utf-8"))
+    jsonschema.validate(written, json.loads(SCHEMA.read_text(encoding="utf-8")))
+    rms = written["fit"]["rms_reprojection_px"]
+    expect.truth(rms <= RMS_BOUND_PX, describing=f"the fit's RMS {rms} px is within the bound")
+    outlines = np.vstack(
+        [one.segments[:, :3] for one in fitting.observations(load(_fixture_marks(tmp_path)))]
+    )
+    moved = np.linalg.norm(
+        _camera_of(written).project(outlines) - _camera_of(committed).project(outlines), axis=1
+    )
+    worst = float(np.nanmax(moved))
+    expect.truth(
+        worst <= PROJECTION_PX,
+        describing=f"a marked outline lies {worst} px from the file's, over {PROJECTION_PX}",
+    )
+
+
+def _resized(calibration: dict[str, Any]) -> dict[str, Any]:
+    calibration["image_size_px"] = [1280, 720]
+    return calibration
+
+
+def _poseless(calibration: dict[str, Any]) -> dict[str, Any]:
+    del calibration["bed_pose"]
+    return calibration
+
+
+def _flat_pose(calibration: dict[str, Any]) -> dict[str, Any]:
+    calibration["bed_pose"]["rotation_rodrigues"] = [0.0, 0.0]
+    return calibration
+
+
+@pytest.mark.parametrize(
+    ("change", "refusal"),
+    [
+        (_resized, "is a calibration of 1280x720 frames, and the marked frames are 1920x1080"),
+        (_poseless, "is no calibration file this tool reads"),
+        (_flat_pose, "states no three-component bed pose"),
+    ],
+)
+def test_a_start_that_is_no_calibration_of_the_stream_is_refused(
+    tmp_path: Path, change: Callable[[dict[str, Any]], dict[str, Any]], refusal: str
+) -> None:
+    """`--start` naming a calibration of other frames, or no calibration, is refused with exit 2."""
+    start = tmp_path / "start.json"
+    start.write_text(
+        json.dumps(change(json.loads(COMMITTED.read_text(encoding="utf-8")))), encoding="utf-8"
+    )
+    run = _run(_fixture_marks(tmp_path), tmp_path, "--start", str(start))
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, refusal, describing="the refusal")
+    expect.truth(
+        not (tmp_path / "calibration.json").exists(), describing="no calibration was written"
+    )
 
 
 def _camera_of(calibration: dict[str, Any]) -> Camera:
@@ -476,20 +538,26 @@ def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
 
 
 def test_an_output_that_cannot_be_written_after_the_fit_is_refused(tmp_path: Path) -> None:
-    """A directory standing at either output path passes the checks before the fit, then fails."""
+    """A directory standing at either output path passes the checks before the fit, then fails.
+
+    The two runs are independent, each over its own directory, so they are made
+    at once: each is a whole fit, which is most of this suite's time.
+    """
     marks = _fixture_marks(tmp_path)
     image_blocked = tmp_path / "image"
     (image_blocked / "verification.jpg").mkdir(parents=True)
-    image = _run(marks, image_blocked)
+    out_blocked = tmp_path / "out"
+    (out_blocked / "calibration.json").mkdir(parents=True)
+    with ThreadPoolExecutor(max_workers=2) as runs:
+        image_run = runs.submit(_run, marks, image_blocked)
+        out_run = runs.submit(_run, marks, out_blocked)
+        image, out = image_run.result(), out_run.result()
     expect.equal(image.returncode, 2, describing="the exit status for an unwritable image")
     expect.contains(image.stderr, "could not be written", describing="the image refusal")
     expect.truth(
         not (image_blocked / "calibration.json").exists(),
         describing="no calibration written beside an image that failed",
     )
-    out_blocked = tmp_path / "out"
-    (out_blocked / "calibration.json").mkdir(parents=True)
-    out = _run(marks, out_blocked)
     expect.equal(out.returncode, 2, describing="the exit status for an unwritable calibration")
     # The path as the operator wrote it, never quoted as a Python literal,
     # which on Windows would double every separator.

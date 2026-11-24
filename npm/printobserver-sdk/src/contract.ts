@@ -2116,8 +2116,9 @@ export interface Rise {
   mm: Array<number>;
   /**
    * When that earlier frame was captured: the newest frame at least half
-   * an hour old that a periodic observation or a look at this print was
-   * given, as that observation or look states its capture time.
+   * an hour old that a check of this print — a periodic observation or an
+   * alert — or a look at it was given, as that check or look states its
+   * capture time.
    */
   since: Timestamp;
 }

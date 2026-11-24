@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from journey import REPO_ROOT, capture, clean_environment, output
-from repo_checks import gate_shards
+from repo_checks import gate_tier
 from repo_checks.checks_graph import platform_independent_tag
 from repo_checks.expect import equal, truth
 from repo_checks.model import Repo
@@ -76,6 +76,7 @@ ASSIGNED = {
     INDEPENDENT: frozenset(
         {
             "test_actions_runner.py",
+            "test_bounded_drafting.py",
             "test_end_to_end_projects.py",
             "test_llmlint_harness_journey.py",
             "test_platform_dispatch_journey.py",
@@ -105,8 +106,7 @@ def collected_by(project: str) -> set[str]:
     target's command makes into collection mode.
     """
     environment = clean_environment(PYTEST_ADDOPTS="--collect-only")
-    for name in gate_shards.PARTS:
-        environment.pop(name, None)
+    environment.pop(gate_tier.PROJECTS_VARIABLE, None)
     result = capture(
         [
             "bunx",

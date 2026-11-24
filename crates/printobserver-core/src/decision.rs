@@ -165,12 +165,15 @@ pub fn decide(input: &DecisionInput<'_>) -> PolicyDecision {
 
     // Nothing an adjustment does can show while the print is paused, so the
     // interval that waits for it to show does not hold adjustments to a paused
-    // print back. Resuming, pausing and cancelling still wait on it: those are
-    // the flapping it exists to stop.
+    // print back. Nor does it hold back a pause: pausing is how the agent stops
+    // a print going wrong, on the image in hand, and an agent granted no resume
+    // cannot flap a print by pausing it. A pause still starts the interval.
+    // Resuming and cancelling still wait on it.
     let adjusting_a_paused_print = adjustment(input.action).is_some()
         && matches!(input.printer_state, Some(PrinterState::Paused));
     if actor_class == ActorClass::Agent
         && changes_the_machine(kind)
+        && kind != ActionKind::Pause
         && !adjusting_a_paused_print
         && let Some(since_last) = input.since_last_agent_action
     {

@@ -66,6 +66,9 @@ pub struct ShownImage {
     /// What the image is, and why it is that one, in one line; none when what
     /// made it says nothing.
     pub note: Option<String>,
+    /// Whether it is the three-panel image, drawn from the print's plan,
+    /// rather than a frame as the camera took it or scaled whole.
+    pub composite: bool,
 }
 
 /// What makes a check's image of one stored frame.
@@ -88,7 +91,18 @@ pub trait CheckImages: Send + Sync {
     /// As [`check_image`](Self::check_image)'s.
     fn shown_image(&self, request: &CheckImageRequest<'_>) -> Result<ShownImage, String> {
         self.check_image(request.print_id, request.frame)
-            .map(|path| ShownImage { path, note: None })
+            .map(|path| ShownImage {
+                path,
+                note: None,
+                composite: false,
+            })
+    }
+
+    /// Whether a check of `print_id` would be shown the three-panel image of a
+    /// frame from the server's own camera: by default, never.
+    fn composes(&self, print_id: PrintId) -> bool {
+        let _ = print_id;
+        false
     }
 }
 
@@ -150,6 +164,7 @@ impl Supervisor {
             return Some(ShownImage {
                 path: stored,
                 note: None,
+                composite: false,
             });
         };
         let request = CheckImageRequest {
@@ -167,6 +182,7 @@ impl Supervisor {
                         "the frame as the camera took it, because its check image could not be made: {error}"
                     )),
                     path: stored.clone(),
+                    composite: false,
                 }),
         )
     }

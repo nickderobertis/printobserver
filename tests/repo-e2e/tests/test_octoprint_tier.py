@@ -6,8 +6,8 @@ matters on a machine that runs this repeatedly: nothing the bring-up recipe
 started is still there afterwards.
 
 The tier itself, `just test-integration`, is not run here: the required
-`integration (<platform>)` jobs run it between these same two recipes on every
-pull request, and a second run inside the gate would only repeat theirs. What
+`test (<platform>)` jobs run it between these same two recipes on every pull
+request, and a second run inside the gate would only repeat theirs. What
 is run here is what a failing tier leaves behind: made to fail on purpose once
 the instance has written its logs, this walk keeps those logs before the
 bring-down, where they are still readable after it; the tier's own recipe is

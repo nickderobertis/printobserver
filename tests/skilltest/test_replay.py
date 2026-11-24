@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from replay import (
     PROBE_RECORD,
     Replay,
     bare_probe,
+    calibration_fallbacks,
     harness_token,
     image_probe,
     installer_compaction,
@@ -35,6 +37,9 @@ from repo_checks import expect
 from starts import StartsReplay
 
 RUN_DIR = os.environ.get("SKILLTEST_RUN_DIR", "").strip()
+#: The log a replay's server writes under its install, and what a test's copy of it ends in.
+SERVER_LOG = "server.log"
+SERVER_LOG_SUFFIX = f".{SERVER_LOG}"
 
 
 def the_longest_print() -> str:
@@ -70,7 +75,7 @@ def test_the_agent_supervises_the_print(name: str) -> None:
     )
     try:
         replayed = replay.run()
-        _keep(name, replayed.as_record(), replayed.transcript)
+        _keep(name, replayed.as_record(), replayed.transcript, replay.root / SERVER_LOG)
         expect.equal(
             [session["harness_identity"] for session in replayed.ledger["sessions"]],
             ["claude-code"],
@@ -100,6 +105,14 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             replayed.configured,
             installer_compaction(),
             describing="the replay's compaction settings, as the installer writes them",
+        )
+        # A check the latest code would show the three-panel image on a calibrated
+        # printer is judged on that image, not on a whole frame the replay fell back
+        # to for want of a calibration fitting the case's frames.
+        expect.equal(
+            calibration_fallbacks({point.moment.id: point.image_note for point in replayed.points}),
+            {},
+            describing=f"{name}'s checks shown no whole frame for want of a fitting calibration",
         )
         for turn in replayed.ledger["turns"]:
             for compaction in replayed.ledger["compactions"]:
@@ -161,8 +174,13 @@ def test_the_supervisor_configuration_with_one_check_image() -> None:
         (directory / IMAGE_PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
 
 
-def _keep(name: str, record: object, transcript: list[dict[str, object]]) -> None:
-    """Write a test's record where `just skilltest-record` folds it from, when asked to."""
+def _keep(name: str, record: object, transcript: list[dict[str, object]], log: Path) -> None:
+    """Write a test's record where `just skilltest-record` folds it from, when asked to.
+
+    Its transcript and the server's log go beside it, before the install they
+    were written in is removed: a failed turn is read from them, and what the
+    record carries of a turn is counts.
+    """
     if not RUN_DIR:
         return
     directory = Path(RUN_DIR)
@@ -171,6 +189,8 @@ def _keep(name: str, record: object, transcript: list[dict[str, object]]) -> Non
     (directory / f"{name}.transcript.jsonl").write_text(
         "".join(json.dumps(line) + "\n" for line in transcript), encoding="utf-8"
     )
+    if log.is_file():
+        shutil.copyfile(log, directory / f"{name}{SERVER_LOG_SUFFIX}")
 
 
 def _the_operators_agent_decides_each_start(name: str, program: str) -> None:
@@ -178,7 +198,7 @@ def _the_operators_agent_decides_each_start(name: str, program: str) -> None:
     replay = StartsReplay(read_start_case(name), [program])
     try:
         replayed = replay.run()
-        _keep(name, replayed.as_record(), replayed.transcript)
+        _keep(name, replayed.as_record(), replayed.transcript, replay.root / SERVER_LOG)
         for point in replayed.points:
             expect.truth(
                 point.report.usage and point.report.models,

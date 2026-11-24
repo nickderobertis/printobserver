@@ -26,7 +26,7 @@ import tempfile
 import threading
 import time
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
@@ -618,6 +618,52 @@ def check_image(note: str) -> CheckImage:
         _, because, why = note.partition(", because ")
         return {"kind": "whole_frame", "why": why if because else None, "note": note}
     return {"kind": "stored_frame", "why": note, "note": note}
+
+
+#: Why the server shows a print's check the whole frame when no calibration is configured.
+NO_CALIBRATION = "no camera calibration is configured"
+#: Why a print's check is shown the whole frame when no calibration is configured, its
+#: frames are of another size than the calibration, or its alignment refused the
+#: projection: the server's own wording, of its own reason and of the alignment's and
+#: the composer's refusals.
+CALIBRATION_FALLBACKS = (
+    re.compile(re.escape(NO_CALIBRATION)),
+    re.compile(
+        r"the print's first-layer alignment failed: the camera's frames are \d+x\d+"
+        r" and the calibration's \d+x\d+"
+    ),
+    re.compile(r"the frame's resolution is \S+, and the calibration's is \S+"),
+    re.compile(
+        r"the print's first-layer alignment failed: the printed first layer lies \S+ px"
+        r" from where the calibration projects it"
+    ),
+)
+
+
+def calibration_fallback(image: CheckImage) -> str | None:
+    """Why a check fell back to the whole frame for want of a calibration fitting its frames.
+
+    Nothing for the three-panel image, or for a whole frame the server sends for any
+    other reason, such as a check with no print or no position to draw.
+    """
+    why = image["why"]
+    if image["kind"] != "whole_frame" or why is None:
+        return None
+    return why if any(pattern.fullmatch(why) for pattern in CALIBRATION_FALLBACKS) else None
+
+
+def calibration_fallbacks(notes: Mapping[str, str | None]) -> dict[str, str]:
+    """Each check shown the whole frame for want of a calibration fitting its frames, and why.
+
+    `notes` is each check's image line, by its decision point. Every case's: a print
+    the latest code would show the three-panel image is judged on that image, so no
+    case is let off.
+    """
+    return {
+        check: why
+        for check, note in notes.items()
+        if note is not None and (why := calibration_fallback(check_image(note))) is not None
+    }
 
 
 class Alignment(TypedDict):
@@ -1344,6 +1390,7 @@ class Replay:
         real_waits: bool = False,
         outside: Callable[[Replay], OutsideSupervisor] | None = None,
         compaction_probe: bool = False,
+        refused_event_frames: frozenset[int] = frozenset(),
     ) -> None:
         """Lay the install out and start the doubles; nothing runs until [`Replay.run`].
 
@@ -1352,7 +1399,9 @@ class Replay:
         compared against. `outside` makes the outside supervisor a case's watch lines
         are handed to, once the install is laid out. `compaction_probe` has the port
         compact the print's conversation once after the last turn, when no idle
-        compaction completed, so the run measures one.
+        compaction completed, so the run measures one. `refused_event_frames` names
+        the events whose scheduled check's own frame the camera refuses, so each of
+        their turns is handed no image.
         """
         self.case = case
         self.compaction_probe = compaction_probe
@@ -1374,6 +1423,7 @@ class Replay:
             picture=picture or real_picture(case),
             clock=self.bin / "clock",
             gcode=gcode,
+            refused_event_frames=refused_event_frames,
         )
         self.runs: list[Run] = []
         #: Each idle compaction's harness run, which serves no replay entry.
@@ -1451,6 +1501,7 @@ class Replay:
 
     def _harness_started(self) -> str:
         """Note one harness run, and say where its output is to be kept."""
+        self.timeline.turn_started()
         if self._trigger_count() <= self._agents_before(self.timeline.index):
             self.timeline.harness_started()
         else:
@@ -1500,8 +1551,10 @@ class Replay:
         A live watch reads the job every poll and decides once the first layer laying
         the part is down, on the frame it takes then: the first frame the recording's
         supervisor took on its own schedule — one carrying the progress the printer
-        reported — whose progress puts the job past that layer. Nothing for a case
-        naming no calibration, or a slice laying no such layer.
+        reported — whose progress puts the job past that layer. A frame the case says
+        shows the bed away from that height is passed over: the live watch's own frame
+        was taken while the layer went down. Nothing for a case naming no calibration,
+        or a slice laying no such layer.
         """
         ends = self.first_layer_end
         if self.case.camera_calibration is None or ends is None:
@@ -1509,7 +1562,7 @@ class Replay:
         for index, (frame, when) in enumerate(
             zip(self.case.frames, self.timeline.frame_times, strict=True)
         ):
-            if frame.progress_pct is None:
+            if frame.progress_pct is None or not frame.at_print_height:
                 continue
             position = int(frame.progress_pct / 100 * self.case.gcode_size)
             if position > ends:
@@ -1556,6 +1609,9 @@ class Replay:
         again at the first event. A print stays open, and its verdict with it, through
         a restart.
         """
+        if self.case.no_first_layer_frame_offset_px is not None:
+            self._write_the_recorded_alignment(self.case.no_first_layer_frame_offset_px)
+            return
         first = self.case.moments[0]
         passing = self._first_layer_frame()
         if passing is None or passing.at > instant(first.at):
@@ -1570,6 +1626,63 @@ class Replay:
             self.stop_server()
         with self.timeline.lock:
             self.timeline.stand_at(0)
+
+    def _write_the_recorded_alignment(self, offset_px: float) -> None:
+        """Write the passed verdict a case keeping no frame of its first layer records.
+
+        A live server decides a print's alignment on a frame taken as its first layer
+        goes down; a recording that kept none has only frames far above it, where the
+        part's own body stands over the layer the check scores. The case records how
+        its projection was proven instead and the offset its marks lie within. This
+        holds only for a calibrated case keeping no frame at or below its first layer,
+        and refuses any other; over a slice laying no first layer it writes nothing.
+        The server is started once with no check due and every camera fetch refused,
+        so the alignment stays undecided while the print it opens is read; the verdict
+        is written where the server keeps it, which stands through the restart at the
+        first event.
+        """
+        if self.case.camera_calibration is None:
+            msg = f"{self.case.name} records its alignment and names no calibration"
+            raise ReplayError(msg)
+        ends = self.first_layer_end
+        if ends is None:
+            # A slice laying no first object layer leaves the server nothing to decide.
+            return
+        kept = [
+            frame.file
+            for frame in self.case.frames
+            if frame.progress_pct is not None
+            and int(frame.progress_pct / 100 * self.case.gcode_size) <= ends
+        ]
+        if kept:
+            msg = (
+                f"{self.case.name} records its alignment, and keeps frames of its first layer "
+                f"the replay decides it on: {', '.join(kept)}"
+            )
+            raise ReplayError(msg)
+        config = self.root / "deciding.toml"
+        config.write_text(self._config_text(DECIDING_INTERVAL_S), encoding="utf-8")
+        with self.timeline.lock:
+            self.timeline.withholding = True
+        self.server = self._started(config)
+        try:
+            self._wait_for_server()
+            deadline = time.monotonic() + PASSING_WAIT_S
+            while not self._prints():
+                if time.monotonic() > deadline:
+                    msg = f"the server opened no print within {PASSING_WAIT_S} s"
+                    raise ReplayError(msg)
+                time.sleep(0.25)
+            verdict = {"verdict": "passed", "offset_px": offset_px}
+            path = self.state / "alignment" / f"{self._print_id()}.json"
+            path.write_text(json.dumps(verdict), encoding="utf-8")
+        finally:
+            self.stop_server()
+            with self.timeline.lock:
+                self.timeline.withholding = False
+        with self.timeline.lock:
+            self.timeline.stand_at(0)
+        self._read_alignment()
 
     def _started(self, config: Path) -> subprocess.Popen[str]:
         """The server, started on one configuration, its output kept."""

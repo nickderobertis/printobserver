@@ -5,7 +5,9 @@ param(
     [string]$Fallback = [System.IO.Path]::GetTempPath()
 )
 $ErrorActionPreference = 'Stop'
-if ($env:PRINTOBSERVER_PLATFORM -ne 'windows-x86_64') { return }
+# The two Windows jobs: x86's runner has a scratch drive, and ARM's, which has
+# none, is given one as a Dev Drive (`New-DevDrive`).
+if ($env:PRINTOBSERVER_PLATFORM -notin @('windows-x86_64', 'windows-aarch64')) { return }
 
 function Assert-LinePath([string]$Path) {
     if ($Path -match '[\r\n]') { throw 'Paths must contain no line breaks. Supply a single-line path.' }
@@ -36,6 +38,40 @@ function Assert-WritableTemp([string]$Directory) {
     }
 }
 
+# A trusted Dev Drive mounted at the bare drive root `Root`, in a growable VHDX
+# beside the existing temp: a ReFS volume whose files Defender scans in
+# performance mode. The windows-11-arm runner has no scratch drive of its own,
+# and its journeys that copy, clone and install trees under temp ran three to
+# seven times slower there than on the x86 runner's scratch drive. A step of it
+# that fails fails the job's setup rather than falling back, because a fallback
+# would hide exactly that slowdown. Making one needs an administrator and leaves
+# a mounted disk, so no test makes one: the ARM job's own `just runner-temp`
+# step does on every run, and fails there if it cannot; the host tests prove a
+# failing step is refused naming it.
+function New-DevDrive([string]$Root, [string]$Beside) {
+    $letter = $Root.Substring(0, 1)
+    $disk = Join-Path $Beside 'printobserver-dev-drive.vhdx'
+    # diskpart reads its script in one byte per character.
+    if ($disk -match '[^\x20-\x7E]') {
+        throw "The Dev Drive image path $disk is not plain ASCII, which diskpart cannot read. Supply a fallback temp directory whose path is plain ASCII."
+    }
+    $script = Join-Path $Beside 'printobserver-dev-drive.diskpart'
+    @("create vdisk file=`"$disk`" maximum=65536 type=expandable",
+      "select vdisk file=`"$disk`"", 'attach vdisk', 'create partition primary',
+      "assign letter=$letter") | Set-Content -LiteralPath $script -Encoding ascii
+    $said = & diskpart /s $script 2>&1
+    Remove-Item -LiteralPath $script
+    $remedy = 'Run the job on a Windows 11 runner image that gives an administrator diskpart, Format-Volume -DevDrive and fsutil devdrv.'
+    if ($LASTEXITCODE -ne 0) { throw "Dev Drive creation failed: diskpart exited ${LASTEXITCODE}: $($said -join ' '). $remedy" }
+    try {
+        Format-Volume -DriveLetter $letter -DevDrive -Confirm:$false -Force | Out-Null
+    } catch {
+        throw "Dev Drive creation failed: Format-Volume -DevDrive refused ${letter}: $($_.Exception.Message). $remedy"
+    }
+    $said = & fsutil.exe devdrv trust "${letter}:" 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Dev Drive creation failed: fsutil devdrv trust exited ${LASTEXITCODE}: $($said -join ' '). $remedy" }
+}
+
 function Publish-Temp([string]$Chosen, [string]$Scratch, [string]$Owner, [string]$Restored) {
     if (-not $env:GITHUB_ENV) { throw 'Set GITHUB_ENV to a writable environment file for later steps.' }
     foreach ($path in @($Chosen, $Scratch, $Restored, $env:GITHUB_ENV)) { Assert-LinePath $path }
@@ -56,7 +92,7 @@ try {
         $leaf = Split-Path -Leaf $scratch
         $marker = Join-Path $scratch '.printobserver-owned'
         if ($leaf -ne $env:PRINTOBSERVER_JOB_SCRATCH_OWNER -or
-            $leaf -notmatch '^printobserver-[0-9a-f]{32}$' -or
+            $leaf -notmatch '^po-[0-9a-f]{16}$' -or
             -not (Test-Path -LiteralPath $marker -PathType Leaf) -or
             (Get-Content -LiteralPath $marker -Raw).Trim() -ne $leaf) {
             throw "Refusing cleanup of unowned scratch: $scratch. Clear the foreign PRINTOBSERVER_JOB_SCRATCH and PRINTOBSERVER_JOB_SCRATCH_OWNER values."
@@ -89,8 +125,17 @@ try {
     $scratch = ''
     $owner = ''
     $routing = 'existing temp; scratch drive is absent'
+    $onDevDrive = $false
+    if ($env:PRINTOBSERVER_PLATFORM -eq 'windows-aarch64' -and $IsWindows -and
+        $DriveRoot -match '^[A-Za-z]:\\$' -and
+        -not (Test-Path -LiteralPath $DriveRoot -PathType Container)) {
+        New-DevDrive $DriveRoot $Fallback
+        $onDevDrive = $true
+    }
     if (Test-Path -LiteralPath $DriveRoot -PathType Container) {
-        $candidate = Join-Path $DriveRoot ('printobserver-' + [guid]::NewGuid().ToString('N'))
+        # A short leaf: a build under it reaches Windows' 260-character path limit
+        # on a runner that does not enable long paths, as the ARM one does not.
+        $candidate = Join-Path $DriveRoot ('po-' + [guid]::NewGuid().ToString('N').Substring(0, 16))
         $created = $false
         try {
             New-Item -ItemType Directory -Path $candidate | Out-Null
@@ -99,7 +144,7 @@ try {
             [System.IO.File]::WriteAllText((Join-Path $candidate '.printobserver-owned'), $leaf)
             $scratch = $candidate
             $owner = $leaf
-            $routing = 'job-owned scratch'
+            $routing = if ($onDevDrive) { 'job-owned scratch on a trusted Dev Drive' } else { 'job-owned scratch' }
         } catch {
             $cause = $_.Exception.Message
             # Only a directory created by this invocation can be removed here.

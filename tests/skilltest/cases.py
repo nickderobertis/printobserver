@@ -149,6 +149,8 @@ class Frame:
     #: When it was captured, in the case's local time, where the case kept that.
     captured: str | None
     progress_pct: float | None
+    #: Whether the bed is where its progress puts it; a case says when it is not.
+    at_print_height: bool = True
 
     @property
     def order(self) -> str:
@@ -262,6 +264,9 @@ class Case:
     detector_recorded: bool = False
     #: The camera calibration its frames are projected through, when it names one.
     camera_calibration: Path | None = None
+    #: The passed alignment verdict's offset the replay writes for a print that keeps no
+    #: frame of its first layer, when the case records one (`no_first_layer_frame`).
+    no_first_layer_frame_offset_px: float | None = None
 
     @property
     def test_id(self) -> str:
@@ -407,6 +412,7 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
                 file=frame["file"],
                 captured=_captured(document, frame),
                 progress_pct=frame.get("progress_pct"),
+                at_print_height="not_at_print_height" not in frame,
             )
             for frame in document["frames"]
             if not NOT_FROM_THE_CAMERA.search(frame["file"])
@@ -466,6 +472,9 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
         detector_recorded=document.get("detector") is not None,
         camera_calibration=(directory / document["camera_calibration"]).resolve()
         if "camera_calibration" in document
+        else None,
+        no_first_layer_frame_offset_px=document["no_first_layer_frame"]["offset_px"]
+        if "no_first_layer_frame" in document
         else None,
     )
 

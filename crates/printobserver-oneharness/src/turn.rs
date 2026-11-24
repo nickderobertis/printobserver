@@ -24,7 +24,7 @@ use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::serde_json::Value;
 use printobserver_types::{PrintId, Reported, Timestamp};
 
-use crate::config::{HarnessIdentity, SupervisorConfig, TurnSeam};
+use crate::config::{AgentCommand, HarnessIdentity, SupervisorConfig, TurnSeam};
 use crate::ledger::{
     CallUsage, CompactionEnd, PrintLedger, RecordedCompaction, RecordedTurn, SessionName,
 };
@@ -419,9 +419,16 @@ impl OneharnessSupervisor {
         system: String,
     ) -> Result<RunResult, SupervisorError> {
         let name = SessionName::probe(session)?;
+        let handed_image = image.is_some();
         let request = RunRequest {
             system: Some(system),
-            ..self.build_request(&name, prompt, image.into_iter().collect(), None)
+            ..self.build_request(
+                &name,
+                prompt,
+                image.into_iter().collect(),
+                handed_image,
+                None,
+            )
         };
         // A probe is no supervision turn, so it carries no compaction setting.
         let request = RunRequest {
@@ -513,18 +520,31 @@ impl OneharnessSupervisor {
             &facts,
             &request.context_command,
             &actor.to_string(),
-            &self.commands_a_turn_runs(),
+            &self.commands_a_turn_runs(request.image_path.is_some()),
         ))
+    }
+
+    /// The agent commands a turn may run: every configured one, less those
+    /// withheld beside an image when the turn is handed one.
+    ///
+    /// The one place both the turn's permissions and the commands its prompt
+    /// lists are chosen from, so a command one of them withholds the other
+    /// cannot name.
+    fn agent_commands(&self, handed_image: bool) -> impl Iterator<Item = &AgentCommand> {
+        self.config.agent_commands.iter().filter(move |command| {
+            !(handed_image && self.config.withheld_beside_an_image.contains(command))
+        })
     }
 
     /// The usage line of each command a turn may run, one per line, in the
     /// order the program prints them.
-    fn commands_a_turn_runs(&self) -> String {
+    fn commands_a_turn_runs(&self, handed_image: bool) -> String {
+        let commands: Vec<&AgentCommand> = self.agent_commands(handed_image).collect();
         self.config
             .command_usage
             .iter()
             .filter(|line| {
-                self.config.agent_commands.iter().any(|command| {
+                commands.iter().any(|command| {
                     let prefix = command.as_str();
                     line.as_str() == prefix || line.starts_with(&format!("{prefix} "))
                 })
@@ -560,16 +580,17 @@ impl OneharnessSupervisor {
     /// reading outright and the shell only for a command beginning with one of
     /// the configured prefixes. Which tools load at all is the run request's
     /// [`TURN_TOOL_SET`], not an argument here.
-    fn permissions(&self) -> (PermissionMode, Vec<String>) {
+    ///
+    /// A turn handed an image is allowed no command withheld beside one, on
+    /// every run it makes: the answer asked for again is the same turn's.
+    fn permissions(&self, handed_image: bool) -> (PermissionMode, Vec<String>) {
         if !self.on_claude_code() || self.config.agent_commands.is_empty() {
             return (PermissionMode::ReadOnly, Vec::new());
         }
         // llmlint: ignore[least_privilege_grants] suppressions.toml has the reason.
         let mut arguments = vec!["--allowedTools".to_owned(), CLAUDE_READ_TOOL.to_owned()];
         arguments.extend(
-            self.config
-                .agent_commands
-                .iter()
+            self.agent_commands(handed_image)
                 // llmlint: ignore[least_privilege_grants] suppressions.toml has the reason.
                 .map(|command| format!("Bash({command}:*)")),
         );
@@ -601,9 +622,10 @@ impl OneharnessSupervisor {
         session: &SessionName,
         prompt: &str,
         images: Vec<PathBuf>,
+        handed_image: bool,
         pass: Option<&TurnPass>,
     ) -> RunRequest {
-        let (mode, passthrough) = self.permissions();
+        let (mode, passthrough) = self.permissions(handed_image);
         let mut env: Vec<String> = self
             .config
             .harness_env
@@ -659,10 +681,12 @@ impl OneharnessSupervisor {
         session: &SessionName,
         prompt: &str,
         images: &[PathBuf],
+        handed_image: bool,
         access: &dyn TurnAccess,
     ) -> Result<Result<RunOutcome, OneharnessError>, SupervisorError> {
         let pass = access.issue(&TurnSession::new(session.as_str())?)?;
-        let request = self.build_request(session, prompt, images.to_vec(), Some(&pass));
+        let request =
+            self.build_request(session, prompt, images.to_vec(), handed_image, Some(&pass));
         Ok(self.run(&request))
     }
 
@@ -695,11 +719,13 @@ impl OneharnessSupervisor {
         let mut ledger = self.ledger(print_id)?;
         let mut session = ledger.session_for_next_turn();
         let images: Vec<PathBuf> = request.image_path.iter().cloned().collect();
+        let handed_image = !images.is_empty();
 
         let outcome = match self.drive(
             &session,
             &self.prompt_for(request, &session)?,
             &images,
+            handed_image,
             access,
         )? {
             Ok(outcome) => outcome,
@@ -722,6 +748,7 @@ impl OneharnessSupervisor {
                     &session,
                     &self.prompt_for(request, &session)?,
                     &images,
+                    handed_image,
                     access,
                 )?
                 .map_err(|error| unavailable(&error))?
@@ -764,7 +791,8 @@ impl OneharnessSupervisor {
             return;
         }
         let earlier = reported.result.calls.take().unwrap_or_default();
-        match self.asked_again(&reported.name, UNACTED_STOP, access) {
+        let handed_image = request.image_path.is_some();
+        match self.asked_again(&reported.name, UNACTED_STOP, handed_image, access) {
             Ok(answered) => {
                 reported.result = answered;
                 let mut calls = earlier;
@@ -782,10 +810,11 @@ impl OneharnessSupervisor {
         &self,
         session: &SessionName,
         again: &str,
+        handed_image: bool,
         access: &dyn TurnAccess,
     ) -> Result<RunResult, SupervisorError> {
         let outcome = self
-            .drive(session, again, &[], access)?
+            .drive(session, again, &[], handed_image, access)?
             .map_err(|error| unavailable(&error))?;
         Ok(TurnReport::of(outcome.report, session, &self.config.harness)?.result)
     }

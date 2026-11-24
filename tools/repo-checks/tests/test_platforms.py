@@ -45,17 +45,20 @@ MATRIX = """    strategy:
             runner: ubuntu-24.04-arm
 """
 
-# The gate's own matrix: its `linux-x86_64` and two Windows gates are sharded,
-# and carried by their shard jobs instead, so `linux-aarch64` is its one cell.
+# The `test` job's own matrix: every platform but `macos-aarch64`, whose cell is
+# carried by `ci.yml:test-macos`.
 GATE_MATRIX = """    strategy:
       fail-fast: false
       matrix:
         platform:
+          - id: linux-x86_64
+            runner: ubuntu-24.04
           - id: linux-aarch64
             runner: ubuntu-24.04-arm
-          # The `linux-x86_64` and the two Windows gates are sharded:
-          # `gate-shard-<platform>` runs each one's work and `gate-<platform>`
-          # reports its context.
+          - id: windows-x86_64
+            runner: windows-2025
+          - id: windows-aarch64
+            runner: windows-11-arm
 """
 
 
@@ -73,6 +76,7 @@ def test_the_platform_dependent_kinds_are_the_ones_that_build_or_install(
     contains(dependent, "gate", describing="the platform-dependent kinds")
     contains(dependent, "integration", describing="the platform-dependent kinds")
     contains(dependent, "install", describing="the platform-dependent kinds")
+    contains(dependent, "warm", describing="the platform-dependent kinds")
     absent(dependent, "llmlint", describing="the platform-dependent kinds")
 
 
@@ -81,7 +85,7 @@ def test_the_committed_judged_lint_job_declares_no_matrix(committed: Repo) -> No
     workflow = yaml.safe_load(
         (committed.root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     )
-    judged = workflow["jobs"]["llmlint"]
+    judged = workflow["jobs"]["lint"]
 
     absent(judged, "strategy", describing="the judged-lint job")
     equal(judged["runs-on"], "ubuntu-24.04", describing="the judged-lint job's runner")
@@ -123,7 +127,7 @@ def test_a_matrix_cell_whose_id_is_not_a_platform_name_is_refused(
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "whose `id` is not a platform name")
+    refused_naming(findings, "job `test`", "whose `id` is not a platform name")
 
 
 def test_a_policy_declaring_no_platform_dependent_kinds_is_refused(
@@ -133,7 +137,7 @@ def test_a_policy_declaring_no_platform_dependent_kinds_is_refused(
     broken = tree()
     broken.edit(
         "repo-policy.toml",
-        'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]',
+        'platform_dependent_kinds = ["gate", "integration", "install", "artifact", "warm"]',
         "platform_dependent_kinds = []",
     )
 
@@ -149,7 +153,7 @@ def test_a_policy_naming_something_that_is_not_a_job_kind_is_refused(
     broken = tree()
     broken.edit(
         "repo-policy.toml",
-        'platform_dependent_kinds = ["gate", "integration", "install", "artifact"]',
+        'platform_dependent_kinds = ["gate", "integration", "install", "artifact", "warm"]',
         'platform_dependent_kinds = ["gate", "smoke"]',
     )
 
@@ -163,13 +167,13 @@ def test_a_matrix_on_the_judged_lint_job_is_refused(tree: Callable[[], Tree]) ->
     broken = tree()
     broken.edit(
         ".github/workflows/ci.yml",
-        "  llmlint:\n    name: llmlint\n",
-        "  llmlint:\n    name: llmlint\n" + MATRIX,
+        "  lint:\n    name: lint\n",
+        "  lint:\n    name: lint\n" + MATRIX,
     )
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `llmlint`", "declares a platform matrix")
+    refused_naming(findings, "job `lint`", "declares a platform matrix")
 
 
 def test_the_list_is_non_empty_and_names_the_install_paths_platform(
@@ -245,21 +249,17 @@ def test_a_matrix_naming_an_undeclared_platform_is_refused(
 def test_a_matrix_omitting_a_declared_platform_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """Neither matrix can be narrowed independently of the list.
-
-    The gate's one unsharded cell is swapped for another platform's rather than
-    deleted, so its matrix is narrowed rather than emptied.
-    """
+    """The `test` matrix cannot be narrowed independently of the list."""
     broken = tree()
     broken.edit(
         ".github/workflows/ci.yml",
         "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
-        "          - id: linux-x86_64\n            runner: ubuntu-24.04\n",
+        "",
     )
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "omits platform `linux-aarch64`")
+    refused_naming(findings, "job `test`", "omits platform `linux-aarch64`")
 
 
 def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
@@ -280,7 +280,7 @@ def test_a_list_gaining_a_platform_refuses_the_unchanged_matrices(
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "omits platform `linux-riscv64`")
+    refused_naming(findings, "job `test`", "omits platform `linux-riscv64`")
     refused_naming(findings, "job `install-route-pypi`", "omits platform `linux-riscv64`")
 
 
@@ -297,7 +297,7 @@ def test_a_platform_dependent_job_that_dropped_its_matrix_is_refused(
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "job `gate`", "declares no platform matrix")
+    refused_naming(findings, "job `test`", "declares no platform matrix")
 
 
 def test_an_install_jobs_matrix_is_held_to_the_list_too(
@@ -338,34 +338,28 @@ def test_a_carried_cell_whose_carrier_runs_on_another_runner_is_refused(
 
     findings = platforms(broken.repo)
 
-    refused_naming(findings, "carrier `ci.yml:integration-macos`", "does not run on `macos-15`")
+    refused_naming(findings, "carrier `ci.yml:test-macos`", "does not run on `macos-15`")
     refused_naming(
         integration_tier(broken.repo),
-        "the integration job `integration`'s matrix omits platform `macos-aarch64`",
+        "the integration job `test`'s matrix omits platform `macos-aarch64`",
     )
 
 
 def test_a_carrier_that_stopped_running_what_it_carries_is_refused(
     tree: Callable[[], Tree],
 ) -> None:
-    """The macOS integration job owes the integration tier its cell ran."""
+    """The macOS `test` job owes the gate and the integration tier its cell ran."""
     broken = tree()
-    # The macOS job's release-program save, then its bring-up.
+    # The macOS job's release program, then its bring-up.
     carried = (
         "          key: release-program-macos-aarch64-${{ steps.release-program.outputs.key }}\n"
         "      - run: just octoprint-up\n"
     )
-    broken.edit(
-        ".github/workflows/ci.yml",
-        carried + "      - run: just test-integration\n",
-        carried + "      - run: just octoprint-down\n",
-    )
+    broken.edit(".github/workflows/ci.yml", carried + "      - run: just ci-test\n", carried)
 
     findings = platforms(broken.repo)
 
-    refused_naming(
-        findings, "carrier `ci.yml:integration-macos`", "does not run `just test-integration`"
-    )
+    refused_naming(findings, "carrier `ci.yml:test-macos`", "does not run `just ci-test`")
 
 
 def test_a_carried_record_with_no_reason_is_refused(tree: Callable[[], Tree]) -> None:
@@ -380,3 +374,45 @@ def test_a_carried_record_with_no_reason_is_refused(tree: Callable[[], Tree]) ->
     findings = platforms(broken.repo)
 
     refused(findings, "a non-empty `reason`")
+
+
+def _warm_matrix(tree: Tree) -> str:
+    """The `warm` job's own matrix, read from the copy it is edited in."""
+    text = tree.read(".github/workflows/warm.yml")
+    start = text.index("    strategy:\n")
+    return text[start : text.index("    runs-on:", start)]
+
+
+def test_a_warm_matrix_naming_a_cell_nothing_restores_is_refused(
+    tree: Callable[[], Tree],
+) -> None:
+    """A leg warming `macos-aarch64` saves a cache no `test` matrix cell restores."""
+    broken = tree()
+    matrix = _warm_matrix(broken)
+    broken.edit(
+        ".github/workflows/warm.yml",
+        matrix,
+        matrix + "          - id: macos-aarch64\n            runner: macos-15\n",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(
+        findings,
+        "warm.yml: job `warm` warms the caches of the `test` cells",
+        "names `macos-aarch64`, whose `test` cell nothing restores a warmed cache for",
+    )
+
+
+def test_a_warm_matrix_omitting_a_test_cell_is_refused(tree: Callable[[], Tree]) -> None:
+    """Every `test` cell restores a warmed cache, so every one is owed a leg."""
+    broken = tree()
+    broken.edit(
+        ".github/workflows/warm.yml",
+        "          - id: linux-aarch64\n            runner: ubuntu-24.04-arm\n",
+        "",
+    )
+
+    findings = platforms(broken.repo)
+
+    refused_naming(findings, "warm.yml: job `warm`", "omits platform `linux-aarch64`")

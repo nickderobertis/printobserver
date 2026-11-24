@@ -911,6 +911,7 @@ pub fn agent_config(config: &ServerConfig) -> Result<SupervisorConfig, StartErro
             .and_then(|harness| harness.program_behind_launcher(&search_path)),
         harness_env,
         agent_commands: agent_commands()?,
+        withheld_beside_an_image: withheld_beside_an_image()?,
         command_usage: Vec::new(),
         auto_compact_tokens: config.auto_compact_tokens,
         idle_compact_tokens: config.idle_compact_tokens,
@@ -936,6 +937,25 @@ fn agent_commands() -> Result<Vec<AgentCommand>, StartError> {
                 command_for(operation.name)
             ))
         })
+        .collect::<Result<_, _>>()
+        .map_err(|error| StartError::Supervisor {
+            detail: error.to_string(),
+        })
+}
+
+/// The reads a turn handed an image runs none of: a fresh look.
+///
+/// A turn carrying a check's image decides on that image. A look there only
+/// stalls the decision, and a later frame can show a part that moved dragged
+/// back under its walls, which the agent then reads as fine. It can also run on
+/// into the moment the print's next turn was due to begin.
+pub const WITHHELD_BESIDE_AN_IMAGE: [&str; 1] = ["look"];
+
+/// [`WITHHELD_BESIDE_AN_IMAGE`] as the agent commands it names.
+fn withheld_beside_an_image() -> Result<Vec<AgentCommand>, StartError> {
+    WITHHELD_BESIDE_AN_IMAGE
+        .iter()
+        .map(|read| AgentCommand::new(&format!("{CONTEXT_PROGRAM} {}", command_for(read))))
         .collect::<Result<_, _>>()
         .map_err(|error| StartError::Supervisor {
             detail: error.to_string(),

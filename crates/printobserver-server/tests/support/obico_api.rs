@@ -91,6 +91,9 @@ pub enum Mood {
     Hanging,
     /// With the start of an answer, and then nothing more.
     BreakingOff,
+    /// As [`Mood::BreakingOff`], a second after the read arrived: a read made
+    /// in this mood fails once the host may already answer another way.
+    BreakingOffLate,
 }
 
 /// What one host holds between requests.
@@ -291,7 +294,10 @@ async fn respond(mut stream: TcpStream, held: &Mutex<Held>, token: Option<&str>)
                 tokio::time::sleep(std::time::Duration::from_secs(8)).await;
                 return;
             }
-            Mood::BreakingOff => {
+            Mood::BreakingOff | Mood::BreakingOffLate => {
+                if mood == Mood::BreakingOffLate {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
                 let cut = format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                     body.len()

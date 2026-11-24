@@ -259,6 +259,7 @@ pub fn config<Mode>(
         harness_bin: Some(responder()),
         harness_env: env,
         agent_commands: Vec::new(),
+        withheld_beside_an_image: Vec::new(),
         command_usage: Vec::new(),
         auto_compact_tokens: None,
         idle_compact_tokens: None,

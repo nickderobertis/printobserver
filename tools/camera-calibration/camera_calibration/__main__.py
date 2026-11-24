@@ -27,7 +27,7 @@ import numpy as np
 from camera_calibration import fit as fitting
 from camera_calibration.gcode import GcodeError
 from camera_calibration.marks import Marks, MarksError, load
-from camera_calibration.model import cross_check
+from camera_calibration.model import Camera, cross_check
 
 SCHEMA_VERSION = 1
 PATCH_PX = 48
@@ -221,6 +221,36 @@ def calibration(
     )
 
 
+def _start(path: Path, size: tuple[int, int]) -> Camera:
+    """The camera an earlier calibration file states, which the fit starts from."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        lens, pose = document["intrinsics"], document["bed_pose"]
+        stated = (int(document["image_size_px"][0]), int(document["image_size_px"][1]))
+        camera = Camera(
+            float(lens["fx"]),
+            float(lens["fy"]),
+            float(lens["cx"]),
+            float(lens["cy"]),
+            float(lens["k"][0]),
+            np.array([float(value) for value in pose["rotation_rodrigues"]]),
+            np.array([float(value) for value in pose["translation_mm"]]),
+        )
+    except (ValueError, KeyError, IndexError, TypeError) as error:
+        msg = f"--start {path} is no calibration file this tool reads: {error!r}"
+        raise CalibrationError(msg) from error
+    if camera.rvec.shape != (3,) or camera.tvec.shape != (3,):
+        msg = f"--start {path} states no three-component bed pose"
+        raise CalibrationError(msg)
+    if stated != size:
+        msg = (
+            f"--start {path} is a calibration of {stated[0]}x{stated[1]} frames, and the marked "
+            f"frames are {size[0]}x{size[1]}: a start is a calibration of the same stream"
+        )
+        raise CalibrationError(msg)
+    return camera
+
+
 def _date(text: str) -> str:
     try:
         return datetime.date.fromisoformat(text).isoformat()
@@ -253,6 +283,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--drift-tolerance-px", type=_positive, default=6.0)
     parser.add_argument("--out", type=Path, required=True, help="where the calibration is written")
     parser.add_argument("--verification-image", type=Path, required=True)
+    parser.add_argument(
+        "--start",
+        type=Path,
+        help="an earlier calibration of the same camera, which the fit starts from alone",
+    )
     args = parser.parse_args(argv)
     try:
         address = urlsplit(args.snapshot_url)
@@ -279,7 +314,8 @@ def main(argv: list[str] | None = None) -> int:
         images = _frames(marks)
         landmarks = _landmarks(marks, images)
         height, width = images[0].shape[:2]
-        fitted = fitting.fit(marks, (width, height))
+        start = _start(args.start, (width, height)) if args.start is not None else None
+        fitted = fitting.fit(marks, (width, height), start)
         probe = np.array([[0, 0, 0], [250, 220, -50], [125, 110, -100], [10, 200, 0]], float)
         differs = cross_check(fitted.camera, probe)
         # No test reaches this refusal: it fires only if this tool's projection

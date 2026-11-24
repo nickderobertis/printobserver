@@ -180,7 +180,7 @@ def test_the_command_naming_no_file_or_figure_exits_refused_saying_so(given: lis
 def test_a_figure_given_to_another_command_is_refused() -> None:
     """Only this command reads a figure, so no other command quietly ignores one."""
     ran = run(
-        ["uv", "run", "-q", "python", "-m", "repo_checks", "gate_time_budget", "measure", "x"],
+        ["uv", "run", "-q", "python", "-m", "repo_checks", "ci_check_time_budget", "measure", "x"],
         cwd=REPO_ROOT,
         env={**os.environ, "PYTHONPATH": PACKAGES},
     )

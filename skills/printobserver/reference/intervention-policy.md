@@ -28,8 +28,11 @@ change the machine. Acknowledging a failure changes nothing there, whatever its
 disposition — `stop` included, which records that the print should stop and
 cancels nothing — so an acknowledgement neither waits on that interval nor
 starts it again. An adjustment asked for while the print is paused does not
-wait on it either, because nothing it does can show until the print moves;
-pausing, resuming and cancelling still do.
+wait on it either, because nothing it does can show until the print moves. Nor
+does a pause: it is how the agent stops a print going wrong, on the image in
+hand, and an agent granted no resume cannot flap a print by pausing it, so a
+pause is never held back, though it starts the interval again. Resuming and
+cancelling still wait on it.
 
 **The print's manifest** is attached when a print is started and may be replaced
 while it runs. A manifest may only ever *narrow*. An adjustable it names

@@ -839,6 +839,7 @@ impl printobserver_core::CheckImages for RecordingCheckImages {
         Ok(printobserver_core::ShownImage {
             path: request.frame.to_path_buf(),
             note: Some("the stored frame, as recorded".to_owned()),
+            composite: false,
         })
     }
 }

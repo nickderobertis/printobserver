@@ -1,5 +1,6 @@
 {
   "case": "petg-spool-jam-air-print",
+  "camera_calibration": "../cameras/core-one-2026-09-27-1280x720.json",
   "verdict": "real failure: extrusion stopped at about Z 2 mm and the printer printed air to Z 13",
   "printer": "Prusa CORE One, 0.4 mm nozzle, Buddy camera via go2rtc (1280x720), textured sheet",
   "printed_on": "2026-10-08, 14:07 to 17:29",

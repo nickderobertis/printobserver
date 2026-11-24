@@ -97,6 +97,13 @@ def test_children_use_scratch_or_usable_fallback_and_cleanup_keeps_unrelated_fil
     chosen = Path(environment["TEMP"])
     expected_parent = tmp_path / ("scratch drive" if drive_present else "existing temp")
     equal(chosen.parent if drive_present else chosen, expected_parent)
+    if drive_present:
+        # A build under a longer leaf reaches Windows' 260-character path limit
+        # on the ARM runner, which does not enable long paths.
+        truth(
+            len(chosen.name) <= 19,
+            describing=f"a scratch leaf of 19 characters at most: {chosen.name}",
+        )
     result = run(["just", "--command", sys.executable, "-c", PROBE], cwd=ROOT, env=environment)
     passing(result)
     answer = json.loads(result.stdout)
@@ -127,7 +134,7 @@ def test_cleanup_refuses_a_foreign_jobs_directory(
 ) -> None:
     """A foreign path in the job environment is refused without removing it."""
     environment = _setup(tmp_path, drive_present=False)
-    foreign = tmp_path / ("printobserver-" + "a" * 32)
+    foreign = tmp_path / ("po-" + "a" * 16)
     foreign.mkdir()
     if has_another_jobs_marker:
         (foreign / ".printobserver-owned").write_text(foreign.name, encoding="utf-8")
@@ -140,9 +147,93 @@ def test_cleanup_refuses_a_foreign_jobs_directory(
     truth(retained.is_file(), describing="the foreign directory contents to survive")
 
 
-@pytest.mark.parametrize("platform", ["windows-aarch64", ""])
-def test_windows_arm_and_manual_dispatch_keep_existing_temp(tmp_path: Path, platform: str) -> None:
-    """Only x86 opts in, even if another host has a writable scratch drive."""
+def test_windows_arm_uses_a_scratch_drive_it_is_handed_and_mounts_no_dev_drive(
+    tmp_path: Path,
+) -> None:
+    """ARM routes temp as x86 does to a drive that is there, mounting no Dev Drive.
+
+    A Dev Drive is mounted only at a bare drive root that is absent: the job's
+    own scratch drive, which the windows-11-arm runner lacks. A drive root that
+    is an existing directory is used as it is, with no disk image made beside
+    the existing temp.
+    """
+    drive = tmp_path / "scratch drive"
+    drive.mkdir()
+    fallback = tmp_path / "existing temp"
+    fallback.mkdir()
+    environment = dict(
+        HOST, PRINTOBSERVER_PLATFORM="windows-aarch64", GITHUB_ENV=str(tmp_path / "job-env")
+    )
+    result = run(
+        ["just", "runner-temp", "setup", str(drive), str(fallback)],
+        cwd=ROOT,
+        env=environment,
+        timeout=30,
+    )
+    passing(result)
+    contains(result.stdout, "(job-owned scratch)")
+    exported = dict(
+        line.split("=", 1)
+        for line in (tmp_path / "job-env").read_text(encoding="utf-8-sig").splitlines()
+    )
+    equal(Path(exported["TEMP"]).parent, drive)
+    equal(list(fallback.iterdir()), [], describing="no disk image beside the existing temp")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a Dev Drive is made on Windows alone")
+@pytest.mark.parametrize(
+    ("fallback_name", "diskpart", "naming"),
+    [
+        pytest.param("existing temp", "@exit /b 5", "diskpart exited 5", id="diskpart-refuses"),
+        pytest.param(
+            "existing temp",
+            "@exit /b 0",
+            "Format-Volume -DevDrive refused",
+            id="nothing-to-format",
+        ),
+        pytest.param("existing t\u00e9mp", "@exit /b 0", "not plain ASCII", id="non-ascii-image"),
+    ],
+)
+def test_a_dev_drive_that_cannot_be_made_refuses_the_setup_naming_the_step(
+    tmp_path: Path, fallback_name: str, diskpart: str, naming: str
+) -> None:
+    """ARM's absent scratch drive, whose Dev Drive cannot be made, fails setup and exports nothing.
+
+    Falling back to the existing temp would hide the slowdown the drive is
+    there to remove, so the job's setup fails naming the step that refused:
+    `diskpart` refusing, a volume `diskpart` never made for `Format-Volume`, or
+    an image path `diskpart` cannot read.
+    """
+    absent = next(f"{letter}:\\" for letter in "QRSTUVWXYZ" if not Path(f"{letter}:\\").exists())
+    programs = tmp_path / "programs"
+    programs.mkdir()
+    (programs / "diskpart.cmd").write_text(
+        f"@echo diskpart said this\r\n{diskpart}\r\n", encoding="ascii"
+    )
+    fallback = tmp_path / fallback_name
+    fallback.mkdir()
+    environment = dict(
+        HOST,
+        PATH=os.pathsep.join([str(programs), os.environ["PATH"]]),
+        PRINTOBSERVER_PLATFORM="windows-aarch64",
+        GITHUB_ENV=str(tmp_path / "job-env"),
+    )
+    result = run(
+        ["just", "runner-temp", "setup", absent, str(fallback)],
+        cwd=ROOT,
+        env=environment,
+        timeout=60,
+    )
+    failing(result, naming=naming)
+    truth(not (tmp_path / "job-env").exists(), describing="no temp exported for children")
+    truth(not Path(absent).exists(), describing="no drive mounted at the absent root")
+
+
+@pytest.mark.parametrize("platform", ["linux-x86_64", ""])
+def test_other_platforms_and_manual_dispatch_keep_existing_temp(
+    tmp_path: Path, platform: str
+) -> None:
+    """Only the Windows jobs opt in, even if another host has a writable scratch drive."""
     environment_file = tmp_path / "job-env"
     environment = dict(
         HOST,
@@ -161,7 +252,7 @@ def test_windows_arm_and_manual_dispatch_keep_existing_temp(tmp_path: Path, plat
 def test_cleanup_checks_the_recorded_owners_directory_marker(tmp_path: Path, defect: str) -> None:
     """Matching the job token alone never authorizes a directory with invalid identity."""
     environment = _setup(tmp_path, drive_present=False)
-    leaf = "wrong-leaf" if defect == "invalid-leaf" else "printobserver-" + "b" * 32
+    leaf = "wrong-leaf" if defect == "invalid-leaf" else "po-" + "b" * 16
     scratch = tmp_path / leaf
     scratch.mkdir()
     retained = scratch / "unrelated"
@@ -332,7 +423,7 @@ def test_file_creation_failure_removes_the_partially_created_scratch(
     limit = os.pathconf(tmp_path, "PC_PATH_MAX")
     drive = tmp_path / "drive"
     drive.mkdir()
-    parent_length = limit - (60 if stage == "marker" else 80)
+    parent_length = limit - (30 if stage == "marker" else 50)
     while parent_length - len(str(drive)) >= 2:
         remaining = parent_length - len(str(drive)) - 1
         drive /= "d" * min(180, remaining)

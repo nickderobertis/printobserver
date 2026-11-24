@@ -82,8 +82,15 @@ def test_copies_running_the_locked_install_at_once_all_succeed(
         # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
         return run(["bun", "install", "--frozen-lockfile"], cwd=copy.root, timeout=120)
 
+    # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
+    def installed_in_turn(copy: GateCopy) -> list[subprocess.CompletedProcess[str]]:
+        # One copy's installs one after another, and the copies beside each
+        # other: two installs in one copy relink its one set of links at once,
+        # which is no copy beside another, and fail with `EPERM` on a fast disk.
+        return [installed(copy) for _ in range(20)]
+
     with ThreadPoolExecutor(max_workers=len(copies)) as pool:
-        answers = list(pool.map(installed, copies * 20))
+        answers = [answer for turn in pool.map(installed_in_turn, copies) for answer in turn]
 
     equal(
         [answer.stderr for answer in answers if answer.returncode != 0],

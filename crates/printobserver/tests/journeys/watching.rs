@@ -23,7 +23,7 @@ use tempfile::TempDir;
 use crate::harness::{PROMPT, SIGN_IN_STATE, SIGNED_IN, assessment_answer, stand_in_acting};
 use crate::host::Host;
 use crate::machine::{RUNNING_FILE, Reports, UNNAMED_STATE};
-use crate::world::{STOOD_IN, World, committed_skill};
+use crate::world::{FRAME_PATH, STOOD_IN, World, committed_skill};
 
 use super::answers::answered;
 use super::formats::the_two_renderings_agree;
@@ -616,9 +616,10 @@ eval "printobserver acknowledge-failure --event-id $event --disposition stop --r
     );
 }
 
-/// A turn that acknowledges its event before it has looked is refused, told to
-/// look first, and records nothing; once it has looked, the same turn's
-/// acknowledgement is taken. The frames a turn's context names are already old.
+/// A turn handed no image that acknowledges its event before it has looked is
+/// refused, told to look first, and records nothing; once it has looked, the
+/// same turn's acknowledgement is taken. The frames a turn's context names are
+/// already old.
 #[test]
 fn a_turn_acknowledges_its_event_only_after_it_has_looked() {
     let api = obico("200 OK");
@@ -631,7 +632,11 @@ eval "printobserver acknowledge-failure --event-id $event --disposition stop --r
     let world = &watching.world;
     let print = world.print_id().clone();
     world.wants(Reports::Paused);
-    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+    let mut imageless = alert(world, 4211, RUNNING_FILE, false, true);
+    // A port nothing listens on: fetching the image fails at once, and the
+    // turn is handed none.
+    imageless["img_url"] = json!("http://127.0.0.1:9/snapshot.jpg");
+    post(world, &imageless);
 
     let early = format!("early-{print}");
     assert_eq!(
@@ -654,6 +659,38 @@ eval "printobserver acknowledge-failure --event-id $event --disposition stop --r
     assert_eq!(asked.len(), 1, "{asked:?}");
     assert_eq!(asked[0]["action"], "acknowledge_failure");
     assert_eq!(asked[0]["reason"], "the look shows what the alert did");
+}
+
+/// A turn handed its event's image has looked: it acknowledges its event at
+/// once, from the image in hand, and the acknowledgement is taken — it is
+/// allowed no look to take first.
+#[test]
+fn a_turn_handed_an_image_acknowledges_its_event_from_it() {
+    let api = obico("200 OK");
+    let watching = Watching::start(
+        r#"eval "printobserver acknowledge-failure --event-id $event --disposition stop --reason 'the image shows what the alert did' $actor $about" > "$dir/stop-$print" 2>&1; echo $? > "$dir/stop-$print.code""#,
+        detector_configuration(&api, true),
+    );
+    let world = &watching.world;
+    let print = world.print_id().clone();
+    world.wants(Reports::Paused);
+    post(world, &alert(world, 4211, RUNNING_FILE, false, true));
+
+    let stop = format!("stop-{print}");
+    assert_eq!(exited(&watching, &stop), 0, "{}", printed(&watching, &stop));
+    watching.settled_after(&print, 1);
+    assert!(
+        situation(&watching.prompt(&print, 1))["image"].is_string(),
+        "the turn was handed no image, so this proves nothing"
+    );
+    let asked = actions_asked(world, &print);
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert_eq!(asked[0]["action"], "acknowledge_failure");
+    assert_eq!(asked[0]["reason"], "the image shows what the alert did");
+    assert!(
+        events_of(world, &print, "camera_look").is_empty(),
+        "the turn took a look"
+    );
 }
 
 /// A resume the policy refuses — the system is not granted it — leaves the
@@ -1091,7 +1128,8 @@ fn an_acknowledgement_obico_refuses_is_recorded_against_the_detection() {
 
 /// While the print is paused the agent's minimum interval does not hold its
 /// adjustments back; cancelling still waits on it, and once the print is
-/// moving an adjustment does too — all of it asked for by the turn itself,
+/// moving an adjustment does too, the refusal saying how much of it is left
+/// and naming no look to wait with — all of it asked for by the turn itself,
 /// with the credential it was minted.
 #[test]
 fn adjustments_to_a_paused_print_skip_the_interval_and_nothing_else_does() {
@@ -1102,8 +1140,7 @@ ask feedrate-paused "set-feedrate-factor --factor 0.9"
 ask cancel-paused "cancel"
 touch "$dir/paused-done-$print"
 until [ -e "$dir/go" ]; do sleep 0.1; done
-ask fan-moving "set-fan-percent --percent 60"
-ask pause-moving "pause""#,
+ask fan-moving "set-fan-percent --percent 60""#,
         |document| {
             document["safety"]["agent_min_interval_s"] = json!(300);
             document["safety"]["actions"]["agent"] =
@@ -1135,22 +1172,14 @@ ask pause-moving "pause""#,
 
     world.wants(Reports::Printing);
     watching.go();
-    for name in ["fan-moving", "pause-moving"] {
-        assert_eq!(
-            exited(&watching, &format!("{name}-{print}")),
-            rejected,
-            "`{name}` on a moving print did not wait on the interval: {}",
-            printed(&watching, &format!("{name}-{print}"))
-        );
-        assert!(
-            printed(&watching, &format!("{name}-{print}")).contains("min_interval_not_elapsed"),
-            "{}",
-            printed(&watching, &format!("{name}-{print}"))
-        );
-    }
-    // More of the interval is left than one look waits, so the refusal names
-    // looks that wait it out together, each within the most one look takes.
-    let said = printed(&watching, &format!("pause-moving-{print}"));
+    let moving = format!("fan-moving-{print}");
+    assert_eq!(
+        exited(&watching, &moving),
+        rejected,
+        "an adjustment to a moving print did not wait on the interval: {}",
+        printed(&watching, &moving)
+    );
+    let said = printed(&watching, &moving);
     let seconds_after = |words: &str| -> i64 {
         said.split(words)
             .nth(1)
@@ -1159,30 +1188,30 @@ ask pause-moving "pause""#,
             .unwrap_or_else(|| panic!("the refusal does not say {words:?}: {said}"))
     };
     let since_last_s = seconds_after("The agent last acted ");
-    let left_s = seconds_after("looks that wait ");
+    let left_s = seconds_after(", so ");
     assert_eq!(left_s, 300 - since_last_s, "{said}");
     assert!(
-        left_s > 90 && said.contains("in all, at most `--wait-s 90` each"),
+        said.contains("min_interval_not_elapsed")
+            && said.contains("send this same command again once they have passed"),
         "{said}"
     );
+    assert!(!said.contains("look"), "the refusal names a look: {said}");
 }
 
-/// A pause the agent's minimum interval held back says how much of it is
-/// left and to send the same command again after a look waiting that long —
-/// and the turn that does exactly what it says has its pause taken.
+/// A pause inside the agent's minimum interval is taken at once — it is how
+/// the agent stops a print going wrong, on the image in hand, with no look to
+/// wait with — while an adjustment inside the same interval is still refused.
 #[test]
-fn a_pause_held_back_by_the_interval_is_taken_when_sent_again_after_the_look_it_names() {
-    const INTERVAL_S: i64 = 3;
+fn a_pause_inside_the_interval_is_taken_at_once_and_an_adjustment_is_not() {
     let watching = Watching::start(
         r#"ask() { eval "printobserver $2 --reason 'a journey about the interval' $actor $about" > "$dir/$1-$print" 2>&1; echo $? > "$dir/$1-$print.code"; }
 ask fan "set-fan-percent --percent 60"
-ask pause-early "pause"
-left=$(sed -n 's/.*--wait-s \([0-9]*\).*/\1/p' "$dir/pause-early-$print" | head -n 1)
-eval "printobserver look --json --wait-s ${left:-0} $about" > "$dir/look-$print" 2>&1
-ask pause-again "pause""#,
+ask fan-again "set-fan-percent --percent 70"
+ask pause "pause""#,
         |document| {
-            document["safety"]["agent_min_interval_s"] = json!(INTERVAL_S);
-            document["safety"]["actions"]["agent"] = json!(["set_fan_percent", "pause"]);
+            document["safety"]["agent_min_interval_s"] = json!(300);
+            document["safety"]["actions"]["agent"] =
+                json!(["set_fan_percent", "pause", "acknowledge_failure"]);
         },
     );
     let world = &watching.world;
@@ -1190,53 +1219,42 @@ ask pause-again "pause""#,
     world.wants(Reports::Printing);
     post(world, &alert(world, 4211, RUNNING_FILE, true, false));
 
-    assert_eq!(
-        exited(&watching, &format!("fan-{print}")),
-        0,
-        "{}",
-        printed(&watching, &format!("fan-{print}"))
-    );
-    let early = format!("pause-early-{print}");
-    assert_eq!(
-        exited(&watching, &early),
-        i32::from(Exit::Rejected.status()),
-        "{}",
-        printed(&watching, &early)
-    );
-    let said = printed(&watching, &early);
-    let left: i64 = said
-        .split("--wait-s ")
-        .nth(1)
-        .and_then(|rest| rest.split('`').next())
-        .and_then(|seconds| seconds.parse().ok())
-        .unwrap_or_else(|| panic!("the refusal names no look to wait with: {said}"));
-    assert!((1..=INTERVAL_S).contains(&left), "{said}");
-    for words in [
-        "min_interval_not_elapsed",
-        &format!("its minimum interval is {INTERVAL_S}s"),
-        &format!("so {left}s of it are left"),
-        "then send this same command again",
+    for (name, exit) in [
+        ("fan", 0),
+        ("fan-again", i32::from(Exit::Rejected.status())),
+        ("pause", 0),
     ] {
-        assert!(
-            said.contains(words),
-            "the refusal does not say {words:?}: {said}"
+        let file = format!("{name}-{print}");
+        assert_eq!(
+            exited(&watching, &file),
+            exit,
+            "`{name}`: {}",
+            printed(&watching, &file)
         );
     }
-
-    let again = format!("pause-again-{print}");
-    assert_eq!(
-        exited(&watching, &again),
-        0,
-        "the pause sent again after the look the refusal named was not taken: {}",
-        printed(&watching, &again)
+    assert!(
+        printed(&watching, &format!("fan-again-{print}")).contains("min_interval_not_elapsed"),
+        "{}",
+        printed(&watching, &format!("fan-again-{print}"))
     );
+    watching.settled_after(&print, 1);
     let asked = actions_asked(world, &print);
     let kinds: Vec<&Value> = asked.iter().map(|action| &action["action"]).collect();
-    // The turn acknowledged nothing by command, so its answer did.
     assert_eq!(
         kinds,
-        ["set_fan_percent", "pause", "pause", "acknowledge_failure"],
+        [
+            "set_fan_percent",
+            "set_fan_percent",
+            "pause",
+            "acknowledge_failure"
+        ],
         "{asked:?}"
+    );
+    let rejected = events_of(world, &print, "action_rejected");
+    assert_eq!(
+        rejected.len(),
+        1,
+        "only the second fan change is refused: {rejected:?}"
     );
 }
 
@@ -1606,13 +1624,12 @@ fn an_agent_asking_to_close_its_print_is_refused_by_the_default_grants() {
     );
 }
 
-/// A turn of the real `printobserver server` is handed, in its prompt, the
-/// usage line of the two reads a check uses and of each action the
-/// installer's envelope grants the agent, exactly as `printobserver --help`
-/// prints them and in its order, and no other command's — so a check that acts
-/// needs no call to learn how.
-#[test]
-fn a_turn_is_handed_the_usage_of_each_command_its_role_may_run() {
+/// What one turn of the real `printobserver server` was handed, on an alert
+/// whose image is `image_url`: the usage lines its prompt lists, the lines
+/// `printobserver --help` prints for `reads` and each action the installer's
+/// envelope grants the agent, in its order, and the argument list the harness
+/// was started with.
+fn handed_on(image_url: impl FnOnce(&World) -> Value, reads: &[&str]) -> Handed {
     let grants = installed_agent_grants();
     let granted: Vec<String> = grants
         .as_array()
@@ -1627,15 +1644,18 @@ fn a_turn_is_handed_the_usage_of_each_command_its_role_may_run() {
     let world = &watching.world;
     let print = world.print_id().clone();
     world.wants(Reports::Printing);
-    post(world, &alert(world, 4211, RUNNING_FILE, true, false));
+    let mut posted = alert(world, 4211, RUNNING_FILE, true, false);
+    posted["img_url"] = image_url(world);
+    post(world, &posted);
     let prompt = watching.prompt(&print, 1);
 
     let help = std::process::Command::new(env!("CARGO_BIN_EXE_printobserver"))
         .arg("--help")
         .output()
         .expect("the program prints its help");
-    let handed: Vec<String> = ["context".to_owned(), "look".to_owned()]
-        .into_iter()
+    let handed: Vec<String> = reads
+        .iter()
+        .map(|read| (*read).to_owned())
         .chain(granted)
         .collect();
     let expected: Vec<String> = String::from_utf8_lossy(&help.stdout)
@@ -1662,9 +1682,100 @@ fn a_turn_is_handed_the_usage_of_each_command_its_role_may_run() {
         .split_once("```console\n")
         .expect("the commands are a block");
     let (lines, _) = block.split_once("\n```").expect("the block closes");
-    assert_eq!(lines.lines().collect::<Vec<_>>(), expected, "{prompt}");
+    let listed = lines.lines().map(str::to_owned).collect();
+    let started = watching
+        .turn_invocations()
+        .into_iter()
+        .next()
+        .expect("the harness ran the turn");
+    Handed {
+        image: situation(&prompt)["image"].clone(),
+        listed,
+        expected,
+        started,
+    }
+}
+
+/// What one turn was handed, read by [`handed_on`].
+struct Handed {
+    /// The situation's account of the turn's image, `null` for none.
+    image: Value,
+    /// The usage lines the prompt lists.
+    listed: Vec<String>,
+    /// The usage lines it should list, as the program prints them.
+    expected: Vec<String>,
+    /// The harness's whole argument list.
+    started: String,
+}
+
+/// A turn of the real `printobserver server` whose alert's image could not be
+/// fetched is handed, in its prompt, the usage line of the two reads a check
+/// uses and of each action the installer's envelope grants the agent, exactly
+/// as `printobserver --help` prints them and in its order, and no other
+/// command's — so a check that acts needs no call to learn how — and the
+/// harness allows it each of them, a fresh look included.
+#[test]
+fn a_turn_is_handed_the_usage_of_each_command_its_role_may_run() {
+    // A port nothing listens on: fetching the image fails at once, and the
+    // turn is handed none.
+    let handed = handed_on(
+        |_| json!("http://127.0.0.1:9/snapshot.jpg"),
+        &["context", "look"],
+    );
+
     assert!(
-        !lines.contains("register-spool") && !lines.contains("printobserver server"),
-        "a command the agent may not ask for was handed over: {lines}"
+        handed.image.is_null(),
+        "the turn was handed an image: {}",
+        handed.image
+    );
+    assert_eq!(handed.listed, handed.expected, "{}", handed.started);
+    assert!(
+        !handed
+            .listed
+            .iter()
+            .any(|line| line.contains("register-spool") || line.contains("printobserver server")),
+        "a command the agent may not ask for was handed over: {:?}",
+        handed.listed
+    );
+    assert!(
+        handed.started.contains("Bash(printobserver look:*)"),
+        "a turn with no image was not allowed a look: {}",
+        handed.started
+    );
+}
+
+/// A turn of the real `printobserver server` handed a check's image is told of
+/// no look and allowed none: it decides on the image in hand, which a fresh
+/// frame would only stall — and a later frame can show a part that moved
+/// dragged back under its walls. Every other command its role may run it is
+/// handed as a turn with no image is.
+#[test]
+fn a_turn_handed_an_image_decides_on_it_with_no_look() {
+    let handed = handed_on(|world| json!(world.camera.url(FRAME_PATH)), &["context"]);
+
+    assert!(
+        handed.image.is_string(),
+        "the turn was handed no image, so this proves nothing: {}",
+        handed.image
+    );
+    assert_eq!(handed.listed, handed.expected, "{}", handed.started);
+    assert!(
+        !handed
+            .listed
+            .iter()
+            .any(|line| line.starts_with("printobserver look")),
+        "a turn handed an image was told it may look: {:?}",
+        handed.listed
+    );
+    assert!(
+        !handed.started.contains("printobserver look"),
+        "a turn handed an image was allowed a look: {}",
+        handed.started
+    );
+    assert!(
+        handed.started.contains("Bash(printobserver context:*)")
+            && handed.started.contains("Bash(printobserver pause:*)"),
+        "a turn handed an image lost a command it may run: {}",
+        handed.started
     );
 }

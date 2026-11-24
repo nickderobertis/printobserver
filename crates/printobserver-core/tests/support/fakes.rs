@@ -2367,7 +2367,7 @@ impl printobserver_supervisor_api::TurnAccess for FakeTurnScope {
 pub struct OpensTurns(pub Arc<FakeTurnAuthority>);
 
 impl printobserver_core::TurnAuthority for OpensTurns {
-    fn open(&self, print_id: PrintId) -> printobserver_core::OpenedTurn {
+    fn open(&self, print_id: PrintId, _handed_image: bool) -> printobserver_core::OpenedTurn {
         let turn = self.0.number();
         let authority = Arc::clone(&self.0);
         printobserver_core::OpenedTurn::new(

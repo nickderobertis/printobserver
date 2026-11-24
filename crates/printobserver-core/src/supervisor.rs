@@ -428,11 +428,14 @@ impl Supervisor {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// The issuer for one turn about one print, opened now.
-    pub(crate) fn open_turn(&self, print_id: PrintId) -> OpenedTurn {
+    /// The issuer for one turn about one print, opened now, `handed_image`
+    /// whether the turn is handed its event's image.
+    pub(crate) fn open_turn(&self, print_id: PrintId, handed_image: bool) -> OpenedTurn {
         self.turn_authority
             .get()
-            .map_or_else(NoAccess::opened, |authority| authority.open(print_id))
+            .map_or_else(NoAccess::opened, |authority| {
+                authority.open(print_id, handed_image)
+            })
     }
 
     /// Every print's G-code index.

@@ -452,9 +452,9 @@ reason = "The two downloads `just install-tools git-lfs` makes, through the same
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
-file = "tools/repo-checks/src/repo_checks/gate_time_budget.py"
+file = "tools/repo-checks/src/repo_checks/ci_budgets.py"
 site = "llmlint: ignore[async_typed_clients_at_boundaries]"
-reason = "The one read the `gate-time` step makes, run by one blocking command at the end of a CI job: the current run's jobs, page after page, each page's `total_count` deciding whether the next is asked for, and then one figure handed to `onebudgetspec`. There is nothing to overlap, and no typed client for the jobs API this environment carries; the answer is narrowed field by field by `gate_jobs.platform_span`, which refuses whatever it cannot read. An event loop under a command whose whole contract is one reported number and one exit status would buy nothing. The boundary this rule is about is the product's, and the product makes no such request."
+reason = "The reads the `budgets` job makes, run by one blocking command at the end of a CI run: the current run, the runs of its commit and event, and each run's jobs, page after page, each page's `total_count` deciding whether the next is asked for, and then one figure handed to `onebudgetspec`. There is nothing to overlap, and no typed client for the Actions API this environment carries; every answer is narrowed field by field by `ci_budgets`, which refuses whatever it cannot read. An event loop under a command whose whole contract is one reported number and one exit status would buy nothing. The boundary this rule is about is the product's, and the product makes no such request."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -689,7 +689,7 @@ reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned thr
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "AGENTS.md"
-site = "The OctoPrint tier runs in the required `integration` jobs, not in the gate"
+site = "The OctoPrint tier runs in the required `test` jobs, beside their end-to-end"
 reason = "This is a repository-wide gate and merge-protection statement spanning the e2e project and CI workflows; neither project subtree alone owns which required job runs the OctoPrint tier."
 
 [[suppression]]
@@ -701,7 +701,7 @@ reason = "Required content rather than session history. The release-path repair 
 [[suppression]]
 rule = "instruction_layer_localized"
 file = "CLAUDE.md"
-site = "The OctoPrint tier runs in the required `integration` jobs, not in the gate"
+site = "The OctoPrint tier runs in the required `test` jobs, beside their end-to-end"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same repository-wide gate and merge-protection statement is scanned through this path too; neither the e2e nor CI subtree alone owns it."
 
 [[suppression]]
@@ -1020,7 +1020,7 @@ reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `impl
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e-independent/project.json"
 site = "test-e2e"
-reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `test-e2e`: the rule is about the edge this project's end-to-end target hangs from, decided here once rather than per journey. It is the tier's own target name, so the shard planner's part selection and Nx's one-at-a-time `test-e2e` run (`nx.json`) hold it as they hold `repo-e2e`'s, and its journeys drive exactly the projects its `implicitDependencies` name. It depends on no build: none of its journeys runs the debug program."
+reason = "The same ground as the entry for `tests/repo-e2e/project.json`'s `test-e2e`: the rule is about the edge this project's end-to-end target hangs from, decided here once rather than per journey. It is the tier's own target name, so Nx's one-at-a-time `test-e2e` run (`nx.json`) holds it as it holds `repo-e2e`'s, and its journeys drive exactly the projects its `implicitDependencies` name. It depends on no build: none of its journeys runs the debug program."
 
 [[suppression]]
 rule = "external_service_suite_stays_out_of_the_affected_tier"
@@ -1455,21 +1455,9 @@ reason = "The interface that fires this workflow is GitHub's `workflow_dispatch`
 
 [[suppression]]
 rule = "no_second_broader_sweep_over_an_already_gated_commit"
-file = ".github/workflows/ci.yml"
-site = 'run: just check "$(just gate-tier)"'
-reason = "A push to `main` runs the affected tier, never the sweep by name: `just gate-tier` answers `all` only for the release pull request. What can make a push sweep everything is the affected tier failing closed over a file no project owns, which AGENTS.md records as the rule, because the graph cannot trace such a file to the suites that read it. The merge of the release pull request is such a push, since it rewrites root manifests. Skipping the gate there would mean taking a verdict another run reached on another commit: a pull-request head that can move after it passed, and which the push event does not name. Proving that two trees match would need the forge's record of that pull request, which no gate step reads. The cost is at most one sweep per release, and only when `main` did not move under the release pull request; when it did, the merged tree is new and this is its first sweep."
-
-[[suppression]]
-rule = "no_second_broader_sweep_over_an_already_gated_commit"
-file = ".github/workflows/ci.yml"
-site = 'run: just check-shard "$(just gate-tier)" "$GATE_SHARD"'
-reason = "This is one shard of the same gate step suppressed above, at the same tier `just gate-tier` answers, for the platform whose gate is split across runners: the shards together run exactly the tiers that step runs and none twice, so it is no second sweep, and a push to `main` sweeps here exactly when that step does, for the reason given there."
-
-[[suppression]]
-rule = "no_second_broader_sweep_over_an_already_gated_commit"
 file = ".github/workflows/platform-dispatch.yml"
-site = "- gate"
-reason = "Offering the gate as a choice is not a second automatic sweep of a commit the gate already ran on: this workflow fires on `workflow_dispatch` alone — `just check-repo`'s `platform-dispatch` holds its trigger set to exactly that — so nothing runs here unless a person names one job and one platform by hand, and what runs is one cell of that job rather than every cell of every workflow a push starts. That one cell is the whole point: bringing a platform up means re-running its gate cell while it is red, and a push to do so starts sixteen jobs on hosted runners shared with other work. A dispatch of `gate` is the same recipe `ci.yml` runs, once, on the one runner a person asked for, and it gates nothing — it is not a required check and reports on no pull request."
+site = "- test"
+reason = "Offering the gate as a choice is not a second automatic sweep of a commit the gate already ran on: this workflow fires on `workflow_dispatch` alone — `just check-repo`'s `platform-dispatch` holds its trigger set to exactly that — so nothing runs here unless a person names one job and one platform by hand, and what runs is one cell of that job rather than every cell of every workflow a push starts. That one cell is the whole point: bringing a platform up means re-running its gate cell while it is red, and a push to do so starts sixteen jobs on hosted runners shared with other work. A dispatch of `test` is the same recipes `ci.yml`'s `test` job runs, once, on the one runner a person asked for, and it gates nothing — it is not a required check and reports on no pull request."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"
@@ -3175,7 +3163,7 @@ reason = "A read-only look at the store the real server wrote, to learn when the
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "The per-user Windows install: installed, upgraded"
-reason = "The task that added this journey requires it under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, which drive the same two installers, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from. Its Windows-only cases need the real Task Scheduler and run on the Windows gate shards, which is where this project's end-to-end tier runs on Windows."
+reason = "The task that added this journey requires it under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, which drive the same two installers, and `AGENTS.md` places every end-to-end journey in that one project; no per-project end-to-end target exists for a narrower edge to hang from. Its Windows-only cases need the real Task Scheduler and run in the Windows `test` jobs, which is where this project's end-to-end tier runs on Windows."
 
 [[suppression]]
 rule = "tests_mirror_real_usage"
@@ -3187,7 +3175,7 @@ reason = "This case proves the installer writes no state file, which needs a sta
 rule = "tests_mirror_real_usage"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "release = _stage("
-reason = "The older release is the real program this tree builds, its version string changed in place, so the upgrade runs from a real server to a real server and the version each reports tells them apart. An independently built older release would rebuild the whole workspace a second time on a Windows runner, against the gate-time budget, to change one string."
+reason = "The older release is the real program this tree builds, its version string changed in place, so the upgrade runs from a real server to a real server and the version each reports tells them apart. An independently built older release would rebuild the whole workspace a second time on a Windows runner, against the one-hour `ci-check-time` line, to change one string."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -3295,7 +3283,7 @@ reason = "This case existed before the change, which renamed it and, as its task
 rule = "expensive_tests_stay_behind_their_own_edge"
 file = "tests/repo-e2e/tests/test_per_user_windows_install_journey.py"
 site = "def test_on_windows_the_task_serves_comes_back_takes_a_change_and_upgrades_in_place("
-reason = "The task requires this journey under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, and requires its Task Scheduler cases to run on the Windows gate shards, which run that project's end-to-end tier. `AGENTS.md` places every end-to-end journey in that one project, and no per-project end-to-end target exists for a narrower edge to hang from."
+reason = "The task requires this journey under `tests/repo-e2e/tests/`, beside `test_windows_service_installer_journey.py` and `test_install_powershell_script_journey.py`, and requires its Task Scheduler cases to run in the Windows `test` jobs, which run that project's end-to-end tier. `AGENTS.md` places every end-to-end journey in that one project, and no per-project end-to-end target exists for a narrower edge to hang from."
 
 [[suppression]]
 rule = "expensive_tests_stay_behind_their_own_edge"
@@ -4754,6 +4742,12 @@ site = "llmlint: ignore[async_typed_clients_at_boundaries]"
 reason = "A test that makes a package manager race itself across copies: the concurrency is the thread pool around this one blocking call to the program under test, and `repo_checks.shell.run` is how every subprocess here starts. An async client would change nothing a test of this kind reads."
 
 [[suppression]]
+rule = "expensive_tests_stay_behind_their_own_edge"
+file = "tests/repo-e2e/tests/test_isolation_copies.py"
+site = "llmlint: ignore[expensive_tests_stay_behind_their_own_edge]"
+reason = "This change only schedules the same 60 locked installs this journey already made, one copy's in turn and the copies beside each other, so that no two run in one copy; it adds no cost and moves no edge. Where the journey sits in the graph is `repo-e2e`'s placement from before this change, and putting it behind an edge of its own is a change to that project rather than to this journey's schedule."
+
+[[suppression]]
 rule = "async_typed_clients_at_boundaries"
 file = "tests/skilltest-wiring/test_replay_wiring.py"
 site = "run("
@@ -4884,6 +4878,18 @@ rule = "agents_md_durable_and_terse"
 file = "CLAUDE.md"
 site = "was required: the context read reports the printer, the print's state and effective bounds"
 reason = "CLAUDE.md is the AGENTS.md symlink, so the same passage is scanned through this path too; the AGENTS.md entry above for this rule and site carries the reason, and it holds unchanged here."
+
+[[suppression]]
+rule = "diagnostics_error_or_absent"
+file = ".github/workflows/ci.yml"
+site = "- run: just supply-chain"
+reason = "The supply chain reports and gates nothing, which is the contract it had before this change as a job of its own that no required context named; folding it into the required `lint` job must not turn every advisory published upstream into a refusal of whatever change lands next. Its findings are not hidden: the step goes red with cargo-deny's own annotations on the pull request, and it runs last so it hides no verdict before it. The two advisories it reports today (RUSTSEC-2026-0459 in libsqlite3-sys, RUSTSEC-2026-0486 in rustix) are dependency work held for follow-up, not defects of the change under review."
+
+[[suppression]]
+rule = "no_second_broader_sweep_over_an_already_gated_commit"
+file = ".github/workflows/warm.yml"
+site = "- run: just ci-warm"
+reason = "This is no gate: `warm.yml` reports no required context and its verdict is read by nothing. Running the test, build and lint targets on `main` is how the caches the next pull requests restore are filled with exactly what their `test` and `lint` jobs compile, because `cargo llvm-cov` has no compile-only mode that writes the instrumented artifacts its test run reads (its `--no-run` reports without running). It replaces the affected-tier gate the previous workflow ran on every push to `main`, so the work a merge starts did not grow."
 
 [[suppression]]
 rule = "async_typed_clients_at_boundaries"

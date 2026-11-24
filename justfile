@@ -47,11 +47,14 @@ bootstrap:
     uv run -q python -m repo_checks install-tools
     uv run -q python -m repo_checks install-hooks
 
-# Set the Windows x86 job's temp before bootstrap, and clean only its scratch.
+# Set the Windows jobs' temp before bootstrap, and clean only its scratch: on
+# x86 a directory of the runner's scratch drive, and on ARM, whose runner has
+# none, one on a trusted Dev Drive the script mounts there first.
 # Validate before Git's Windows bash can discard carriage returns.
 runner-temp action="setup" drive="D:\\" fallback="":
     @: {{assert(drive == replace(replace(drive, "\r", ""), "\n", ""), "Paths must contain no line breaks. Supply a single-line path.")}}{{assert(fallback == replace(replace(fallback, "\r", ""), "\n", ""), "Paths must contain no line breaks. Supply a single-line path.")}}; \
-    if [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-x86_64" ]; then exit 0; fi; \
+    if [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-x86_64" ] && \
+    [ "${PRINTOBSERVER_PLATFORM:-}" != "windows-aarch64" ]; then exit 0; fi; \
     if ! command -v pwsh >/dev/null 2>&1; then \
     echo 'pwsh is not on PATH; install PowerShell Core or restore pwsh to PATH, then retry just runner-temp.' >&2; exit 1; \
     fi; \
@@ -93,8 +96,8 @@ tool-version TOOL:
 # failed. On Windows it runs last, as the other tiers do in turn: beside each
 # other on a 4-processor Windows runner they only slow both down, and load
 # Nx's plugin workers past the time they are given to start. Continuous
-# integration splits both Windows gates into shards (`just check-shard`), which
-# run their tiers in turn too.
+# integration runs this same work in two halves, `just ci-lint` once and `just
+# ci-test` on every platform.
 check tier="affected":
     just format-check {{quote(tier)}}
     just lint {{quote(tier)}}
@@ -117,25 +120,130 @@ check tier="affected":
 # everywhere but Windows, for the reason the recipe above gives.
 E2E_BESIDE_TESTS := if os_family() == "windows" { "false" } else { "true" }
 
-# One shard (`k/n`) of the gate at a tier, for a platform whose gate is split
-# across runners: `repo_checks.gate_shards` hands each of the tiers `check`
-# invokes to exactly one shard, so the shards together run the whole gate and
-# nothing twice. `just gate-shards 4` prints the four-way split.
-check-shard tier shard:
-    uv run -q python -m repo_checks.gate_shards run {{quote(tier)}} {{quote(shard)}}
+# Whether `just ci-measured` starts the end-to-end tier beside the test tier: as
+# `E2E_BESIDE_TESTS`, and only on a host of four processors or more. On the
+# 3-processor macOS runner the two tiers beside each other load it past what the
+# per-project timing budgets the test tier checks can be measured under.
+CI_E2E_BESIDE_TESTS := if num_cpus() =~ '^[0-3]$' { "false" } else { E2E_BESIDE_TESTS }
 
-# Each shard's gate tiers when the gate is split into COUNT shards, one shard a line.
-gate-shards count:
-    @uv run -q python -m repo_checks.gate_shards plan {{quote(count)}}
+# The project tag `repo-policy.toml`'s `[gate] platform_independent_tag`
+# declares, spelled as `just check-repo`'s `project-tags` holds it.
+PLATFORM_INDEPENDENT := "platform:independent"
+# The other side of that tag: every project carrying none of it.
+PLATFORM_DEPENDENT := "!" + PLATFORM_INDEPENDENT
 
-# The verdict of a sharded required job: fails unless every shard in the
-# workflow's `needs`, handed over as `NEEDS`, succeeded.
-shard-verdict kind platform:
-    uv run -q python -m repo_checks.gate_shards verdict {{quote(kind)}} {{quote(platform)}}
+# The `lint` job's half of the gate, run once, on Linux: the formatters, the
+# linters and the type checkers over the tier's projects, the Windows-target
+# lint, the workflow lint and the repository checks, and the measured tiers
+# (`ci-measured`) over the tier's projects tagged `platform:independent`, whose
+# suites exercise nothing a platform changes. With `just ci-test` it runs every
+# tier `just check` does, each project's once.
+ci-lint tier="affected":
+    just format-check {{quote(tier)}}
+    just lint {{quote(tier)}}
+    just typecheck {{quote(tier)}}
+    just ci-measured {{quote(PLATFORM_INDEPENDENT)}} lint {{quote(tier)}}
+    just lint-workflows
+    just check-repo
 
-# The tier a continuous-integration run of the gate is for, off the event the
-# forge started it with: `all` on the release pull request, `affected` on any
-# other pull request and on a push to the base branch.
+# One platform's `test` job's half of the gate: the measured tiers
+# (`ci-measured`) over the tier's projects not tagged `platform:independent`,
+# and the printer integration tier beside its end-to-end tier, against the
+# OctoPrint the job's `octoprint-up` step started.
+ci-test tier="affected":
+    just ci-measured {{quote(PLATFORM_DEPENDENT)}} "${PRINTOBSERVER_PLATFORM:-host}" {{quote(tier)}} true
+
+# The project tag every project measuring a timing budget carries: the side of
+# a tier `just ci-measured` measures alone, before it starts anything else.
+TIMED := "type:budget"
+
+# The `test` tier with its coverage, the `build` tier and the end-to-end tier
+# over one side of a project tag (`gate_tier`'s `PRINTOBSERVER_GATE_PROJECTS`):
+# SIDE is the tag, or the tag with `!` in front for the projects carrying none
+# of it. The end-to-end tier starts beside the test tier where
+# `CI_E2E_BESIDE_TESTS` says so, and both are waited out whatever either
+# answers. The side's `TIMED` projects are tested first, alone, because a
+# wall-time budget their tests record beside other work is a figure of that
+# work's load rather than of the code: `gcode-index-seconds` read 3.0 to 5.3 s
+# beside the end-to-end tier on Linux, and 5.1 s beside the other crates' tests
+# on Windows, against 1.2 to 1.9 s alone, over a 5 s line.
+# The Rust floor is ruled on here; the Python data is kept under
+# `coverage-data/<KEEP>`, because a source and the tests measuring it can sit
+# on the two sides, and the `budgets` job rules on the floor over each
+# platform's combined halves (`coverage-combine`).
+# With INTEGRATION `true`, `ci-integration` starts once the test tier and the
+# build are done, beside what remains of the end-to-end tier, and is waited out
+# with it: the integration tier mostly waits on the virtual printer's own time,
+# and run after the end-to-end tier it was 726 of windows-aarch64's 3608 s.
+ci-measured side keep tier="affected" integration="false":
+    status=0; export PRINTOBSERVER_GATE_PROJECTS={{quote(side)}}; \
+    export PRINTOBSERVER_COVERAGE_KEEP="coverage-data/"{{quote(keep)}}; \
+    PRINTOBSERVER_GATE_PROJECTS="$PRINTOBSERVER_GATE_PROJECTS,"{{quote(TIMED)}} \
+    just test {{quote(tier)}} || status=$?; \
+    tested="$PRINTOBSERVER_GATE_PROJECTS,!"{{quote(TIMED)}}; \
+    if {{CI_E2E_BESIDE_TESTS}}; then \
+    just test-e2e {{quote(tier)}} & e2e=$!; \
+    fi; \
+    PRINTOBSERVER_GATE_PROJECTS="$tested" just test {{quote(tier)}} && \
+    just coverage {{quote(tier)}} && \
+    just build {{quote(tier)}} || status=$?; \
+    if [ {{quote(integration)}} = true ]; then just ci-integration & integrated=$!; fi; \
+    if {{CI_E2E_BESIDE_TESTS}}; then wait "$e2e" || status=$?; \
+    elif [ "$status" = 0 ]; then \
+    just test-e2e {{quote(tier)}} || status=$?; \
+    fi; \
+    if [ {{quote(integration)}} = true ]; then wait "$integrated" || status=$?; fi; \
+    exit "$status"
+
+# The printer integration tier as a `test` job runs it, from `ci-measured`:
+# every project's tier but the clients', then the release program the clients'
+# worlds carry, then theirs. The end-to-end tier's install journeys build that
+# same program meanwhile, under the cargo lock the preparation then waits on, so
+# the projects needing none no longer wait the build out: on windows-x86_64 the
+# tier started 12 minutes into the end-to-end tier for it (run 44982385451).
+# Every part runs whichever failed before it, as one Nx run runs every task.
+ci-integration:
+    status=0; \
+    just test-integration --exclude={{CLIENT_WORLDS}} || status=$?; \
+    just release-program && just test-integration --projects={{CLIENT_WORLDS}} || status=$?; \
+    exit "$status"
+
+# The integration projects whose journeys stand a supervisor up over the release
+# program, through `release_artifacts world`: the three clients.
+CLIENT_WORLDS := "printobserver-sdk,printobserver-sdk-python-integration,printobserver-sdk-node-integration"
+
+# What one `warm.yml` leg compiles into the cache its platform's `test` job
+# restores: every project's tests not tagged `platform:independent` and its
+# build, the test binaries of every Rust project's printer integration tier —
+# its `compile-integration` target, the tier's own build with `--no-run`, so no
+# printer is needed and no test runs — the release build of the program the
+# end-to-end tier's install journeys make, and on `linux-x86_64` the lints the
+# `lint` job runs, which restores that platform's cache too.
+ci-warm:
+    PRINTOBSERVER_GATE_PROJECTS={{quote(PLATFORM_DEPENDENT)}} just test all
+    PRINTOBSERVER_GATE_PROJECTS={{quote(PLATFORM_DEPENDENT)}} just build all
+    just node-modules
+    bunx nx run-many -t compile-integration --output-style=stream
+    cargo build --release --locked -p printobserver
+    if [ "${PRINTOBSERVER_PLATFORM:-}" = linux-x86_64 ]; then just lint all; fi
+
+# The Python floor over each platform's whole gate, from the halves the `lint`
+# and `test` jobs kept: under DIRECTORY, `lint`'s data and each platform's, which
+# the `budgets` job downloads. Each platform's data is combined with `lint`'s and
+# reported at `repo-policy.toml`'s floor, leaving out the lines its hosts never
+# reach, as that platform's own report of every project's tests would.
+coverage-combine directory:
+    uv run -q python -m repo_checks coverage-combine {{quote(directory)}}
+
+# The `budgets` job: the onebudgetspec check of this run's `ci-check-time` and
+# `ci-job-count`, the root `budgets.yaml`'s two lines over a pull-request run,
+# read off the run's recorded jobs. Over either it fails, on a pull request.
+ci-budgets:
+    uv run -q python -m repo_checks ci_budgets
+
+# `all` on the release pull request, `affected` on any other pull request and
+# on a push to the base branch, off the event the forge started the run with:
+# what `just budgets-release-pr` tells the release pull request apart by.
 gate-tier:
     @uv run -q python -m repo_checks.gate_tier select
 
@@ -592,9 +700,12 @@ octoprint-retain:
 # rather than something every gate run pays for. A tier that fails keeps the
 # instance's logs before anything can tear it down, so the first failing run is
 # the one that is diagnosed.
-test-integration:
+#
+# Extra arguments go to Nx, so `just ci-integration` can run the projects that
+# need no release program before the ones that do.
+test-integration *nx:
     just node-modules
-    if ! bunx nx run-many -t test-integration --output-style=stream; then just octoprint-retain; exit 1; fi
+    if ! bunx nx run-many -t test-integration {{nx}} --output-style=stream; then just octoprint-retain; exit 1; fi
 
 # Rewrite every generated documentation artifact from what the tree declares.
 #
@@ -694,23 +805,6 @@ install-pool-maintenance:
 # `.cargo/config.toml` resolves every workspace's build output to root `target/`.
 pool-maintenance:
     cargo-prune-superseded --keep-within 2d target
-
-# The `gate-time` step every required gate and integration job ends with: the
-# onebudgetspec check of the root `budgets.yaml`'s `gate-time`, for the context
-# `GATE_TIME_KIND` and `PRINTOBSERVER_PLATFORM` name, read off the current run's
-# jobs. Over its threshold it fails that required context, except on the
-# release pull request's full sweep, where it reports the figure and passes.
-gate-time:
-    uv run -q python -m repo_checks gate_time_budget check
-
-# Whether this run owes the macOS lane, as the `name=value` lines the `classify`
-# job of `ci.yml` appends to its outputs: `macos-required` and `reason`. EVENT
-# is the forge's event payload, BASE and HEAD the two commits the pull request
-# is diffed between. The classification itself goes to standard error as one
-# line, for the log.
-macos-classify EVENT BASE HEAD:
-    @bun install --frozen-lockfile >&2
-    @node .github/macos-policy.mjs classify --event {{quote(EVENT)}} --base {{quote(BASE)}} --head {{quote(HEAD)}} | node .github/macos-policy.mjs outputs -
 
 # One required macOS context's verdict, carried on Linux from `NEEDS`, the
 # `toJSON(needs)` the forge hands the carrier job: LANE is `gate` or

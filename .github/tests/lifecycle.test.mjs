@@ -73,17 +73,30 @@ describe("the recorded workload", () => {
 });
 
 describe("one change's life", () => {
-  test("its pull request asks for the gate's two macOS shards and the integration job", () => {
-    assert.deepEqual(spending(byId.get("pull_request.opened/source/same-repository/ordinary")), [
-      "ci.yml:gate-shard-macos-aarch64:macos-aarch64",
-      "ci.yml:gate-shard-macos-aarch64:macos-aarch64",
-      "ci.yml:integration-macos:macos-aarch64",
-    ]);
+  test("its pull request asks for one macOS job, its test cell", () => {
+    for (const action of ["opened", "synchronize", "reopened"]) {
+      assert.deepEqual(
+        spending(byId.get(`pull_request.${action}/source/same-repository/ordinary`)),
+        ["ci.yml:test-macos:macos-aarch64"],
+        action,
+      );
+    }
+  });
+
+  test("a fork's pull request asks for it whatever its head branch is called", () => {
+    for (const branch of BRANCHES) {
+      assert.deepEqual(
+        spending(byId.get(`pull_request.opened/source/fork/${branch}`)),
+        ["ci.yml:test-macos:macos-aarch64"],
+        branch,
+      );
+    }
   });
 
   test("its merge, the release pull request, the tag, the release and the proofs after them ask for none", () => {
     for (const id of [
       "push.base/source",
+      "push.base/dependency",
       "push.base/source/workflow_run(release-plz)",
       "pull_request.opened/version/same-repository/release",
       "push.release-tag",
@@ -145,7 +158,7 @@ describe("the two budgets, through onebudgetspec", () => {
     }
     assert.match(
       results.get("printobserver-macos-jobs-per-run").detail,
-      /ci\.yml on pull_request\.opened: gate-shard \(macos-aarch64, 1\/2\) \[macos-aarch64 on macos-15\], gate-shard \(macos-aarch64, 2\/2\) \[macos-aarch64 on macos-15\], integration \(macos-aarch64\)/,
+      /ci\.yml on pull_request\.opened: test \(macos-aarch64\) \[macos-aarch64 on macos-15\] \(/,
     );
     assert.match(
       results.get("printobserver-macos-runs-per-change").detail,

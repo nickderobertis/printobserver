@@ -55,6 +55,7 @@ from outside import MILESTONE_WORDS, Outside
 from replay import (
     BARE_PROBE_RECORD,
     IMAGE_PROBE_RECORD,
+    NO_CALIBRATION,
     PROBE_RECORD,
     Assessment,
     CallUsage,
@@ -71,6 +72,8 @@ from replay import (
     RunReport,
     alignment_of,
     calibration_copy,
+    calibration_fallback,
+    calibration_fallbacks,
     check_image,
     check_wait,
     composed_check_image,
@@ -251,6 +254,16 @@ class Scripted:
         return self.images[Path(json.loads(ran[look]["out"])["image_path"]).name]
 
 
+def unseen(case: Case) -> frozenset[int]:
+    """Every event of a case, each check's own frame refused so that its turn may look.
+
+    A check handed its event's image is allowed no look: the server withholds it. A
+    check whose frame the camera would not give is handed none, and may look, which
+    is the one turn the look double still answers.
+    """
+    return frozenset(range(len(case.moments)))
+
+
 def mock_replay(
     case: Case,
     turns: list[ScriptedRun],
@@ -261,11 +274,13 @@ def mock_replay(
     compaction: mock_turn.Compaction | None = None,
     picture: Callable[[str], bytes] = stamped,
     compaction_probe: bool = False,
+    refused_event_frames: frozenset[int] = frozenset(),
 ) -> Scripted:
     """Run one case's whole replay, its turns scripted, and read back what happened.
 
     Each frame is `picture`'s bytes for its name, by default the plain fixture
-    stamped with it.
+    stamped with it. `refused_event_frames` names the events whose own frame the
+    camera refuses, so each of their checks is handed no image and may look.
     """
     script = scratch / "script.json"
     script.write_text(
@@ -288,6 +303,7 @@ def mock_replay(
         real_waits=real_waits,
         outside=lambda replaying: Outside(replaying, target),
         compaction_probe=compaction_probe,
+        refused_event_frames=refused_event_frames,
     )
     try:
         replayed = replay.run()
@@ -482,6 +498,7 @@ def _case_tree(root: Path, name: str, edit: Callable[[dict[str, Any]], None]) ->
     shutil.copy2(CASES / "case.schema.json", root / "tests" / "real-prints")
     shutil.copy2(CASES / "service-config.toml", root / "tests" / "real-prints")
     shutil.copytree(CASES / name, root / "tests" / "real-prints" / name)
+    shutil.copytree(CASES / "cameras", root / "tests" / "real-prints" / "cameras")
     shutil.copytree(REPO / "schemas", root / "schemas")
     path = root / "tests" / "real-prints" / name / "case.json"
     document = json.loads(path.read_text(encoding="utf-8"))
@@ -636,7 +653,7 @@ def test_a_case_naming_a_calibration_configures_it_on_the_doubles_stream(tmp_pat
     )
     without = service_config(tmp_path, "127.0.0.1:1", "http://o", "http://c", "http://b", Minted())
     equal(tomllib.loads(without)["camera"], {"snapshot_url": "http://c/api/frame.jpeg"})
-    equal(read_case("under-extrusion-lace").camera_calibration, None)
+    equal(read_case("spaghetti-small-nest", replay=()).camera_calibration, None)
     unreadable = tmp_path / "not-a-calibration.json"
     unreadable.write_text("[]", encoding="utf-8")
     with pytest.raises(ReplayError, match="no camera calibration"):
@@ -665,7 +682,7 @@ def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch
     """Over a window with frames to spare, every look is a newer frame than the last."""
     case = read_case("petg-clip-detach-and-stringing-web")
     turn: ScriptedRun = {"commands": [LOOK, LOOK, LOOK]}
-    done = mock_replay(case, [turn], scratch)
+    done = mock_replay(case, [turn], scratch, refused_event_frames=unseen(case))
     names = [frame.file for frame in case.frames]
     start = names.index(case.moments[0].event_image)
     equal(
@@ -677,7 +694,9 @@ def test_looks_answer_the_next_frames_in_capture_order_without_repeating(scratch
 def test_a_look_never_passes_the_next_events_moment(scratch: Path) -> None:
     """With no frame left before the next event a look repeats the newest."""
     case = _timeline()
-    done = mock_replay(case, [{"commands": [LOOK, LOOK]}], scratch)
+    done = mock_replay(
+        case, [{"commands": [LOOK, LOOK]}], scratch, refused_event_frames=unseen(case)
+    )
     first, second = case.moments
     between = case.frames[case.frame_at_or_before(first.at, first.event_image) + 1].file
     equal([done.seen_frame(0, 0), done.seen_frame(0, 1)], [between, between])
@@ -702,7 +721,12 @@ def test_a_fault_is_never_answered_to_a_look_before_its_event_fires(scratch: Pat
         faulty = case.moments[-1].event_image
         directory = scratch / name
         directory.mkdir()
-        done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], directory)
+        done = mock_replay(
+            case,
+            [{"commands": [LOOK, LOOK, LOOK]}],
+            directory,
+            refused_event_frames=unseen(case),
+        )
         seen = [done.seen_frame(0, look) for look in range(3)]
         truth(faulty not in seen, describing=f"{faulty} not to be among {seen}")
 
@@ -712,7 +736,12 @@ def test_every_counter_a_turn_reads_comes_from_one_clock(scratch: Path) -> None:
     case = _timeline()
     first, second = case.moments
     waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
-    done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
+    done = mock_replay(
+        case,
+        [{"commands": [waiting, waiting, waiting]}],
+        scratch,
+        refused_event_frames=unseen(case),
+    )
     looks = [json.loads(entry["out"]) for entry in done.turns[0]["ran"]]
     # The one frame between the event's and the fault's, repeated with its own time.
     captured = {look["event"]["payload"]["frame_captured_at"] for look in looks}
@@ -740,7 +769,9 @@ def test_the_last_events_looks_stop_at_what_its_recorded_turn_saw(scratch: Path)
     """A look after the last event does not jump to the print's end."""
     case = read_case("jar-top-wrong-material-detach-spaghetti")
     last = case.moments[-1]
-    done = mock_replay(case, [{"commands": [LOOK, LOOK, LOOK]}], scratch)
+    done = mock_replay(
+        case, [{"commands": [LOOK, LOOK, LOOK]}], scratch, refused_event_frames=unseen(case)
+    )
     equal(done.replayed.fetches[-3:], [last.looks[-1]] * 3)
 
 
@@ -781,7 +812,12 @@ def test_a_look_after_the_last_replayed_event_stops_short_of_the_recordings_next
     if later is None:
         pytest.fail(f"{name} has no recording after its last event")
     waiting = ["printobserver", "look", "--print-id", "{print}", "--wait-s", "1", "--json"]
-    done = mock_replay(case, [{"commands": [waiting, waiting, waiting]}], scratch)
+    done = mock_replay(
+        case,
+        [{"commands": [waiting, waiting, waiting]}],
+        scratch,
+        refused_event_frames=unseen(case),
+    )
     answered = [json.loads(entry["out"]) for entry in done.turns[-1]["ran"]]
     positions = [look["job"]["file_position_bytes"] for look in answered]
     truth(
@@ -1151,6 +1187,52 @@ def test_a_first_layer_down_before_the_first_event_is_decided_before_it(scratch:
     equal(len(done.replayed.ledger["turns"]), len(case.moments))
 
 
+def test_a_frame_away_from_the_print_height_is_never_the_one_aligned_on(scratch: Path) -> None:
+    """The alignment is decided on the first frame past the first layer showing the bed in place.
+
+    The case marks the frame just past its first layer, taken before its first event,
+    as one whose bed is not where its progress puts it, as a parked toolhead leaves
+    it. The replay passes over it, so nothing is decided before the first event; the
+    server decides on the next frame past the layer, which falls between the first
+    two events, and the camera is asked for it right after the first check's own.
+    """
+    case = read_case(TIMELINE_CASE)
+    first, second = case.moments[:2]
+    layer = b";LAYER_CHANGE\n;Z:0.2\nM83\n;TYPE:Perimeter\nG1 X1 Y1 E1\n"
+    gcode = layer + b";LAYER_CHANGE\n;Z:0.4\n"
+    gcode += b";\n" * ((case.moments[-1].file_position_bytes - len(gcode)) // 2 + 1000)
+    ends = first_layer_end(gcode) or 0
+    past = [
+        index
+        for index, frame in enumerate(case.frames)
+        if frame.progress_pct is not None and int(frame.progress_pct / 100 * case.gcode_size) > ends
+    ]
+    times = case.frame_times()
+    truth(
+        times[past[0]] <= instant(first.at) < times[past[1]] <= instant(second.at),
+        describing="a frame past the first layer before the first event, the next after it",
+    )
+    away = replace(
+        case,
+        frames=tuple(
+            replace(frame, at_print_height=False) if index == past[0] else frame
+            for index, frame in enumerate(case.frames)
+        ),
+    )
+    done = mock_replay(away, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
+    equal(done.replayed.fetches[:2], [first.event_image, case.frames[past[1]].file])
+    truth(done.replayed.alignment is not None, describing="the verdict decided on that frame")
+
+
+def test_a_frame_a_case_says_is_away_from_the_print_height_is_read_so() -> None:
+    """A case's `not_at_print_height` is read as such, and every other frame as in place."""
+    case = read_case("petg-clip-detach-and-stringing-web")
+    equal(
+        [frame.file for frame in case.frames if not frame.at_print_height],
+        ["frame-075200-p00.9.jpg"],
+    )
+
+
 def test_a_timeline_passing_its_first_layer_answers_that_until_the_next_event(
     tmp_path: Path,
 ) -> None:
@@ -1266,10 +1348,12 @@ def test_a_looks_wait_passes_on_the_replays_clock_and_hands_the_agent_the_same(
     for each in ("real", "jumped"):
         (tmp_path / each).mkdir()
     real_at = time.monotonic()
-    real = mock_replay(case, [turn], tmp_path / "real", real_waits=True)
+    real = mock_replay(
+        case, [turn], tmp_path / "real", real_waits=True, refused_event_frames=unseen(case)
+    )
     real_s = time.monotonic() - real_at
     jumped_at = time.monotonic()
-    jumped = mock_replay(case, [turn], tmp_path / "jumped")
+    jumped = mock_replay(case, [turn], tmp_path / "jumped", refused_event_frames=unseen(case))
     jumped_s = time.monotonic() - jumped_at
     looked, expected = _looked(jumped), _looked(real)
     equal(
@@ -1868,8 +1952,39 @@ def test_a_harnesss_own_bookkeeping_is_no_model_a_turn_answered_with() -> None:
 def test_a_turn_says_how_many_looks_it_took(scratch: Path) -> None:
     """The record counts the server's own looks for that turn, and only those."""
     case = read_case("jar-top-wrong-material-detach-spaghetti")
-    done = mock_replay(case, [{"commands": [LOOK, LOOK]}, {"commands": [CONTEXT]}], scratch)
+    done = mock_replay(
+        case,
+        [{"commands": [LOOK, LOOK]}, {"commands": [CONTEXT]}],
+        scratch,
+        refused_event_frames=unseen(case),
+    )
     equal([point.looks for point in done.replayed.points], [2, 0, 0])
+
+
+def test_a_check_handed_its_frame_cannot_reach_the_look_double(scratch: Path) -> None:
+    """A check carrying its event's image is allowed no look: the harness refuses it.
+
+    The camera is asked for the event's frame and for nothing more, so the look
+    double answers nothing, and the turn's decision point counts no look.
+    """
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    done = mock_replay(case, [{"commands": [LOOK, CONTEXT]}], scratch)
+    looked, read = done.turns[0]["ran"]
+    equal(looked["status"], mock_turn.REFUSED, describing="the look the rules do not allow")
+    equal(read["status"], 0, describing="the context read beside it")
+    equal(
+        done.images[Path(json.loads(read["out"])["image_path"]).name], case.moments[0].event_image
+    )
+    equal([point.looks for point in done.replayed.points], [0] * len(case.moments))
+    equal(
+        done.replayed.fetches[: len(case.moments)],
+        [moment.event_image for moment in case.moments],
+        describing="one fetch per check, each its own frame",
+    )
+    truth(
+        all("printobserver look" not in rule for rule in done.turns[0]["arguments"]),
+        describing="no rule allowing the look",
+    )
 
 
 def test_a_turn_says_each_call_once_and_what_it_opened(scratch: Path) -> None:
@@ -1941,14 +2056,17 @@ def test_a_run_the_engine_re_prompts_stays_one_turn_at_its_own_moment(scratch: P
             {"commands": [CONTEXT]},
         ],
         scratch,
+        # The first check is handed no image, so its re-prompted run may look.
+        refused_event_frames=frozenset({0}),
     )
     usage = done.replayed.points[0].usage
     equal(usage, {"input_tokens": 11, "output_tokens": 22})
     equal(len(done.replayed.ledger["turns"]), 2)
     first, second = case.moments
     equal(
-        done.images[Path(json.loads(done.turns[0]["ran"][0]["out"])["image_path"]).name],
-        first.event_image,
+        json.loads(done.turns[0]["ran"][0]["out"]).get("image_path"),
+        None,
+        describing="the first check's context, whose frame the camera refused",
     )
     equal(
         done.seen_frame(1, 0),
@@ -1990,6 +2108,49 @@ def _a_finished_test() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         "decision_points": points,
     }
     return points, test_record
+
+
+def test_a_failed_tests_transcript_and_server_log_are_kept_beside_the_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed test's transcript and server log are kept beside the record; a pass, none.
+
+    The record carries counts of each turn, so the job's report carries these
+    for a failure to be read: what the agent did and what the server said.
+    """
+    written = tmp_path / "results" / "latest.json"
+    monkeypatch.setattr(record, "RESULT", written)
+    monkeypatch.setattr(record, "REPO", tmp_path)
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    name = "jar-top-wrong-material-first-layer-detach"
+    points, test_record = _a_finished_test()
+    failing_run = tmp_path / "failing"
+    failing_run.mkdir()
+    failing = {**points[1], "passed": False, "why_not": "it paused"}
+    (failing_run / f"{name}.json").write_text(
+        json.dumps({**test_record, "passed": False, "decision_points": [points[0], failing]}),
+        encoding="utf-8",
+    )
+    (failing_run / f"{name}.transcript.jsonl").write_text('{"type": "x"}\n', encoding="utf-8")
+    (failing_run / f"{name}.server.log").write_text("the server said\n", encoding="utf-8")
+
+    equal(record.main([str(failing_run)]), 1)
+
+    kept = written.parent / record.FAILED_DIRECTORY
+    equal(
+        sorted(path.name for path in kept.iterdir()),
+        [f"{name}.server.log", f"{name}.transcript.jsonl"],
+    )
+    equal((kept / f"{name}.server.log").read_text("utf-8"), "the server said\n")
+
+    passing_run = tmp_path / "passing"
+    passing_run.mkdir()
+    (passing_run / f"{name}.json").write_text(json.dumps(test_record), encoding="utf-8")
+    (passing_run / f"{name}.transcript.jsonl").write_text("{}\n", encoding="utf-8")
+
+    equal(record.main([str(passing_run)]), 0)
+
+    equal(kept.exists(), False)
 
 
 def test_the_record_command_folds_a_finished_run_or_runs_the_suite(
@@ -2339,6 +2500,178 @@ def test_each_image_line_the_server_writes_is_read_as_its_kind() -> None:
     equal((whole["kind"], whole["why"]), ("whole_frame", "no camera calibration is configured"))
     stored = check_image("the frame as the camera took it, because its check image could not be")
     equal(stored["kind"], "stored_frame")
+
+
+#: Plain copies of recorded frames and slices, which the gate reads in place of LFS objects.
+RECORDED_FRAMES = REPO / "crates" / "printobserver-panels" / "tests" / "fixtures" / "frames"
+RECORDED_SLICES = REPO / "crates" / "printobserver-core" / "tests" / "fixtures" / "real-prints"
+
+
+def _checks_shown(
+    case: Case,
+    picture: Callable[[str], bytes],
+    scratch: Path,
+    slice_name: str = "jar-top-first-layer-detach.gcode",
+) -> dict[str, str]:
+    """Each check's image line, as the real server wrote it into the prompt the check was handed.
+
+    The case's timeline replayed through the real server over its real slice.
+    """
+    gcode = (RECORDED_SLICES / slice_name).read_bytes()
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode, picture=picture)
+    prompts = [
+        seen["prompt"]
+        for seen in done.turns
+        if "printobserver context --print-id" in seen["prompt"]
+    ]
+    equal(len(prompts), len(case.moments), describing="one check prompt per event")
+    notes = {}
+    for moment, prompt in zip(case.moments, prompts, strict=True):
+        report = RunReport()
+        report.take([{"type": "user", "message": {"content": [{"type": "text", "text": prompt}]}}])
+        if report.image_note is None:
+            pytest.fail(f"no image line in the prompt {moment.id} was handed: {prompt}")
+        notes[moment.id] = report.image_note
+    return notes
+
+
+def _recorded(name: str) -> bytes:
+    """The timeline's own recorded frame, as its camera took it at 1920x1080."""
+    return (RECORDED_FRAMES / TIMELINE_CASE / name).read_bytes()
+
+
+def _smaller(_: str) -> bytes:
+    """A real frame of the same camera at 1280x720, which no 1920x1080 calibration fits."""
+    return (RECORDED_FRAMES / "fan-cut-bridge" / "01-healthy-before-fault-p41.jpg").read_bytes()
+
+
+def test_a_calibrated_print_is_shown_the_composite_and_raises_no_fallback(scratch: Path) -> None:
+    """The real server, the case's own calibration, frames and slice: every check composed."""
+    notes = _checks_shown(_timeline(), _recorded, scratch)
+    equal(
+        {check: check_image(note)["kind"] for check, note in notes.items()},
+        dict.fromkeys(TIMELINE, "composite"),
+        describing=f"each check's image line: {notes}",
+    )
+    equal(calibration_fallbacks(notes), {})
+
+
+def test_a_print_with_no_calibration_fails_every_check_it_sends_the_whole_frame(
+    scratch: Path,
+) -> None:
+    """The same print with no calibration configured: each check is a fallback the suite fails."""
+    notes = _checks_shown(replace(_timeline(), camera_calibration=None), _recorded, scratch)
+    equal(calibration_fallbacks(notes), dict.fromkeys(TIMELINE, NO_CALIBRATION))
+
+
+def test_a_print_whose_frames_are_not_the_calibrations_size_fails_every_check(
+    scratch: Path,
+) -> None:
+    """Its frames at 1280x720 under a 1920x1080 calibration: alignment refuses, each check fails."""
+    notes = _checks_shown(_timeline(), _smaller, scratch)
+    equal(
+        calibration_fallbacks(notes),
+        dict.fromkeys(
+            TIMELINE,
+            "the print's first-layer alignment failed: the camera's frames are 1280x720 and "
+            "the calibration's 1920x1080",
+        ),
+    )
+
+
+#: A print whose recording keeps no frame of its first layer: its first frame is 14 mm up.
+UNSEEN_FIRST_LAYER = "fan-cut-bridge"
+
+
+def _its_first_frame(_: str) -> bytes:
+    """fan-cut-bridge's first kept frame, at Z 14 mm, its part standing over its first layer."""
+    return (RECORDED_FRAMES / UNSEEN_FIRST_LAYER / "01-healthy-before-fault-p41.jpg").read_bytes()
+
+
+def test_a_print_with_no_first_layer_frame_is_composed_on_the_alignment_its_case_records(
+    scratch: Path,
+) -> None:
+    """The real server, the case's own calibration, frame and slice: every check composed.
+
+    Its first kept frame is far above its first layer, which a live server never decides
+    alignment on, so the replay writes the passed verdict the case records.
+    """
+    case = read_case(UNSEEN_FIRST_LAYER)
+    notes = _checks_shown(case, _its_first_frame, scratch, "fan-cut-test.gcode")
+    equal(
+        {check: check_image(note)["kind"] for check, note in notes.items()},
+        {moment.id: "composite" for moment in case.moments},
+        describing=f"each check's image line: {notes}",
+    )
+    equal(calibration_fallbacks(notes), {})
+
+
+def test_deciding_alignment_on_a_frame_far_above_the_first_layer_is_a_fallback_the_suite_fails(
+    scratch: Path,
+) -> None:
+    """The same print with no alignment recorded: decided on its 14 mm frame, it is refused."""
+    case = replace(read_case(UNSEEN_FIRST_LAYER), no_first_layer_frame_offset_px=None)
+    fell_back = calibration_fallbacks(
+        _checks_shown(case, _its_first_frame, scratch, "fan-cut-test.gcode")
+    )
+    equal(set(fell_back), {moment.id for moment in case.moments})
+    truth(
+        all("the printed first layer lies" in why for why in fell_back.values()),
+        describing=f"each refused on the offset: {fell_back}",
+    )
+
+
+def test_a_recorded_alignment_is_refused_on_a_print_that_keeps_its_first_layer_frame(
+    scratch: Path,
+) -> None:
+    """A print the replay can decide alignment on is never handed a verdict instead."""
+    case = replace(_timeline(), no_first_layer_frame_offset_px=2.0)
+    with pytest.raises(ReplayError, match="keeps frames of its first layer"):
+        _checks_shown(case, _recorded, scratch)
+
+
+def test_every_replayed_print_names_a_calibration() -> None:
+    """A print's replay names its calibration, with no case let off.
+
+    A case losing its calibration would send every check the whole frame, which the
+    live suite fails only once it runs; this fails it in the gate.
+    """
+    prints = [name for name in replayed_case_names() if not is_start_case(name)]
+    equal({name for name in prints if read_case(name).camera_calibration is None}, set())
+
+
+@pytest.mark.parametrize(
+    ("why", "fell_back"),
+    [
+        ("no camera calibration is configured", True),
+        (
+            "the print's first-layer alignment failed: the camera's frames are 1280x720 and the "
+            "calibration's 1920x1080",
+            True,
+        ),
+        ("the frame's resolution is 1280x720, and the calibration's is 1920x1080", True),
+        (
+            "the print's first-layer alignment failed: the printed first layer lies 51.0 px from "
+            "where the calibration projects it",
+            True,
+        ),
+        ("the print's G-code index gives no file position for this check", False),
+        ("no print is named, so there is no planned toolpath to draw on it", False),
+    ],
+)
+def test_a_whole_frame_for_want_of_a_fitting_calibration_is_told_from_any_other(
+    why: str, fell_back: bool
+) -> None:
+    """A missing calibration, one of another size than the frames, or a refused alignment.
+
+    The live suite fails a check shown the whole frame for any of them; every other reason
+    the server gives, and the three-panel image, is what the latest code itself sends.
+    """
+    image = check_image(
+        f"the whole camera frame, scaled to fit 1280x720 and uncropped, because {why}"
+    )
+    equal(calibration_fallback(image), why if fell_back else None)
+    equal(calibration_fallback(check_image("the three-panel check image, 1024x1848: ...")), None)
 
 
 @pytest.mark.parametrize(

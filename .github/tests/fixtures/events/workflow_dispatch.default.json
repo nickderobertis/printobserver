@@ -1,6 +1,6 @@
 {
   "inputs": {
-    "job": "gate"
+    "job": "test"
   },
   "ref": "refs/heads/main",
   "workflow": ".github/workflows/platform-dispatch.yml",

@@ -52,11 +52,16 @@ POLICY = "repo-policy.toml"
 #: outcomes on `always()`.
 ROUTE = "install-route-pypi"
 
-#: The `gate` job's own environment: its header and every line indented under it.
-JOB_ENV = re.compile(r"^  gate:\n    env:\n(?:      .*\n)+", re.MULTILINE)
+#: The `test` job's own environment block, every line indented under it, and
+#: what precedes it in the job as group 1.
+JOB_ENV = re.compile(r"(^  test:\n(?:    (?!env:).*\n)*?)    env:\n(?:      .*\n)+", re.MULTILINE)
 
-#: The gate job's step that runs the gate, as the committed workflow spells it.
-GATE_STEP = '      - run: just check "$(just gate-tier)"\n'
+#: The `test` job's first line of its own environment, as the committed workflow spells it.
+JOB_ENV_HEAD = "    env:\n      PRINTOBSERVER_PLATFORM: ${{ matrix.platform.id }}\n"
+
+#: The `test` job's step that runs its half of the gate, as the committed workflow
+#: spells it: its first occurrence is the `test` job's, `test-macos` coming after.
+GATE_STEP = "      - run: just ci-test\n"
 
 
 def test_the_committed_tree_is_accepted(committed: Repo) -> None:
@@ -101,7 +106,7 @@ def test_each_job_and_platform_choice_resolves_to_that_jobs_source_on_that_runne
     with pytest.raises(
         DispatchError, match=re.escape("no platform AGENTS.md's supported-platform list")
     ):
-        resolve(committed, "gate", "linux-riscv64")
+        resolve(committed, "test", "linux-riscv64")
 
 
 def test_the_step_classifying_checks_read_the_workflow_as_an_ordinary_one(
@@ -193,9 +198,9 @@ def test_a_job_input_offering_a_job_no_source_matrixes_is_refused(
 ) -> None:
     """A job the script cannot resolve is one a caller should not be offered."""
     broken = tree()
-    broken.edit(DISPATCH, "          - gate\n", "          - gate\n          - llmlint\n")
+    broken.edit(DISPATCH, "          - test\n", "          - test\n          - lint\n")
 
-    refused_naming(platform_dispatch(broken.repo), "`job` input offers `llmlint`")
+    refused_naming(platform_dispatch(broken.repo), "`job` input offers `lint`")
 
 
 def test_a_job_two_sources_both_matrix_is_refused_before_anything_runs(
@@ -209,20 +214,20 @@ def test_a_job_two_sources_both_matrix_is_refused_before_anything_runs(
     script exits refused with nothing run — rather than any of them picking one.
     """
     broken = tree()
-    broken.edit(INSTALL, "\n  install-route-script:\n", "\n  gate:\n")
+    broken.edit(INSTALL, "\n  install-route-script:\n", "\n  test:\n")
     recording = Recording(tmp_path)
     recording.program(JUST)
 
     refused_naming(
-        platform_dispatch(broken.repo), "`gate` is a platform-matrixed job of both ci.yml and"
+        platform_dispatch(broken.repo), "`test` is a platform-matrixed job of both ci.yml and"
     )
     with pytest.raises(DispatchError, match=re.escape("both ci.yml and install-path.yml")):
-        resolve(broken.repo, "gate", "linux-x86_64")
+        resolve(broken.repo, "test", "linux-x86_64")
     code = dispatching.main(
-        ["resolve", "--job", "gate", "--platform", "linux-x86_64", "--root", str(broken.root)]
+        ["resolve", "--job", "test", "--platform", "linux-x86_64", "--root", str(broken.root)]
     )
     equal(code, REFUSED, describing="the exit of `resolve` over an ambiguous job")
-    contains(capsys.readouterr().err, "refused: `gate` is a platform-matrixed job of both")
+    contains(capsys.readouterr().err, "refused: `test` is a platform-matrixed job of both")
     equal(recording.recorded(), [], describing="what ran before the refusal")
 
 
@@ -231,9 +236,9 @@ def test_a_job_input_missing_a_matrixed_job_of_a_source_is_refused(
 ) -> None:
     """Every platform-matrixed job of a source is one a dispatch can name."""
     broken = tree()
-    broken.edit(DISPATCH, "          - integration\n", "")
+    broken.edit(DISPATCH, "          - test\n", "")
 
-    refused_naming(platform_dispatch(broken.repo), "`job` input does not offer `integration`")
+    refused_naming(platform_dispatch(broken.repo), "`job` input does not offer `test`")
 
 
 def test_an_input_that_is_not_required_is_refused(tree: Callable[[], Tree]) -> None:
@@ -343,7 +348,7 @@ def test_a_conditioned_or_matrixed_dispatch_job_is_refused(tree: Callable[[], Tr
     """The one job runs unconditionally on its one runner."""
     broken = tree()
     broken.edit(
-        DISPATCH, "    needs: select\n", "    needs: select\n    if: inputs.job != 'gate'\n"
+        DISPATCH, "    needs: select\n", "    needs: select\n    if: inputs.job != 'test'\n"
     )
 
     refused_naming(platform_dispatch(broken.repo), "job `run` carries a condition or a matrix")
@@ -356,13 +361,13 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
     broken = tree()
     broken.edit(
         CI,
-        "      - run: just test-integration\n",
-        "      - if: github.event_name == 'push'\n        run: just test-integration\n",
+        "      - run: just ci-test\n",
+        "      - if: github.event_name == 'push'\n        run: just ci-test\n",
     )
 
     refused_naming(
         platform_dispatch(broken.repo),
-        "cannot run ci.yml's job `integration` by hand",
+        "cannot run ci.yml's job `test` by hand",
         "conditioned on `github.event_name == 'push'`",
     )
 
@@ -422,12 +427,12 @@ def test_a_source_job_the_script_cannot_run_is_refused_where_it_is_written(
             # not a workflow with a job env that is not a mapping but no
             # workflow at all.
             JOB_ENV,
-            "  gate:\n    env: [A]\n",
+            r"\g<1>    env: [A]\n",
             "an `env` that is not a mapping",
         ),
         (
-            "  gate:\n    env:\n",
-            "  gate:\n    env:\n      WHEN: [now]\n",
+            JOB_ENV_HEAD,
+            "    env:\n      WHEN: [now]\n" + JOB_ENV_HEAD.removeprefix("    env:\n"),
             "sets `WHEN` to something other than a scalar",
         ),
     ],
@@ -458,7 +463,7 @@ def test_each_shape_the_script_cannot_run_is_refused(
     else:
         broken.edit(CI, old, new)
 
-    refused_naming(platform_dispatch(broken.repo), "cannot run ci.yml's job `gate` by hand", why)
+    refused_naming(platform_dispatch(broken.repo), "cannot run ci.yml's job `test` by hand", why)
 
 
 def test_a_declaration_that_is_absent_is_refused(tree: Callable[[], Tree]) -> None:
@@ -519,7 +524,7 @@ def test_a_tree_with_no_platform_list_is_refused(tree: Callable[[], Tree]) -> No
     refused_naming(platform_dispatch(broken.repo), "supported-platforms")
 
 
-#: The one program every step of the gate and the integration tier runs.
+#: The one program every step of the `test` job runs.
 JUST = "just"
 
 
@@ -644,7 +649,7 @@ class Recording:
 
         None of the host's own `PRINTOBSERVER_` variables is carried: every one
         a dispatched job reads is the job's own or a step's export, and on a
-        runner the gate job running this suite has already exported its own
+        runner the `test` job running this suite has already exported its own
         scratch directory, which a step under test would otherwise inherit.
         """
         environment = {
@@ -688,28 +693,31 @@ def _run(
     return code, said.getvalue()
 
 
-def test_the_gate_runs_exactly_its_own_commands(tree: Callable[[], Tree], tmp_path: Path) -> None:
-    """A dispatch runs the gate and its owned scratch cleanup in the declared order."""
+def test_the_test_job_runs_exactly_its_own_commands(
+    tree: Callable[[], Tree], tmp_path: Path
+) -> None:
+    """A dispatch runs the gate's half, the integration tier and its teardowns, in order."""
     copy = tree()
     recording = Recording(tmp_path)
     recording.program(JUST)
+    # The runner hands every step a file to append its outputs to.
+    outputs = tmp_path / "github-output"
+    outputs.touch()
 
-    code, said = _run(copy, "gate", "linux-aarch64", recording)
+    code, said = _run(copy, "test", "linux-aarch64", recording, GITHUB_OUTPUT=str(outputs))
 
-    equal(code, 0, describing=f"the exit of a gate whose commands all passed:\n{said}")
-    # The stand-in `just` answers `gate-tier` with nothing, so the tier it hands
-    # `check` is empty: which tier a dispatch selects is the selector's own
-    # journey, in `test_gate_tier.py`, and the real `check` refuses an empty one.
+    equal(code, 0, describing=f"the exit of a job whose commands all passed:\n{said}")
     equal(
         recording.recorded(),
         [
             "just runner-temp",
             "just bootstrap",
-            "just gate-tier",
-            "just check ",
+            "just release-program-key",
+            "just octoprint-up",
+            "just ci-test",
             "just budgets-release-pr",
+            "just octoprint-down",
             "just runner-temp cleanup",
-            "just gate-time",
         ],
         describing="what ran",
     )
@@ -718,15 +726,18 @@ def test_the_gate_runs_exactly_its_own_commands(tree: Callable[[], Tree], tmp_pa
 def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
     tree: Callable[[], Tree], tmp_path: Path
 ) -> None:
-    """The integration tier's `always()` bring-down runs after a failing tier, and the job fails."""
+    """The integration tier's `always()` bring-down runs after the step running it fails.
+
+    That step is `just ci-test`, which runs the tier beside its end-to-end tier.
+    """
     copy = tree()
     recording = Recording(tmp_path)
-    recording.program(JUST, failing_on="test-integration", exit_code=9)
+    recording.program(JUST, failing_on="ci-test", exit_code=9)
     # The runner hands every step a file to append its outputs to.
     outputs = tmp_path / "github-output"
     outputs.touch()
 
-    code, said = _run(copy, "integration", "macos-aarch64", recording, GITHUB_OUTPUT=str(outputs))
+    code, said = _run(copy, "test", "macos-aarch64", recording, GITHUB_OUTPUT=str(outputs))
 
     equal(code, 9, describing="the exit of a tier that failed")
     equal(
@@ -735,15 +746,14 @@ def test_a_teardown_runs_after_a_failure_and_the_exit_is_the_failures(
             "just runner-temp",
             "just bootstrap",
             "just release-program-key",
-            "just release-program",
             "just octoprint-up",
-            "just test-integration",
+            "just ci-test",
             "just octoprint-down",
             "just runner-temp cleanup",
         ],
         describing="what ran",
     )
-    contains(said, "`just test-integration` failed with 9", describing=said)
+    contains(said, "`just ci-test` failed with 9", describing=said)
 
 
 def test_a_failure_stops_the_steps_after_it_that_are_not_always(
@@ -757,7 +767,7 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
     outputs = tmp_path / "github-output"
     outputs.touch()
 
-    code, _ = _run(copy, "integration", "linux-x86_64", recording, GITHUB_OUTPUT=str(outputs))
+    code, _ = _run(copy, "test", "linux-x86_64", recording, GITHUB_OUTPUT=str(outputs))
 
     equal(code, 7, describing="the exit of a tier whose bring-up failed")
     equal(
@@ -766,7 +776,6 @@ def test_a_failure_stops_the_steps_after_it_that_are_not_always(
             "just runner-temp",
             "just bootstrap",
             "just release-program-key",
-            "just release-program",
             "just octoprint-up",
             "just octoprint-down",
             "just runner-temp cleanup",
@@ -1033,7 +1042,7 @@ def _exporting(recording: Recording, exports: str, file: str = "GITHUB_ENV") -> 
 def test_what_a_step_exports_reaches_every_later_step_with_the_platform_resolved(
     tree: Callable[[], Tree], tmp_path: Path
 ) -> None:
-    """The gate's setup exports its scratch directory, and the steps after it run in it.
+    """The `test` job's setup exports its scratch directory, and the steps after it run in it.
 
     The job's `PRINTOBSERVER_PLATFORM` is `${{ matrix.platform.id }}`, which a
     dispatch reads as the platform it names; and what `runner-temp` appends to
@@ -1047,20 +1056,25 @@ def test_what_a_step_exports_reaches_every_later_step_with_the_platform_resolved
         "PRINTOBSERVER_JOB_SCRATCH=D:/printobserver-1\r\nPRINTOBSERVER_JOB_SCRATCH_OWNER=\r\n",
     )
 
-    code, said = _run(copy, "gate", "linux-aarch64", recording)
+    # The runner hands every step a file to append its outputs to.
+    outputs = tmp_path / "github-output"
+    outputs.touch()
 
-    equal(code, 0, describing=f"the exit of a gate whose commands all passed:\n{said}")
+    code, said = _run(copy, "test", "linux-aarch64", recording, GITHUB_OUTPUT=str(outputs))
+
+    equal(code, 0, describing=f"the exit of a job whose commands all passed:\n{said}")
     exported = "platform=linux-aarch64 scratch=D:/printobserver-1 owner="
     equal(
         recording.recorded(),
         [
             "just runner-temp platform=linux-aarch64 scratch=unset owner=unset",
             f"just bootstrap {exported}",
-            f"just gate-tier {exported}",
-            f"just check  {exported}",
+            f"just release-program-key {exported}",
+            f"just octoprint-up {exported}",
+            f"just ci-test {exported}",
             f"just budgets-release-pr {exported}",
+            f"just octoprint-down {exported}",
             f"just runner-temp cleanup {exported}",
-            f"just gate-time {exported}",
         ],
         describing="what ran, and what it was handed",
     )
@@ -1083,13 +1097,13 @@ REFUSED_EXPORTS = {
 def test_an_export_in_a_form_no_source_job_writes_is_refused_by_name(
     form: str, tree: Callable[[], Tree], tmp_path: Path
 ) -> None:
-    """The form stops the job naming it, and the teardown still runs."""
+    """The form stops the job naming it, and both its `always()` teardowns still run."""
     file, exports, named = REFUSED_EXPORTS[form]
     copy = tree()
     recording = Recording(tmp_path)
     _exporting(recording, exports, file)
 
-    code, said = _run(copy, "gate", "linux-x86_64", recording)
+    code, said = _run(copy, "test", "linux-x86_64", recording)
 
     equal(code, REFUSED, describing=f"the exit of a job whose setup wrote {form}:\n{said}")
     contains(said, "platform-dispatch: refused: `just runner-temp`", describing=said)
@@ -1098,9 +1112,10 @@ def test_an_export_in_a_form_no_source_job_writes_is_refused_by_name(
         recording.recorded(),
         [
             "just runner-temp platform=linux-x86_64 scratch=unset owner=unset",
+            "just octoprint-down platform=linux-x86_64 scratch=unset owner=unset",
             "just runner-temp cleanup platform=linux-x86_64 scratch=unset owner=unset",
         ],
-        describing="what ran: the setup, and then only the teardown",
+        describing="what ran: the setup, and then only the teardowns",
     )
 
 
@@ -1119,7 +1134,7 @@ def test_the_script_prints_an_export_refusal_on_standard_error(
         monkeypatch.setenv(name, value)
 
     code = dispatching.main(
-        ["run", "--job", "gate", "--platform", "linux-x86_64", "--root", str(copy.root)]
+        ["run", "--job", "test", "--platform", "linux-x86_64", "--root", str(copy.root)]
     )
 
     said = capsys.readouterr()
@@ -1139,7 +1154,7 @@ def test_the_script_refuses_an_unknown_pair_before_anything_runs(
 
     for verb in ("resolve", "run"):
         code = dispatching.main(
-            [verb, "--job", "gate", "--platform", "linux-riscv64", "--root", str(copy.root)]
+            [verb, "--job", "test", "--platform", "linux-riscv64", "--root", str(copy.root)]
         )
         equal(code, REFUSED, describing=f"the exit of `{verb}` over an unknown platform")
         contains(capsys.readouterr().err, "refused: `linux-riscv64` is no platform")
@@ -1184,7 +1199,7 @@ def test_a_source_the_script_cannot_run_is_refused_by_run_too(
     recording.program(JUST)
 
     code = dispatching.main(
-        ["run", "--job", "gate", "--platform", "linux-x86_64", "--root", str(copy.root)]
+        ["run", "--job", "test", "--platform", "linux-x86_64", "--root", str(copy.root)]
     )
 
     equal(code, REFUSED, describing="the exit of a run over a source it cannot run")

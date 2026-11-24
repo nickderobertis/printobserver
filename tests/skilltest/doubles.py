@@ -361,6 +361,16 @@ class Timeline:
     #: The event whose turn's exit moved the replay on, which a re-prompt of that turn
     #: stands at again.
     exited_from: int = 0
+    #: The events, by index, whose scheduled check's own frame the camera refuses, every
+    #: time it is asked until that check's turn starts, as a camera that will not answer
+    #: does live. The check is then written with no image and its turn is handed none: the
+    #: one turn the server still lets look, which is how a wiring test reaches the double.
+    refused_event_frames: frozenset[int] = frozenset()
+    #: Whether this event's fetches are being refused, until its turn starts.
+    refusing: bool = False
+    #: Whether every fetch is refused, spending no frame: while the replay holds a print's
+    #: alignment undecided to write the verdict its case records (`no_first_layer_frame`).
+    withholding: bool = False
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -438,9 +448,15 @@ class Timeline:
         else:
             self.owed_event_frame = True
             self.at_event_frame = at
+            self.refusing = index in self.refused_event_frames
         self.paused = moment.printer_state is MachineState.PAUSED or (
             self.paused and moment.printer_state is MachineState.PRINTING
         )
+
+    def turn_started(self) -> None:
+        """A harness started: the check before it has been written, so its fetches end."""
+        with self.lock:
+            self.refusing = False
 
     def harness_started(self) -> None:
         """A second run within one turn, the engine's own re-prompt, is still that turn's."""
@@ -531,6 +547,23 @@ class Timeline:
             ),
             normalized_p=0.0,
         )
+
+    def refuses_fetch(self) -> bool:
+        """Whether this fetch is refused, standing for the event's own frame it was owed.
+
+        The owed frame is spent as an answered one would be, and written down as the
+        frame that fetch stood for, so the looks after it answer what they would have.
+        """
+        with self.lock:
+            if self.withholding:
+                return True
+            if not self.refusing:
+                return False
+            if self.owed_event_frame:
+                self.cursor = max(self.cursor, self.at_event_frame)
+                self.owed_event_frame = False
+                self.fetches.append(self.case.frames[max(self.cursor, 0)].file)
+            return True
 
     def camera_answer(self) -> CameraFrame | None:
         """The bytes this fetch answers, and when they were captured.
@@ -814,6 +847,10 @@ class Scene(Protocol):
 
     stopped: threading.Event
 
+    def refuses_fetch(self) -> bool:
+        """Whether the camera refuses this fetch, as a camera that will not answer does."""
+        ...
+
     def camera_answer(self) -> CameraFrame | None:
         """The bytes this fetch answers and when they were captured, or nothing any more."""
         ...
@@ -824,6 +861,9 @@ def camera(timeline: Scene) -> ThreadingHTTPServer:
 
     class Handler(_Quiet):
         def do_GET(self) -> None:
+            if timeline.refuses_fetch():
+                self.answer(503)
+                return
             answered = timeline.camera_answer()
             if answered is None:
                 # The last event's turn is over and the server is being stopped;
@@ -985,6 +1025,10 @@ class Bench:
             self.printing = None
             self.selected = None
             self.files[gcode.name] = gcode.data
+
+    def refuses_fetch(self) -> bool:
+        """A bench's camera answers every fetch."""
+        return False
 
     def camera_answer(self) -> CameraFrame | None:
         """The request's frame, numbered for this fetch, and when it was captured."""

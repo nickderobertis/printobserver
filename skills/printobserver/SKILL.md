@@ -16,8 +16,8 @@ Commands: [the command surface](reference/command-surface.md),
 
 1. **Decide from what is in front of you:** event, facts, frame; full context only if needed.
 2. **Judge the frame.** Too dark, blurred or aimed at nothing is uncertain.
-3. **Look again only when the frame is genuinely ambiguous.** A look can wait up to a minute and a
-   half first; open each. A repeated capture time is no newer frame, no defect.
+3. **Decide on the image in hand;** a turn with one has no look. With none, a look can wait up to
+   a minute and a half first; open each. A repeated capture time is no newer frame, no defect.
 4. **Decide.** By the order below, saying how sure.
 5. **To act, ask for the change, then answer.** Give a reason, and a duration if temporary.
    Asking is acting, taken or refused: never look after it.
@@ -33,14 +33,16 @@ Name no configuration: the environment names it. Give an actor only where a comm
    change one only for a clear defect its stated value explains, or one the plan calls at odds,
    wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
 2. A clear defect with no setting, or a part moved, gone or not risen as planned: pause.
-3. Uncertain: watch and look again, never pause, unless clearly worsening.
+3. Uncertain: watch, never pause, unless clearly worsening.
 4. Nothing there: carry on.
 
-A person's resume settles what they resumed over; judge only what is new or worse.
+A person's resume settles what they resumed over; judge only what is new or worse. No person puts
+a part anywhere new or back exactly: one off its own place or moved since 3 moved by itself: pause.
 
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
-  layer); 2 a close-up; 3 the last check. Lines are plan, not plastic. A part off its drawn walls,
-  bare sheet inside them, or moved since 3 came loose.
+  layer); 2 a close-up; 3 the last check. Lines are plan, not plastic. The camera never shifts and
+  the lines follow the bed: a part off its drawn walls, bare sheet inside them, or moved since 3
+  came loose, unless strongly shown not.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.
@@ -50,14 +52,14 @@ A person's resume settles what they resumed over; judge only what is new or wors
   parts look; the rise is what should show, not proof it did: compare the tallest printing part's
   top then and now. Risen less than the rise, likely, unsure or unclear is not printing: a clear
   defect, never watched. A part off the bed, a first layer not sticking, or one off its own place,
-  left empty, has moved: pause now on the image in hand, before any look or wait; no later frame
-  undoes it, only a person's resume. The facts' X and Y are the bed's, placing nothing in a frame.
+  left empty, has moved: pause now on the image in hand; no later frame undoes it. The facts' X
+  and Y are the bed's, placing nothing in a frame.
 
 ## When the detector has already paused the print
 
-A look settles nothing, so uncertain is stop. Ask only for a setting that addresses all you see;
-the supervisor resumes the print itself twenty seconds after your last such change, never you.
-Else change nothing; answer stop.
+Uncertain is stop. Ask only for a setting that addresses all you see; the supervisor resumes the
+print itself twenty seconds after your last such change, never you. Else change nothing; answer
+stop.
 
 ## When you are asked to start a print
 

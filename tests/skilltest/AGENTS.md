@@ -44,12 +44,22 @@ The rules the real-print suite is held to, and why.
 - **A case naming a `camera_calibration` is replayed with it** on the camera
   double's stream; the record carries each check's image, read off its prompt's
   `image` line, and the alignment verdict the server kept for the print.
+- **Every print's checks get the image the latest code builds.** A live test fails
+  any case's check shown the whole frame because no calibration is configured, its
+  frames are not the calibration's size, or the print's alignment refused it; no
+  case is exempt.
 - **The watch sees the job pass its first layer, as it did live.** The live watch
   decides alignment on the frame it takes as the first layer goes down; a replay
   jumping between events would show it the next event's frame instead. So the
-  replay stands at the first recorded observation frame past that layer — between
+  replay stands at the first recorded observation frame past that layer, passing
+  over one the case marks `not_at_print_height` — between
   two events while the ended turn still holds the print, or, when it precedes the
   first event, in a start of the server with no check due — until it decides.
+- **A case keeping no frame of its first layer records its alignment instead**
+  (`no_first_layer_frame`): its first frame stands far above the layer the check
+  scores, where the part's body pulls the score off a right projection. The replay
+  writes the passed verdict it records, at the offset its marks lie within, and
+  refuses the record on a case that names no calibration or keeps such a frame.
 - **An answer of `stop` that asked for no pause fails its decision point.** The
   server refuses it once in the same turn and writes down `agent_stop_unacted`
   when it comes again.

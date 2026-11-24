@@ -15,6 +15,25 @@
       "type": "string",
       "pattern": "^\\.\\./cameras/[a-z0-9-]+\\.json$"
     },
+    "no_first_layer_frame": {
+      "description": "A replay-only record for a case that keeps no frame taken at or below its first layer's height. A live server decides a print's first-layer alignment on a frame taken as that layer goes down, which such a recording never kept, so the replay writes the passed verdict this records rather than deciding on a frame far above the first layer. The replay refuses this on a case that does keep such a frame, or that names no calibration.",
+      "type": "object",
+      "required": ["why", "projection_proven_by", "offset_px"],
+      "additionalProperties": false,
+      "properties": {
+        "why": { "type": "string", "minLength": 1 },
+        "projection_proven_by": {
+          "description": "How the calibration's projection was shown to land on this print's parts instead: marks on its own frames, in the calibration's committed marks file.",
+          "type": "string",
+          "minLength": 1
+        },
+        "offset_px": {
+          "description": "The verdict's offset: the largest distance, in calibration pixels, of any of the case's marks from its projected outline. It must lie within the calibration's `alignment_max_offset_px`.",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
     "frames": {
       "description": "Every frame of the case, each with a label.",
       "type": "array",
@@ -28,7 +47,12 @@
             "type": "string",
             "pattern": "^(\\d{4}-\\d{2}-\\d{2}[T ])?\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?$"
           },
-          "progress_pct": { "type": "number", "minimum": 0, "maximum": 100 }
+          "progress_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+          "not_at_print_height": {
+            "description": "Why the bed in this frame is not where its recorded progress puts it: the replay never decides a print's first-layer alignment on such a frame.",
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
