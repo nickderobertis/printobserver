@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.15.0](https://github.com/nickderobertis/printobserver/compare/v0.14.0...v0.15.0) - 2026-11-24
+
+### Fixed
+
+- *(agent)* decide each check on its own image, with no look, so a moved part is paused ([#364](https://github.com/nickderobertis/printobserver/pull/364))
+
+### Performance
+
+- *(supervisor)* [**breaking**] cut each check's input tokens, on Claude Code's prompt replaced and oneharness's schema ([#363](https://github.com/nickderobertis/printobserver/pull/363))
 ## [0.14.0](https://github.com/nickderobertis/printobserver/compare/v0.12.0...v0.14.0) - 2026-11-21
 
 ### Added
