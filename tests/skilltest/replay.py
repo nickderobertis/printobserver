@@ -620,9 +620,10 @@ def check_image(note: str) -> CheckImage:
 
 #: Why the server shows a print's check the whole frame when no calibration is configured.
 NO_CALIBRATION = "no camera calibration is configured"
-#: Why a print's check is shown the whole frame when no calibration is configured or
-#: its frames are of another size than the calibration: the server's own wording, of
-#: its own reason and of the alignment's and the composer's refusals on resolution.
+#: Why a print's check is shown the whole frame when no calibration is configured, its
+#: frames are of another size than the calibration, or its alignment refused the
+#: projection: the server's own wording, of its own reason and of the alignment's and
+#: the composer's refusals.
 CALIBRATION_FALLBACKS = (
     re.compile(re.escape(NO_CALIBRATION)),
     re.compile(
@@ -630,6 +631,10 @@ CALIBRATION_FALLBACKS = (
         r" and the calibration's \d+x\d+"
     ),
     re.compile(r"the frame's resolution is \S+, and the calibration's is \S+"),
+    re.compile(
+        r"the print's first-layer alignment failed: the printed first layer lies \S+ px"
+        r" from where the calibration projects it"
+    ),
 )
 
 
@@ -1587,6 +1592,9 @@ class Replay:
         again at the first event. A print stays open, and its verdict with it, through
         a restart.
         """
+        if self.case.no_first_layer_frame_offset_px is not None:
+            self._write_the_recorded_alignment(self.case.no_first_layer_frame_offset_px)
+            return
         first = self.case.moments[0]
         passing = self._first_layer_frame()
         if passing is None or passing.at > instant(first.at):
@@ -1601,6 +1609,59 @@ class Replay:
             self.stop_server()
         with self.timeline.lock:
             self.timeline.stand_at(0)
+
+    def _write_the_recorded_alignment(self, offset_px: float) -> None:
+        """Write the passed verdict a case keeping no frame of its first layer records.
+
+        A live server decides a print's alignment on a frame taken as its first layer
+        goes down; a recording that kept none has only frames far above it, where the
+        part's own body stands over the layer the check scores. The case records how
+        its projection was proven instead and the offset its marks lie within. This
+        holds only for a calibrated case keeping no frame at or below its first layer,
+        and refuses any other. The server is started once with no check due and every
+        camera fetch refused, so the alignment stays undecided while the print it opens
+        is read; the verdict is written where the server keeps it, which stands through
+        the restart at the first event.
+        """
+        ends = self.first_layer_end
+        if self.case.camera_calibration is None or ends is None:
+            msg = f"{self.case.name} records its alignment and names no calibration or first layer"
+            raise ReplayError(msg)
+        kept = [
+            frame.file
+            for frame in self.case.frames
+            if frame.progress_pct is not None
+            and int(frame.progress_pct / 100 * self.case.gcode_size) <= ends
+        ]
+        if kept:
+            msg = (
+                f"{self.case.name} records its alignment, and keeps frames of its first layer "
+                f"the replay decides it on: {', '.join(kept)}"
+            )
+            raise ReplayError(msg)
+        config = self.root / "deciding.toml"
+        config.write_text(self._config_text(DECIDING_INTERVAL_S), encoding="utf-8")
+        with self.timeline.lock:
+            self.timeline.withholding = True
+        self.server = self._started(config)
+        try:
+            self._wait_for_server()
+            deadline = time.monotonic() + PASSING_WAIT_S
+            while not self._prints():
+                if time.monotonic() > deadline:
+                    msg = f"the server opened no print within {PASSING_WAIT_S} s"
+                    raise ReplayError(msg)
+                time.sleep(0.25)
+            verdict = {"verdict": "passed", "offset_px": offset_px}
+            path = self.state / "alignment" / f"{self._print_id()}.json"
+            path.write_text(json.dumps(verdict), encoding="utf-8")
+        finally:
+            self.stop_server()
+            with self.timeline.lock:
+                self.timeline.withholding = False
+        with self.timeline.lock:
+            self.timeline.stand_at(0)
+        self._read_alignment()
 
     def _started(self, config: Path) -> subprocess.Popen[str]:
         """The server, started on one configuration, its output kept."""

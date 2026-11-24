@@ -56,6 +56,9 @@ millimetres apart between prints.
    starts from it alone. `core-one-2026-10-10.json` was fitted that way, from
    `core-one-2026-09-27.json`, and `core-one-2026-10-09.json` from it: one
    camera position, but each fit trustworthy only near its own print's parts.
+   `core-one-2026-09-27-1280x720.json`, for the camera's 1280x720 stream of
+   27 September and 8 October, was fitted from its own generic starts on the
+   27 September marks, then on every mark started from that fit.
 6. **Put it in place**: name the file in the service configuration's
    `[camera] calibration` and restart the service, which refuses an invalid
    file at start.

@@ -2454,12 +2454,17 @@ RECORDED_FRAMES = REPO / "crates" / "printobserver-panels" / "tests" / "fixtures
 RECORDED_SLICES = REPO / "crates" / "printobserver-core" / "tests" / "fixtures" / "real-prints"
 
 
-def _checks_shown(case: Case, picture: Callable[[str], bytes], scratch: Path) -> dict[str, str]:
+def _checks_shown(
+    case: Case,
+    picture: Callable[[str], bytes],
+    scratch: Path,
+    slice_name: str = "jar-top-first-layer-detach.gcode",
+) -> dict[str, str]:
     """Each check's image line, as the real server wrote it into the prompt the check was handed.
 
     The case's timeline replayed through the real server over its real slice.
     """
-    gcode = (RECORDED_SLICES / "jar-top-first-layer-detach.gcode").read_bytes()
+    gcode = (RECORDED_SLICES / slice_name).read_bytes()
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode, picture=picture)
     prompts = [
         seen["prompt"]
@@ -2521,6 +2526,67 @@ def test_a_print_whose_frames_are_not_the_calibrations_size_fails_every_check(
     )
 
 
+#: A print whose recording keeps no frame of its first layer: its first frame is 14 mm up.
+UNSEEN_FIRST_LAYER = "fan-cut-bridge"
+
+
+def _its_first_frame(_: str) -> bytes:
+    """fan-cut-bridge's first kept frame, at Z 14 mm, its part standing over its first layer."""
+    return (RECORDED_FRAMES / UNSEEN_FIRST_LAYER / "01-healthy-before-fault-p41.jpg").read_bytes()
+
+
+def test_a_print_with_no_first_layer_frame_is_composed_on_the_alignment_its_case_records(
+    scratch: Path,
+) -> None:
+    """The real server, the case's own calibration, frame and slice: every check composed.
+
+    Its first kept frame is far above its first layer, which a live server never decides
+    alignment on, so the replay writes the passed verdict the case records.
+    """
+    case = read_case(UNSEEN_FIRST_LAYER)
+    notes = _checks_shown(case, _its_first_frame, scratch, "fan-cut-test.gcode")
+    equal(
+        {check: check_image(note)["kind"] for check, note in notes.items()},
+        {moment.id: "composite" for moment in case.moments},
+        describing=f"each check's image line: {notes}",
+    )
+    equal(calibration_fallbacks(notes), {})
+
+
+def test_deciding_alignment_on_a_frame_far_above_the_first_layer_is_a_fallback_the_suite_fails(
+    scratch: Path,
+) -> None:
+    """The same print with no alignment recorded: decided on its 14 mm frame, it is refused."""
+    case = replace(read_case(UNSEEN_FIRST_LAYER), no_first_layer_frame_offset_px=None)
+    fell_back = calibration_fallbacks(
+        _checks_shown(case, _its_first_frame, scratch, "fan-cut-test.gcode")
+    )
+    equal(set(fell_back), {moment.id for moment in case.moments})
+    truth(
+        all("the printed first layer lies" in why for why in fell_back.values()),
+        describing=f"each refused on the offset: {fell_back}",
+    )
+
+
+def test_a_recorded_alignment_is_refused_on_a_print_that_keeps_its_first_layer_frame(
+    scratch: Path,
+) -> None:
+    """A print the replay can decide alignment on is never handed a verdict instead."""
+    case = replace(_timeline(), no_first_layer_frame_offset_px=2.0)
+    with pytest.raises(ReplayError, match="keeps frames of its first layer"):
+        _checks_shown(case, _recorded, scratch)
+
+
+def test_every_replayed_print_names_a_calibration() -> None:
+    """A print's replay names its calibration, with no case let off.
+
+    A case losing its calibration would send every check the whole frame, which the
+    live suite fails only once it runs; this fails it in the gate.
+    """
+    prints = [name for name in replayed_case_names() if not is_start_case(name)]
+    equal({name for name in prints if read_case(name).camera_calibration is None}, set())
+
+
 @pytest.mark.parametrize(
     ("why", "fell_back"),
     [
@@ -2534,7 +2600,7 @@ def test_a_print_whose_frames_are_not_the_calibrations_size_fails_every_check(
         (
             "the print's first-layer alignment failed: the printed first layer lies 51.0 px from "
             "where the calibration projects it",
-            False,
+            True,
         ),
         ("the print's G-code index gives no file position for this check", False),
         ("no print is named, so there is no planned toolpath to draw on it", False),
@@ -2543,9 +2609,9 @@ def test_a_print_whose_frames_are_not_the_calibrations_size_fails_every_check(
 def test_a_whole_frame_for_want_of_a_fitting_calibration_is_told_from_any_other(
     why: str, fell_back: bool
 ) -> None:
-    """Only a missing calibration, or one of another size than the frames, is a fallback.
+    """A missing calibration, one of another size than the frames, or a refused alignment.
 
-    The live suite fails a check shown the whole frame for either; every other reason
+    The live suite fails a check shown the whole frame for any of them; every other reason
     the server gives, and the three-panel image, is what the latest code itself sends.
     """
     image = check_image(

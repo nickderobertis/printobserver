@@ -1,6 +1,11 @@
 {
   "case": "fan-cut-bridge",
-  "camera_calibration": "../cameras/core-one-2026-09-27.json",
+  "camera_calibration": "../cameras/core-one-2026-09-27-1280x720.json",
+  "no_first_layer_frame": {
+    "why": "the recording keeps no frame before p41 (Z 14 mm), so the replay has no frame taken as the first layer went down, which is the frame a live server decides alignment on; at Z 14 the part's own body stands over its footprint, and the alignment's grey contrast pulls into it, refusing at 39.7 px a projection its marks put within 3 px",
+    "projection_proven_by": "51 marks on the base and top edges of this print's own frames 01, 03, 04 and 05 (Z 14 to 31 mm), in core-one-2026-09-27-1280x720.marks.json, each within 2.87 px of its outline under the calibration, against its unchanged 30 px limit",
+    "offset_px": 2.87
+  },
   "verdict": "valid failure",
   "printer": "Prusa CORE One+ (HF0.4), Prusament PLA, 0.20mm BALANCED, camera via go2rtc (1280x720)",
   "printed_on": "2026-09-27",
