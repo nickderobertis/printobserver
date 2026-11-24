@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.15.1](https://github.com/nickderobertis/printobserver/compare/v0.14.0...v0.15.1) - 2026-11-24
+
+### Fixed
+
+- *(supervisor)* pause a print whose parts stopped growing every time ([#368](https://github.com/nickderobertis/printobserver/pull/368))
 ## [0.14.0](https://github.com/nickderobertis/printobserver/compare/v0.13.1...v0.14.0) - 2026-11-21
 
 ### Added
