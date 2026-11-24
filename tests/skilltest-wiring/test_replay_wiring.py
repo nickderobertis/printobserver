@@ -53,6 +53,7 @@ from cases import (
 from mock_turn import ScriptedRun, Seen
 from outside import MILESTONE_WORDS, Outside
 from replay import (
+    BARE_PROBE_RECORD,
     IMAGE_PROBE_RECORD,
     NO_CALIBRATION,
     PROBE_RECORD,
@@ -272,6 +273,7 @@ def mock_replay(
     real_waits: bool = False,
     compaction: mock_turn.Compaction | None = None,
     picture: Callable[[str], bytes] = stamped,
+    compaction_probe: bool = False,
     refused_event_frames: frozenset[int] = frozenset(),
 ) -> Scripted:
     """Run one case's whole replay, its turns scripted, and read back what happened.
@@ -300,6 +302,7 @@ def mock_replay(
         gcode=gcode,
         real_waits=real_waits,
         outside=lambda replaying: Outside(replaying, target),
+        compaction_probe=compaction_probe,
         refused_event_frames=refused_event_frames,
     )
     try:
@@ -854,13 +857,13 @@ def test_a_recorded_alert_reaches_the_agent_at_its_time(scratch: Path) -> None:
     case = read_case("petg-clip-detach-and-stringing-web")
     done = mock_replay(case, [{"commands": [CONTEXT]}], scratch)
     prompts = [turn["prompt"] for turn in done.turns]
-    contains(prompts[0], '"kind": "periodic_observation"')
+    contains(prompts[0], '"kind":"periodic_observation"')
     for prompt in prompts[1:]:
-        contains(prompt, '"kind": "obico_failure_alert"')
-    contains(prompts[2], '"detector_paused_the_print": true')
+        contains(prompt, '"kind":"obico_failure_alert"')
+    contains(prompts[2], '"detector_paused_the_print":true')
     # The alert's picture says when it was taken, and the check's its own frame's.
     alert_taken = instant(case.moments[1].at).strftime("%Y-%m-%dT%H:%M")
-    contains(prompts[1], f'"frame_captured_at": "{alert_taken}')
+    contains(prompts[1], f'"frame_captured_at":"{alert_taken}')
     contains(prompts[0], '"frame_captured_at"')
     equal(
         [point.event_kind for point in done.replayed.points],
@@ -1694,6 +1697,55 @@ def test_a_cases_directory_with_no_case_in_it_is_refused(scratch: Path) -> None:
         equal(done.returncode, 1)
         contains(done.stderr, "holds no case")
         truth(not result.exists(), describing="no figure reported for no suite")
+
+
+def test_a_due_compaction_that_ended_before_the_replay_looked_is_not_waited_for_again(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The last check's compaction is the one begun after it ended, however early it ended.
+
+    Already written down when the replay first reads the ledger, it is the one waited
+    for, rather than a second one nothing will start.
+    """
+    monkeypatch.setattr(replay_module, "COMPACTION_DEADLINE_S", 1)
+    case = read_case("jar-top-wrong-material-detach-spaghetti")
+    replay = Replay(case, [sys.executable, str(MOCK_TURN), str(scratch / "script.json")])
+    try:
+        replay.print_id = replay_module.PrintId("a-print")
+        session = "print-a-print"
+        ledger = {
+            "sessions": [{"session_name": session, "harness_identity": "claude-code"}],
+            "turns": [
+                {
+                    "session_name": session,
+                    "started_at": "2026-10-31T16:00:00Z",
+                    "ran_at": "2026-10-31T16:01:00Z",
+                    "calls": [
+                        {"input_tokens": 3, "output_tokens": 0, "cache_read_tokens": 150_000}
+                    ],
+                }
+            ],
+            "compactions": [
+                {
+                    "session_name": session,
+                    "started_at": "2026-10-31T16:01:00.500Z",
+                    "ended_at": "2026-10-31T16:01:20Z",
+                    "ended": "completed",
+                    "size_before": 150_003,
+                    "reported_after": 9_000,
+                    "usage": {},
+                }
+            ],
+        }
+        path = replay.state / "supervisor-sessions" / "a-print.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(ledger), encoding="utf-8")
+        started = time.monotonic()
+        replay._wait_out_a_due_compaction(150_000)
+        truth(time.monotonic() - started < 1, describing="the replay waited for a second one")
+    finally:
+        replay.stop()
+        replay.clean_up()
 
 
 def test_a_history_command_that_fails_stops_the_replay(scratch: Path) -> None:
@@ -2995,6 +3047,142 @@ def test_the_record_works_out_each_figure_the_budgets_read(
     )
 
 
+def test_the_record_splits_each_figure_by_part(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each part of the base and of the median checks is the value worked out by hand.
+
+    One test of three checks — quiet, acting, quiet — beside the three probes: the text
+    probe's first call reads 4,000, the harness-only probe's 2,500 and the image probe's
+    6,443, so the harness's part is 2,500, printobserver's 1,500 and the image 2,443.
+    """
+    monkeypatch.setattr(record, "commit", lambda: "a-commit")
+    finished = tmp_path / "finished"
+    finished.mkdir()
+    name = "jar-top-wrong-material-detach-spaghetti"
+    first, second, third = REPLAYS[name]
+    # 7,500 with the base as its history: the base, the image and 1,057 of facts.
+    quiet = [
+        {
+            "input_tokens": 10,
+            "cache_write_tokens": 3_500,
+            "cache_read_tokens": 3_990,
+            "output_tokens": 100,
+        },
+    ]
+    # After a conversation of 7,600: 11,020 then 11,530, each carrying 3,600 of history.
+    acting = [
+        {"input_tokens": 20, "cache_read_tokens": 11_000, "output_tokens": 50},
+        {"input_tokens": 30, "cache_read_tokens": 11_500, "output_tokens": 60},
+    ]
+    # After a conversation of 11,590: 14,540, carrying 7,590 of history.
+    later = [
+        {
+            "input_tokens": 40,
+            "cache_read_tokens": 14_000,
+            "cache_write_tokens": 500,
+            "output_tokens": 80,
+        },
+    ]
+    points = [
+        _point_with(first, "quiet", quiet),
+        _point_with(second, "acting", acting),
+        _point_with(third, "quiet", later),
+    ]
+    (finished / f"{name}.json").write_text(
+        json.dumps(
+            {
+                "test": name,
+                "passed": True,
+                "turns": 3,
+                "sessions": [],
+                "compound_commands": {},
+                "decision_points": points,
+            }
+        ),
+        encoding="utf-8",
+    )
+    prompt = "Answer with the assessment for a print that is printing normally."
+    for file, calls in (
+        (PROBE_RECORD, [{"input_tokens": 4, "cache_write_tokens": 3_996, "output_tokens": 70}]),
+        (
+            BARE_PROBE_RECORD,
+            [{"input_tokens": 4, "cache_write_tokens": 2_496, "output_tokens": 70}],
+        ),
+    ):
+        written: dict[str, object] = {"prompt": prompt, "calls": calls}
+        if file == PROBE_RECORD:
+            written["skill_bytes"] = 5_983
+        (finished / file).write_text(json.dumps(written), encoding="utf-8")
+    (finished / IMAGE_PROBE_RECORD).write_text(
+        json.dumps(
+            {
+                "prompt": prompt,
+                "calls": [{"input_tokens": 4, "cache_write_tokens": 6_439, "output_tokens": 71}],
+                "case": "jar-top-petg-healthy",
+                "scenario": "carry-on-031-other",
+                "width": 1024,
+                "height": 1848,
+                "bytes": 412_345,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    folded = record.folded(finished, "a-commit")
+    detail = folded["detail"]["figures"]
+    equal(detail["base_context_tokens"]["split"], {"harness": 2_500, "printobserver": 1_500})
+    # Quiet: 7,500 and 14,540 - (11,590 - 4,000) = 6,950; the lower middle is 6,950.
+    equal(folded["figures"]["quiet_check_input_tokens"], 7_225.0)
+    equal(
+        detail["quiet_check_input_tokens"]["split"],
+        {
+            "test": name,
+            "scenario": third,
+            "input": 6_950,
+            "calls": 1,
+            "harness": 2_500,
+            "skill_and_instruction": 1_500,
+            "image": 2_443,
+            "facts_and_framing": 6_950 - 4_000 - 2_443,
+        },
+    )
+    # It left 14,620 - 11,590; the first quiet check has no check before it.
+    equal(detail["quiet_check_input_tokens"]["leaves"], 3_030.0)
+    # Acting: 22,550 - 2 x 3,600 = 15,350, its first call 11,020 - 3,600 = 7,420.
+    equal(folded["figures"]["acting_check_input_tokens"], 15_350.0)
+    equal(
+        detail["acting_check_input_tokens"]["split"],
+        {
+            "test": name,
+            "scenario": second,
+            "input": 15_350,
+            "calls": 2,
+            "harness": 2_500,
+            "skill_and_instruction": 1_500,
+            "image": 2_443,
+            "facts_and_framing": 7_420 - 4_000 - 2_443,
+            "repeated": 7_420,
+            "action_and_result": 15_350 - 2 * 7_420,
+        },
+    )
+    equal(detail["acting_check_input_tokens"]["leaves"], float(11_590 - 7_600))
+    bare = folded["detail"]["bare_probe"]
+    truth(bare is not None, describing="the harness-only probe in the record")
+    equal(bare["calls"][0]["cache_write_tokens"] if bare else None, 2_496)
+
+    # Without the harness-only probe the base stands whole in each split.
+    (finished / BARE_PROBE_RECORD).unlink()
+    without = record.folded(finished, "a-commit")["detail"]["figures"]
+    equal(without["base_context_tokens"]["split"], None)
+    equal(without["quiet_check_input_tokens"]["split"]["base"], 4_000)
+    equal("harness" in without["quiet_check_input_tokens"]["split"], False)
+    # One that is no record is refused.
+    (finished / BARE_PROBE_RECORD).write_text(json.dumps({"prompt": prompt, "calls": []}))
+    with pytest.raises(record.UnreadableRunError, match="no harness-only probe"):
+        record.folded(finished, "a-commit")
+
+
 @pytest.mark.parametrize(
     "usage",
     [
@@ -3128,6 +3316,134 @@ def test_an_idle_compaction_runs_between_checks_and_the_next_scheduled_check_wai
     equal(written["detail"]["idle_compactions"], 1)
 
 
+def test_an_idle_compaction_the_last_check_makes_due_is_waited_out_and_recorded(
+    scratch: Path,
+) -> None:
+    """A last check leaving the conversation at the threshold still has its compaction.
+
+    The port starts it in the background as that check ends, and a print goes on idle
+    after it; the replay waits it out rather than stopping the server under it, so the
+    ledger carries what it left and the record can project a print from it.
+    """
+    case = read_case(COMPACTING_CASE)
+    checks = sum(1 for moment in case.moments if not moment.is_outside)
+    large = {
+        "input_tokens": 3,
+        "cache_read_input_tokens": 149_000,
+        "cache_creation_input_tokens": 1_000,
+        "output_tokens": 200,
+    }
+    turns: list[ScriptedRun] = [{"commands": [CONTEXT]}] * (checks - 1)
+    done = mock_replay(
+        case,
+        scripted_for(case, [*turns, {"commands": [CONTEXT], "calls": [large]}]),
+        scratch,
+        compaction={"before": 150_203, "after": 9_000, "stall_s": 2},
+    )
+    replayed = done.replayed
+    compactions = replayed.ledger["compactions"]
+    equal([compaction["ended"] for compaction in compactions], ["completed"])
+    equal(compactions[0].get("reported_after"), 9_000)
+    truth(
+        replayed.ledger["turns"][-1]["ran_at"] <= compactions[0]["started_at"],
+        describing="the compaction ran after the last check",
+    )
+    equal(replayed.passed, True, describing=replayed.failures())
+
+
+def test_a_due_compaction_that_never_ends_stops_the_replay_naming_why(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A last check's compaction outlasting its deadline is the replay gone wrong.
+
+    It is refused naming the size the check left and the threshold, rather than read
+    as a print that never compacted.
+    """
+    monkeypatch.setattr(replay_module, "COMPACTION_DEADLINE_S", 1)
+    case = read_case(COMPACTING_CASE)
+    checks = sum(1 for moment in case.moments if not moment.is_outside)
+    large = {
+        "input_tokens": 3,
+        "cache_read_input_tokens": 149_000,
+        "cache_creation_input_tokens": 1_000,
+        "output_tokens": 200,
+    }
+    turns: list[ScriptedRun] = [{"commands": [CONTEXT]}] * (checks - 1)
+    with pytest.raises(ReplayError, match="left 150203 tokens, at or above 150000"):
+        mock_replay(
+            case,
+            scripted_for(case, [*turns, {"commands": [CONTEXT], "calls": [large]}]),
+            scratch,
+            compaction={"before": 150_203, "after": 9_000, "stall_s": 30},
+        )
+
+
+def test_a_print_that_never_reached_the_threshold_has_one_compaction_probed(
+    scratch: Path, tmp_path: Path
+) -> None:
+    """Asked to probe one, the replay has the port compact the conversation once at its end.
+
+    No check reaches the idle threshold, so no idle compaction runs; the probe runs the
+    port's own idle compaction on the last check's session, and the record projects a
+    print from what it read and left, saying a probe measured it and counting it as no
+    idle compaction. The last check pauses, so the run has an acting check to project.
+    """
+    case = read_case(COMPACTING_CASE)
+    checks = sum(1 for moment in case.moments if not moment.is_outside)
+    turns: list[ScriptedRun] = [{"commands": [CONTEXT]}] * (checks - 1)
+    done = mock_replay(
+        case,
+        scripted_for(case, [*turns, {"commands": [PAUSE], "disposition": "stop"}]),
+        scratch,
+        compaction={"before": 12_345, "after": 4_321, "stall_s": 0},
+        compaction_probe=True,
+    )
+    replayed = done.replayed
+    equal(replayed.ledger["compactions"], [], describing="the idle compactions")
+    probed = replayed.compaction_probe
+    truth(probed is not None, describing="the replay probed a compaction")
+    if probed is None:
+        return
+    equal(probed["ended"], "completed")
+    equal(probed.get("reported_after"), 4_321)
+    equal(probed["session_name"], replayed.ledger["turns"][-1]["session_name"])
+
+    run_directory = tmp_path / "run"
+    run_directory.mkdir()
+    (run_directory / f"{case.name}.json").write_text(
+        json.dumps(replayed.as_record()), encoding="utf-8"
+    )
+    base = {"input_tokens": 1_000, "output_tokens": 1}
+    (run_directory / "probe.json").write_text(
+        json.dumps({"prompt": "p", "skill_bytes": 1, "calls": [base]}), encoding="utf-8"
+    )
+    # As `results/latest.json` holds it.
+    detail = json.loads(json.dumps(record.folded(run_directory, "a-commit")))["detail"]
+    equal(detail["idle_compactions"], 0)
+    projection = detail["figures"]["tokens_per_print"]
+    equal(projection["compaction_measured_by"], "probe")
+    equal(projection["compaction_probe"], [probed])
+    equal(projection["rates"]["after_compaction"], 4_321)
+    equal(projection["rates"]["compaction_input"], record.call_input(probed["usage"]))
+
+
+def test_a_compaction_probe_that_does_not_complete_stops_the_replay(scratch: Path) -> None:
+    """A probed compaction the harness failed measured nothing, and the replay says so.
+
+    The probe program refuses it on its error stream rather than printing it as a
+    compaction, and the replay stops naming that rather than projecting from it.
+    """
+    case = read_case(COMPACTING_CASE)
+    with pytest.raises(ReplayError, match=r"the compaction probe answered 1: .*ended Failed"):
+        mock_replay(
+            case,
+            scripted_for(case, [{"commands": [CONTEXT]}]),
+            scratch,
+            compaction={"fail": True},
+            compaction_probe=True,
+        )
+
+
 def _call(input_tokens: int, output: int, cached: int = 0) -> CallUsage:
     return {"input_tokens": input_tokens, "output_tokens": output, "cache_read_tokens": cached}
 
@@ -3227,9 +3543,12 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
             "compactions": compactions,
         }
     ]
-    figures, detail = record.compaction_figures(
-        record.checks_of(tests, 4_000), 4_000, compactions, 150_000
-    )
+    checks = record.checks_of(tests, 4_000)
+    # A check after a completed compaction carries in what that compaction left,
+    # 10,000, not the call before it: 13,000 - (10,000 - 4,000) and 21,000 - 6,000.
+    equal([check["history"] for check in checks][3:], [10_000, 14_000, 10_000])
+    equal([check["input"] for check in checks][3:], [7_000, 7_000, 15_000])
+    figures, detail = record.compaction_figures(checks, 4_000, compactions, 150_000, 2_500)
 
     # By hand: the conversation starts at 4,000 and grows 4,000 a check; check c of the
     # first cycle reads 7,000 + 4,000c. It passes 150,000 after the 37th check (index
@@ -3251,6 +3570,20 @@ def test_the_token_figures_and_the_delayed_checks_are_what_their_budgets_define(
         + sum(reads(index) for index in (9, 28, 47, 66))
     )
     equal(figures["tokens_per_print"], float(typical))
+    # Split by part: 76 checks, 4 of them making a second call, is 80 calls, each
+    # reading the 4,000 base (2,500 of it the harness's) and adding 3,000 to it; two
+    # compactions read 150,000 each; the rest is the conversation the calls carried,
+    # 4,000 a check grown from the base: sum over calls of reads - 7,000.
+    split = detail["tokens_per_print"]["split"]
+    equal(split["base"], 80 * 4_000.0)
+    equal(split["base_split"], {"harness": 80 * 2_500.0, "printobserver": 80 * 1_500.0})
+    equal(split["checks"], 80 * 3_000.0)
+    equal(split["compaction"], 2 * 150_000.0)
+    carried = sum(reads(index) - 7_000 for index in range(76)) + sum(
+        reads(index) - 7_000 for index in (9, 28, 47, 66)
+    )
+    equal(split["history"], float(carried))
+    equal(sum(split[part] for part in ("base", "checks", "history", "compaction")), typical)
     equal(detail["tokens_per_print"]["projected_compactions"], 2)
     long_acting = [((2 * index + 1) * 281) // 30 for index in range(15)]
     later = 281 - 37

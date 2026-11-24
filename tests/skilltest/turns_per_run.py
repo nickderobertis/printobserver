@@ -19,8 +19,8 @@ from onebudgetspec_sdk import report
 
 CASES = Path(__file__).resolve().parents[2] / "tests" / "real-prints"
 #: The turns a full run spends on its probes of the supervisor configuration: the
-#: text-only one and the one carrying a check image.
-PROBE_TURNS = 2
+#: text-only one, the one carrying a check image, and the harness-only one.
+PROBE_TURNS = 3
 
 
 class UnreadableCaseError(Exception):

@@ -10,10 +10,19 @@ them; given none, it runs `just skilltest` to make one, and exits as that did.
 Each check's input figure is held free of the conversation it carries: its calls'
 input, cache included, less `calls x (history - base)`, where `history` is the
 previous check's last-call input plus output in the same test — the base, for a
-test's first check — and `base` is the probe's first-call input. What one check
+test's first check, and what an idle compaction left, for the check after it — and
+`base` is the probe's first-call input. What one check
 image adds to a call is the image probe's first-call input less the text-only
 probe's. A figure the run cannot work out — no probe, or no check of a class — is
 left out of `figures`, which `telemetry_budget` refuses by name.
+
+Each figure's detail splits it by part where the probes measured the parts: the
+harness's own (the harness-only probe's first call: its framing and its tools'
+definitions) apart from printobserver's (the base less that: the skill, the tool
+framing and the answer instruction), the check image (the image probe's first call
+less the text probe's), and the facts and framing a check's prompt carries (the
+rest); for an acting check, also what its later calls re-read of its first and what
+acting added to them — the call that ran the command and the command's result.
 """
 
 from __future__ import annotations
@@ -29,9 +38,11 @@ from pathlib import Path
 from typing import Any, TypedDict, get_args
 
 from replay import (
+    BARE_PROBE_RECORD,
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     REPORTED_COUNTS,
+    BareProbeRecord,
     CallUsage,
     CheckWait,
     Compaction,
@@ -42,6 +53,7 @@ from replay import (
     ProbeRecord,
     TestRecord,
     is_assessment,
+    is_compaction,
 )
 from repo_checks.shell import run
 from turns_per_run import CASES, UnreadableCaseError, replays
@@ -91,6 +103,7 @@ class Detail(TypedDict):
     tests: list[TestRecord]
     probe: ProbeRecord | None
     image_probe: ImageProbeRecord | None
+    bare_probe: BareProbeRecord | None
     #: What each figure was worked out from, by the figure's name.
     figures: FiguresDetail
 
@@ -205,6 +218,7 @@ def _test_record(path: Path) -> TestRecord:
         or not all(_decision_point_is_readable(point) for point in document["decision_points"])
         or document["turns"] != len(document["decision_points"])
         or document["passed"] != all(point["passed"] for point in document["decision_points"])
+        or ("compaction_probe" in document and not is_compaction(document["compaction_probe"]))
     ):
         msg = f"{path} is no test's record"
         raise UnreadableRunError(msg)
@@ -226,6 +240,24 @@ def _probe_record(directory: Path) -> ProbeRecord | None:
         or not all(_is_usage(usage) for usage in document["calls"])
     ):
         msg = f"{path} is no probe's record"
+        raise UnreadableRunError(msg)
+    return document
+
+
+def _bare_probe_record(directory: Path) -> BareProbeRecord | None:
+    """The run's harness-only probe, when its test ran."""
+    path = directory / BARE_PROBE_RECORD
+    if not path.is_file():
+        return None
+    document = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        not isinstance(document, dict)
+        or not isinstance(document.get("prompt"), str)
+        or not isinstance(document.get("calls"), list)
+        or not document["calls"]
+        or not all(_is_usage(usage) for usage in document["calls"])
+    ):
+        msg = f"{path} is no harness-only probe's record"
         raise UnreadableRunError(msg)
     return document
 
@@ -279,7 +311,10 @@ class Check(TypedDict):
     looks: int
     #: Its calls' input, cache included.
     raw_input: int
-    #: The previous check's last-call input plus output, or the base for a first.
+    #: Its first call's input less the history it carried, when there is a base.
+    first_call_input: int | None
+    #: The previous check's last-call input plus output, the base for a first, or
+    #: what a completed compaction left for the check after it.
     history: int | None
     #: `raw_input - calls x (history - base)`, when there is a base.
     input: int | None
@@ -300,14 +335,27 @@ def checks_of(tests: list[TestRecord], base: int | None) -> list[Check]:
     found: list[Check] = []
     for test in tests:
         previous: list[CallUsage] | None = None
+        # Each completed compaction is followed by exactly one check marked as
+        # following it, in the same order, and that check carries in what the
+        # compaction left rather than the previous check's last call.
+        left = iter(
+            [
+                compaction.get("reported_after")
+                for compaction in test.get("compactions", [])
+                if compaction["ended"] == "completed"
+            ]
+        )
         for point in test["decision_points"]:
             if point["trigger"] in CONVERSATION_TRIGGERS:
                 continue
             calls = point["calls"]
             raw = sum(call_input(call) for call in calls)
-            if previous:
+            history: int | None
+            if point.get("follows_compaction", False):
+                history = next(left, None)
+            elif previous:
                 last = previous[-1]
-                history: int | None = call_input(last) + last.get("output_tokens", 0)
+                history = call_input(last) + last.get("output_tokens", 0)
             else:
                 history = base
             found.append(
@@ -319,6 +367,9 @@ def checks_of(tests: list[TestRecord], base: int | None) -> list[Check]:
                     "commands": point["commands"],
                     "looks": point["looks"],
                     "raw_input": raw,
+                    "first_call_input": None
+                    if base is None or history is None or not calls
+                    else call_input(calls[0]) - (history - base),
                     "history": history,
                     "input": None
                     if base is None or history is None
@@ -378,6 +429,62 @@ class Rates(TypedDict):
     threshold: int
 
 
+class BaseSplit(TypedDict):
+    """A projection's base context, as the harness's part and printobserver's."""
+
+    #: Calls x the harness-only probe's first call.
+    harness: float
+    #: Calls x the base less that.
+    printobserver: float
+
+
+class Projection(TypedDict):
+    """One print's projected input, split by what each part of it re-reads."""
+
+    #: Every call's base context: calls x the base.
+    base: float
+    #: The base's harness part and printobserver's, when the harness-only probe ran.
+    base_split: BaseSplit | None
+    #: What each check adds to its calls with no history: calls x (quiet - base).
+    checks: float
+    #: The conversation each call carries beyond the base.
+    history: float
+    #: What the idle compactions read.
+    compaction: float
+
+
+def projection_parts(workload: Workload, rates: Rates, harness: int | None) -> Projection:
+    """[`projected`]'s total, split into base, per-check additions, history and compaction."""
+    checks, acting = workload["checks"], workload["acting"]
+    acting_at = {((index * 2 + 1) * checks) // (acting * 2) for index in range(acting)}
+    added = rates["quiet"] - rates["base"]
+    carried = float(rates["base"])
+    parts: Projection = {
+        "base": 0.0,
+        "base_split": None,
+        "checks": 0.0,
+        "history": 0.0,
+        "compaction": 0.0,
+    }
+    calls_made = 0.0
+    for check in range(checks):
+        calls = rates["acting_calls"] if check in acting_at else 1.0
+        calls_made += calls
+        parts["checks"] += calls * added
+        parts["history"] += calls * (carried - rates["base"])
+        carried += rates["growth"]
+        if carried >= rates["threshold"]:
+            parts["compaction"] += rates["compaction_input"]
+            carried = rates["after_compaction"]
+    parts["base"] = calls_made * rates["base"]
+    if harness is not None:
+        parts["base_split"] = {
+            "harness": calls_made * harness,
+            "printobserver": calls_made * (rates["base"] - harness),
+        }
+    return parts
+
+
 def projected(workload: Workload, rates: Rates) -> tuple[float, int]:
     """The input one print's conversation reads, and the idle compactions it makes.
 
@@ -426,7 +533,11 @@ def _rates(
     compactions: list[LedgerCompaction],
     threshold: int | None,
 ) -> Rates | None:
-    """The projection's rates, when the run measured every one of them."""
+    """The projection's rates, when the run measured every one of them.
+
+    What a compaction reads and leaves comes from `compactions`: the idle ones the
+    run observed, or, when none completed, the one it probed.
+    """
     quiet = [check["input"] for check in checks if check["check_class"] == "quiet"]
     quiet = [figure for figure in quiet if figure is not None]
     acting = [check["calls"] for check in checks if check["check_class"] == "acting"]
@@ -454,11 +565,19 @@ def compaction_figures(
     base: int | None,
     compactions: list[LedgerCompaction],
     threshold: int | None,
+    harness: int | None = None,
+    probed: list[LedgerCompaction] | None = None,
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """The token projections and the delayed-check count, and what each was worked out from."""
+    """The token projections and the delayed-check count, and what each was worked out from.
+
+    The projection's compaction is an idle one the run observed; with none completed,
+    the one compaction probe the run made, which its detail says.
+    """
     figures: dict[str, float] = {}
     detail: dict[str, Any] = {}
-    rates = _rates(checks, base, compactions, threshold)
+    observed = any(compaction["ended"] == "completed" for compaction in compactions)
+    measured = compactions if observed or not probed else probed
+    rates = _rates(checks, base, measured, threshold)
     if rates is not None:
         typical, typical_compactions = projected(TYPICAL_PRINT, rates)
         long, long_compactions = projected(LONG_PLATE, rates)
@@ -468,8 +587,11 @@ def compaction_figures(
         detail["tokens_per_print"] = {
             "workload": TYPICAL_PRINT,
             "rates": rates,
+            "split": projection_parts(TYPICAL_PRINT, rates, harness),
             "projected_compactions": typical_compactions,
             "compactions_observed": compactions,
+            "compaction_measured_by": "an idle compaction" if measured is compactions else "probe",
+            **({"compaction_probe": probed} if probed else {}),
             "long_plate": {"workload": LONG_PLATE, "tokens": long},
             "checks": [
                 {
@@ -574,6 +696,10 @@ class ClassInput(TypedDict):
 
     median_raw_input: float
     each: list[CheckInput]
+    #: The median check's figure, split by part.
+    split: CheckParts
+    #: The median growth in conversation size a check of the class leaves behind.
+    leaves: float | None
 
 
 class BaseContext(TypedDict):
@@ -583,6 +709,8 @@ class BaseContext(TypedDict):
     cache_read_tokens: int
     input_tokens: int
     skill_bytes: int
+    #: The base split by part, when the harness-only probe ran.
+    split: Parts | None
 
 
 class FrameImage(TypedDict):
@@ -601,6 +729,38 @@ class FrameImage(TypedDict):
     whole_frame_rule_tokens: int
 
 
+class Parts(TypedDict):
+    """What a call's base context is made of: the harness's part and printobserver's."""
+
+    #: The harness-only probe's first call: the harness's framing and its tools.
+    harness: int
+    #: The base less the harness's part: the skill, the tool framing, the instruction.
+    printobserver: int
+
+
+class CheckParts(TypedDict, total=False):
+    """One check's history-free input, split by part as far as the probes measured."""
+
+    test: str
+    scenario: str
+    input: int
+    calls: int
+    #: The harness's framing and tools; absent with no harness-only probe.
+    harness: int
+    #: The skill, the tool framing and the answer instruction.
+    skill_and_instruction: int
+    #: The base whole, when the harness's part is not measured apart from it.
+    base: int
+    #: The check image, as the image probe measured one.
+    image: int
+    #: The check's own prompt beside its image: its facts and their framing.
+    facts_and_framing: int
+    #: An acting check's later calls re-reading its first call's input.
+    repeated: int
+    #: What acting added to those calls: the command's call and its result.
+    action_and_result: int
+
+
 class FiguresDetail(TypedDict, total=False):
     """What each figure the run could work out was worked out from, by its name."""
 
@@ -612,8 +772,73 @@ class FiguresDetail(TypedDict, total=False):
     frame_image_tokens: FrameImage
 
 
-def _class_input(checks: list[Check]) -> tuple[float, ClassInput] | None:
-    """One class's median history-free input and its detail, when any check has one."""
+def _parts(base: int, harness: int | None) -> Parts | None:
+    """The base split into the harness's part and printobserver's, when both are measured."""
+    if harness is None:
+        return None
+    return {"harness": harness, "printobserver": base - harness}
+
+
+def _check_parts(
+    check: Check, base: int | None, harness: int | None, image: int | None
+) -> CheckParts:
+    """One check's history-free input split by part, as far as the probes measured.
+
+    Its first call is the base, the image and the facts and framing beside it; each
+    later call re-reads that first call and adds what acting added: the call running
+    the command and the command's result.
+    """
+    figure = check["input"] if check["input"] is not None else 0
+    first = check["first_call_input"] if check["first_call_input"] is not None else figure
+    parts: CheckParts = {
+        "test": check["test"],
+        "scenario": check["scenario"],
+        "input": figure,
+        "calls": check["calls"],
+    }
+    if base is None:
+        return parts
+    split = _parts(base, harness)
+    if split is None:
+        parts["base"] = base
+    else:
+        parts["harness"] = split["harness"]
+        parts["skill_and_instruction"] = split["printobserver"]
+    if image is not None:
+        parts["image"] = image
+    parts["facts_and_framing"] = first - base - (image or 0)
+    if check["calls"] > 1:
+        parts["repeated"] = first * (check["calls"] - 1)
+        parts["action_and_result"] = figure - first * check["calls"]
+    return parts
+
+
+def _leaves(checks: list[Check], every: list[Check]) -> float | None:
+    """The median growth in conversation size one of `checks` leaves over the check before it."""
+    wanted = {id(check) for check in checks}
+    grown = [
+        check["size"] - previous["size"]
+        for previous, check in itertools.pairwise(every)
+        if id(check) in wanted
+        and previous["test"] == check["test"]
+        and not check["follows_compaction"]
+        and previous["size"] is not None
+        and check["size"] is not None
+    ]
+    return _median(grown) if grown else None
+
+
+def _class_input(
+    checks: list[Check],
+    every: list[Check] | None = None,
+    base: int | None = None,
+    harness: int | None = None,
+    image: int | None = None,
+) -> tuple[float, ClassInput] | None:
+    """One class's median history-free input and its detail, when any check has one.
+
+    Its split is the median check's — the lower middle one, ordered by figure.
+    """
     each: list[CheckInput] = [
         {
             "test": check["test"],
@@ -628,9 +853,16 @@ def _class_input(checks: list[Check]) -> tuple[float, ClassInput] | None:
     if not each:
         return None
     raw = [check["raw_input"] for check in checks if check["input"] is not None]
+    figured = sorted(
+        (check for check in checks if check["input"] is not None),
+        key=lambda check: check["input"] or 0,
+    )
+    middle = figured[(len(figured) - 1) // 2]
     return _median([entry["input"] for entry in each]), {
         "median_raw_input": _median(raw),
         "each": each,
+        "split": _check_parts(middle, base, harness, image),
+        "leaves": _leaves(checks, every if every is not None else checks),
     }
 
 
@@ -638,10 +870,18 @@ def figures_of(
     checks: list[Check],
     probe: ProbeRecord | None,
     image_probe: ImageProbeRecord | None = None,
+    bare_probe: BareProbeRecord | None = None,
 ) -> tuple[dict[str, float], FiguresDetail]:
     """The figures this run's budgets read, and what each was worked out from."""
     figures: dict[str, float] = {}
     detail: FiguresDetail = {}
+    base = call_input(probe["calls"][0]) if probe is not None else None
+    harness = call_input(bare_probe["calls"][0]) if bare_probe is not None else None
+    image = (
+        call_input(image_probe["calls"][0]) - base
+        if image_probe is not None and base is not None
+        else None
+    )
     quiet = [check for check in checks if check["check_class"] == "quiet"]
     acting = [check for check in checks if check["check_class"] == "acting"]
     if quiet:
@@ -675,10 +915,10 @@ def figures_of(
                 if check["looks"]
             ],
         }
-    quiet_input = _class_input(quiet)
+    quiet_input = _class_input(quiet, checks, base, harness, image)
     if quiet_input is not None:
         figures["quiet_check_input_tokens"], detail["quiet_check_input_tokens"] = quiet_input
-    acting_input = _class_input(acting)
+    acting_input = _class_input(acting, checks, base, harness, image)
     if acting_input is not None:
         figures["acting_check_input_tokens"], detail["acting_check_input_tokens"] = acting_input
     if probe is not None:
@@ -689,6 +929,7 @@ def figures_of(
             "cache_read_tokens": first.get("cache_read_tokens", 0),
             "input_tokens": first.get("input_tokens", 0),
             "skill_bytes": probe["skill_bytes"],
+            "split": _parts(int(call_input(first)), harness),
         }
     if probe is not None and image_probe is not None:
         text, imaged = call_input(probe["calls"][0]), call_input(image_probe["calls"][0])
@@ -714,10 +955,11 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
     tests = [
         _test_record(path)
         for path in sorted(directory.glob("*.json"))
-        if path.name not in {PROBE_RECORD, IMAGE_PROBE_RECORD}
+        if path.name not in {PROBE_RECORD, IMAGE_PROBE_RECORD, BARE_PROBE_RECORD}
     ]
     probe = _probe_record(directory)
     image_probe = _image_probe_record(directory)
+    bare_probe = _bare_probe_record(directory)
     named = [test["test"] for test in tests]
     if len(set(named)) != len(named):
         msg = f"{directory} holds one test twice: {sorted(named)}"
@@ -730,7 +972,7 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
             raise UnreadableRunError(msg)
     base = call_input(probe["calls"][0]) if probe is not None else None
     checks = checks_of(tests, base)
-    figures, figured = figures_of(checks, probe, image_probe)
+    figures, figured = figures_of(checks, probe, image_probe, bare_probe)
     configured = _configured(tests)
     compactions = [compaction for test in tests for compaction in test.get("compactions", [])]
     compacted, compacted_detail = compaction_figures(
@@ -738,6 +980,8 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
         base,
         compactions,
         configured["idle_compact_tokens"] if configured is not None else None,
+        call_input(bare_probe["calls"][0]) if bare_probe is not None else None,
+        [test["compaction_probe"] for test in tests if "compaction_probe" in test],
     )
     return {
         "figures": {"turns": len(points), **figures, **compacted},
@@ -753,6 +997,7 @@ def folded(directory: Path, commit_id: str, cases: Path = CASES) -> RunRecord:
             "tests": tests,
             "probe": probe,
             "image_probe": image_probe,
+            "bare_probe": bare_probe,
             "figures": {**figured, **compacted_detail},
         },
     }

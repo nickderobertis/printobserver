@@ -9,8 +9,6 @@
 
 use std::sync::Arc;
 
-use oneharness_core::domain::structured::{self, Schema};
-
 use printobserver_oneharness::EnvAssignment;
 use printobserver_supervisor_api::SupervisorPort;
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
@@ -252,17 +250,15 @@ fn a_session_moved_onto_claude_code_is_held_to_the_schema_in_its_new_session() {
     assert_eq!(after.session.session_name, format!("print-{print_id}-2"));
     assert_eq!(after.assessment.summary, "the print is fine");
 
-    let compiled = Schema::compile(&std::fs::read_to_string(&schema).expect("the schema reads"))
-        .expect("the schema compiles");
-    let instruction = structured::prompt_instruction(compiled.as_text());
     let requests = moved_watch.requests();
     let opened = requests
         .iter()
         .find(|request| request.session.as_deref() == Some(&*format!("print-{print_id}-2")))
         .expect("a run in the new session");
-    assert!(
-        opened.prompt[0].ends_with(&instruction),
-        "the new session's prompt is not held to the schema"
+    assert_eq!(
+        opened.schema.as_deref(),
+        Some(schema.as_path()),
+        "the new session's run is not held to the schema"
     );
 }
 

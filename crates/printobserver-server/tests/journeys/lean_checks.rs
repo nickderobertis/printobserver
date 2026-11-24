@@ -4,8 +4,10 @@
 //! install template: the `OctoPrint` adapter against the scripted `OctoPrint`
 //! serving a real slice, the durable store, a camera serving a 1920x1080 frame
 //! with a mark in each corner, and the real supervisor port and `OneHarness`
-//! engine with only the paid provider process replaced by this crate's
-//! responder over `OneHarness`'s published mock harness. What a check's turn
+//! engine with only the paid provider process replaced: by this crate's
+//! responder over `OneHarness`'s published mock harness where a turn acts, and
+//! by that published mock harness alone where a journey reads what a harness
+//! process received. What a check's turn
 //! was handed is read off both sides of the process boundary: the run request
 //! the port built, and the arguments and standard input the harness process
 //! received — the prompt and the image `OneHarness` attached to it.
@@ -330,6 +332,21 @@ impl Lean {
         actions: &Value,
         frame: Vec<u8>,
     ) -> Self {
+        Self::open_composed(installer, interval_s, frame, |config, root| {
+            scripted_agent(config, root, answers, actions)
+        })
+        .await
+    }
+
+    /// A server configured from `installer`'s template, checking every
+    /// `interval_s` seconds, its camera answering `frame`, and its agent the one
+    /// `agent` composes from its configuration and root.
+    async fn open_composed(
+        installer: &str,
+        interval_s: i64,
+        frame: Vec<u8>,
+        agent: impl FnOnce(&ServerConfig, &Path) -> (OneharnessSupervisor, Arc<Requests>),
+    ) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         let state = root.path().join("state");
         copy_tree(
@@ -346,7 +363,7 @@ impl Lean {
         let config = ServerConfig::load(&path)
             .unwrap_or_else(|error| panic!("{installer}'s configuration reads: {error}"));
 
-        let (agent, requests) = scripted_agent(&config, root.path(), answers, actions);
+        let (agent, requests) = agent(&config, root.path());
         let server = Server::start_with(
             config.clone(),
             Ports {
@@ -597,7 +614,7 @@ fn find_check_on<'runs>(runs: &'runs [Run], kind: &str) -> Option<&'runs Run> {
     runs.iter().find(|run| {
         handed(&run.seen)
             .0
-            .contains(&format!("\"kind\": \"{kind}\""))
+            .contains(&format!("\"kind\":\"{kind}\""))
     })
 }
 
@@ -1221,6 +1238,39 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
             "is given twice",
         ),
         (vec!["--config", missing, "--session", ""], "takes a value"),
+        (
+            vec!["--config", missing, "--no-system", "--no-system"],
+            "--no-system is given twice",
+        ),
+        (
+            vec![
+                "--config",
+                missing,
+                "--session",
+                "s",
+                "--prompt",
+                "p",
+                "--no-system",
+                "--image",
+                missing,
+            ],
+            "takes no --image",
+        ),
+        (
+            vec![
+                "--config",
+                missing,
+                "--compact-print",
+                "p",
+                "--session",
+                "s",
+            ],
+            "takes no --session, --prompt, --image or --no-system",
+        ),
+        (
+            vec!["--config", missing, "--compact-print", "not-a-print"],
+            "--compact-print not-a-print is no print",
+        ),
     ] {
         let done = probe(&arguments);
         assert_eq!(done.status.code(), Some(2), "{arguments:?}");
@@ -1228,10 +1278,20 @@ fn the_probe_refuses_what_it_cannot_run_naming_why() {
         let stderr = String::from_utf8_lossy(&done.stderr);
         assert!(stderr.contains(said), "{arguments:?}: {stderr}");
     }
-    let done = probe(&["--config", missing, "--session", "s", "--prompt", "p"]);
-    assert_eq!(done.status.code(), Some(1));
-    assert!(done.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&done.stderr).contains("absent.toml"));
+    for arguments in [
+        vec!["--config", missing, "--session", "s", "--prompt", "p"],
+        vec![
+            "--config",
+            missing,
+            "--compact-print",
+            "01a20510-3f62-7c81-afe6-af9b8e1a2d0d",
+        ],
+    ] {
+        let done = probe(&arguments);
+        assert_eq!(done.status.code(), Some(1), "{arguments:?}");
+        assert!(done.stdout.is_empty(), "{arguments:?}");
+        assert!(String::from_utf8_lossy(&done.stderr).contains("absent.toml"));
+    }
 
     // A usage file it cannot read stops it before it reads any configuration.
     let unread = root.path().join("no-usage.txt");
@@ -1441,4 +1501,250 @@ async fn a_stop_that_stopped_nothing_is_refused_once_then_written_down() {
         "a stop that paused was written down as stopping nothing"
     );
     paused.server.stop().await;
+}
+
+/// The agent composed from `config` as the server composes it, its harness
+/// process `OneHarness`'s published mock harness alone, answering `answers` in
+/// turn and appending what each of its processes received — its arguments, all
+/// of its standard input and every file an argument named — to `log`.
+fn mocked_agent(
+    config: &ServerConfig,
+    root: &Path,
+    answers: &[Value],
+    log: &Path,
+) -> (OneharnessSupervisor, Arc<Requests>) {
+    let mut composed = agent_config(config).expect("the agent is composed");
+    composed.harness_bin = Some(PathBuf::from(env!(
+        "CARGO_BIN_EXE_printobserver-server-mock-harness"
+    )));
+    let mut scripted = vec![
+        format!("MOCK_ATTEMPT_FILE={}", root.join("attempts").display()),
+        format!("MOCK_INVOCATION_LOG={}", log.display()),
+        format!(
+            "MOCK_STDOUT={}",
+            streamed(answers.last().expect("an answer"))
+        ),
+    ];
+    for (index, answer) in answers.iter().enumerate() {
+        scripted.push(format!("MOCK_STDOUT_{}={}", index + 1, streamed(answer)));
+    }
+    for assignment in scripted {
+        composed
+            .harness_env
+            .push(EnvAssignment::new(&assignment).expect("an assignment"));
+    }
+    let requests = Arc::new(Requests::default());
+    let agent = OneharnessSupervisor::observed(
+        composed,
+        TurnSeam {
+            requests: Some(Arc::clone(&requests) as Arc<dyn RunRequestObserver>),
+            ..TurnSeam::default()
+        },
+    )
+    .expect("the agent opens");
+    (agent, requests)
+}
+
+/// The prompt text of the first stream-json frame a harness process read, and
+/// how many images that frame carried.
+fn frame_text(stdin: &str) -> (String, usize) {
+    let frame: Value = stdin
+        .lines()
+        .next()
+        .and_then(|line| printobserver_types::serde_json::from_str(line).ok())
+        .unwrap_or(Value::Null);
+    let blocks = frame["message"]["content"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let text = blocks
+        .iter()
+        .filter_map(|block| block["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let images = blocks
+        .iter()
+        .filter(|block| block["type"] == "image")
+        .count();
+    (text, images)
+}
+
+/// Every check — the scheduled one and an alert's — replaces Claude Code's own
+/// system prompt with the skill and the tool framing, rather than appending to
+/// it, and is held to the assessment schema by `OneHarness`, which hands Claude
+/// Code the schema beside the check's image under stream-json. The prompt asks
+/// for no schema itself. Each check's first answer here is out of the schema:
+/// `OneHarness` asks again under the check's one run request, and the check
+/// records the conforming answer that follows. The port asks again for nothing.
+/// What each harness process received is read from the published mock
+/// harness's own record of it.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_check_replaces_the_harness_prompt_and_is_held_to_the_schema_by_oneharness() {
+    // Each check is asked twice: first out of the schema, then conforming, so
+    // every check's attempts are one pair of answers.
+    let out_of_schema = json!({ "summary": "no disposition" });
+    let answers: Vec<Value> = (0..200)
+        .flat_map(|_| {
+            [
+                out_of_schema.clone(),
+                answering("continue", "the frame is clean"),
+            ]
+        })
+        .collect();
+    let log = TempDir::new().expect("a log's own directory");
+    let invocations = log.path().join("invocations.jsonl");
+    // The next turn takes the newest event waiting and lists the older ones
+    // beside it, so an alert reaching a running turn with a scheduled
+    // observation behind it would be checked as that observation's situation
+    // rather than as an event of its own. Observations come an interval after
+    // the server starts and after each round, so posting the alert the moment
+    // the first check ends leaves it the next turn alone unless the test stalls
+    // for two intervals.
+    let lean = Lean::open_composed(INSTALLERS[0], 10, marked_frame(), |config, root| {
+        mocked_agent(config, root, &answers, &invocations)
+    })
+    .await;
+    let print_id = lean.active().await;
+    lean.turns_ended(&print_id, 1).await;
+    lean.alert().await;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
+    while !std::fs::read_to_string(&invocations)
+        .unwrap_or_default()
+        .contains("obico_failure_alert")
+        || lean.history(&print_id, "agent_assessment").await.len() < 2
+    {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the alert was never checked"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    // Each check recorded the conforming answer OneHarness asked again for.
+    for answered in lean.history(&print_id, "agent_assessment").await {
+        assert_eq!(
+            answered["payload"]["assessment"]["why"], "the frame is clean",
+            "{answered}"
+        );
+    }
+    let failures = lean.history(&print_id, "port_failure").await;
+    assert!(failures.is_empty(), "a check failed: {failures:?}");
+    lean.server.stop().await;
+
+    let requests = lean.requests.all();
+    let schema: Value = printobserver_types::serde_json::from_str(
+        &std::fs::read_to_string(requests[0].schema.as_ref().expect("a schema path"))
+            .expect("the schema reads"),
+    )
+    .expect("the schema is JSON");
+    let skill = printobserver_oneharness::skill_prose(
+        &std::fs::read_to_string(committed_skill()).expect("the skill reads"),
+    )
+    .expect("the skill's frontmatter closes")
+    .to_owned();
+    let system = format!("{skill}\n\n{}", printobserver_oneharness::TOOL_FRAMING);
+
+    let received: Vec<Value> = std::fs::read_to_string(&invocations)
+        .expect("the mock harness recorded its processes")
+        .lines()
+        .map(|line| printobserver_types::serde_json::from_str(line).expect("a record"))
+        .collect();
+    // The server stopped with the next check's request perhaps built and its
+    // process not yet started, or started and not yet asked again.
+    assert!(
+        (2 * requests.len() - 2..=2 * requests.len()).contains(&received.len()),
+        "{} run requests are not two harness processes each: the port asked again itself, \
+         or OneHarness did not ({} processes)",
+        requests.len(),
+        received.len()
+    );
+    let kinds: Vec<&str> = received
+        .iter()
+        .enumerate()
+        .filter_map(|(index, run)| received_as_oneharness_hands_it(index, run, &system, &schema))
+        .collect();
+    assert!(
+        kinds.contains(&"periodic_observation") && kinds.contains(&"obico_failure_alert"),
+        "the scheduled check and the alert's were not both among the runs: {kinds:?}"
+    );
+}
+
+/// Hold what harness process `index` received to what `OneHarness` hands
+/// Claude Code for a check: the replacing system-prompt flag carrying
+/// `system`, no appending one, `schema` on `--json-schema` under stream-json —
+/// and, for a check's own run, the committed prompt with no schema in it and the
+/// check's one image, or, for the attempt after it, `OneHarness`'s re-ask. A
+/// check's own run answers the kind of event it checked.
+fn received_as_oneharness_hands_it(
+    index: usize,
+    run: &Value,
+    system: &str,
+    schema: &Value,
+) -> Option<&'static str> {
+    let arguments: Vec<&str> = run["argv"]
+        .as_array()
+        .expect("the arguments")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    let after = |flag: &str| {
+        arguments
+            .windows(2)
+            .find(|pair| pair[0] == flag)
+            .map(|pair| pair[1])
+    };
+    assert!(
+        !arguments
+            .iter()
+            .any(|argument| argument.starts_with("--append-system-prompt")),
+        "harness process {index} was handed an appending flag: {arguments:?}"
+    );
+    let file = after("--system-prompt-file")
+        .unwrap_or_else(|| panic!("harness process {index} got no replacing flag: {arguments:?}"));
+    assert_eq!(
+        run["files"][file].as_str(),
+        Some(system),
+        "harness process {index}'s system prompt is not the skill and the tool framing"
+    );
+    let handed = after("--json-schema")
+        .unwrap_or_else(|| panic!("process {index} got no --json-schema: {arguments:?}"));
+    assert_eq!(
+        printobserver_types::serde_json::from_str::<Value>(handed)
+            .expect("the handed schema is JSON"),
+        *schema,
+        "harness process {index} was handed another schema"
+    );
+    assert_eq!(
+        after("--output-format"),
+        Some("stream-json"),
+        "harness process {index} ran outside stream-json: {arguments:?}"
+    );
+    let (text, images) = frame_text(run["stdin"].as_str().unwrap_or_default());
+    if index % 2 == 1 {
+        // OneHarness's own re-ask, naming what the answer lacked.
+        assert!(
+            text.contains("Your previous response did not conform to the required JSON Schema")
+                && text.contains("disposition"),
+            "process {index} was not OneHarness asking again for the schema:\n{text}"
+        );
+        return None;
+    }
+    {
+        // A check's own run: the committed prompt, asking for no schema,
+        // with the check's image.
+        assert!(
+            text.starts_with("# One supervision turn"),
+            "process {index} is no check's prompt:\n{text}"
+        );
+        assert!(
+            !text.contains("JSON Schema") && !text.contains("\"$schema\""),
+            "harness process {index}'s prompt asks for a schema:\n{text}"
+        );
+        assert_eq!(images, 1, "check run {index} carried {images} images");
+        // The event the check was handed comes first in its prompt.
+        let (_, after) = text.split_once("\"kind\":\"")?;
+        let (kind, _) = after.split_once('"')?;
+        ["periodic_observation", "obico_failure_alert"]
+            .into_iter()
+            .find(|known| *known == kind)
+    }
 }

@@ -1,18 +1,27 @@
 //! One probe of the shipped supervisor configuration, for the real-print suite.
 //!
 //! `printobserver-server-probe --config <path> --session <name> --prompt <text>
-//! [--usage <path>] [--image <path>]`
+//! [--usage <path>] [--image <path> | --no-system]`, or
+//! `printobserver-server-probe --config <path> --compact-print <print id>`
 //! loads a server configuration exactly as `printobserver server` does, composes
 //! its supervisor port exactly as the server does, and runs one prompt through
 //! it in a fresh session of its own with no print: the run request a turn is
 //! built as, less everything a check adds — or, with `--image`, less everything
 //! but the one check image a turn attaches, which is how what that image adds
-//! to a call is measured. `--usage` names a file of
+//! to a call is measured; with `--no-system`, less the system text the port
+//! sends as well, which is how what the harness itself sends is measured apart
+//! from it. `--usage` names a file of
 //! the program's usage lines, one per line, as `printobserver --help` prints
 //! them, which the composed port is handed as the server running under
 //! `printobserver server` is. It prints the engine's
 //! result for that run as JSON on standard output, its per-call usage among
 //! it, which is what the suite's base-context figure is read from.
+//!
+//! With `--compact-print`, it compacts that print's conversation once, in the
+//! state the configuration names, as the server's idle compaction does, and
+//! prints the compaction as the ledger records it: what the suite's per-print
+//! projection takes its compaction's input and what it left from, when no case's
+//! conversation reached the threshold.
 //!
 //! Exit 0 with the result printed; 2 for arguments it cannot read; 1 for a
 //! configuration it cannot load or a run the port could not take, the reason
@@ -21,35 +30,66 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use printobserver_oneharness::OneharnessSupervisor;
+use printobserver_oneharness::{CompactionEnd, OneharnessSupervisor};
 use printobserver_server::{ServerConfig, agent_config_with};
+use printobserver_types::PrintId;
 
 /// What the probe was asked to run.
 struct Asked {
     /// The server configuration.
     config: PathBuf,
-    /// The probe's session name.
-    session: String,
-    /// The prompt.
-    prompt: String,
     /// The file of the program's usage lines, when one was named.
     usage: Option<PathBuf>,
-    /// The image to attach, when one was named.
-    image: Option<PathBuf>,
+    kind: Kind,
 }
 
-/// The five options, each once and none empty, and `--usage` and `--image`
-/// alone optional.
+/// What a probe runs: one prompt in a session of its own, or one compaction of
+/// a print's conversation.
+enum Kind {
+    /// One prompt, in the session named.
+    Run {
+        /// Prefixed apart from every print's session, so a probe never continues one.
+        session: String,
+        prompt: String,
+        probe: Probe,
+    },
+    /// One compaction of this print's conversation, as its idle compaction runs.
+    Compaction(PrintId),
+}
+
+/// The run probes, each a run of the shipped configuration differing in one thing.
+enum Probe {
+    /// The configuration as shipped, with no image.
+    Text,
+    /// The configuration as shipped, this image attached as a check's is.
+    Image(PathBuf),
+    /// None of the port's system text, so only what the harness sends itself.
+    HarnessAlone,
+}
+
+/// `--config`, each option once and none empty, and either a run — `--session`
+/// and `--prompt`, `--usage` and `--image` optional, and the `--no-system`
+/// switch, which excludes `--image` — or `--compact-print`, which takes none of
+/// a run's.
 fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
-    let (mut config, mut session, mut prompt, mut usage, mut image) =
-        (None, None, None, None, None);
+    let (mut config, mut session, mut prompt, mut usage, mut image, mut compact) =
+        (None, None, None, None, None, None);
+    let mut no_system = false;
     while let Some(flag) = arguments.next() {
+        if flag == "--no-system" {
+            if no_system {
+                return Err(format!("{flag} is given twice"));
+            }
+            no_system = true;
+            continue;
+        }
         let slot = match flag.as_str() {
             "--config" => &mut config,
             "--session" => &mut session,
             "--prompt" => &mut prompt,
             "--usage" => &mut usage,
             "--image" => &mut image,
+            "--compact-print" => &mut compact,
             other => return Err(format!("`{other}` is no option of this probe")),
         };
         let value = arguments
@@ -60,12 +100,43 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
             return Err(format!("{flag} is given twice"));
         }
     }
+    let config = PathBuf::from(config.ok_or("--config is required")?);
+    let usage = usage.map(PathBuf::from);
+    if let Some(print_id) = compact {
+        if session.is_some() || prompt.is_some() || image.is_some() || no_system {
+            return Err(
+                "--compact-print compacts a print's own conversation, so it takes no \
+                 --session, --prompt, --image or --no-system"
+                    .to_owned(),
+            );
+        }
+        let print_id = print_id
+            .parse::<PrintId>()
+            .map_err(|error| format!("--compact-print {print_id} is no print: {error}"))?;
+        return Ok(Asked {
+            config,
+            usage,
+            kind: Kind::Compaction(print_id),
+        });
+    }
+    let probe = match (no_system, image) {
+        (true, Some(_)) => {
+            return Err(
+                "--no-system measures the harness alone, so it takes no --image".to_owned(),
+            );
+        }
+        (true, None) => Probe::HarnessAlone,
+        (false, Some(image)) => Probe::Image(PathBuf::from(image)),
+        (false, None) => Probe::Text,
+    };
     Ok(Asked {
-        config: PathBuf::from(config.ok_or("--config is required")?),
-        session: session.ok_or("--session is required")?,
-        prompt: prompt.ok_or("--prompt is required")?,
-        usage: usage.map(PathBuf::from),
-        image: image.map(PathBuf::from),
+        config,
+        usage,
+        kind: Kind::Run {
+            session: session.ok_or("--session is required")?,
+            prompt: prompt.ok_or("--prompt is required")?,
+            probe,
+        },
     })
 }
 
@@ -80,7 +151,10 @@ fn main() -> ExitCode {
     // An image named is held to a JPEG that decodes whole here — every check
     // image is one — so a probe never runs a paid turn on an image the engine
     // would refuse or the model could not read.
-    if let Some(image) = &asked.image
+    if let Kind::Run {
+        probe: Probe::Image(image),
+        ..
+    } = &asked.kind
         && let Err(error) = std::fs::read(image)
             .map_err(|error| error.to_string())
             .and_then(|bytes| {
@@ -119,11 +193,34 @@ fn main() -> ExitCode {
         .and_then(|composed| {
             OneharnessSupervisor::open(composed).map_err(|error| error.to_string())
         })
-        .and_then(|port| {
-            port.probe_with_image(&asked.session, &asked.prompt, asked.image.clone())
+        .and_then(|port| match &asked.kind {
+            Kind::Run {
+                session,
+                prompt,
+                probe,
+            } => match probe {
+                Probe::Text => port.probe(session, prompt),
+                Probe::Image(image) => port.probe_with_image(session, prompt, Some(image.clone())),
+                Probe::HarnessAlone => port.probe_without_system(session, prompt),
+            }
+            .map_err(|error| error.to_string())
+            .and_then(|result| serde_json::to_string(&result).map_err(|error| error.to_string())),
+            Kind::Compaction(print_id) => port
+                .compact_once(print_id)
                 .map_err(|error| error.to_string())
-        })
-        .and_then(|result| serde_json::to_string(&result).map_err(|error| error.to_string()));
+                .and_then(|compaction| {
+                    // A compaction that did not complete measured nothing.
+                    if compaction.ended == CompactionEnd::Completed {
+                        serde_json::to_string(&compaction).map_err(|error| error.to_string())
+                    } else {
+                        Err(format!(
+                            "the compaction of print {print_id} ended {:?}: {}",
+                            compaction.ended,
+                            compaction.error.as_deref().unwrap_or("no detail")
+                        ))
+                    }
+                }),
+        });
     match probed {
         Ok(answered) => {
             println!("{answered}");

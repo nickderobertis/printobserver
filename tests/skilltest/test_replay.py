@@ -20,9 +20,11 @@ import pytest
 from cases import is_start_case, read_case, read_start_case, replayed_case_names
 from outside import Outside
 from replay import (
+    BARE_PROBE_RECORD,
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     Replay,
+    bare_probe,
     calibration_fallbacks,
     harness_token,
     image_probe,
@@ -38,6 +40,18 @@ RUN_DIR = os.environ.get("SKILLTEST_RUN_DIR", "").strip()
 #: The log a replay's server writes under its install, and what a test's copy of it ends in.
 SERVER_LOG = "server.log"
 SERVER_LOG_SUFFIX = f".{SERVER_LOG}"
+
+
+def the_longest_print() -> str:
+    """The replayed print with the most supervision checks: the longest conversation.
+
+    Its replay has the port compact that conversation once after its last check when
+    no idle compaction completed, so every run measures what one reads and leaves.
+    """
+    return max(
+        (name for name in replayed_case_names() if not is_start_case(name)),
+        key=lambda name: sum(1 for moment in read_case(name).moments if not moment.is_outside),
+    )
 
 
 @pytest.mark.parametrize("name", replayed_case_names())
@@ -57,6 +71,7 @@ def test_the_agent_supervises_the_print(name: str) -> None:
         [program],
         gcode=refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name),
         outside=lambda replaying: Outside(replaying, [program]),
+        compaction_probe=name == the_longest_print(),
     )
     try:
         replayed = replay.run()
@@ -124,6 +139,21 @@ def test_the_supervisor_configuration_alone() -> None:
         directory = Path(RUN_DIR)
         directory.mkdir(parents=True, exist_ok=True)
         (directory / PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+
+def test_the_harness_alone() -> None:
+    """The probe turn with none of the port's system text reports what each call read."""
+    program = kept_harness()
+    if program is None:
+        pytest.fail("the shipped harness is not installed: no `claude` is on PATH")
+    if harness_token() is None:
+        pytest.fail("no credential for the harness: set CLAUDE_CODE_OAUTH_TOKEN, or sign in")
+    record = bare_probe(program)
+    expect.truth(record["calls"], describing="the harness-only probe to report its calls")
+    if RUN_DIR:
+        directory = Path(RUN_DIR)
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / BARE_PROBE_RECORD).write_text(json.dumps(record, indent=2), encoding="utf-8")
 
 
 def test_the_supervisor_configuration_with_one_check_image() -> None:

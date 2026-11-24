@@ -272,24 +272,27 @@ async fn a_turns_path_leads_with_the_serving_programs_own_directory() {
 }
 
 /// The assessment schema a turn's answer is held to is the checked-in one less
-/// its dialect, carried in the prompt the harness process was handed, and no
-/// schema rides its arguments.
+/// its dialect, title and type descriptions, handed to the harness process natively on its arguments, and
+/// the prompt it was handed carries no schema.
 #[tokio::test(flavor = "multi_thread")]
-async fn the_schema_a_turn_is_held_to_is_the_checked_in_one_without_its_dialect() {
+async fn the_schema_a_turn_is_held_to_is_the_checked_in_one_less_what_only_its_readers_read() {
     let root = TempDir::new().expect("a journey's own root");
     let (recorded, _, _) = one_composed_turn(root.path()).await;
     let arguments = arguments_of(&recorded);
-    assert!(
-        !arguments.iter().any(|argument| argument == "--json-schema"),
-        "the harness was handed a schema natively: {arguments:?}"
-    );
-
+    let inline = arguments
+        .windows(2)
+        .find(|pair| pair[0] == "--json-schema")
+        .map_or_else(
+            || panic!("the harness was handed no schema: {arguments:?}"),
+            |pair| pair[1].clone(),
+        );
     let prompt = prompt_of(&recorded);
-    let (_, inline) = prompt
-        .rsplit_once("JSON Schema: ")
-        .unwrap_or_else(|| panic!("the prompt carries no schema:\n{prompt}"));
+    assert!(
+        !prompt.contains("JSON Schema"),
+        "the prompt carries a schema:\n{prompt}"
+    );
     let handed: Value = printobserver_types::serde_json::from_str(inline.trim())
-        .expect("the schema the prompt carries is a document");
+        .expect("the schema the harness was handed is a document");
     let mut checked_in: Value = printobserver_types::serde_json::from_str(
         &std::fs::read_to_string(
             Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -311,9 +314,37 @@ async fn the_schema_a_turn_is_held_to_is_the_checked_in_one_without_its_dialect(
             .is_some(),
         "the checked-in schema no longer declares a dialect, so this proves nothing"
     );
+    // Its title and the descriptions of its types are this repository's
+    // readers' and go too; what each field and value means stays.
+    let checked_in = checked_in.as_object_mut().expect("an object");
+    for key in ["title", "description"] {
+        assert!(
+            checked_in.remove(key).is_some(),
+            "the checked-in schema has no {key}"
+        );
+    }
+    for declared in checked_in["$defs"]
+        .as_object_mut()
+        .expect("the checked-in schema declares types")
+        .values_mut()
+    {
+        assert!(
+            declared
+                .as_object_mut()
+                .and_then(|declared| declared.remove("description"))
+                .is_some(),
+            "a declared type carries no description, so this proves nothing"
+        );
+    }
     assert_eq!(
-        handed, checked_in,
-        "the schema a turn is held to differs from the checked-in one by more than its dialect"
+        handed["properties"]["summary"]["description"], "One line saying what is happening.",
+        "a field's own description was taken off"
+    );
+    assert_eq!(
+        handed,
+        Value::Object(checked_in.clone()),
+        "the schema a turn is held to differs from the checked-in one by more than its \
+         dialect, title and type descriptions"
     );
 }
 
@@ -342,8 +373,9 @@ async fn the_actor_a_turn_hands_the_agent_is_the_cores_agent_in_that_session() {
     assert_eq!(actor, Actor::Agent { session_name });
 }
 
-/// A skill installed on its own is the turn's system prompt, and the turn runs
-/// in the directory it was installed in.
+/// A skill installed on its own is the turn's system prompt, before the tool
+/// framing and in place of Claude Code's own, and the turn runs in the
+/// directory it was installed in.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it() {
     let root = TempDir::new().expect("a journey's own root");
@@ -362,9 +394,26 @@ async fn the_configured_skill_is_the_system_prompt_and_the_turn_runs_beside_it()
          so the skill's own links do not resolve from where the agent stands"
     );
     let installed_text = std::fs::read_to_string(&skill).expect("the installed skill reads");
+    assert!(
+        arguments_of(&recorded)
+            .iter()
+            .any(|argument| argument == "--system-prompt-file")
+            && !arguments_of(&recorded)
+                .iter()
+                .any(|argument| argument.starts_with("--append-system-prompt")),
+        "the skill did not replace Claude Code's own system prompt: {:?}",
+        arguments_of(&recorded)
+    );
     assert_eq!(
         recorded["system"].as_str(),
-        Some(prose_of(&installed_text).as_str()),
+        Some(
+            format!(
+                "{}\n\n{}",
+                prose_of(&installed_text),
+                printobserver_oneharness::TOOL_FRAMING
+            )
+            .as_str()
+        ),
         "the harness was not handed the installed skill's prose as its system prompt ({})",
         recorded["system_error"]
     );

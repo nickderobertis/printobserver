@@ -265,12 +265,15 @@ fn a_turn_without_rules_for_its_harness_stays_read_only() {
 }
 
 /// A turn handed an image is neither allowed nor told of a command withheld
-/// beside one — on its first run and on the run that asks its answer again —
-/// and a turn handed none keeps every command it is configured with.
+/// beside one — on its first run and on the run that refuses its unacted
+/// stop — and a turn handed none keeps every command it is configured with.
 #[test]
 fn a_turn_handed_an_image_is_neither_allowed_nor_told_a_withheld_command() {
     let schemas = schema_read_lock();
-    let invalid = printobserver_types::serde_json::json!({ "summary": "the part moved" });
+    let mut stopping: printobserver_types::serde_json::Value =
+        printobserver_types::serde_json::from_str(&assessment("the part moved", "high"))
+            .expect("JSON");
+    stopping["disposition"] = "stop".into();
     for handed_image in [true, false] {
         let fixture = Fixture::new(&format!("permissions-withheld-{handed_image}"));
         let watch = Arc::new(Watch::default());
@@ -281,7 +284,7 @@ fn a_turn_handed_an_image_is_neither_allowed_nor_told_a_withheld_command() {
             &generated_assessment_schema(),
             in_turn(
                 "SID-WITHHELD",
-                &[&invalid.to_string(), &assessment("the part moved", "high")],
+                &[&stopping.to_string(), &assessment("the part moved", "high")],
                 &fixture.path("attempts"),
             ),
         );
@@ -306,11 +309,9 @@ fn a_turn_handed_an_image_is_neither_allowed_nor_told_a_withheld_command() {
         });
         let supervisor = port(configured, &watch);
         let print_id = PrintId::new();
-        block_on(supervisor.run_turn(
-            turn(print_id, event(print_id, payload()), image),
-            crate::support::access(),
-        ))
-        .expect("the turn runs");
+        let mut request = turn(print_id, event(print_id, payload()), image);
+        request.situation.printer_state = Some(printobserver_types::PrinterState::Printing);
+        block_on(supervisor.run_turn(request, crate::support::access())).expect("the turn runs");
 
         let requests = watch.requests();
         assert_eq!(requests.len(), 2, "the answer was not asked for again");

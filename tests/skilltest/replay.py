@@ -60,6 +60,8 @@ CLIENT_DEADLINE_S = 120
 #: this many harness runs per entry has gone wrong.
 RUN_ALLOWANCE_PER_ENTRY = 3
 POLL_S = 0.5
+#: Longer than one idle compaction of a conversation at its threshold takes.
+COMPACTION_DEADLINE_S = 600
 
 #: Set in the server's environment, its looks wait in real time rather than
 #: passing their waits on the replay's clock.
@@ -716,6 +718,9 @@ class TestRecord(TypedDict):
     compactions: NotRequired[list[LedgerCompaction]]
     #: The compaction settings its server was configured with.
     configured: NotRequired[Compaction | None]
+    #: The one compaction the replay had the port make of its print's conversation,
+    #: when it was asked to and no idle compaction completed: a probe, not an idle one.
+    compaction_probe: NotRequired[LedgerCompaction]
 
 
 class Compaction(TypedDict):
@@ -792,7 +797,7 @@ class Ledger(TypedDict):
 COMPACTION_ENDS = set(get_args(CompactionEnd))
 
 
-def _is_compaction(entry: object) -> bool:
+def is_compaction(entry: object) -> bool:
     """Whether one ledger entry is an idle compaction as the port writes one."""
     return (
         isinstance(entry, dict)
@@ -1063,6 +1068,9 @@ class Replayed:
     outside: list[OutsidePoint] = field(default_factory=list)
     #: The outside supervisor's conversation, when the case hands it any line.
     outside_session: str | None = None
+    #: The compaction the replay had the port make once its turns were done, when
+    #: it was asked to probe one and no idle compaction completed.
+    compaction_probe: LedgerCompaction | None = None
 
     @property
     def passed(self) -> bool:
@@ -1147,6 +1155,11 @@ class Replayed:
             "alignment": self.alignment,
             "compactions": self.ledger["compactions"],
             "configured": self.configured,
+            **(
+                {"compaction_probe": self.compaction_probe}
+                if self.compaction_probe is not None
+                else {}
+            ),
         }
 
 
@@ -1157,7 +1170,7 @@ def _ledger_of(document: object, path: Path) -> Ledger:
     compactions = document.get("compactions", []) if isinstance(document, dict) else None
     if (
         not isinstance(compactions, list)
-        or not all(_is_compaction(entry) for entry in compactions)
+        or not all(is_compaction(entry) for entry in compactions)
         or not all(
             _is_timestamp(entry[name])
             for entry in turns or []
@@ -1376,6 +1389,7 @@ class Replay:
         *,
         real_waits: bool = False,
         outside: Callable[[Replay], OutsideSupervisor] | None = None,
+        compaction_probe: bool = False,
         refused_event_frames: frozenset[int] = frozenset(),
     ) -> None:
         """Lay the install out and start the doubles; nothing runs until [`Replay.run`].
@@ -1383,11 +1397,14 @@ class Replay:
         A look's wait passes on the replay's clock at once; `real_waits` has the
         server wait it out in real time instead, which is what a jumped replay is
         compared against. `outside` makes the outside supervisor a case's watch lines
-        are handed to, once the install is laid out. `refused_event_frames` names the
-        events whose scheduled check's own frame the camera refuses, so each of their
-        turns is handed no image.
+        are handed to, once the install is laid out. `compaction_probe` has the port
+        compact the print's conversation once after the last turn, when no idle
+        compaction completed, so the run measures one. `refused_event_frames` names
+        the events whose scheduled check's own frame the camera refuses, so each of
+        their turns is handed no image.
         """
         self.case = case
+        self.compaction_probe = compaction_probe
         self.make_outside = outside
         self.outside: OutsideSupervisor | None = None
         self.outside_points: list[OutsidePoint] = []
@@ -1940,6 +1957,7 @@ class Replay:
             if first.is_alert:
                 self._post_alert(first)
             self._wait_for_every_turn()
+            self._wait_out_a_due_compaction(configured_compaction(config)["idle_compact_tokens"])
             self._read_alignment()
             events = self._events()
             points = self._judged(events)
@@ -1953,6 +1971,12 @@ class Replay:
                             point.arrived_at, turn, previous_end, ledger["compactions"]
                         )
                     previous_end = turn.get("ran_at")
+            compacted = any(entry["ended"] == "completed" for entry in ledger["compactions"])
+            probed = (
+                self._probe_a_compaction(config)
+                if self.compaction_probe and not compacted
+                else None
+            )
             return Replayed(
                 case=self.case,
                 points=points,
@@ -1967,9 +1991,82 @@ class Replay:
                 configured=configured_compaction(config),
                 outside=list(self.outside_points),
                 outside_session=self.outside.session if self.outside is not None else None,
+                compaction_probe=probed,
             )
         finally:
             self.stop()
+
+    def _probe_a_compaction(self, config: Path) -> LedgerCompaction:
+        """Have the port compact the print's conversation once, as its idle compaction does.
+
+        Through `printobserver-server-probe` on the server's own configuration and
+        environment, once the server has stopped, so no scheduled check runs beside
+        it; the doubles stay up, because the harness reaches the replay through them.
+        """
+        self.stop_server()
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        done = run(
+            [
+                str(program("printobserver-server-probe")),
+                "--config",
+                str(config),
+                "--compact-print",
+                str(self._print_id()),
+            ],
+            cwd=self.state,
+            env=neutral_environment(self.bin, self.home),
+            timeout=COMPACTION_DEADLINE_S,
+        )
+        found = json.loads(done.stdout) if done.returncode == 0 else None
+        if not is_compaction(found) or cast("LedgerCompaction", found)["ended"] != "completed":
+            msg = (
+                f"the compaction probe answered {done.returncode}: "
+                f"{done.stdout[:PRINTS_SAID_CHARS]} {done.stderr}"
+            )
+            raise ReplayError(msg)
+        return cast("LedgerCompaction", found)
+
+    def _wait_out_a_due_compaction(self, threshold: int | None) -> None:
+        """Wait for the idle compaction the last turn's end started, when it started one.
+
+        The port compacts a session in the background once a turn leaves its
+        conversation at or above the idle threshold, and a print goes on idle
+        after its last check. A replay stopped the moment that check ended would
+        cut the compaction short and record none of it.
+        """
+        if threshold is None:
+            return
+        ledger = self._ledger()
+        if not ledger["turns"]:
+            return
+        last = ledger["turns"][-1]
+        calls = last.get("calls", [])
+        size = (
+            sum(
+                calls[-1].get(name, 0)
+                for name in ("input_tokens", "cache_read_tokens", "cache_write_tokens")
+            )
+            + calls[-1].get("output_tokens", 0)
+            if calls
+            else 0
+        )
+        if size < threshold or "ran_at" not in last:
+            return
+        # The compaction starts once the turn has ended, so it is the one begun at
+        # or after that end, whether it ended before this first read or ends later.
+        ended = _utc_instant(last["ran_at"])
+        deadline = time.monotonic() + COMPACTION_DEADLINE_S
+        while not any(
+            _utc_instant(compaction["started_at"]) >= ended
+            for compaction in self._ledger()["compactions"]
+        ):
+            if time.monotonic() > deadline:
+                msg = (
+                    f"the last turn left {size} tokens, at or above {threshold}, and no idle "
+                    f"compaction ended in {COMPACTION_DEADLINE_S} s: {self._log_tail()}"
+                )
+                raise ReplayError(msg)
+            time.sleep(POLL_S)
 
     def _ledger(self) -> Ledger:
         path = self.state / "supervisor-sessions" / f"{self._print_id()}.json"
@@ -2153,13 +2250,16 @@ def _call_usage(usage: object) -> CallUsage:
     return counted
 
 
-def _probe_turn(harness: str, root: Path, image: Path | None) -> list[CallUsage]:
+def _probe_turn(
+    harness: str, root: Path, image: Path | None, *, system: bool = True
+) -> list[CallUsage]:
     """One probe turn through the shipped configuration laid out under `root`.
 
     The installer's configuration, the installed skill and the shipped harness, as a
     replay lays them out, and the server's own composition of its supervisor port —
     handed the program's usage lines as `printobserver server` hands them — prompted
-    with [`PROBE_PROMPT`], with `image` attached as a check's image is, or none.
+    with [`PROBE_PROMPT`], with `image` attached as a check's image is, or none; with
+    `system` false, carrying none of the port's system text.
     """
     state, home, bin_directory = root / "state", root / "home", root / "bin"
     for directory in (state, home, bin_directory):
@@ -2196,6 +2296,7 @@ def _probe_turn(harness: str, root: Path, image: Path | None) -> list[CallUsage]
             "--usage",
             str(usage),
             *(["--image", str(image)] if image is not None else []),
+            *([] if system else ["--no-system"]),
         ],
         cwd=state,
         env=neutral_environment(bin_directory, home),
@@ -2228,6 +2329,35 @@ def probe(harness: str) -> ProbeRecord:
             "prompt": PROBE_PROMPT,
             "calls": _probe_turn(harness, root, None),
             "skill_bytes": skill_prose_bytes(),
+        }
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+#: The file a run's harness-only probe record is kept in, beside its tests' own.
+BARE_PROBE_RECORD = "bare-probe.json"
+
+
+class BareProbeRecord(TypedDict):
+    """The harness-only probe as `results/latest.json` carries it."""
+
+    prompt: str
+    #: Each model call it made, in order, as the engine reported them.
+    calls: list[CallUsage]
+
+
+def bare_probe(harness: str) -> BareProbeRecord:
+    """The text-only probe's turn with none of the port's system text: the harness alone.
+
+    What its first call reads is what the harness sends of its own beside a turn's
+    prompt — its framing and its tools' definitions; the text probe's first call less
+    this one's is what printobserver's system text adds to every call.
+    """
+    root = Path(tempfile.mkdtemp())
+    try:
+        return {
+            "prompt": PROBE_PROMPT,
+            "calls": _probe_turn(harness, root, None, system=False),
         }
     finally:
         shutil.rmtree(root, ignore_errors=True)

@@ -11,10 +11,10 @@ use oneharness_core::domain::structured::{self, Schema};
 
 use printobserver_oneharness::{
     ACTOR_SLOT, AgentCommand, COMMANDS_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT,
-    OneharnessSupervisor, SITUATION_SLOT, SLOTS, UnclosedFrontmatter, skill_prose,
+    OneharnessSupervisor, SITUATION_SLOT, SLOTS, TOOL_FRAMING, UnclosedFrontmatter, skill_prose,
 };
-use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
-use printobserver_types::{PrintId, PrinterState, serde_json};
+use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnRequest, TurnSituation};
+use printobserver_types::{EventId, PrintId, PrinterState, Range, RawBytes, Reported, serde_json};
 
 use crate::support::{
     Fixture, HARNESS, OTHER_HARNESS, Watch, always, assessment, block_on, config, event,
@@ -114,18 +114,19 @@ fn attached_once(watch: &Watch, image: Option<&std::path::PathBuf>) -> String {
         );
     }
     assert_eq!(
-        built.schema, None,
-        "a Claude Code run passed the schema natively"
+        built.schema,
+        Some(generated_assessment_schema()),
+        "a Claude Code run was not handed the schema"
     );
     let schema = Schema::compile(
         &fs::read_to_string(generated_assessment_schema()).expect("the schema is readable"),
     )
     .expect("the schema compiles");
-    let instruction = format!("\n\n{}", structured::prompt_instruction(schema.as_text()));
+    assert!(
+        !prompt.contains(&structured::prompt_instruction(schema.as_text())),
+        "the prompt carries the engine's schema instruction:\n{prompt}"
+    );
     prompt
-        .strip_suffix(&instruction)
-        .unwrap_or_else(|| panic!("the prompt does not end with the schema instruction:\n{prompt}"))
-        .to_owned()
 }
 
 /// Every prompt is the committed template with only its slots differing, the
@@ -168,24 +169,18 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         let print_id = PrintId::new();
         let mut request = turn(print_id, event(print_id, payload), image.clone());
         // The first turn knew everything, and came after an event never taken.
+        // It also arrived with the producer's own body, and its facts name an
+        // image by digest and carry one reading in range and one outside it.
         if index == 0 {
-            request.situation = knowing_everything(print_id);
-            request.facts = serde_json::json!({
-                "print": { "id": print_id, "state": "printing" },
-                "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
-            })
-            .as_object()
-            .cloned();
+            knowing_and_carrying_everything(&mut request, print_id);
         }
-        let expected_event =
-            serde_json::to_string_pretty(&request.event).expect("the event is writable");
-        let expected_situation =
-            serde_json::to_string_pretty(&request.situation).expect("the situation is writable");
-        let expected_facts =
-            serde_json::to_string_pretty(&request.facts).expect("the facts are writable");
+        let expected_event = event_as_shown(&request.event);
+        let expected_situation = as_shown(&request.situation);
+        let expected_facts = as_shown(&request.facts);
         let expected_command = request.context_command.clone();
         // A print's first turn runs in that print's first session.
         let expected_actor = actor_in(&format!("print-{print_id}"));
+        let event_id = request.event.id;
         block_on(supervisor.run_turn(request, crate::support::access())).expect("the turn runs");
 
         let prompt = attached_once(&watch, image.as_ref());
@@ -194,15 +189,18 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         });
         for (slot, filling) in order.iter().zip(&found) {
             match *slot {
-                EVENT_SLOT => assert_eq!(filling, &expected_event),
-                SITUATION_SLOT => assert_eq!(filling, &expected_situation),
-                FACTS_SLOT => assert_eq!(filling, &expected_facts),
+                EVENT_SLOT => assert_eq!(parsed(filling), expected_event),
+                SITUATION_SLOT => assert_eq!(parsed(filling), expected_situation),
+                FACTS_SLOT => assert_eq!(parsed(filling), expected_facts),
                 CONTEXT_COMMAND_SLOT => assert_eq!(filling, &expected_command),
                 ACTOR_SLOT => assert_eq!(filling, &expected_actor),
                 // This port is configured with no command a turn may run.
                 COMMANDS_SLOT => assert_eq!(filling, ""),
                 other => panic!("the template declares an unknown slot {other}"),
             }
+        }
+        if index == 0 {
+            shown_trimmed(&found, &order, print_id, event_id);
         }
         seen.push(found);
     }
@@ -407,7 +405,9 @@ fn committed_prose(committed: &str) -> &str {
     &rest[closing + "\n---\n".len()..]
 }
 
-/// The system prompt one port sends, built over the skill at `skill`.
+/// The skill's prose in the system text one port sends, built over the skill at
+/// `skill`: everything before the two line breaks and the tool framing that
+/// close it.
 fn system_prompt_over(
     schemas: &crate::support::SchemaHold<crate::support::Shared>,
     fixture: &Fixture,
@@ -429,13 +429,18 @@ fn system_prompt_over(
         crate::support::access(),
     ))
     .expect("the turn runs");
-    watch
+    let sent = watch
         .requests()
         .last()
         .expect("the port built a run request")
         .system
         .clone()
-        .expect("the request carries a system prompt")
+        .expect("the request carries a system prompt");
+    let skill = sent
+        .strip_suffix(TOOL_FRAMING)
+        .and_then(|rest| rest.strip_suffix("\n\n"))
+        .unwrap_or_else(|| panic!("the system text does not end with the tool framing:\n{sent}"));
+    skill.to_owned()
 }
 
 /// The system prompt is the prose of the skill file at the configured path,
@@ -624,4 +629,138 @@ fn a_turn_is_handed_the_usage_of_the_commands_it_may_run_and_no_other() {
         "printobserver context --print-id <value> [--since <value>]\n\
          printobserver set-fan-percent --print-id <value> --actor <json> --percent <value> --reason <value>"
     );
+}
+
+/// Hold the first turn's slots to what it was handed less what no turn reads:
+/// its facts without the image's digest and with the reading in range as its
+/// value, and its event without the producer's own body.
+fn shown_trimmed(found: &[String], order: &[&str], print_id: PrintId, event_id: EventId) {
+    let at = |wanted: &str| {
+        order
+            .iter()
+            .position(|slot| *slot == wanted)
+            .unwrap_or_else(|| panic!("the template declares no {wanted}"))
+    };
+    assert_eq!(
+        parsed(&found[at(FACTS_SLOT)]),
+        serde_json::json!({
+            "print": { "id": print_id, "state": "printing" },
+            "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
+            "latest_image": { "id": "frame-1" },
+            "bed": {
+                "actual_c": 60.0,
+                "target_c": Reported::new(300.0, Range::new(0.0, 120.0)),
+            },
+        }),
+        "the facts are shown without the digest, and the reading in range as its value"
+    );
+    let shown_event = parsed(&found[at(EVENT_SLOT)]);
+    assert_eq!(shown_event["id"], serde_json::json!(event_id));
+    for unshown in ["raw", "print_id", "received_at", "image"] {
+        assert!(
+            shown_event.get(unshown).is_none(),
+            "the event is shown with its `{unshown}`: {shown_event}"
+        );
+    }
+    for unshown in ["printer", "job"] {
+        assert!(
+            shown_event["payload"].get(unshown).is_none(),
+            "the event's payload is shown with its `{unshown}`, which the facts state: {shown_event}"
+        );
+    }
+    assert!(
+        shown_event["payload"].get("is_warning").is_some(),
+        "the event's own payload was lost: {shown_event}"
+    );
+}
+
+/// The triggering event as a turn's prompt shows it: [`as_shown`], less the
+/// print, its arrival and its image, and its payload's printer and job, which
+/// the facts carry.
+fn event_as_shown(event: &printobserver_types::EventRecord) -> serde_json::Value {
+    let mut shown = as_shown(event);
+    if let Some(fields) = shown.as_object_mut() {
+        for unshown in ["print_id", "received_at", "image"] {
+            fields.remove(unshown);
+        }
+        if let Some(payload) = fields.get_mut("payload").and_then(|p| p.as_object_mut()) {
+            payload.remove("printer");
+            payload.remove("job");
+        }
+    }
+    shown
+}
+
+/// The first turn of the template test: it knew everything, came after an
+/// event never taken, arrived with the producer's own body, an image and the
+/// printer and job the facts state too, and its facts name an image by digest
+/// and carry one reading in range and one outside it.
+fn knowing_and_carrying_everything(request: &mut TurnRequest, print_id: PrintId) {
+    request.situation = knowing_everything(print_id);
+    request.event.raw = Some(RawBytes::new(b"{\"as\":\"posted\"}".to_vec()));
+    // It names the image it arrived with, and the printer and job the
+    // facts state too.
+    request.event.image = Some(printobserver_types::ImageRef {
+        id: printobserver_types::ImageId::new(),
+        sha256: "cd34".to_owned(),
+    });
+    let payload = request
+        .event
+        .body
+        .payload
+        .as_object_mut()
+        .expect("an object");
+    payload.insert(
+        "printer".to_owned(),
+        serde_json::json!({ "bed": { "actual_c": 60.0 } }),
+    );
+    payload.insert("job".to_owned(), serde_json::json!({ "completion": 0.5 }));
+    request.facts = serde_json::json!({
+        "print": { "id": print_id, "state": "printing" },
+        "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
+        "latest_image": { "id": "frame-1", "sha256": "ab12" },
+        "bed": {
+            "actual_c": Reported::new(60.0, Range::new(0.0, 120.0)),
+            "target_c": Reported::new(300.0, Range::new(0.0, 120.0)),
+        },
+    })
+    .as_object()
+    .cloned();
+}
+
+/// One JSON slot of a prompt, which is compact: written on one line.
+fn parsed(filling: &str) -> serde_json::Value {
+    assert!(
+        !filling.contains('\n'),
+        "a JSON slot spans lines:\n{filling}"
+    );
+    serde_json::from_str(filling).expect("a JSON slot is JSON")
+}
+
+/// `value` as a turn's prompt shows it: no event's `raw` body, no image's
+/// content digest at any depth, and a reading inside its range as its value.
+fn as_shown<T: serde::Serialize>(value: &T) -> serde_json::Value {
+    fn trim(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                fields.remove("sha256");
+                for field in fields.values_mut() {
+                    trim(field);
+                    if let Ok(reading) = serde_json::from_value::<Reported<f64>>(field.clone())
+                        && !reading.out_of_range()
+                    {
+                        *field = serde_json::Value::from(reading.value());
+                    }
+                }
+            }
+            serde_json::Value::Array(items) => items.iter_mut().for_each(trim),
+            _ => {}
+        }
+    }
+    let mut shown = serde_json::to_value(value).expect("it is writable");
+    if let Some(fields) = shown.as_object_mut() {
+        fields.remove("raw");
+    }
+    trim(&mut shown);
+    shown
 }

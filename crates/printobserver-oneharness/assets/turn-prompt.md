@@ -1,8 +1,6 @@
 # One supervision turn
 
-A print you are watching has produced an event. The camera's image of it, when
-there is one, is attached to this message, and the situation's `image` line says
-which image it is and why.
+The camera's image, when there is one, is attached; the situation's `image` says which and why.
 
 ## The event
 
@@ -12,10 +10,7 @@ which image it is and why.
 
 ## The situation when this turn began
 
-Whether the printer is paused, whether the detector only warned, and whether
-the detector paused the print itself; `null` is a fact nobody knew. Events for
-this print that arrived while an earlier turn on it was running, and that it
-never saw, are listed here too, oldest first.
+`null` is a fact nobody knew; `arrived_while_busy` lists, oldest first, events an earlier turn never saw.
 
 ```json
 {{situation}}
@@ -23,9 +18,7 @@ never saw, are listed here too, oldest first.
 
 ## The print's facts
 
-The print's context as it stood when this turn began: its state, the plan at
-the current position, the bounds in force, the active interventions, the
-detector's status, and the events you have not been shown, newest first.
+As this turn began: state, plan here, bounds, interventions, detector, unseen events newest first.
 
 ```json
 {{facts}}
@@ -33,15 +26,11 @@ detector's status, and the events you have not been shown, newest first.
 
 ## The whole context
 
-The command that reads the print's whole context, events included:
-
 ```console
 {{context_command}}
 ```
 
 ## The commands you may run
-
-Each as the program prints its usage:
 
 ```console
 {{commands}}
@@ -49,8 +38,7 @@ Each as the program prints its usage:
 
 ## Your actor
 
-The value every command whose usage lists `--actor` takes in this turn, quoted
-as written:
+For every command whose usage lists `--actor`:
 
 ```console
 --actor '{{actor}}'
