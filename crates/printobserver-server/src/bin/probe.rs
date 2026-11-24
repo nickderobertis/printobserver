@@ -40,7 +40,6 @@ struct Asked {
     config: PathBuf,
     /// The file of the program's usage lines, when one was named.
     usage: Option<PathBuf>,
-    /// What it runs.
     kind: Kind,
 }
 
@@ -49,11 +48,9 @@ struct Asked {
 enum Kind {
     /// One prompt, in the session named.
     Run {
-        /// The probe's session name.
+        /// Prefixed apart from every print's session, so a probe never continues one.
         session: String,
-        /// The prompt.
         prompt: String,
-        /// Which of the run probes this is.
         probe: Probe,
     },
     /// One compaction of this print's conversation, as its idle compaction runs.

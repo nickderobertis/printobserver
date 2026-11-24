@@ -328,6 +328,10 @@ def _compacted(script: Script, directory: Path, arguments: list[str]) -> int:
     session continues under a fork of its own.
     """
     compaction = script.get("compaction", {})
+    fails = compaction.get("fail", False)
+    if not isinstance(fails, bool):
+        print(f"the script's compaction `fail` is not a boolean: {fails!r}", file=sys.stderr)
+        return 2
     started = time.time()
     time.sleep(compaction.get("stall_s", 0))
     resumed = arguments[arguments.index("--resume") + 1] if "--resume" in arguments else ""
@@ -361,7 +365,7 @@ def _compacted(script: Script, directory: Path, arguments: list[str]) -> int:
     ]
     with (directory / COMPACTIONS_FILE).open("a", encoding="utf-8") as log:
         log.write(json.dumps({"resumed": resumed, "started": started, "ended": time.time()}) + "\n")
-    if compaction.get("fail", False):
+    if fails:
         print("the scripted compaction failed", file=sys.stderr)
         return 1
     # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.

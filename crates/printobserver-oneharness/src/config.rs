@@ -352,7 +352,7 @@ impl fmt::Display for ModelName {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssessmentSchema(PathBuf);
 
-/// The key a JSON Schema declares its dialect under.
+/// Taken off every handed schema: [`AssessmentSchema::as_handed`] says why.
 const DIALECT_KEY: &str = "$schema";
 
 impl AssessmentSchema {
