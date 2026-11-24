@@ -161,7 +161,7 @@ fn no_run_of_the_tiers_walk_prints_the_credential() {
 fn an_operator_closes_a_record_left_open() {
     let world = World::open(world::STOOD_IN);
 
-    closing::an_operator_closes_a_record_left_open(&world);
+    tier::run(&world, tier::CLOSING);
 }
 
 /// A record left open with the machine idle is ended by the operator's close,

@@ -29,10 +29,9 @@
 //! more beside it, over a world with no print started at all: an operator's
 //! close of a record left open past the watch's default poll.
 //!
-//! An operator's close of a record left open is not run at any depth here:
-//! it is a test of its own over a world of its own
-//! ([`closing::an_operator_closes_a_record_left_open`]), because it ends the
-//! print every journey of the walk acts on.
+//! [`CLOSING`] is one more, an operator's close of a record left open, over a
+//! world of its own because it ends the print every journey of the walk acts
+//! on.
 
 use crate::machine::Reports;
 use crate::world::World;
@@ -58,6 +57,10 @@ pub const CREDENTIAL: &str = "credential";
 /// its own, with no print started first.
 pub const CLOSE_PAST_A_POLL: &str = "close-past-a-poll";
 
+/// An operator's close of a record left open, and every close refused while
+/// the record might still be live: a world of its own.
+pub const CLOSING: &str = "closing";
+
 /// The cross-product walk alone, which is what a real machine adds.
 pub const AGAINST_A_REAL_MACHINE: &str = "against-a-real-machine";
 
@@ -65,10 +68,14 @@ pub const AGAINST_A_REAL_MACHINE: &str = "against-a-real-machine";
 ///
 /// # Panics
 ///
-/// Panics when the depth is not one of the six this tier runs at.
+/// Panics when the depth is not one of the seven this tier runs at.
 pub fn run(world: &World, depth: &str) {
     if depth == CLOSE_PAST_A_POLL {
         closing::a_record_left_open_past_a_default_poll_is_ended_by_its_close(world);
+        return;
+    }
+    if depth == CLOSING {
+        closing::an_operator_closes_a_record_left_open(world);
         return;
     }
     let beside: Option<fn(&World)> = match depth {
