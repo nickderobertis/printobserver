@@ -170,8 +170,7 @@ pub fn measure_growth(inputs: &GrowthInputs<'_>) -> Result<Option<Growth>, Compo
         .zip(&carried)
         .filter(|(held, carried)| carried > held)
         .count();
-    #[expect(clippy::cast_precision_loss, reason = "at most MAX_SAMPLES samples")]
-    let carried_share = preferring as f64 / held.len() as f64;
+    let carried_share = ratio(preferring, held.len());
     Ok(Some(Growth {
         samples: held.len(),
         separation_px: median(&mut separations),
@@ -261,8 +260,7 @@ fn featureless(values: &[f64]) -> bool {
 
 /// A patch's mean and standard deviation.
 fn moments(values: &[f64]) -> (f64, f64) {
-    #[expect(clippy::cast_precision_loss, reason = "a patch holds 169 values")]
-    let count = values.len() as f64;
+    let count = ratio(values.len(), 1);
     let mean = values.iter().sum::<f64>() / count;
     let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / count;
     (mean, variance.sqrt())
@@ -284,6 +282,13 @@ fn correlation(a: &[f64], b: &[f64]) -> Option<f64> {
     }
     let scale = (square_a * square_b).sqrt();
     (scale > 1e-9).then(|| product / scale)
+}
+
+/// One count over another, each at most [`MAX_SAMPLES`] or a patch's 169
+/// values, so each is exact as a `u32` and as an `f64`.
+fn ratio(count: usize, of: usize) -> f64 {
+    let exact = |count: usize| f64::from(u32::try_from(count).unwrap_or(u32::MAX));
+    exact(count) / exact(of)
 }
 
 /// The median of values, which it sorts.
