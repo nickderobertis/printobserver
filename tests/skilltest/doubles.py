@@ -368,6 +368,9 @@ class Timeline:
     refused_event_frames: frozenset[int] = frozenset()
     #: Whether this event's fetches are being refused, until its turn starts.
     refusing: bool = False
+    #: Whether every fetch is refused, spending no frame: while the replay holds a print's
+    #: alignment undecided to write the verdict its case records (`no_first_layer_frame`).
+    withholding: bool = False
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -552,6 +555,8 @@ class Timeline:
         frame that fetch stood for, so the looks after it answer what they would have.
         """
         with self.lock:
+            if self.withholding:
+                return True
             if not self.refusing:
                 return False
             if self.owed_event_frame:

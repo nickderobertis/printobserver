@@ -1,5 +1,6 @@
 {
   "case": "petg-clip-detach-and-stringing-web",
+  "camera_calibration": "../cameras/core-one-2026-10-09.json",
   "verdict": "two real faults on one plate: a spool clip came loose and tangled (09:52), and later PETG strung a web across the tall bin's opening (from 13:54)",
   "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1280x720), textured sheet",
   "printed_on": "2026-10-09, 07:22 to 16:37",
@@ -41,7 +42,8 @@
       "kind": "operator_frame",
       "health": "healthy",
       "in_view": "first layers / solid infill",
-      "label": "First layers of every part are down cleanly (long tray base, flat bracket plate, small clips and knobs, magnet block base); the toolhead is out of view."
+      "label": "First layers of every part are down cleanly (long tray base, flat bracket plate, small clips and knobs, magnet block base); the toolhead is out of view.",
+      "not_at_print_height": "The X gantry crosses the camera with the toolhead at the far right, and every part sits about 200 px lower in the frame than in any later frame while the camera's landmarks are where they are in those: the bed is not where the recorded height puts it, so the first layer cannot be found where that height projects it."
     },
     {
       "file": "frame-082213-p01.9.jpg",

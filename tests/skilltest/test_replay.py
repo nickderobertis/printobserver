@@ -23,6 +23,7 @@ from replay import (
     IMAGE_PROBE_RECORD,
     PROBE_RECORD,
     Replay,
+    calibration_fallbacks,
     harness_token,
     image_probe,
     installer_compaction,
@@ -89,6 +90,14 @@ def test_the_agent_supervises_the_print(name: str) -> None:
             replayed.configured,
             installer_compaction(),
             describing="the replay's compaction settings, as the installer writes them",
+        )
+        # A check the latest code would show the three-panel image on a calibrated
+        # printer is judged on that image, not on a whole frame the replay fell back
+        # to for want of a calibration fitting the case's frames.
+        expect.equal(
+            calibration_fallbacks({point.moment.id: point.image_note for point in replayed.points}),
+            {},
+            describing=f"{name}'s checks shown no whole frame for want of a fitting calibration",
         )
         for turn in replayed.ledger["turns"]:
             for compaction in replayed.ledger["compactions"]:
