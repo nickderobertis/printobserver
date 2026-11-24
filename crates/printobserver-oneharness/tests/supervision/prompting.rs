@@ -13,7 +13,7 @@ use printobserver_oneharness::{
     ACTOR_SLOT, AgentCommand, COMMANDS_SLOT, CONTEXT_COMMAND_SLOT, EVENT_SLOT, FACTS_SLOT,
     OneharnessSupervisor, SITUATION_SLOT, SLOTS, TOOL_FRAMING, UnclosedFrontmatter, skill_prose,
 };
-use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnSituation};
+use printobserver_supervisor_api::{SupervisorError, SupervisorPort, TurnRequest, TurnSituation};
 use printobserver_types::{EventId, PrintId, PrinterState, Range, RawBytes, Reported, serde_json};
 
 use crate::support::{
@@ -172,21 +172,9 @@ fn every_prompt_is_the_committed_template_with_only_its_slots_filled() {
         // It also arrived with the producer's own body, and its facts name an
         // image by digest and carry one reading in range and one outside it.
         if index == 0 {
-            request.situation = knowing_everything(print_id);
-            request.event.raw = Some(RawBytes::new(b"{\"as\":\"posted\"}".to_vec()));
-            request.facts = serde_json::json!({
-                "print": { "id": print_id, "state": "printing" },
-                "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
-                "latest_image": { "id": "frame-1", "sha256": "ab12" },
-                "bed": {
-                    "actual_c": Reported::new(60.0, Range::new(0.0, 120.0)),
-                    "target_c": Reported::new(300.0, Range::new(0.0, 120.0)),
-                },
-            })
-            .as_object()
-            .cloned();
+            knowing_and_carrying_everything(&mut request, print_id);
         }
-        let expected_event = as_shown(&request.event);
+        let expected_event = event_as_shown(&request.event);
         let expected_situation = as_shown(&request.situation);
         let expected_facts = as_shown(&request.facts);
         let expected_command = request.context_command.clone();
@@ -668,10 +656,76 @@ fn shown_trimmed(found: &[String], order: &[&str], print_id: PrintId, event_id: 
     );
     let shown_event = parsed(&found[at(EVENT_SLOT)]);
     assert_eq!(shown_event["id"], serde_json::json!(event_id));
+    for unshown in ["raw", "print_id", "received_at", "image"] {
+        assert!(
+            shown_event.get(unshown).is_none(),
+            "the event is shown with its `{unshown}`: {shown_event}"
+        );
+    }
+    for unshown in ["printer", "job"] {
+        assert!(
+            shown_event["payload"].get(unshown).is_none(),
+            "the event's payload is shown with its `{unshown}`, which the facts state: {shown_event}"
+        );
+    }
     assert!(
-        shown_event.get("raw").is_none(),
-        "the event is shown with its producer's own body: {shown_event}"
+        shown_event["payload"].get("is_warning").is_some(),
+        "the event's own payload was lost: {shown_event}"
     );
+}
+
+/// The triggering event as a turn's prompt shows it: [`as_shown`], less the
+/// print, its arrival and its image, and its payload's printer and job, which
+/// the facts carry.
+fn event_as_shown(event: &printobserver_types::EventRecord) -> serde_json::Value {
+    let mut shown = as_shown(event);
+    if let Some(fields) = shown.as_object_mut() {
+        for unshown in ["print_id", "received_at", "image"] {
+            fields.remove(unshown);
+        }
+        if let Some(payload) = fields.get_mut("payload").and_then(|p| p.as_object_mut()) {
+            payload.remove("printer");
+            payload.remove("job");
+        }
+    }
+    shown
+}
+
+/// The first turn of the template test: it knew everything, came after an
+/// event never taken, arrived with the producer's own body, an image and the
+/// printer and job the facts state too, and its facts name an image by digest
+/// and carry one reading in range and one outside it.
+fn knowing_and_carrying_everything(request: &mut TurnRequest, print_id: PrintId) {
+    request.situation = knowing_everything(print_id);
+    request.event.raw = Some(RawBytes::new(b"{\"as\":\"posted\"}".to_vec()));
+    // It names the image it arrived with, and the printer and job the
+    // facts state too.
+    request.event.image = Some(printobserver_types::ImageRef {
+        id: printobserver_types::ImageId::new(),
+        sha256: "cd34".to_owned(),
+    });
+    let payload = request
+        .event
+        .body
+        .payload
+        .as_object_mut()
+        .expect("an object");
+    payload.insert(
+        "printer".to_owned(),
+        serde_json::json!({ "bed": { "actual_c": 60.0 } }),
+    );
+    payload.insert("job".to_owned(), serde_json::json!({ "completion": 0.5 }));
+    request.facts = serde_json::json!({
+        "print": { "id": print_id, "state": "printing" },
+        "slicer": { "layer": 12, "z_mm": 2.4, "types": ["Perimeter"] },
+        "latest_image": { "id": "frame-1", "sha256": "ab12" },
+        "bed": {
+            "actual_c": Reported::new(60.0, Range::new(0.0, 120.0)),
+            "target_c": Reported::new(300.0, Range::new(0.0, 120.0)),
+        },
+    })
+    .as_object()
+    .cloned();
 }
 
 /// One JSON slot of a prompt, which is compact: written on one line.

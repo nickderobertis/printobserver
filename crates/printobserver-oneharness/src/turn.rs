@@ -22,7 +22,7 @@ use printobserver_supervisor_api::{
 };
 use printobserver_supervisor_api::{SessionPhase, SupervisionSession};
 use printobserver_types::serde_json::Value;
-use printobserver_types::{PrintId, Reported, Timestamp};
+use printobserver_types::{EventRecord, PrintId, Reported, Timestamp};
 
 use crate::config::{AgentCommand, HarnessIdentity, SupervisorConfig, TurnSeam};
 use crate::ledger::{
@@ -139,12 +139,55 @@ const ENDING_MARGIN: std::time::Duration = std::time::Duration::from_secs(30);
 /// payload beside it; a reading inside its range is shown as its value alone,
 /// and one outside it keeps its flag.
 fn shown<T: serde::Serialize>(value: &T, what: &str) -> Result<String, SupervisorError> {
+    shown_without(value, what, &[], &[])
+}
+
+/// The fields of the triggering event a turn's prompt leaves out, beside
+/// [`shown`]'s: the print, which the facts name; when the event arrived, which
+/// the facts' recent events carry; and the image it names, which the turn is
+/// handed or the situation says it was not.
+const EVENT_FIELDS_UNSHOWN: [&str; 3] = ["print_id", "received_at", "image"];
+
+/// The fields of the triggering event's payload a turn's prompt leaves out:
+/// the printer's readings and the job's progress, which the facts state as
+/// the turn began.
+const EVENT_PAYLOAD_FIELDS_UNSHOWN: [&str; 2] = ["printer", "job"];
+
+/// The triggering event as a turn's prompt shows it: [`shown`], less what the
+/// facts beside it already say and what no judgement or command reads. Its
+/// `id`, which a failure is acknowledged by, its kind, source and the rest of
+/// its payload stay.
+fn shown_event(event: &EventRecord) -> Result<String, SupervisorError> {
+    shown_without(
+        event,
+        "the triggering event",
+        &EVENT_FIELDS_UNSHOWN,
+        &EVENT_PAYLOAD_FIELDS_UNSHOWN,
+    )
+}
+
+/// [`shown`], leaving out `fields` at the top and `payload_fields` inside its
+/// `payload`.
+fn shown_without<T: serde::Serialize>(
+    value: &T,
+    what: &str,
+    fields: &[&str],
+    payload_fields: &[&str],
+) -> Result<String, SupervisorError> {
     let unavailable = |error: serde_json::Error| SupervisorError::Unavailable {
         detail: format!("{what} cannot be written down: {error}"),
     };
     let mut value = serde_json::to_value(value).map_err(unavailable)?;
-    if let Value::Object(fields) = &mut value {
-        fields.remove("raw");
+    if let Value::Object(top) = &mut value {
+        top.remove("raw");
+        for field in fields {
+            top.remove(*field);
+        }
+        if let Some(Value::Object(payload)) = top.get_mut("payload") {
+            for field in payload_fields {
+                payload.remove(*field);
+            }
+        }
     }
     trimmed(&mut value);
     serde_json::to_string(&value).map_err(unavailable)
@@ -510,7 +553,7 @@ impl OneharnessSupervisor {
         request: &TurnRequest,
         session: &SessionName,
     ) -> Result<String, SupervisorError> {
-        let event = shown(&request.event, "the triggering event")?;
+        let event = shown_event(&request.event)?;
         let situation = shown(&request.situation, "the turn's situation")?;
         let facts = shown(&request.facts, "the print's facts")?;
         let actor = serde_json::json!({ "agent": { "session_name": session.as_str() } });

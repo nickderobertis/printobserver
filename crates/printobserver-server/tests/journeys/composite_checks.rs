@@ -442,8 +442,9 @@ async fn adopted(server: &Running) -> PrintId {
     }
 }
 
-/// The digest of the frame `event` names, read from the event as the print's
-/// history holds it: a prompt shows an event's image by its identifier alone.
+/// The digest of the frame `event` arrived with, read from the event as the
+/// print's history holds it: a prompt shows the event by its identifier and
+/// names no image, which the turn is handed or the situation says it was not.
 async fn stored_digest(server: &Running, print_id: PrintId, event: &Value) -> Value {
     let body: Value = presenting(OPERATOR)
         .get(format!(
@@ -462,9 +463,9 @@ async fn stored_digest(server: &Running, print_id: PrintId, event: &Value) -> Va
         .iter()
         .find(|stored| stored["id"] == event["id"])
         .unwrap_or_else(|| panic!("the shown event is not in the history: {event}"));
-    assert_eq!(
-        stored["image"]["id"], event["image"]["id"],
-        "the shown event names another image"
+    assert!(
+        event.get("image").is_none(),
+        "the prompt shows the event's image, which the turn is handed: {event}"
     );
     stored["image"]["sha256"].clone()
 }
@@ -789,7 +790,7 @@ async fn alert_with_detector_picture(
     camera: Scripted,
     picture_url: &str,
     (print_id, runs): (PrintId, usize),
-) -> (Handed, String) {
+) -> (Handed, String, Value) {
     let installer = journey.installer;
     let alerting = Camera {
         host: ScriptedHost::answering(vec![camera]).await,
@@ -802,9 +803,10 @@ async fn alert_with_detector_picture(
     alert(&started.server, picture_url).await;
     let seen = journey.runs(runs).await;
     let alerted = read_handed(&seen[runs - 1]);
+    let digest = stored_digest(&started.server, print_id, &alerted.event).await;
     started.server.stop().await;
     assert_eq!(alerted.event["kind"], "obico_failure_alert", "{installer}");
-    (alerted, url)
+    (alerted, url, digest)
 }
 
 /// A detector's alert on a print whose alignment passed is shown the
@@ -835,7 +837,7 @@ async fn an_alert_is_shown_the_cameras_own_frame_composed_whatever_the_detectors
         journey.at(walls);
         let detector = ScriptedHost::answering(vec![Scripted::frame(picture.clone())]).await;
 
-        let (alerted, url) = alert_with_detector_picture(
+        let (alerted, url, digest) = alert_with_detector_picture(
             &journey,
             &calibration,
             Scripted::frame(camera_frame.clone()),
@@ -844,7 +846,7 @@ async fn an_alert_is_shown_the_cameras_own_frame_composed_whatever_the_detectors
         )
         .await;
         assert_eq!(
-            alerted.event["image"]["sha256"],
+            digest,
             json!(sha256(&picture)),
             "{installer}: the alert's event keeps the detector's own picture"
         );
@@ -878,7 +880,7 @@ async fn an_alert_is_shown_the_cameras_own_frame_composed_whatever_the_detectors
             "{installer}: the alert's image line names the camera's frame and when it was captured"
         );
 
-        let (fallen_back, _) = alert_with_detector_picture(
+        let (fallen_back, _, _) = alert_with_detector_picture(
             &journey,
             &calibration,
             Scripted::refusing("404 Not Found", "no such stream"),
