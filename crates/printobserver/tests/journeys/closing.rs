@@ -288,6 +288,37 @@ fn a_running_job_holds_its_record_open(world: &World, running_one: &str) {
     still_open(world, &nameless);
 }
 
+/// A read that finds the machine cancelling ends every record open then, and
+/// once a second read has found the machine back on its job none that saw it
+/// cancelling can still end one; answers once that is so.
+///
+/// The supervisor reads a cancelling job as over, and it reads the machine of
+/// its own accord too — a periodic observation, the turn it claims, the printer
+/// watch — at moments no client chooses. So a record open while the machine
+/// says it is cancelling may be ended by such a read, and once was: a record
+/// this journey had opened before telling the machine to cancel was ended by an
+/// observation's turn and its close then refused. This drives that read itself
+/// rather than leaving it to chance, so the journey meets it on every run.
+///
+/// Every read that can end a record reads the machine and ends what it found
+/// over under one hold on the supervisor's resolution of prints, and the
+/// listing takes that same hold. So the second listing, which returns only once
+/// it has had that hold, returns only after every read that found the machine
+/// cancelling has ended all it was going to; every read after it finds the
+/// machine running its job, which ends no record of another file.
+fn a_read_of_the_machine_cancelling_ends_what_is_open(world: &World, running_one: &str) {
+    world.wants(Reports::Printing);
+    assert!(world.machine_is_cancelling(true));
+    let _ = running::read(world, &["prints"]);
+    world.machine_is_cancelling(false);
+    let read = status(world, running_one);
+    assert_eq!(
+        read["print"]["end_reason"], "the print reached Cancelling",
+        "a read of the machine cancelling left its job's record open: {read}"
+    );
+    let _ = running::read(world, &["prints"]);
+}
+
 /// A job of another file holds nothing open: the record closes, in the state
 /// the machine reported running that job.
 fn another_files_job_holds_nothing_open(world: &World) {
@@ -351,8 +382,12 @@ fn an_adjustment_holds_its_record_open(world: &World) {
     still_open(world, &adjusted);
 }
 
-/// The whole journey, over one world, whose print it takes somewhere else: it
-/// runs after every other journey of the tier.
+/// The whole journey, over a world of its own, whose print it takes somewhere
+/// else.
+///
+/// Every record a later close is about is opened only once
+/// [`a_read_of_the_machine_cancelling_ends_what_is_open`] has answered, so no
+/// read the supervisor makes of the machine cancelling can end it first.
 ///
 /// # Panics
 ///
@@ -363,18 +398,20 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
         return;
     }
     world.wants(Reports::Printing);
-    let left = world.open_record_with_a_session(Some(STALE_FILE), None);
     let running_one = world.open_record_with_a_session(Some(RUNNING_FILE), None);
-    let spools = holdings(world);
-
-    blank_reasons_are_refused(world, &left);
     a_running_job_holds_its_record_open(world, &running_one);
+    a_read_of_the_machine_cancelling_ends_what_is_open(world, &running_one);
+
+    let left = world.open_record_with_a_session(Some(STALE_FILE), None);
+    let spools = holdings(world);
+    blank_reasons_are_refused(world, &left);
     another_files_job_holds_nothing_open(world);
     a_closed_session_keeps_its_closure(world);
     an_adjustment_holds_its_record_open(world);
 
     // A machine that does not answer refuses no close: the record ends in the
-    // state it last knew.
+    // state it last knew. It is still open here, or what ended it is named.
+    still_open(world, &left);
     let last_known = status(world, &left)["print"]["state"].clone();
     assert!(world.machine_is_unreachable(true));
     let ran = close(world, &left, "interrupted", REASON);

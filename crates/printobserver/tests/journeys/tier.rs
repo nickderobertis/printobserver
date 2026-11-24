@@ -28,6 +28,11 @@
 //! runs beside [`WALK`] rather than after it. [`CLOSE_PAST_A_POLL`] is one
 //! more beside it, over a world with no print started at all: an operator's
 //! close of a record left open past the watch's default poll.
+//!
+//! An operator's close of a record left open is not run at any depth here:
+//! it is a test of its own over a world of its own
+//! ([`closing::an_operator_closes_a_record_left_open`]), because it ends the
+//! print every journey of the walk acts on.
 
 use crate::machine::Reports;
 use crate::world::World;
@@ -100,8 +105,6 @@ pub fn run(world: &World, depth: &str) {
     failures::every_command_owes_its_failures(world);
     failures::no_mutating_command_runs_without_a_reason(world);
     failures::an_action_the_machine_refuses_is_answered_as_that(world);
-    // Last, because it ends the print every journey above acts on.
-    closing::an_operator_closes_a_record_left_open(world);
-    // After the close, because it asks the machine to sit idle.
+    // Last, because it asks the machine to sit idle.
     failures::a_recovery_the_machine_refuses_is_answered_as_that(world);
 }
