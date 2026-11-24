@@ -1,12 +1,55 @@
 """Audit a real declared maintenance pass and refuse an empty workload."""
 
+import json
+import os
+import shutil
+import sys
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
 from measure import ROOT, age_created, audit, snapshot
 from repo_checks import expect
 from repo_checks.shell import run
+
+# A workspace whose package `x` enables only one feature of `shared`, so a
+# per-package build (the gate's) and a workspace build (the measurement's)
+# compile `shared` under two metadata hashes, as tokio or serde are in the real
+# tree.
+FIXTURE = {
+    "Cargo.toml": '[workspace]\nmembers = ["shared", "x", "y"]\nresolver = "2"\n',
+    "shared/Cargo.toml": (
+        '[package]\nname = "shared"\nversion = "0.1.0"\nedition = "2021"\n\n'
+        "[features]\na = []\nb = []\n"
+    ),
+    "shared/src/lib.rs": (
+        '#[cfg(feature = "a")]\npub fn a() -> u8 {\n    1\n}\n\n'
+        '#[cfg(feature = "b")]\npub fn b() -> u8 {\n    2\n}\n'
+    ),
+    "x/Cargo.toml": (
+        '[package]\nname = "x"\nversion = "0.1.0"\nedition = "2021"\n\n'
+        '[dependencies]\nshared = { path = "../shared", features = ["a"] }\n'
+    ),
+    "x/src/lib.rs": (
+        "pub fn x() -> u8 {\n    shared::a()\n}\n\n"
+        "#[cfg(test)]\nmod tests {\n    #[test]\n    fn x() {\n"
+        "        assert_eq!(super::x(), 1);\n    }\n}\n"
+    ),
+    "y/Cargo.toml": (
+        '[package]\nname = "y"\nversion = "0.1.0"\nedition = "2021"\n\n'
+        '[dependencies]\nshared = { path = "../shared", features = ["b"] }\n'
+    ),
+    "y/src/lib.rs": "pub fn y() -> u8 {\n    shared::b()\n}\n",
+}
+# Variables that would point the fixture's builds, profiles or toolchain somewhere else.
+FOREIGN = (
+    "CARGO_TARGET_DIR",
+    "CARGO_BUILD_TARGET_DIR",
+    "LLVM_PROFILE_FILE",
+    "ONEBUDGETSPEC_",
+    "RUSTUP_TOOLCHAIN",
+)
 
 
 def build(target: Path, metadata_hash: str) -> Path:
@@ -83,3 +126,85 @@ def test_aging_does_not_follow_symlinks(tmp_path: Path) -> None:
     before = outside.stat().st_mtime_ns
     age_created(target, {}, snapshot(target))
     expect.equal(outside.stat().st_mtime_ns, before)
+
+
+def fixture(root: Path, keep_within: str) -> dict[str, str]:
+    """Copy the real measurement and recipe beside a workspace the gate has built.
+
+    Returns:
+        The environment to run the measurement under.
+    """
+    for name, text in FIXTURE.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(text)
+    # The fixture sits outside this tree, so without its own copy of the pin it
+    # builds with the host's default toolchain: on a runner whose default Cargo
+    # writes the newer build-directory layout, which the pinned pruner does not
+    # read, every pass removes nothing and the measurement errors, whatever it
+    # is given. The real measurement builds with the pin, so the fixture does.
+    shutil.copy2(ROOT / "rust-toolchain.toml", root / "rust-toolchain.toml")
+    (root / "pool-maintenance").mkdir()
+    for name in ("measure.sh", "measure.py"):
+        shutil.copy2(ROOT / "pool-maintenance" / name, root / "pool-maintenance" / name)
+    recipe = run(["just", "--show", "pool-maintenance"], cwd=ROOT, check=True).stdout
+    declared = "--keep-within 2d"
+    expect.contains(recipe, declared, describing="the declared pool-maintenance recipe")
+    tools = (ROOT / "tools" / "repo-checks" / "src").as_posix()
+    (root / "justfile").write_text(
+        f"export PYTHONPATH := '{tools}'\n\n" + recipe.replace(declared, keep_within)
+    )
+    environment = {
+        name: value for name, value in os.environ.items() if not name.startswith(FOREIGN)
+    }
+    pinned = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+    expect.contains(
+        run(["cargo", "--version"], cwd=root, env=environment, check=True).stdout,
+        f"cargo {pinned} ",
+        describing="the fixture's Cargo, which must be the toolchain this tree pins",
+    )
+    expect.passing(run(["cargo", "generate-lockfile", "--offline"], cwd=root, env=environment))
+    # The gate's coverage output of one package, restored by the cache with
+    # mtimes older than the retention window, as on the release check.
+    expect.passing(
+        run(
+            ["cargo", "llvm-cov", "nextest", "-p", "x", "--locked", "--no-report"],
+            cwd=root,
+            env=environment,
+        ),
+        describing="the gate's per-package coverage build",
+    )
+    target = root / "target"
+    age_created(target, {}, snapshot(target))
+    return {**environment, "ONEBUDGETSPEC_RESULT": str(root / "result.json")}
+
+
+skip_windows = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the measurement is a bash script `just budgets-release-pr` runs on Linux alone",
+)
+
+
+@skip_windows
+def test_measures_beside_the_gates_kept_coverage_output(tmp_path: Path) -> None:
+    """Coverage output the gate keeps, superseded by the measurement's build, is backlog."""
+    root = tmp_path.resolve()
+    environment = fixture(root, "--keep-within 2d")
+    measured = run(["bash", "pool-maintenance/measure.sh"], cwd=root, env=environment)
+    expect.passing(measured, describing="the measurement")
+    report = json.loads((root / "result.json").read_text())
+    expect.truth(
+        isinstance(report["value"], float) and report["value"] >= 0,
+        describing=f"a figure in seconds, not {report['value']!r}",
+    )
+    expect.contains(report["detail"], "audited alternative entries removed")
+
+
+@skip_windows
+def test_maintenance_leaving_the_superseded_build_is_refused(tmp_path: Path) -> None:
+    """A pass that leaves the superseded alternative build behind produces no figure."""
+    root = tmp_path.resolve()
+    environment = fixture(root, "--keep-within 30d")
+    expect.failing(
+        run(["bash", "pool-maintenance/measure.sh"], cwd=root, env=environment),
+        naming="timed pass removed no alternative build entries",
+    )
