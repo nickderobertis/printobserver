@@ -18,6 +18,12 @@
 //! ([`Alignments::previous_check`]): written under
 //! `<state_dir>/previous-check/<print id>.json`, standing through a restart
 //! while the print is open, and swept with the verdict once it closes.
+//!
+//! And beside that, the frames of the print's recent checks with the height
+//! the plan had reached at each ([`Alignments::checked_frames`]): written
+//! under `<state_dir>/checked-frames/<print id>.json`, kept and swept the same
+//! way, so that a check can measure whether the parts grew since one far
+//! enough below it ([`Alignments::growth_reference`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -126,13 +132,30 @@ pub struct PreviousCheck {
     pub captured_at: printobserver_types::Timestamp,
 }
 
-/// The alignment verdicts of every print, what decides them, and the frame
-/// each print's last check was given.
+/// One check's frame and the height the plan had reached as it was captured.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+pub struct CheckedFrame {
+    /// The stored frame's path.
+    pub frame: PathBuf,
+    /// When it was captured.
+    pub captured_at: printobserver_types::Timestamp,
+    /// The print's height in its plan then, in millimetres.
+    pub print_z_mm: f64,
+}
+
+/// The most checked frames one print keeps; past it the oldest are dropped.
+const MAX_CHECKED_FRAMES: usize = 512;
+
+/// The alignment verdicts of every print, what decides them, the frame each
+/// print's last check was given, and its recent checks' frames and heights.
 pub struct Alignments {
     /// Where each print's verdict is kept.
     directory: PathBuf,
     /// Where each print's last check's frame is named.
     previous_directory: PathBuf,
+    /// Where each print's recent checks' frames and heights are kept.
+    checked_directory: PathBuf,
     /// The camera's calibration, when one is configured.
     calibration: Option<Arc<CameraCalibration>>,
     /// The prints, to tell which are open.
@@ -162,6 +185,13 @@ pub fn previous_check_dir(state_dir: &Path) -> PathBuf {
     state_dir.join("previous-check")
 }
 
+/// The directory each print's recent checks' frames and heights are kept in,
+/// under a state directory.
+#[must_use]
+pub fn checked_frames_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("checked-frames")
+}
+
 impl Alignments {
     /// The verdicts kept under one state directory.
     ///
@@ -177,9 +207,12 @@ impl Alignments {
         std::fs::create_dir_all(&directory)?;
         let previous_directory = previous_check_dir(state_dir);
         std::fs::create_dir_all(&previous_directory)?;
+        let checked_directory = checked_frames_dir(state_dir);
+        std::fs::create_dir_all(&checked_directory)?;
         Ok(Self {
             directory,
             previous_directory,
+            checked_directory,
             calibration,
             prints,
         })
@@ -227,6 +260,54 @@ impl Alignments {
         if let Err(error) = replace_file(&self.previous_path_of(print_id), &bytes) {
             eprintln!(
                 "printobserver: print {print_id}: the last check's frame could not be recorded, so the next check shows an older one or none: {error}"
+            );
+        }
+    }
+
+    /// Where one print's recent checks' frames and heights are kept.
+    fn checked_path_of(&self, print_id: PrintId) -> PathBuf {
+        self.checked_directory.join(format!("{print_id}.json"))
+    }
+
+    /// One print's recent checks' frames and heights, oldest first; none
+    /// before its first check with a height, or when the record cannot be
+    /// read back.
+    #[must_use]
+    pub fn checked_frames(&self, print_id: PrintId) -> Vec<CheckedFrame> {
+        std::fs::read(self.checked_path_of(print_id))
+            .ok()
+            .and_then(|bytes| printobserver_types::serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    }
+
+    /// The frame a check at `print_z_mm` measures growth from: the newest
+    /// checked frame of the print at least `rise_mm` below it in the plan.
+    #[must_use]
+    pub fn growth_reference(
+        &self,
+        print_id: PrintId,
+        print_z_mm: f64,
+        rise_mm: f64,
+    ) -> Option<CheckedFrame> {
+        reference_in(&self.checked_frames(print_id), print_z_mm, rise_mm).cloned()
+    }
+
+    /// Keep one check's frame and height among the print's, keeping only what
+    /// a later check at `rise_mm` above some kept height can still measure
+    /// from: the newest frame at least that far below this one and every
+    /// frame after it. A height below the last kept one is a plan that went
+    /// back down, as a print of one object after another does, and starts the
+    /// record again. A record the filesystem refuses is said on the log and
+    /// leaves the one before standing, as [`record_check`](Self::record_check)
+    /// does.
+    pub fn record_checked_frame(&self, print_id: PrintId, checked: CheckedFrame, rise_mm: f64) {
+        let kept = kept_with(self.checked_frames(print_id), checked, rise_mm);
+        let Ok(bytes) = printobserver_types::serde_json::to_vec(&kept) else {
+            return;
+        };
+        if let Err(error) = replace_file(&self.checked_path_of(print_id), &bytes) {
+            eprintln!(
+                "printobserver: print {print_id}: a check's frame and height could not be recorded, so a later check measures growth from an older one or none: {error}"
             );
         }
     }
@@ -329,8 +410,8 @@ impl Alignments {
         Some(verdict)
     }
 
-    /// Delete the verdict and the last check's record of every print that is
-    /// not open.
+    /// Delete the verdict, the last check's record and the checked frames of
+    /// every print that is not open.
     ///
     /// An open print's record still being written — the `.json.part` beside it
     /// that [`replace_file`] renames over it — is its own, and kept: the watch
@@ -357,7 +438,11 @@ impl Alignments {
                 ]
             })
             .collect();
-        for directory in [&self.directory, &self.previous_directory] {
+        for directory in [
+            &self.directory,
+            &self.previous_directory,
+            &self.checked_directory,
+        ] {
             let Ok(entries) = std::fs::read_dir(directory) else {
                 continue;
             };
@@ -369,6 +454,42 @@ impl Alignments {
             }
         }
     }
+}
+
+/// The newest of a print's checked frames, oldest first, at least `rise_mm`
+/// below `print_z_mm` in the plan.
+fn reference_in(kept: &[CheckedFrame], print_z_mm: f64, rise_mm: f64) -> Option<&CheckedFrame> {
+    kept.iter()
+        .rev()
+        .find(|checked| checked.print_z_mm <= print_z_mm - rise_mm)
+}
+
+/// A print's checked frames once `checked` is kept among them: the newest
+/// earlier frame at least `rise_mm` below it and every frame after that, then
+/// it, at most [`MAX_CHECKED_FRAMES`] of them, the oldest dropped first; or it
+/// alone when it is below the last kept, a plan gone back down.
+fn kept_with(
+    mut kept: Vec<CheckedFrame>,
+    checked: CheckedFrame,
+    rise_mm: f64,
+) -> Vec<CheckedFrame> {
+    if kept
+        .last()
+        .is_some_and(|last| checked.print_z_mm < last.print_z_mm)
+    {
+        kept.clear();
+    }
+    if let Some(reference) = kept
+        .iter()
+        .rposition(|earlier| earlier.print_z_mm <= checked.print_z_mm - rise_mm)
+    {
+        kept.drain(..reference);
+    }
+    kept.push(checked);
+    if kept.len() > MAX_CHECKED_FRAMES {
+        kept.drain(..kept.len() - MAX_CHECKED_FRAMES);
+    }
+    kept
 }
 
 /// How many times one file's replacement is attempted while the filesystem
@@ -468,7 +589,7 @@ fn said(verdict: &PrintAlignment) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::attempt_while_refused;
+    use super::{CheckedFrame, MAX_CHECKED_FRAMES, attempt_while_refused, kept_with, reference_in};
     use std::cell::Cell;
     use std::io::{Error, ErrorKind};
     use std::time::Duration;
@@ -547,5 +668,62 @@ mod tests {
         assert!(super::refused_for_a_moment(&Error::from_raw_os_error(5)));
         assert!(super::refused_for_a_moment(&Error::from_raw_os_error(32)));
         assert!(!super::refused_for_a_moment(&Error::from_raw_os_error(2)));
+    }
+
+    /// A checked frame at `z` mm, captured `second` seconds into a print.
+    fn at(second: i64, z: f64) -> CheckedFrame {
+        CheckedFrame {
+            frame: format!("frame-{second}.jpg").into(),
+            captured_at: printobserver_types::Timestamp::from_unix_seconds(1_791_489_600 + second)
+                .expect("a time"),
+            print_z_mm: z,
+        }
+    }
+
+    /// The heights of checked frames, in their order.
+    fn heights(kept: &[CheckedFrame]) -> Vec<f64> {
+        kept.iter().map(|checked| checked.print_z_mm).collect()
+    }
+
+    #[test]
+    fn a_check_measures_from_the_newest_frame_far_enough_below_it() {
+        let kept = [at(0, 0.2), at(60, 0.8), at(120, 2.0), at(180, 2.6)];
+        assert_eq!(
+            reference_in(&kept, 5.8, 3.0).map(|checked| checked.print_z_mm),
+            Some(2.6)
+        );
+        assert_eq!(
+            reference_in(&kept, 3.5, 3.0).map(|checked| checked.print_z_mm),
+            Some(0.2)
+        );
+        assert_eq!(reference_in(&kept, 3.1, 3.0), None, "none is 3 mm below");
+    }
+
+    #[test]
+    fn only_what_a_later_check_can_measure_from_is_kept() {
+        let mut kept = Vec::new();
+        for (second, z) in [(0, 0.2), (60, 0.8), (120, 2.0), (180, 3.4), (240, 4.0)] {
+            kept = kept_with(kept, at(second, z), 3.0);
+        }
+        assert_eq!(
+            heights(&kept),
+            [0.8, 2.0, 3.4, 4.0],
+            "0.2 is below 0.8, which is itself 3 mm below 4.0, so no later check needs it"
+        );
+        assert_eq!(
+            heights(&kept_with(kept, at(300, 1.0), 3.0)),
+            [1.0],
+            "a plan gone back down starts the record again"
+        );
+    }
+
+    #[test]
+    fn the_oldest_checked_frames_go_past_the_most_kept() {
+        let mut kept = Vec::new();
+        for second in 0..=i64::try_from(MAX_CHECKED_FRAMES).expect("a count") {
+            kept = kept_with(kept, at(second, 5.0), 3.0);
+        }
+        assert_eq!(kept.len(), MAX_CHECKED_FRAMES);
+        assert_eq!(kept[0].captured_at, at(1, 5.0).captured_at);
     }
 }

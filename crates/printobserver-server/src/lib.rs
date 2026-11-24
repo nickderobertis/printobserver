@@ -51,7 +51,7 @@ pub mod turns;
 pub mod watch;
 pub mod wire;
 
-pub use alignment::{AlignmentFailure, Alignments, PreviousCheck, PrintAlignment};
+pub use alignment::{AlignmentFailure, Alignments, CheckedFrame, PreviousCheck, PrintAlignment};
 pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, SPOOL_RECENT_EVENTS, router};
 pub use check_images::{
     CHECK_IMAGES_DIRECTORY, COMPOSITE_NOTE, PanelImages, PlanAt, WHOLE_FRAME_NOTE,

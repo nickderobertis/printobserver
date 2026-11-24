@@ -12,5 +12,6 @@
 mod alignment;
 mod composite;
 mod drift;
+mod growth;
 mod placement;
 mod support;

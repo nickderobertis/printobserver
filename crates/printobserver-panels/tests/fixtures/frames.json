@@ -225,6 +225,24 @@
    "z_mm": null,
    "progress_pct": 41.0,
    "file_position_bytes": 184716
+  },
+  {
+   "case": "petg-spool-jam-air-print",
+   "file": "frame-144430-p01.4.jpg",
+   "source": "tests/real-prints/petg-spool-jam-air-print/frame-144430-p01.4.jpg",
+   "captured_at": "2026-10-08 14:44:30",
+   "z_mm": 0.8,
+   "progress_pct": 1.4,
+   "file_position_bytes": 519231
+  },
+  {
+   "case": "petg-spool-jam-air-print",
+   "file": "frame-162654-p09.8.jpg",
+   "source": "tests/real-prints/petg-spool-jam-air-print/frame-162654-p09.8.jpg",
+   "captured_at": "2026-10-08 16:26:54",
+   "z_mm": 5.8,
+   "progress_pct": 9.8,
+   "file_position_bytes": 3634575
   }
  ]
 }

@@ -6,7 +6,8 @@
 //! that the camera has not moved since ([`drift`]), the per-print check that
 //! the projection lands on the printed first layer ([`alignment`]), and the
 //! check image's three panels, their colours and their drawing
-//! ([`compose`]), and the whole camera frame scaled to a check's bound
+//! ([`compose`]), the measurement of whether the parts grew since an earlier
+//! frame ([`growth`]), and the whole camera frame scaled to a check's bound
 //! ([`whole_frame`]).
 //!
 //! May depend on: `printobserver-types`; `printobserver-vision-api`, whose
@@ -23,6 +24,7 @@ pub mod compose;
 pub mod drift;
 pub mod error;
 mod geometry;
+pub mod growth;
 mod text;
 pub mod whole_frame;
 
@@ -32,4 +34,5 @@ pub use calibration::{
 };
 pub use compose::{CheckImage, CheckImageInputs, compose_check_image, is_drawn};
 pub use error::{ComposeError, FrameField};
+pub use growth::{Growth, GrowthInputs, measure_growth};
 pub use whole_frame::{WHOLE_FRAME_HEIGHT, WHOLE_FRAME_WIDTH, WholeFrame, whole_frame};
