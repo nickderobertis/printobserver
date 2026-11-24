@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -41,8 +42,14 @@ FIXTURE = {
     ),
     "y/src/lib.rs": "pub fn y() -> u8 {\n    shared::b()\n}\n",
 }
-# Variables that would point the fixture's builds or profiles somewhere else.
-FOREIGN = ("CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR", "LLVM_PROFILE_FILE", "ONEBUDGETSPEC_")
+# Variables that would point the fixture's builds, profiles or toolchain somewhere else.
+FOREIGN = (
+    "CARGO_TARGET_DIR",
+    "CARGO_BUILD_TARGET_DIR",
+    "LLVM_PROFILE_FILE",
+    "ONEBUDGETSPEC_",
+    "RUSTUP_TOOLCHAIN",
+)
 
 
 def build(target: Path, metadata_hash: str) -> Path:
@@ -130,6 +137,12 @@ def fixture(root: Path, keep_within: str) -> dict[str, str]:
     for name, text in FIXTURE.items():
         (root / name).parent.mkdir(parents=True, exist_ok=True)
         (root / name).write_text(text)
+    # The fixture sits outside this tree, so without its own copy of the pin it
+    # builds with the host's default toolchain: on a runner whose default Cargo
+    # writes the newer build-directory layout, which the pinned pruner does not
+    # read, every pass removes nothing and the measurement errors, whatever it
+    # is given. The real measurement builds with the pin, so the fixture does.
+    shutil.copy2(ROOT / "rust-toolchain.toml", root / "rust-toolchain.toml")
     (root / "pool-maintenance").mkdir()
     for name in ("measure.sh", "measure.py"):
         shutil.copy2(ROOT / "pool-maintenance" / name, root / "pool-maintenance" / name)
@@ -143,6 +156,12 @@ def fixture(root: Path, keep_within: str) -> dict[str, str]:
     environment = {
         name: value for name, value in os.environ.items() if not name.startswith(FOREIGN)
     }
+    pinned = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+    expect.contains(
+        run(["cargo", "--version"], cwd=root, env=environment, check=True).stdout,
+        f"cargo {pinned} ",
+        describing="the fixture's Cargo, which must be the toolchain this tree pins",
+    )
     expect.passing(run(["cargo", "generate-lockfile", "--offline"], cwd=root, env=environment))
     # The gate's coverage output of one package, restored by the cache with
     # mtimes older than the retention window, as on the release check.
