@@ -30,6 +30,7 @@ use printobserver_octoprint::OctoPrintPrinter;
 use printobserver_octoprint::standin::{JobScript, ScriptedOctoPrint};
 use printobserver_panels::{BedPose, CameraCalibration, CheckImageInputs, compose_check_image};
 use printobserver_printer_api::GcodeSink as _;
+use printobserver_server::check_images::not_grown_note;
 use printobserver_server::{PrintAlignment, Running, Server, ServerConfig};
 use printobserver_store_sqlite::SqliteStore;
 use printobserver_types::serde_json::{Value, json};
@@ -64,6 +65,16 @@ const FRAMES: [&str; 3] = [
     "agent-028-obs-125100-p39.7.jpg",
 ];
 
+/// The recorded air print: extrusion stopped near Z 2 and the printer went on
+/// climbing, printing nothing.
+const AIR_PRINT: &str = "petg-spool-jam-air-print";
+
+/// Its parts growing at Z 0.8, which its alignment is decided on too.
+const AIR_GROWING: &str = "frame-144430-p01.4.jpg";
+
+/// Its parts at Z 5.8, as they were at Z 2.
+const AIR_STOPPED: &str = "frame-162654-p09.8.jpg";
+
 /// The repository's root.
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -94,6 +105,15 @@ fn slice(name: &str) -> Vec<u8> {
 fn committed() -> Value {
     printobserver_types::serde_json::from_slice(
         &std::fs::read(root().join("tests/real-prints/cameras/core-one-2026-09-27.json"))
+            .expect("the committed calibration"),
+    )
+    .expect("JSON")
+}
+
+/// The committed calibration of the air print's 1280x720 stream.
+fn committed_1280x720() -> Value {
+    printobserver_types::serde_json::from_slice(
+        &std::fs::read(root().join("tests/real-prints/cameras/core-one-2026-09-27-1280x720.json"))
             .expect("the committed calibration"),
     )
     .expect("JSON")
@@ -1405,6 +1425,84 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
     })
     .await;
     restarted.server.stop().await;
+}
+
+/// A check whose frame shows the parts this layer lays where an earlier
+/// check's frame at least 3 mm lower in the plan had them, carried down with
+/// the bed, is told they have not risen as planned, naming that check's frame;
+/// the check that frame was taken at, with no frame that far below it, is told
+/// nothing of growth; and the frames and heights checks are measured from go
+/// with the print.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_check_over_parts_that_stopped_growing_is_told_so() {
+    let bytes = slice("air-print-plate-three-layers.gcode");
+    let calibration = committed_1280x720();
+    let installer = INSTALLERS[0];
+    let spool = TempDir::new().expect("a spool directory");
+    let index = index_of(&bytes, &spool.path().join("index.gcode"));
+    let growing = position_at(&index, bytes.len(), 0.8);
+    let stopped = position_at(&index, bytes.len(), 5.8);
+    let journey = Journey::new(installer, &bytes, growing);
+    let (print_id, verdict) = aligned(
+        &journey,
+        &calibration,
+        frame(AIR_PRINT, AIR_GROWING),
+        growing,
+    )
+    .await;
+    assert!(
+        matches!(verdict, PrintAlignment::Passed { .. }),
+        "the air print's first layers pass: {verdict:?}"
+    );
+    let camera = Camera {
+        host: ScriptedHost::answering(vec![
+            Scripted::frame(frame(AIR_PRINT, AIR_GROWING)),
+            Scripted::frame(frame(AIR_PRINT, AIR_STOPPED)),
+        ])
+        .await,
+        calibration: Some(calibration.clone()),
+        snapshot: true,
+    };
+    // Each alert's check is composed of the camera's own frame, the next of
+    // the script, whatever the detector's picture is.
+    let detector =
+        ScriptedHost::answering(vec![Scripted::frame(marked_frame_of(DETECTOR_PICTURE))]).await;
+    let started = journey.start(&camera, 3600, &json!([])).await;
+    assert_eq!(adopted(&started.server).await, print_id);
+
+    alert(&started.server, &detector.url()).await;
+    let first = read_handed(&journey.runs(1).await[0]);
+    assert!(
+        first.note.starts_with("the three-panel check image") && !first.note.contains("measured"),
+        "the first check, with no frame 3 mm below it, is told nothing of growth: {}",
+        first.note
+    );
+    let first_at = first
+        .frame_captured_at
+        .expect("the alert's situation says when its frame was captured");
+
+    journey.at(stopped);
+    alert(&started.server, &detector.url()).await;
+    let second = read_handed(&journey.runs(2).await[1]);
+    assert!(
+        second.note.contains(&not_grown_note(first_at, 5.0)),
+        "the check at Z 5.8 is told the parts have not risen since the frame at Z 0.8: {}",
+        second.note
+    );
+
+    let record = journey
+        .root
+        .path()
+        .join("state")
+        .join("checked-frames")
+        .join(format!("{print_id}.json"));
+    assert!(record.exists(), "the print's checked frames are kept");
+    journey.octoprint.reports("Operational", JobScript::idle());
+    until("the closed print's checked frames are swept", || {
+        !record.exists()
+    })
+    .await;
+    started.server.stop().await;
 }
 
 /// Run `printobserver-server-compose` with these arguments.

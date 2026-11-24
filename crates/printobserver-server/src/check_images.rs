@@ -10,20 +10,29 @@
 //! [`WHOLE_FRAME_HEIGHT`] and never cropped ([`WholeFrames`]). Either way the
 //! image is written under `<state_dir>/check-images/` while the stored frame
 //! keeps the camera's size, and one line says which image it is and why.
+//!
+//! A check shown the three-panel image is also measured against the newest
+//! earlier check's frame at least [`MIN_RISE_MM`] below it in the plan
+//! ([`measure_growth`]). When the parts this layer lays sit where that frame
+//! had them, carried down with the bed, the line says so
+//! ([`not_grown_note`]): a stall shows as a few pixels between a drawn line
+//! and a part's top, which the eye misreads, and the measurement does not.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use std::sync::Arc;
 
+use printobserver_core::check_image::PlanPosition;
 use printobserver_core::{CheckImageRequest, CheckImages, GcodeIndex, ImageUse, ShownImage};
+use printobserver_panels::growth::MIN_RISE_MM;
 use printobserver_panels::{
-    CameraCalibration, CheckImage, CheckImageInputs, ComposeError, WHOLE_FRAME_HEIGHT,
-    WHOLE_FRAME_WIDTH, compose_check_image, whole_frame,
+    CameraCalibration, CheckImage, CheckImageInputs, ComposeError, GrowthInputs,
+    WHOLE_FRAME_HEIGHT, WHOLE_FRAME_WIDTH, compose_check_image, measure_growth, whole_frame,
 };
 use printobserver_types::{PrintId, Timestamp};
 
-use crate::alignment::{AlignmentFailure, Alignments, PreviousCheck, PrintAlignment};
+use crate::alignment::{AlignmentFailure, Alignments, CheckedFrame, PreviousCheck, PrintAlignment};
 
 /// How many scaled frames this process has begun writing, which names each
 /// write's partial file apart from any other's.
@@ -246,6 +255,23 @@ pub fn composite_note(
     )
 }
 
+/// What a check's line adds when the measurement finds the parts this layer
+/// lays have not grown since the frame captured at `since`, `rise_mm` lower in
+/// the plan: the skill's own words for it, `not risen as planned`.
+#[must_use]
+pub fn not_grown_note(since: Timestamp, rise_mm: f64) -> String {
+    format!(
+        "; measured against the check frame captured {since}, {rise_mm:.1} mm lower in the plan: the parts this layer lays have not risen as planned, sitting where that frame had them, carried down with the bed, so nothing has been laid on them since"
+    )
+}
+
+/// The print's height in its plan at a check's position.
+fn plan_z(plan: &PlanPosition) -> Option<f64> {
+    plan.index
+        .layer_at(plan.file_position_bytes)
+        .and_then(|layer| plan.index.layer_z_mm(layer))
+}
+
 /// What a check image is composed from, beyond the frames: the print's plan at
 /// one file position.
 #[derive(Debug, Clone, Copy)]
@@ -424,15 +450,67 @@ impl PanelImages {
         };
         let destination = self.composite_destination(request.frame, previous);
         write_image(&self.whole.directory, &destination, &composed.jpeg)?;
+        let mut note = composite_note(
+            request.made_for,
+            request.captured_at,
+            earlier.as_ref().map(|(_, at)| *at),
+        );
+        if request.made_for == ImageUse::Check
+            && let Some(clause) = self.growth_clause(print_id, plan, &current, url, calibration)
+        {
+            note.push_str(&clause);
+        }
         Ok(Ok(ShownImage {
             path: destination,
-            note: Some(composite_note(
-                request.made_for,
-                request.captured_at,
-                earlier.as_ref().map(|(_, at)| *at),
-            )),
+            note: Some(note),
             composite: true,
         }))
+    }
+
+    /// What a check's line adds of whether the parts grew: the
+    /// [`not_grown_note`] when the measurement against the newest earlier
+    /// check's frame at least [`MIN_RISE_MM`] below finds they did not, and
+    /// nothing otherwise — no such frame, one gone from the store, a layer
+    /// laying supports alone, or a measurement that found growth or could not
+    /// tell. Each measurement made is said on the log.
+    fn growth_clause(
+        &self,
+        print_id: PrintId,
+        plan: &PlanPosition,
+        current: &[u8],
+        url: &str,
+        calibration: &CameraCalibration,
+    ) -> Option<String> {
+        let layer = plan.index.layer_at(plan.file_position_bytes)?;
+        let print_z_mm = plan.index.layer_z_mm(layer)?;
+        let reference = self
+            .alignments
+            .growth_reference(print_id, print_z_mm, MIN_RISE_MM)?;
+        let earlier = std::fs::read(&reference.frame).ok()?;
+        let toolpath = plan.index.layer_toolpath(layer).ok()?;
+        let measured = measure_growth(&GrowthInputs {
+            earlier_jpeg: &earlier,
+            earlier_print_z_mm: reference.print_z_mm,
+            current_jpeg: current,
+            current_print_z_mm: print_z_mm,
+            camera_snapshot_url: url,
+            toolpath: &toolpath,
+            calibration,
+        })
+        .ok()??;
+        let not_grown = measured.not_grown();
+        eprintln!(
+            "printobserver: print {print_id}: growth from Z {:.1} ({}) to Z {print_z_mm:.1}: carried {:.2}, held {:.2}, {:.0}% carried over {} samples {:.1} px apart: {}",
+            reference.print_z_mm,
+            reference.captured_at,
+            measured.carried,
+            measured.held,
+            measured.carried_share * 100.0,
+            measured.samples,
+            measured.separation_px,
+            if not_grown { "not grown" } else { "no verdict" }
+        );
+        not_grown.then(|| not_grown_note(reference.captured_at, print_z_mm - reference.print_z_mm))
     }
 
     /// Where the three-panel image of one stored frame, after one previous
@@ -486,6 +564,17 @@ impl CheckImages for PanelImages {
                     captured_at: request.captured_at,
                 },
             );
+            if let Some(print_z_mm) = request.plan.as_ref().and_then(plan_z) {
+                self.alignments.record_checked_frame(
+                    print_id,
+                    CheckedFrame {
+                        frame: request.frame.to_path_buf(),
+                        captured_at: request.captured_at,
+                        print_z_mm,
+                    },
+                    MIN_RISE_MM,
+                );
+            }
         }
         Ok(shown)
     }

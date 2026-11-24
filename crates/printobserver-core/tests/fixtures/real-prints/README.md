@@ -15,6 +15,12 @@ gate test reads.
 - `jar-top-brim.gcode` —
   `tests/real-prints/jar-top-wrong-material-detach-spaghetti/3423-TOP-REV F brim.gcode`, whole.
 - `fan-cut-test.gcode` — `tests/real-prints/fan-cut-bridge/fan-cut-test.gcode`, whole.
+- `air-print-plate-three-layers.gcode` —
+  `tests/real-prints/petg-spool-jam-air-print/plate2-pan-bin-scraper-clips.gcode`
+  (37 MB) cut to three of its layers, each whole and unchanged: lines 1 to 5,245
+  (its header, start G-code and first layer, Z 0.2), 22,937 to 32,191 (Z 0.8)
+  and 166,943 to 171,464 (Z 5.8), the heights its recorded frames of the parts
+  growing and of the parts carried down after extrusion stopped were taken at.
 
 The panels crate's recorded-frame tests and `tools/camera-calibration`'s tests
 read these too, beside the bubbler plate's slice the server's tests carry.

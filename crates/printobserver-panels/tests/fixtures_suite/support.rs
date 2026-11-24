@@ -24,6 +24,21 @@ pub fn calibration_bytes() -> Vec<u8> {
         .expect("the committed calibration is there")
 }
 
+/// The committed calibration a case's frames were taken under: the
+/// 1280x720 one for a case whose camera streamed at that size, and the
+/// 1920x1080 one for every other.
+pub fn calibration_of(case: &str) -> CameraCalibration {
+    let name = match case {
+        "petg-spool-jam-air-print" => "core-one-2026-09-27-1280x720.json",
+        _ => "core-one-2026-09-27.json",
+    };
+    CameraCalibration::from_json(
+        &std::fs::read(root().join("tests/real-prints/cameras").join(name))
+            .expect("the committed calibration is there"),
+    )
+    .expect("the committed calibration is valid")
+}
+
 /// The committed calibration.
 pub fn calibration() -> CameraCalibration {
     CameraCalibration::from_json(&calibration_bytes()).expect("the committed calibration is valid")
@@ -88,6 +103,7 @@ fn gcode_of(case: &str) -> PathBuf {
         "bubbler-guard-and-pad-pla-healthy" => root.join(
             "crates/printobserver-server/tests/fixtures/real-prints/bubbler-guard-and-pad.gcode",
         ),
+        "petg-spool-jam-air-print" => core.join("air-print-plate-three-layers.gcode"),
         other => panic!("no slice for {other}"),
     }
 }

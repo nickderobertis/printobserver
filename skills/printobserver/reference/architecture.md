@@ -95,7 +95,8 @@ What lets a print check show the agent the current layer's planned toolpath
 where it sits in the camera's own view: one printer's camera calibration and its
 fisheye projection, the check that the camera has not moved since it was
 calibrated, the per-print check that the projection lands on the printed first
-layer, and the three-panel check image. It draws the planned geometry the
+layer, the three-panel check image, and the measurement of whether the parts
+grew since an earlier check's frame. It draws the planned geometry the
 supervision domain answers — outlines and toolpaths in bed millimetres — and
 never reads G-code itself.
 

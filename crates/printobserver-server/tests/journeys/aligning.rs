@@ -368,7 +368,7 @@ async fn a_sweep_leaves_an_open_prints_record_part_way_through_its_write() {
     .await;
     let print_id = adopted(&journey.world).await;
     let state = journey.world.root.path().join("state");
-    let writing: Vec<PathBuf> = ["alignment", "previous-check"]
+    let writing: Vec<PathBuf> = ["alignment", "previous-check", "checked-frames"]
         .iter()
         .map(|directory| {
             let directory = state.join(directory);
@@ -382,9 +382,13 @@ async fn a_sweep_leaves_an_open_prints_record_part_way_through_its_write() {
         .join("previous-check")
         .join(format!("{}.json", printobserver_types::PrintId::new()));
     std::fs::write(&closed, b"{}").expect("a closed print's record");
+    let closed_frames = state
+        .join("checked-frames")
+        .join(format!("{}.json", printobserver_types::PrintId::new()));
+    std::fs::write(&closed_frames, b"[]").expect("a closed print's checked frames");
 
-    until("a sweep removes a closed print's record", || {
-        !closed.exists()
+    until("a sweep removes a closed print's records", || {
+        !closed.exists() && !closed_frames.exists()
     })
     .await;
 
