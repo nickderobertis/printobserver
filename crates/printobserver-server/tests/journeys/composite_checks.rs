@@ -1799,3 +1799,168 @@ fn the_probe_refuses_an_image_it_cannot_attach() {
         );
     }
 }
+
+/// The probe's inputs, and `OneHarness`'s published mock harness on the
+/// search path under the name the configured harness is found by.
+struct Probing {
+    inputs: Composing,
+    search: std::ffi::OsString,
+    usage: PathBuf,
+    answer: Value,
+    invocations: PathBuf,
+}
+
+impl Probing {
+    fn new() -> Self {
+        let inputs = Composing::new();
+        let root = inputs.journey.root.path().to_path_buf();
+        let programs = root.join("programs");
+        std::fs::create_dir_all(&programs).expect("the harness's directory");
+        std::fs::copy(
+            env!("CARGO_BIN_EXE_printobserver-server-mock-harness"),
+            programs.join(format!("claude{}", std::env::consts::EXE_SUFFIX)),
+        )
+        .expect("the harness is in place");
+        let search = std::env::join_paths(std::iter::once(programs).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))
+        .expect("a search path");
+        let usage = root.join("usage.txt");
+        std::fs::write(&usage, "printobserver context [--json]\n").expect("the usage");
+        Self {
+            inputs,
+            search,
+            usage,
+            answer: answering("continue", "the walls are going down clean"),
+            invocations: root.join("invocations.jsonl"),
+        }
+    }
+
+    /// The probe run over the configuration with `arguments`.
+    fn run(&self, arguments: &[&std::ffi::OsStr]) -> std::process::Output {
+        std::process::Command::new(env!("CARGO_BIN_EXE_printobserver-server-probe"))
+            .arg("--config")
+            .arg(&self.inputs.config)
+            .args(arguments)
+            .env("PATH", &self.search)
+            .env("MOCK_STDOUT", crate::lean_checks::streamed(&self.answer))
+            .env("MOCK_INVOCATION_LOG", &self.invocations)
+            .output()
+            .expect("the probe runs")
+    }
+
+    /// What every harness process was handed, in order.
+    fn received(&self) -> Vec<Value> {
+        std::fs::read_to_string(&self.invocations)
+            .unwrap_or_default()
+            .lines()
+            .map(|line| printobserver_types::serde_json::from_str(line).expect("a record"))
+            .collect()
+    }
+
+    /// One prompt probed, `extra` beside it: the run's result is printed, and
+    /// what the harness process was handed is answered.
+    fn probe(&self, extra: &[&std::ffi::OsStr]) -> Value {
+        let mut arguments: Vec<&std::ffi::OsStr> = ["--session", "base", "--prompt"]
+            .map(AsRef::as_ref)
+            .to_vec();
+        arguments.push("what does a call cost".as_ref());
+        arguments.extend_from_slice(extra);
+        let done = self.run(&arguments);
+        let stderr = String::from_utf8_lossy(&done.stderr);
+        assert_eq!(done.status.code(), Some(0), "{stderr}");
+        let printed: Value = printobserver_types::serde_json::from_slice(&done.stdout)
+            .unwrap_or_else(|error| panic!("the probe printed no result ({error}): {stderr}"));
+        assert_eq!(
+            printed["structured"], self.answer,
+            "the probe printed another run's result: {printed}"
+        );
+        // The per-call usage the real-print suite reads its figures from.
+        assert_eq!(
+            printed["calls"][0]["cache_write_tokens"], 4_000,
+            "the probe printed no per-call usage: {printed}"
+        );
+        self.received().last().expect("the harness ran").clone()
+    }
+}
+
+/// The replacing system text a harness process was handed.
+fn system_of(run: &Value) -> String {
+    let arguments: Vec<&str> = run["argv"]
+        .as_array()
+        .expect("the arguments")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    let Some(file) = arguments
+        .windows(2)
+        .find(|pair| pair[0] == "--system-prompt-file")
+        .map(|pair| pair[1])
+    else {
+        panic!("no replacing system prompt: {arguments:?}");
+    };
+    run["files"][file]
+        .as_str()
+        .unwrap_or_else(|| panic!("the system prompt file was not recorded: {run}"))
+        .to_owned()
+}
+
+/// The probe, handed a configuration it loads and a harness found by name as
+/// the server finds one, runs its prompt in a session of its own and prints
+/// that run's result and its per-call usage. With an image, the harness is
+/// handed that prompt alone — none of what a check adds to one — and that one
+/// image, under the skill and the tool framing as its replacing system text;
+/// with `--no-system`, the same prompt with that system text empty. Asked to
+/// compact a print whose conversation recorded no turn, it refuses, naming why.
+#[test]
+fn the_probe_prints_the_result_of_the_run_it_asked_for() {
+    let probing = Probing::new();
+    let frame = &probing.inputs.good_frame;
+    let with_image = probing.probe(&[
+        "--usage".as_ref(),
+        probing.usage.as_os_str(),
+        "--image".as_ref(),
+        frame.as_os_str(),
+    ]);
+    let (prompt, image) = handed(&with_image);
+    // Less everything a check adds: no event, no usage, no instructions.
+    assert_eq!(prompt, "what does a call cost");
+    assert_eq!(
+        image,
+        std::fs::read(frame).expect("the frame reads"),
+        "the harness was handed another image"
+    );
+    let system = system_of(&with_image);
+    assert!(
+        system.ends_with(printobserver_oneharness::TOOL_FRAMING)
+            && system.starts_with("# Supervising a 3D print"),
+        "the system text is not the skill and the tool framing:\n{system}"
+    );
+
+    let harness_alone = probing.probe(&["--no-system".as_ref()]);
+    assert_eq!(
+        system_of(&harness_alone),
+        "",
+        "--no-system sent system text"
+    );
+
+    // A print whose conversation recorded no turn has nothing to compact: the
+    // probe says so, prints nothing and starts no harness process.
+    let ran = probing.received().len();
+    let print = PrintId::new().to_string();
+    let compacted = probing.run(&["--compact-print".as_ref(), print.as_ref()]);
+    let stderr = String::from_utf8_lossy(&compacted.stderr);
+    assert_eq!(compacted.status.code(), Some(1), "{stderr}");
+    assert!(compacted.stdout.is_empty(), "it printed a compaction");
+    assert!(
+        stderr.contains(&format!(
+            "print {print} records no turn with calls to compact after"
+        )),
+        "{stderr}"
+    );
+    assert_eq!(
+        probing.received().len(),
+        ran,
+        "a compaction of nothing ran the harness"
+    );
+}

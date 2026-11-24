@@ -455,6 +455,29 @@ fn issued_and_serving(root: &Path) -> Issued {
     }
 }
 
+/// An operator's configuration file that is not text cannot be read at all:
+/// every command is refused as configured by nothing, naming that file as one
+/// it could not read rather than passing over it or reading nothing.
+#[test]
+fn an_operator_file_that_is_not_text_is_refused_naming_it() {
+    let home = TempDir::new().expect("an operator's own home");
+    let file = issued_at(home.path());
+    std::fs::create_dir_all(file.parent().expect("a directory")).expect("writable");
+    std::fs::write(&file, [0xff, 0xfe, 0x00, 0x5b]).expect("writable");
+    let refused = run(home.path(), &["prints", "--json"], &[], b"");
+    assert_eq!(
+        refused.status.code(),
+        Some(i32::from(Exit::Unconfigured.status())),
+        "{}",
+        said(&refused)
+    );
+    assert!(
+        said(&refused).contains("client.toml could not be read"),
+        "the operator's file that is not text was not refused as unreadable: {}",
+        said(&refused)
+    );
+}
+
 /// An operator who issued a credential and put its verifier in the server's
 /// configuration is admitted by every command with no `--config` and no
 /// variable: their own configuration is read first. `--config` reads only the
