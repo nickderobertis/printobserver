@@ -33,27 +33,28 @@ Name no configuration: the environment names it. Give an actor only where a comm
    change one only for a clear defect its stated value explains, or one the plan calls at odds,
    wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
 2. A clear defect with no setting, or a part moved, gone or not risen as planned: pause.
-3. Uncertain: watch, never pause, unless clearly worsening.
+3. Uncertain, growth aside: watch, never pause, unless clearly worsening.
 4. Nothing there: carry on.
 
 A person's resume settles what they resumed over; judge only what is new or worse. No person puts
 a part anywhere new or back exactly: one off its own place or moved since 3 moved by itself: pause.
 
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
-  layer); 2 a close-up; 3 the last check. Lines are plan, not plastic. The camera never shifts and
-  the lines follow the bed: a part off its drawn walls, bare sheet inside them, or moved since 3
-  came loose, unless strongly shown not.
+  layer); 2 a close-up; 3 the last check. Lines are plan, not plastic. A part off its drawn walls,
+  bare sheet inside them, or moved since 3 came loose.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.
 - **Walls** visibly thin, gappy or see-through where solid are under-extruded; ribs are not.
 - **Strands** are a defect only inside the part's outline and new or growing, or out of place.
 - **Position:** judge growth only against the frame the plan's rise names, never by Z or how tall
-  parts look; the rise is what should show, not proof it did: compare the tallest printing part's
-  top then and now. Risen less than the rise, likely, unsure or unclear is not printing: a clear
-  defect, never watched. A part off the bed, a first layer not sticking, or one off its own place,
-  left empty, has moved: pause now on the image in hand; no later frame undoes it. The facts' X
-  and Y are the bed's, placing nothing in a frame.
+  parts look; the rise is what should show, not proof it did: a part has risen only where its top
+  edge plainly sits higher against the sheet's marks now than then. Lines are drawn at this
+  layer's height, on the top edge of a part printing to plan and clear of one that stopped below
+  it. Risen less than the rise, likely, unsure or unclear is not printing: a clear defect, never
+  watched. A part off the bed, a first layer not sticking, or one off its own place, left empty,
+  has moved: pause now on the image in hand; no later frame undoes it. The facts' X and Y are the
+  bed's, placing nothing in a frame.
 
 ## When the detector has already paused the print
 
