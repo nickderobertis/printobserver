@@ -21,7 +21,7 @@
 use core::fmt::Write as _;
 use core::time::Duration;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use printobserver_core::store::Stores;
 use printobserver_core::{GcodeIndex, IndexBuilder};
@@ -304,6 +304,9 @@ struct Journey {
     octoprint: ScriptedOctoPrint,
     size: i64,
     installer: &'static str,
+    /// The store the last server started over, kept so the next start opens
+    /// the state directory only once that server has released it.
+    store: Mutex<Option<Arc<SqliteStore>>>,
 }
 
 impl Journey {
@@ -327,6 +330,7 @@ impl Journey {
             octoprint,
             size,
             installer,
+            store: Mutex::new(None),
         };
         journey.at(position);
         journey
@@ -401,9 +405,7 @@ impl Journey {
             config.clone(),
             printobserver_server::Ports {
                 printer: Arc::new(OctoPrintPrinter::new(config.octoprint.clone())),
-                stores: Stores::of(Arc::new(
-                    SqliteStore::open(&config.state_dir).expect("the store opens"),
-                )),
+                stores: Stores::of(self.store(&config.state_dir).await),
                 vision: Arc::new(ObicoVision::new(ObicoVisionConfig::default()).expect("built")),
                 agent: Arc::new(agent) as Arc<dyn printobserver_supervisor_api::SupervisorPort>,
             },
@@ -411,6 +413,40 @@ impl Journey {
         .await
         .unwrap_or_else(|error| panic!("{}'s server starts: {error}", self.installer));
         Started { server, requests }
+    }
+
+    /// The store a start serves over, opened only once every server started
+    /// before it has released its own.
+    ///
+    /// A stopped server's detached work — a turn, a blocking write — can hold
+    /// its store after `stop` returns. The last connection to a write-ahead-log
+    /// database takes an exclusive lock while it closes, and `SQLite` documents
+    /// that a connection opening the database meanwhile may be answered
+    /// `SQLITE_BUSY` whatever its busy timeout. So the journey waits until it
+    /// holds the earlier store's last handle, and closes it here, before the
+    /// next open.
+    async fn store(&self, state_dir: &Path) -> Arc<SqliteStore> {
+        let earlier = self
+            .store
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(earlier) = earlier {
+            let deadline = tokio::time::Instant::now() + PATIENCE;
+            while Arc::strong_count(&earlier) > 1 {
+                assert!(
+                    tokio::time::Instant::now() < deadline,
+                    "{}: a stopped server still holds its store",
+                    self.installer
+                );
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            // The last handle: the store's connections close here.
+            drop(earlier);
+        }
+        let store = Arc::new(SqliteStore::open(state_dir).expect("the store opens"));
+        *self.store.lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::clone(&store));
+        store
     }
 
     /// What each run's harness process was handed, in order.
