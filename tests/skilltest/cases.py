@@ -27,13 +27,6 @@ REPO = Path(__file__).resolve().parents[2]
 #: Mountain Daylight Time, as each case's `times` says.
 LOCAL_BEHIND_UTC = timedelta(hours=6)
 CASES = REPO / "tests" / "real-prints"
-#: The replayed cases whose checks keep the whole frame for want of a calibration, and
-#: why: every other replayed case names one fitting the frames its checks are shown.
-UNCALIBRATED: dict[str, str] = dict.fromkeys(
-    ("fan-cut-bridge", "petg-spool-jam-air-print", "under-extrusion-lace"),
-    "its recording holds only 1280x720 frames and the server camera's are 1920x1080:"
-    " no calibration fits them, and none is fitted from frames scaled up",
-)
 #: The frames that are no camera's: enlarged crops, and Obico's own renderings.
 NOT_FROM_THE_CAMERA = re.compile(r"^crop-|obico")
 #: A frame named for the hour and minute it was taken at.

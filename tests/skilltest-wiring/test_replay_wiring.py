@@ -36,7 +36,6 @@ import shell_lines
 from cases import (
     CASES,
     REPO,
-    UNCALIBRATED,
     Case,
     MachineState,
     Milestone,
@@ -55,6 +54,7 @@ from mock_turn import ScriptedRun, Seen
 from outside import MILESTONE_WORDS, Outside
 from replay import (
     IMAGE_PROBE_RECORD,
+    NO_CALIBRATION,
     PROBE_RECORD,
     Assessment,
     CallUsage,
@@ -72,6 +72,7 @@ from replay import (
     alignment_of,
     calibration_copy,
     calibration_fallback,
+    calibration_fallbacks,
     check_image,
     check_wait,
     composed_check_image,
@@ -2448,6 +2449,78 @@ def test_each_image_line_the_server_writes_is_read_as_its_kind() -> None:
     equal(stored["kind"], "stored_frame")
 
 
+#: Plain copies of recorded frames and slices, which the gate reads in place of LFS objects.
+RECORDED_FRAMES = REPO / "crates" / "printobserver-panels" / "tests" / "fixtures" / "frames"
+RECORDED_SLICES = REPO / "crates" / "printobserver-core" / "tests" / "fixtures" / "real-prints"
+
+
+def _checks_shown(case: Case, picture: Callable[[str], bytes], scratch: Path) -> dict[str, str]:
+    """Each check's image line, as the real server wrote it into the prompt the check was handed.
+
+    The case's timeline replayed through the real server over its real slice.
+    """
+    gcode = (RECORDED_SLICES / "jar-top-first-layer-detach.gcode").read_bytes()
+    done = mock_replay(case, [{"commands": [CONTEXT]}], scratch, gcode=gcode, picture=picture)
+    prompts = [
+        seen["prompt"]
+        for seen in done.turns
+        if "printobserver context --print-id" in seen["prompt"]
+    ]
+    equal(len(prompts), len(case.moments), describing="one check prompt per event")
+    notes = {}
+    for moment, prompt in zip(case.moments, prompts, strict=True):
+        report = RunReport()
+        report.take([{"type": "user", "message": {"content": [{"type": "text", "text": prompt}]}}])
+        if report.image_note is None:
+            pytest.fail(f"no image line in the prompt {moment.id} was handed: {prompt}")
+        notes[moment.id] = report.image_note
+    return notes
+
+
+def _recorded(name: str) -> bytes:
+    """The timeline's own recorded frame, as its camera took it at 1920x1080."""
+    return (RECORDED_FRAMES / TIMELINE_CASE / name).read_bytes()
+
+
+def _smaller(_: str) -> bytes:
+    """A real frame of the same camera at 1280x720, which no 1920x1080 calibration fits."""
+    return (RECORDED_FRAMES / "fan-cut-bridge" / "01-healthy-before-fault-p41.jpg").read_bytes()
+
+
+def test_a_calibrated_print_is_shown_the_composite_and_raises_no_fallback(scratch: Path) -> None:
+    """The real server, the case's own calibration, frames and slice: every check composed."""
+    notes = _checks_shown(_timeline(), _recorded, scratch)
+    equal(
+        {check: check_image(note)["kind"] for check, note in notes.items()},
+        dict.fromkeys(TIMELINE, "composite"),
+        describing=f"each check's image line: {notes}",
+    )
+    equal(calibration_fallbacks(notes), {})
+
+
+def test_a_print_with_no_calibration_fails_every_check_it_sends_the_whole_frame(
+    scratch: Path,
+) -> None:
+    """The same print with no calibration configured: each check is a fallback the suite fails."""
+    notes = _checks_shown(replace(_timeline(), camera_calibration=None), _recorded, scratch)
+    equal(calibration_fallbacks(notes), dict.fromkeys(TIMELINE, NO_CALIBRATION))
+
+
+def test_a_print_whose_frames_are_not_the_calibrations_size_fails_every_check(
+    scratch: Path,
+) -> None:
+    """Its frames at 1280x720 under a 1920x1080 calibration: alignment refuses, each check fails."""
+    notes = _checks_shown(_timeline(), _smaller, scratch)
+    equal(
+        calibration_fallbacks(notes),
+        dict.fromkeys(
+            TIMELINE,
+            "the print's first-layer alignment failed: the camera's frames are 1280x720 and "
+            "the calibration's 1920x1080",
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     ("why", "fell_back"),
     [
@@ -2480,20 +2553,6 @@ def test_a_whole_frame_for_want_of_a_fitting_calibration_is_told_from_any_other(
     )
     equal(calibration_fallback(image), why if fell_back else None)
     equal(calibration_fallback(check_image("the three-panel check image, 1024x1848: ...")), None)
-
-
-def test_every_replayed_print_names_a_calibration_or_says_why_it_has_none() -> None:
-    """A print's replay names its calibration, unless `UNCALIBRATED` gives the reason it can't.
-
-    A case losing its calibration would send every check the whole frame, which the
-    live suite fails only once it runs; this fails it in the gate.
-    """
-    prints = [name for name in replayed_case_names() if not is_start_case(name)]
-    equal(
-        {name for name in prints if read_case(name).camera_calibration is None},
-        set(UNCALIBRATED),
-    )
-    truth(all(UNCALIBRATED.values()), describing="a reason for every case without one")
 
 
 @pytest.mark.parametrize(

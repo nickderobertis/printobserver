@@ -44,9 +44,9 @@ The rules the real-print suite is held to, and why.
 - **A case naming a `camera_calibration` is replayed with it** on the camera
   double's stream; the record carries each check's image, read off its prompt's
   `image` line, and the alignment verdict the server kept for the print.
-- **Every print's checks get the image the latest code builds.** A replayed print
-  names a calibration fitting its frames unless `cases.UNCALIBRATED` says why not,
-  and a live test fails a check shown the whole frame for want of one.
+- **Every print's checks get the image the latest code builds.** A live test fails
+  any case's check shown the whole frame because no calibration is configured or
+  its frames are not the calibration's size; no case is exempt.
 - **The watch sees the job pass its first layer, as it did live.** The live watch
   decides alignment on the frame it takes as the first layer goes down; a replay
   jumping between events would show it the next event's frame instead. So the

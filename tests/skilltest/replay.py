@@ -26,7 +26,7 @@ import tempfile
 import threading
 import time
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
@@ -643,6 +643,20 @@ def calibration_fallback(image: CheckImage) -> str | None:
     if image["kind"] != "whole_frame" or why is None:
         return None
     return why if any(pattern.fullmatch(why) for pattern in CALIBRATION_FALLBACKS) else None
+
+
+def calibration_fallbacks(notes: Mapping[str, str | None]) -> dict[str, str]:
+    """Each check shown the whole frame for want of a calibration fitting its frames, and why.
+
+    `notes` is each check's image line, by its decision point. Every case's: a print
+    the latest code would show the three-panel image is judged on that image, so no
+    case is let off.
+    """
+    return {
+        check: why
+        for check, note in notes.items()
+        if note is not None and (why := calibration_fallback(check_image(note))) is not None
+    }
 
 
 class Alignment(TypedDict):
