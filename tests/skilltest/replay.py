@@ -1618,15 +1618,18 @@ class Replay:
         part's own body stands over the layer the check scores. The case records how
         its projection was proven instead and the offset its marks lie within. This
         holds only for a calibrated case keeping no frame at or below its first layer,
-        and refuses any other. The server is started once with no check due and every
+        and refuses any other; over a slice laying no first layer it writes nothing. The server is started once with no check due and every
         camera fetch refused, so the alignment stays undecided while the print it opens
         is read; the verdict is written where the server keeps it, which stands through
         the restart at the first event.
         """
-        ends = self.first_layer_end
-        if self.case.camera_calibration is None or ends is None:
-            msg = f"{self.case.name} records its alignment and names no calibration or first layer"
+        if self.case.camera_calibration is None:
+            msg = f"{self.case.name} records its alignment and names no calibration"
             raise ReplayError(msg)
+        ends = self.first_layer_end
+        if ends is None:
+            # A slice laying no first object layer leaves the server nothing to decide.
+            return
         kept = [
             frame.file
             for frame in self.case.frames

@@ -495,6 +495,7 @@ def _case_tree(root: Path, name: str, edit: Callable[[dict[str, Any]], None]) ->
     shutil.copy2(CASES / "case.schema.json", root / "tests" / "real-prints")
     shutil.copy2(CASES / "service-config.toml", root / "tests" / "real-prints")
     shutil.copytree(CASES / name, root / "tests" / "real-prints" / name)
+    shutil.copytree(CASES / "cameras", root / "tests" / "real-prints" / "cameras")
     shutil.copytree(REPO / "schemas", root / "schemas")
     path = root / "tests" / "real-prints" / name / "case.json"
     document = json.loads(path.read_text(encoding="utf-8"))
@@ -649,7 +650,7 @@ def test_a_case_naming_a_calibration_configures_it_on_the_doubles_stream(tmp_pat
     )
     without = service_config(tmp_path, "127.0.0.1:1", "http://o", "http://c", "http://b", Minted())
     equal(tomllib.loads(without)["camera"], {"snapshot_url": "http://c/api/frame.jpeg"})
-    equal(read_case("under-extrusion-lace").camera_calibration, None)
+    equal(read_case("spaghetti-small-nest", replay=()).camera_calibration, None)
     unreadable = tmp_path / "not-a-calibration.json"
     unreadable.write_text("[]", encoding="utf-8")
     with pytest.raises(ReplayError, match="no camera calibration"):
