@@ -7,7 +7,10 @@
 //! the last one finished, as the expiry driver sleeps between its sweeps: the
 //! first is one interval after the server starts rather than at the start, so a
 //! restart is not itself a reason to look, and a slow round is followed by an
-//! interval rather than by a burst of rounds making up for it.
+//! interval rather than by a burst of rounds making up for it. A print checked
+//! as it carried on from a planned change is next due one interval after that
+//! check, so the round after it waits only until then
+//! ([`Supervisor::until_next_observation`]).
 //!
 //! # Why it lives in the server rather than beside the expiry driver
 //!
@@ -31,11 +34,11 @@ use tokio::task::JoinHandle;
 
 /// Start observing every active print once per the supervisor's interval.
 pub fn start(supervisor: &Arc<Supervisor>) -> JoinHandle<()> {
-    let interval = supervisor.config().observation_interval;
     let weak: Weak<Supervisor> = Arc::downgrade(supervisor);
+    let mut wait = supervisor.config().observation_interval;
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(interval).await;
+            tokio::time::sleep(wait).await;
             let Some(supervisor) = weak.upgrade() else {
                 return;
             };
@@ -44,6 +47,7 @@ pub fn start(supervisor: &Arc<Supervisor>) -> JoinHandle<()> {
                 printobserver_core::block_on(observing.observe_active_prints())
             })
             .await;
+            wait = supervisor.until_next_observation();
             debug_assert!(observed.is_ok(), "one periodic observation panicked");
             // A round the store refused claimed nothing, and a print whose
             // observation it refused claimed no turn: the next round tries

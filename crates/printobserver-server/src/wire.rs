@@ -17,7 +17,7 @@ use printobserver_core::{
     PrintRecord, RecoveryAction, RecoveryActionKind, RecoveryDecision, SpoolCommand, SpoolId,
     SpoolRecord, SpoolTrust,
 };
-use printobserver_core::{AgentContext, DetectorHealth};
+use printobserver_core::{AgentContext, DetectorHealth, PlannedChanges};
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot};
 use printobserver_supervisor_api::SupervisionSession;
 use printobserver_types::schemars::JsonSchema;
@@ -596,6 +596,11 @@ pub struct StatusAnswer {
     pub interventions: Vec<Intervention>,
     /// The failure detector's health, and since when it has been so.
     pub detector: DetectorHealth,
+    /// The changes the print's G-code plans, the one the printer waits at and
+    /// the colour expected where its job stands; absent when the file plans
+    /// none or could not be read.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub planned_changes: Option<PlannedChanges>,
 }
 
 /// What a context read answers.

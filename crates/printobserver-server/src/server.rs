@@ -631,20 +631,22 @@ fn prepare_state(
     })
 }
 
-/// Delete what a print closed while no server ran left behind: its G-code
-/// spool and its alignment verdict.
+/// Delete what a print closed while no server ran left behind — its G-code
+/// spool and its alignment verdict — and read back which open print was
+/// waiting at a planned change, so it is left alone from the first read on.
 async fn sweep_left_behind(
     supervisor: &Supervisor,
     alignments: &crate::alignment::Alignments,
 ) -> Result<(), StartError> {
-    supervisor
-        .sweep_gcode_spools()
-        .await
-        .map_err(|error| StartError::Reconciliation {
-            detail: error.to_string(),
-        })?;
+    let reconciling = |error: printobserver_core::CoreError| StartError::Reconciliation {
+        detail: error.to_string(),
+    };
+    supervisor.sweep_gcode_spools().await.map_err(reconciling)?;
     alignments.sweep().await;
-    Ok(())
+    supervisor
+        .restore_planned_changes()
+        .await
+        .map_err(reconciling)
 }
 
 /// Where each open print's G-code is spooled, under a state directory.

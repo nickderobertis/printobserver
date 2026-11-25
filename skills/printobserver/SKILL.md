@@ -56,6 +56,15 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
   off its own place, left empty, has moved: pause now on the image in hand; no later frame undoes
   it. The facts' X and Y are the bed's, placing nothing in a frame.
 
+## A planned colour change
+
+The file may plan colour changes (`slicer`'s `expected_color`, `next_change`). While the
+printer waits at one nothing checks it, and a pause, resume or setting is refused
+`planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the colour
+expected from its layer and the one before: that new colour from that layer up is expected, so
+carry on. A colour that differs from the frame before anywhere else is a defect: pause, naming
+what a person must check.
+
 ## When the detector has already paused the print
 
 Uncertain is stop. Ask only for a setting that addresses all you see; the supervisor resumes the

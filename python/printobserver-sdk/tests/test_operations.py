@@ -94,36 +94,41 @@ def test_status_sends_what_it_declares_and_answers_what_was_sent() -> None:
         ': 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
         ', "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "fi'
         'le_position_bytes": 7, "print_time_left_s": 7, "print_time_s'
-        '": 7, "size_bytes": 7, "state": "operational"}, "print": {"e'
-        'nd_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "ended_a'
-        't": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "file_name": "01'
-        '98f0a1-2b3c-7d4e-8f90-123456789abc", "id": "0198f0a1-2b3c-7d'
-        '4e-8f90-123456789abc", "job_print_time_s": 7, "job_started_a'
-        't": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "narrowings": [{'
-        '"adjustable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "appli'
-        'ed": {"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "mi'
-        'n": 1.5}}], "opened_at": "0198f0a1-2b3c-7d4e-8f90-123456789a'
-        'bc", "provider_print_id": 7, "state": "operational"}, "print'
-        'er": {"bed": {"actual_c": {"out_of_range": true, "value": 1.'
-        '5}, "offset_c": {"out_of_range": true, "value": 1.5}, "targe'
-        't_c": {"out_of_range": true, "value": 1.5}}, "chamber": {"ac'
-        'tual_c": {"out_of_range": true, "value": 1.5}, "offset_c": {'
-        '"out_of_range": true, "value": 1.5}, "target_c": {"out_of_ra'
-        'nge": true, "value": 1.5}}, "connection": "operational", "fa'
-        'n_percent": {"out_of_range": true, "value": 1.5}, "feedrate_'
-        'factor": {"out_of_range": true, "value": 1.5}, "flowrate_fac'
-        'tor": {"out_of_range": true, "value": 1.5}, "observed_at": "'
-        '0198f0a1-2b3c-7d4e-8f90-123456789abc", "tools": [{"actual_c"'
+        '": 7, "size_bytes": 7, "state": "operational"}, "planned_cha'
+        'nges": {"changes": [{"color": "0198f0a1-2b3c-7d4e-8f90-12345'
+        '6789abc", "index": 7, "kind": "color_change", "layer": 7, "o'
+        'ffset_bytes": 7, "z_mm": 1.5}], "expected_color": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc", "segments": [{"color": "0198f0'
+        'a1-2b3c-7d4e-8f90-123456789abc", "filament_mm": 1.5, "segmen'
+        't": 7}], "waiting": 7}, "print": {"end_reason": "0198f0a1-2b'
+        '3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-12'
+        '3456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'job_print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-'
+        '2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min":'
+        ' 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at":'
+        ' "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id"'
+        ': 7, "state": "operational"}, "printer": {"bed": {"actual_c"'
         ': {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of'
         '_range": true, "value": 1.5}, "target_c": {"out_of_range": t'
-        'rue, "value": 1.5}}]}, "session": {"close_reason": "0198f0a1'
-        '-2b3c-7d4e-8f90-123456789abc", "closed_at": "0198f0a1-2b3c-7'
-        'd4e-8f90-123456789abc", "created_at": "0198f0a1-2b3c-7d4e-8f'
-        '90-123456789abc", "harness_identity": "0198f0a1-2b3c-7d4e-8f'
-        '90-123456789abc", "last_turn_at": "0198f0a1-2b3c-7d4e-8f90-1'
-        '23456789abc", "print_id": "0198f0a1-2b3c-7d4e-8f90-123456789'
-        'abc", "session_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
-        "}}"
+        'rue, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range"'
+        ': true, "value": 1.5}, "offset_c": {"out_of_range": true, "v'
+        'alue": 1.5}, "target_c": {"out_of_range": true, "value": 1.5'
+        '}}, "connection": "operational", "fan_percent": {"out_of_ran'
+        'ge": true, "value": 1.5}, "feedrate_factor": {"out_of_range"'
+        ': true, "value": 1.5}, "flowrate_factor": {"out_of_range": t'
+        'rue, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-'
+        '123456789abc", "tools": [{"actual_c": {"out_of_range": true,'
+        ' "value": 1.5}, "offset_c": {"out_of_range": true, "value": '
+        '1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "'
+        'session": {"close_reason": "0198f0a1-2b3c-7d4e-8f90-12345678'
+        '9abc", "closed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", '
+        '"created_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "harne'
+        'ss_identity": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "last_'
+        'turn_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_id"'
+        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "session_name": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
     )
 
     with Host(200, answer) as host:
@@ -163,14 +168,20 @@ def test_context_sends_what_it_declares_and_answers_what_was_sent() -> None:
         '198f0a1-2b3c-7d4e-8f90-123456789abc", "payload": {"anything"'
         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "received_at": "0'
         '198f0a1-2b3c-7d4e-8f90-123456789abc"}], "slicer": {"at_odds"'
-        ': ["fan_off_over_bridges"], "fan_percent": {"changed": 1.5, '
-        '"file": 1.5}, "final_z_mm": 1.5, "flow_factor": {"changed": '
-        '1.5, "file": 1.5}, "layer": 7, "minutes_left": 7, "object_co'
-        'unt": 7, "objects": [[7, 7, 7, 7]], "rise": {"mm": [1.5, 1.5'
-        '], "since": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "types"'
-        ': ["0198f0a1-2b3c-7d4e-8f90-123456789abc"], "unknown": ["lay'
-        'er"], "z_mm": 1.5}}, "image_path": "0198f0a1-2b3c-7d4e-8f90-'
-        '123456789abc"}'
+        ': ["fan_off_over_bridges"], "change_waiting": {"color": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "index": 7, "kind": "col'
+        'or_change", "layer": 7, "offset_bytes": 7, "z_mm": 1.5}, "ex'
+        'pected_color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "fan_'
+        'percent": {"changed": 1.5, "file": 1.5}, "final_z_mm": 1.5, '
+        '"flow_factor": {"changed": 1.5, "file": 1.5}, "layer": 7, "m'
+        'inutes_left": 7, "minutes_to_next_change": 7, "next_change":'
+        ' {"color": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "index": '
+        '7, "kind": "color_change", "layer": 7, "offset_bytes": 7, "z'
+        '_mm": 1.5}, "object_count": 7, "objects": [[7, 7, 7, 7]], "r'
+        'ise": {"mm": [1.5, 1.5], "since": "0198f0a1-2b3c-7d4e-8f90-1'
+        '23456789abc"}, "types": ["0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc"], "unknown": ["layer"], "z_mm": 1.5}}, "image_path": "01'
+        '98f0a1-2b3c-7d4e-8f90-123456789abc"}'
     )
 
     with Host(200, answer) as host:
@@ -291,11 +302,13 @@ def test_manifest_get_sends_what_it_declares_and_answers_what_was_sent() -> None
         '5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "m'
         'aterial": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata"'
         ': {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "noz'
-        'zle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123'
-        '456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-12345'
-        '6789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "r'
-        'equested": {"max": 1.5, "min": 1.5}}]}'
+        'zle_diameter_mm": 1.5, "segment_spools": [{"segment": 7, "sp'
+        'ool_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": '
+        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adju'
+        'stable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": '
+        '{"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1'
+        ".5}}]}"
     )
 
     with Host(200, answer) as host:
@@ -437,11 +450,13 @@ def test_manifest_set_sends_what_it_declares_and_answers_what_was_sent() -> None
         '5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "m'
         'aterial": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata"'
         ': {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "noz'
-        'zle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123'
-        '456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-12345'
-        '6789abc"}, "narrowings": [{"adjustable": "0198f0a1-2b3c-7d4e'
-        '-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5}, "r'
-        'equested": {"max": 1.5, "min": 1.5}}]}'
+        'zle_diameter_mm": 1.5, "segment_spools": [{"segment": 7, "sp'
+        'ool_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": '
+        '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc"}, "narrowings": [{"adju'
+        'stable": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "applied": '
+        '{"max": 1.5, "min": 1.5}, "requested": {"max": 1.5, "min": 1'
+        ".5}}]}"
     )
 
     with Host(200, answer) as host:
@@ -457,8 +472,10 @@ def test_manifest_set_sends_what_it_declares_and_answers_what_was_sent() -> None
                     'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                     '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                     ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                    'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-                    'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+                    'mm": 1.5, "segment_spools": [{"segment": 7, "spool_id": "019'
+                    '8f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": "0198f0a1-2b3'
+                    'c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-'
+                    '7d4e-8f90-123456789abc"}'
                 ),
             ),
         )
@@ -473,9 +490,11 @@ def test_manifest_set_sends_what_it_declares_and_answers_what_was_sent() -> None
             '5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "m'
             'aterial": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "metadata"'
             ': {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "noz'
-            'zle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123'
-            '456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e-8f90-12345'
-            '6789abc"}, "reason": "a generated walk is asking"}'
+            'zle_diameter_mm": 1.5, "segment_spools": [{"segment": 7, "sp'
+            'ool_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": '
+            '"0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_profile": "0'
+            '198f0a1-2b3c-7d4e-8f90-123456789abc"}, "reason": "a generate'
+            'd walk is asking"}'
         ),
         describing="what this call sent",
     )
@@ -497,8 +516,10 @@ def test_manifest_set_makes_no_request_when_the_reason_is_empty() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+                        'mm": 1.5, "segment_spools": [{"segment": 7, "spool_id": "019'
+                        '8f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": "0198f0a1-2b3'
+                        'c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-'
+                        '7d4e-8f90-123456789abc"}'
                     ),
                 ),
             )
@@ -521,8 +542,10 @@ def test_manifest_set_makes_no_request_when_the_reason_is_empty() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+                        'mm": 1.5, "segment_spools": [{"segment": 7, "spool_id": "019'
+                        '8f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": "0198f0a1-2b3'
+                        'c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-'
+                        '7d4e-8f90-123456789abc"}'
                     ),
                 ),
             )
@@ -648,14 +671,17 @@ def test_preflight_sends_what_it_declares_and_answers_what_was_sent() -> None:
         'bc", "sliced_for": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
         'spool": {"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name'
         '": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "tool": 7, "verd'
-        'ict": "passed"}, "sheet": {"allowed": ["0198f0a1-2b3c-7d4e-8'
-        'f90-123456789abc"], "material": "0198f0a1-2b3c-7d4e-8f90-123'
-        '456789abc", "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
-        ' "verdict": "passed"}, "tools": [{"result": {"need": {"buffe'
-        'r_g": 1.5, "required_g": 1.5}, "remaining_g": 1.5, "spool": '
-        '{"id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198'
-        'f0a1-2b3c-7d4e-8f90-123456789abc"}, "verdict": "passed"}, "t'
-        'ool": 7}], "verdict": "passed"}}'
+        'ict": "passed"}, "segments": [{"color": "0198f0a1-2b3c-7d4e-'
+        '8f90-123456789abc", "filament_mm": 1.5, "required_g": 1.5, "'
+        'segment": 7, "spool_id": "0198f0a1-2b3c-7d4e-8f90-123456789a'
+        'bc"}], "sheet": {"allowed": ["0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc"], "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
+        ', "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "verdict"'
+        ': "passed"}, "tools": [{"result": {"need": {"buffer_g": 1.5,'
+        ' "required_g": 1.5}, "remaining_g": 1.5, "spool": {"id": "01'
+        '98f0a1-2b3c-7d4e-8f90-123456789abc", "name": "0198f0a1-2b3c-'
+        '7d4e-8f90-123456789abc"}, "verdict": "passed"}, "tool": 7}],'
+        ' "verdict": "passed"}}'
     )
 
     with Host(200, answer) as host:
@@ -1042,8 +1068,10 @@ def test_start_print_sends_what_it_declares_and_answers_what_was_sent() -> None:
                     'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                     '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                     ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                    'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-                    'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+                    'mm": 1.5, "segment_spools": [{"segment": 7, "spool_id": "019'
+                    '8f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": "0198f0a1-2b3'
+                    'c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-'
+                    '7d4e-8f90-123456789abc"}'
                 ),
             ),
             "a generated walk is asking",
@@ -1064,11 +1092,13 @@ def test_start_print_sends_what_it_declares_and_answers_what_was_sent() -> None:
             ', "min": 1.5}}, "file_name": "0198f0a1-2b3c-7d4e-8f90-123456'
             '789abc", "material": "0198f0a1-2b3c-7d4e-8f90-123456789abc",'
             ' "metadata": {"feedrate": "0198f0a1-2b3c-7d4e-8f90-123456789'
-            'abc"}, "nozzle_diameter_mm": 1.5, "sheet": "0198f0a1-2b3c-7d'
-            '4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-7d4e'
-            '-8f90-123456789abc"}, "override_filament_check": true, "over'
-            'ride_material_check": true, "override_sheet_check": true, "r'
-            'eason": "a generated walk is asking"}'
+            'abc"}, "nozzle_diameter_mm": 1.5, "segment_spools": [{"segme'
+            'nt": 7, "spool_id": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}]'
+            ', "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "slicer_p'
+            'rofile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "override_'
+            'filament_check": true, "override_material_check": true, "ove'
+            'rride_sheet_check": true, "reason": "a generated walk is ask'
+            'ing"}'
         ),
         describing="what this call sent",
     )
@@ -1114,8 +1144,10 @@ def test_start_print_surfaces_the_policys_own_refusal() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+                        'mm": 1.5, "segment_spools": [{"segment": 7, "spool_id": "019'
+                        '8f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": "0198f0a1-2b3'
+                        'c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-'
+                        '7d4e-8f90-123456789abc"}'
                     ),
                 ),
                 "a generated walk is asking",
@@ -1150,8 +1182,10 @@ def test_start_print_makes_no_request_when_the_reason_is_empty() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+                        'mm": 1.5, "segment_spools": [{"segment": 7, "spool_id": "019'
+                        '8f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": "0198f0a1-2b3'
+                        'c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-'
+                        '7d4e-8f90-123456789abc"}'
                     ),
                 ),
                 "",
@@ -1178,8 +1212,10 @@ def test_start_print_makes_no_request_when_the_reason_is_empty() -> None:
                         'me": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "material": "01'
                         '98f0a1-2b3c-7d4e-8f90-123456789abc", "metadata": {"feedrate"'
                         ': "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "nozzle_diameter_'
-                        'mm": 1.5, "sheet": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-                        'slicer_profile": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}'
+                        'mm": 1.5, "segment_spools": [{"segment": 7, "spool_id": "019'
+                        '8f0a1-2b3c-7d4e-8f90-123456789abc"}], "sheet": "0198f0a1-2b3'
+                        'c-7d4e-8f90-123456789abc", "slicer_profile": "0198f0a1-2b3c-'
+                        '7d4e-8f90-123456789abc"}'
                     ),
                 ),
                 "   ",

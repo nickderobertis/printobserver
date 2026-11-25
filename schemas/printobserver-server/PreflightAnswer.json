@@ -266,6 +266,13 @@
           ],
           "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
         },
+        "segments": {
+          "description": "Each stretch of a file with planned colour changes, the filament it\nfeeds and the spool meant for it: tool 0's result is checked against\nsegment 0 alone, and each later segment against the spool a start's\nmanifest names for it. Absent for a file that plans no change.",
+          "items": {
+            "$ref": "#/$defs/PreflightSegment"
+          },
+          "type": "array"
+        },
         "sheet": {
           "anyOf": [
             {
@@ -429,6 +436,57 @@
           "type": "object"
         }
       ]
+    },
+    "PreflightSegment": {
+      "additionalProperties": false,
+      "description": "One stretch of a file with planned colour changes, as a filament check\nreads it.",
+      "properties": {
+        "color": {
+          "description": "Its colour as `#RRGGBB`; null when the file names none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filament_mm": {
+          "description": "The filament it feeds, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What it needs from the spool meant for it, in grams, by that spool's\ndiameter and density; null when no spool is there to convert with.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "segment": {
+          "description": "Its number: segment 0 runs from the file's start to the first change.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpoolId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The spool meant for it: the one on tool 0 for segment 0, and the one\nthe manifest names for a later segment; null when none is."
+        }
+      },
+      "required": [
+        "segment",
+        "filament_mm",
+        "color",
+        "required_g",
+        "spool_id"
+      ],
+      "type": "object"
     },
     "PreflightSpool": {
       "additionalProperties": false,

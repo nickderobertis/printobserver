@@ -983,9 +983,58 @@ pub enum ExecutionOutcome {
     },
 }
 
+/// A print reached one of the changes its G-code plans, and the printer is
+/// waiting there for a person: recorded once per planned change of a print.
+///
+/// From this event to the change's `filament_change_planned_resumed`, no
+/// supervision turn runs for the print, and a pause, a resume or an
+/// adjustment
+/// is refused `planned_change_waiting` to every actor.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FilamentChangePlannedReachedPayload {
+    /// The change reached.
+    pub change: PlannedChange,
+    /// The filament the stretch after the change feeds, in millimetres.
+    pub next_segment_filament_mm: f64,
+    /// The spool the print's manifest names for the stretch after the change;
+    /// null when it names none.
+    pub next_spool_id: Option<SpoolId>,
+    /// Where the job stood when it was.
+    pub position: FilePosition,
+    /// The colour of the stretch before it, as `#RRGGBB`; null when the file
+    /// names none.
+    pub previous_color: Option<String>,
+    /// The spool charged up to the change: the one on tool 0; null when none
+    /// was loaded.
+    pub spool_id: Option<SpoolId>,
+    /// What told the supervisor it was reached.
+    pub trigger: PlannedChangeTrigger,
+}
+
+/// A print carried on from a planned change it was waiting at: its file
+/// position moved past the change. Recorded once per change reached, and the
+/// check it prompts runs at once.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FilamentChangePlannedResumedPayload {
+    /// The change the print carried on from.
+    pub change: PlannedChange,
+    /// Where the job stood when it was found to have carried on.
+    pub position: FilePosition,
+    /// The colour of the stretch before it, as `#RRGGBB`; null when the file
+    /// names none.
+    pub previous_color: Option<String>,
+    /// How long the print waited at it, in whole seconds.
+    pub waited_s: i64,
+}
+
 /// A filament change was signalled during a print.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FilamentChangeSignalledPayload {
+    /// The index of the planned change the print stopped at, which the spool
+    /// was charged up to the offset of; absent when no change was planned at
+    /// that position, and on a record written before changes were planned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_change: Option<i64>,
     /// The position the spool was charged up to, and how fresh it is, when
     /// one
     /// was known; absent, there is no position and so no claim about one.
@@ -1308,6 +1357,11 @@ pub struct JobManifest {
     pub metadata: BTreeMap<String, String>,
     /// The nozzle the job is sliced for, in millimetres.
     pub nozzle_diameter_mm: f64,
+    /// The spool meant for each later stretch of a file with planned colour
+    /// changes, which a start checks against that stretch's filament. A
+    /// manifest naming none is checked as one without changes is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segment_spools: Option<Vec<SegmentSpool>>,
     /// The build sheet the job goes down on, as one of the sheet ids the
     /// server's sheet table names, such as `smooth-pei` or `textured-pei`.
     ///
@@ -1772,6 +1826,78 @@ pub enum PlanMismatch {
     FlowLowOverWalls,
 }
 
+/// One stop the print's own G-code plans: an `M600` colour change or an
+/// `M601` pause, where the firmware waits for a person.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlannedChange {
+    /// The colour loaded at it, as `#RRGGBB` in upper case, from the
+    /// `;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an
+    /// `M601`, and for an `M600` with no such line.
+    pub color: Option<String>,
+    /// Its place among the file's changes, counting from 0 in file order.
+    pub index: i64,
+    /// What it stops the print for.
+    pub kind: PlannedChangeKind,
+    /// The first layer printed after it, counting the first as 1: the layer
+    /// whose `;Z:` is the change's height.
+    pub layer: i64,
+    /// The byte offset of the first byte of its `M600` or `M601` line.
+    pub offset_bytes: i64,
+    /// That layer's height, in millimetres.
+    pub z_mm: f64,
+}
+
+/// What a planned change stops the print for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlannedChangeKind {
+    /// An `M600`: the firmware stops so a person can load the next colour.
+    #[serde(rename = "color_change")]
+    ColorChange,
+    /// An `M601`: the firmware pauses until a person resumes it.
+    #[serde(rename = "pause")]
+    Pause,
+}
+
+/// What told the supervisor a print had reached one of its planned changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlannedChangeTrigger {
+    /// A filament-change signal arrived with the job at the change.
+    #[serde(rename = "signal")]
+    Signal,
+    /// The job's file position stood at the change or just past it.
+    #[serde(rename = "position")]
+    Position,
+}
+
+/// A print's planned changes as the status read answers them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlannedChanges {
+    /// Every change the file plans, in file order.
+    pub changes: Vec<PlannedChange>,
+    /// The colour expected at the job's current position, as `#RRGGBB`; null
+    /// when the file names none there or the position is unknown.
+    pub expected_color: Option<String>,
+    /// The stretches between them, in file order.
+    pub segments: Vec<PlannedSegment>,
+    /// The index of the change the printer is waiting at now; null when it is
+    /// waiting at none.
+    pub waiting: Option<i64>,
+}
+
+/// One stretch of the print between its planned changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlannedSegment {
+    /// Its colour as `#RRGGBB`: segment 0's the file's `filament_colour`,
+    /// every
+    /// later one its change's; null where the file names none.
+    pub color: Option<String>,
+    /// The filament it feeds, in millimetres: the net of its extrusion moves.
+    pub filament_mm: f64,
+    /// Its number: segment 0 runs from the file's start to change 0, and
+    /// segment n from change n-1 to change n, or to the file's end.
+    pub segment: i64,
+}
+
 /// The decision policy took on one request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PolicyDecision {
@@ -1866,6 +1992,12 @@ pub struct Preflight {
     /// Absent from a check recorded before this check existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<MaterialResult>,
+    /// Each stretch of a file with planned colour changes, the filament it
+    /// feeds and the spool meant for it: tool 0's result is checked against
+    /// segment 0 alone, and each later segment against the spool a start's
+    /// manifest names for it. Absent for a file that plans no change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub segments: Option<Vec<PreflightSegment>>,
     /// Whether the declared build sheet suits that spool's material. Absent
     /// from a check recorded before this check existed, and from a read that
     /// was given no sheet.
@@ -1951,6 +2083,24 @@ pub enum PreflightObjection {
         /// The spool.
         spool: PreflightSpool,
     },
+}
+
+/// One stretch of a file with planned colour changes, as a filament check
+/// reads it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PreflightSegment {
+    /// Its colour as `#RRGGBB`; null when the file names none.
+    pub color: Option<String>,
+    /// The filament it feeds, in millimetres.
+    pub filament_mm: f64,
+    /// What it needs from the spool meant for it, in grams, by that spool's
+    /// diameter and density; null when no spool is there to convert with.
+    pub required_g: Option<f64>,
+    /// Its number: segment 0 runs from the file's start to the first change.
+    pub segment: i64,
+    /// The spool meant for it: the one on tool 0 for segment 0, and the one
+    /// the manifest names for a later segment; null when none is.
+    pub spool_id: Option<SpoolId>,
 }
 
 /// The spool a check judged, named beside its identifier so a reader need
@@ -2859,6 +3009,10 @@ pub enum RejectionReason {
         remaining_g: f64,
         /// What the print needs from it, in grams.
         required_g: f64,
+        /// The stretch of a file with planned changes the spool is short for;
+        /// absent for a file that plans none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        segment: Option<i64>,
         /// The spool loaded on it.
         spool_id: SpoolId,
         /// That spool's name.
@@ -2874,6 +3028,10 @@ pub enum RejectionReason {
     UnverifiedSpool {
         /// The spool's oldest mark.
         reason: UnverifiedReason,
+        /// The stretch of a file with planned changes the spool is named for;
+        /// absent for a file that plans none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        segment: Option<i64>,
         /// The spool loaded on it.
         spool_id: SpoolId,
         /// That spool's name.
@@ -2933,6 +3091,21 @@ pub enum RejectionReason {
         /// The `recovery_executed` event that made it so.
         recovery_event_id: EventId,
     },
+    /// A pause, a resume or an adjustment was refused because the printer is
+    /// waiting at a change the print's G-code plans, for a person to finish
+    /// it
+    /// on the printer.
+    #[serde(rename = "planned_change_waiting")]
+    PlannedChangeWaiting {
+        /// The index of the change it is waiting at.
+        change_index: i64,
+        /// The colour to load, as `#RRGGBB`; null when the file names none.
+        color: Option<String>,
+        /// The first layer printed after it.
+        layer: i64,
+        /// That layer's height, in millimetres.
+        z_mm: f64,
+    },
     /// A spool command could not be carried out.
     #[serde(rename = "spool_refused")]
     SpoolRefused {
@@ -2968,6 +3141,16 @@ pub struct Rise {
     /// alert — or a look at it was given, as that check or look states its
     /// capture time.
     pub since: Timestamp,
+}
+
+/// The spool meant for one stretch after a planned change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SegmentSpool {
+    /// The stretch, counting the one after the first change as 1: segment 0
+    /// is the spool loaded on tool 0 at the start, so it is never named here.
+    pub segment: i64,
+    /// The spool meant for it.
+    pub spool_id: SpoolId,
 }
 
 /// One adjustable as the print's file set it at the current position, and as
@@ -3088,6 +3271,15 @@ pub struct SlicerPlan {
     /// Each setting in force the plan at this height says is wrong.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at_odds: Option<Vec<PlanMismatch>>,
+    /// The planned change the printer is waiting at now, for a person to
+    /// finish; absent when it is waiting at none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_waiting: Option<PlannedChange>,
+    /// The colour the print should be laying at the current position, as
+    /// `#RRGGBB`; absent when the file plans no change or names no colour
+    /// there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_color: Option<String>,
     /// The part-cooling fan speed, in percent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fan_percent: Option<SetValue>,
@@ -3105,6 +3297,15 @@ pub struct SlicerPlan {
     /// position.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub minutes_left: Option<i64>,
+    /// The slicer's own count of the minutes to that change, from the latest
+    /// `M73 C` the position has reached; absent when there is no next change
+    /// or no count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minutes_to_next_change: Option<i64>,
+    /// The next change the file plans after the current position; absent when
+    /// it plans none there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_change: Option<PlannedChange>,
     /// How many objects the file lays down; absent when it labels none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_count: Option<i64>,
@@ -3620,6 +3821,11 @@ pub struct StatusAnswer {
     /// The job, when a snapshot could be taken.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub job: Option<JobSnapshot>,
+    /// The changes the print's G-code plans, the one the printer waits at and
+    /// the colour expected where its job stands; absent when the file plans
+    /// none or could not be read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_changes: Option<PlannedChanges>,
     /// The print.
     pub print: PrintRecord,
     /// The printer, when a snapshot could be taken.
@@ -3885,6 +4091,14 @@ impl EventPayloadKind for DetectorHealthChangedPayload {
     const KIND: &'static str = "detector_health_changed";
 }
 
+impl EventPayloadKind for FilamentChangePlannedReachedPayload {
+    const KIND: &'static str = "filament_change_planned_reached";
+}
+
+impl EventPayloadKind for FilamentChangePlannedResumedPayload {
+    const KIND: &'static str = "filament_change_planned_resumed";
+}
+
 impl EventPayloadKind for FilamentChangeSignalledPayload {
     const KIND: &'static str = "filament_change_signalled";
 }
@@ -4014,7 +4228,7 @@ impl EventPayloadKind for UnattendedPrinterActivityPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 43] = [
+pub const EVENT_KINDS: [&str; 45] = [
     "action_executed",
     "action_rejected",
     "action_requested",
@@ -4026,6 +4240,8 @@ pub const EVENT_KINDS: [&str; 43] = [
     "camera_retry",
     "charge_pended",
     "detector_health_changed",
+    "filament_change_planned_reached",
+    "filament_change_planned_resumed",
     "filament_change_signalled",
     "filament_consumed",
     "file_tally_rebaselined",

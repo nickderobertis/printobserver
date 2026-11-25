@@ -280,6 +280,23 @@ impl Alignments {
             .unwrap_or_default()
     }
 
+    /// Forget one print's checked frames, so its growth is measured only from
+    /// checks made after now: the print waited at a planned change, and a frame
+    /// from before the wait would count the wait as no growth. A record the
+    /// filesystem will not remove is said on the log and left, so a later check
+    /// measures from a frame before the wait, which says no more than that a
+    /// check could not tell.
+    pub fn restart_growth(&self, print_id: PrintId) {
+        let path = self.checked_path_of(print_id);
+        if let Err(error) = std::fs::remove_file(&path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            eprintln!(
+                "printobserver: print {print_id}: its checked frames could not be forgotten after a planned change, so a later check may measure growth across the wait: {error}"
+            );
+        }
+    }
+
     /// The frame a check at `print_z_mm` measures growth from: the newest
     /// checked frame of the print at least `rise_mm` below it in the plan.
     #[must_use]

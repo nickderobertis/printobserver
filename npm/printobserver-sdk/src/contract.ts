@@ -749,8 +749,68 @@ export interface EventsAnswer {
 /** What happened when an accepted action reached the printer. */
 export type ExecutionOutcome = "succeeded" | { failed: { reason: string } };
 
+/**
+ * A print reached one of the changes its G-code plans, and the printer is
+ * waiting there for a person: recorded once per planned change of a print.
+ *
+ * From this event to the change's `filament_change_planned_resumed`, no
+ * supervision turn runs for the print, and a pause, a resume or an
+ * adjustment
+ * is refused `planned_change_waiting` to every actor.
+ */
+export interface FilamentChangePlannedReachedPayload {
+  /** The change reached. */
+  change: PlannedChange;
+  /** The filament the stretch after the change feeds, in millimetres. */
+  next_segment_filament_mm: number;
+  /**
+   * The spool the print's manifest names for the stretch after the change;
+   * null when it names none.
+   */
+  next_spool_id: SpoolId | null;
+  /** Where the job stood when it was. */
+  position: FilePosition;
+  /**
+   * The colour of the stretch before it, as `#RRGGBB`; null when the file
+   * names none.
+   */
+  previous_color: string | null;
+  /**
+   * The spool charged up to the change: the one on tool 0; null when none
+   * was loaded.
+   */
+  spool_id: SpoolId | null;
+  /** What told the supervisor it was reached. */
+  trigger: PlannedChangeTrigger;
+}
+
+/**
+ * A print carried on from a planned change it was waiting at: its file
+ * position moved past the change. Recorded once per change reached, and the
+ * check it prompts runs at once.
+ */
+export interface FilamentChangePlannedResumedPayload {
+  /** The change the print carried on from. */
+  change: PlannedChange;
+  /** Where the job stood when it was found to have carried on. */
+  position: FilePosition;
+  /**
+   * The colour of the stretch before it, as `#RRGGBB`; null when the file
+   * names none.
+   */
+  previous_color: string | null;
+  /** How long the print waited at it, in whole seconds. */
+  waited_s: number;
+}
+
 /** A filament change was signalled during a print. */
 export interface FilamentChangeSignalledPayload {
+  /**
+   * The index of the planned change the print stopped at, which the spool
+   * was charged up to the offset of; absent when no change was planned at
+   * that position, and on a record written before changes were planned.
+   */
+  planned_change?: number | null;
   /**
    * The position the spool was charged up to, and how fresh it is, when one
    * was known; absent, there is no position and so no claim about one.
@@ -1039,6 +1099,12 @@ export interface JobManifest {
   metadata: Record<string, string>;
   /** The nozzle the job is sliced for, in millimetres. */
   nozzle_diameter_mm: number;
+  /**
+   * The spool meant for each later stretch of a file with planned colour
+   * changes, which a start checks against that stretch's filament. A
+   * manifest naming none is checked as one without changes is.
+   */
+  segment_spools?: Array<SegmentSpool>;
   /**
    * The build sheet the job goes down on, as one of the sheet ids the
    * server's sheet table names, such as `smooth-pei` or `textured-pei`.
@@ -1409,6 +1475,72 @@ export type PlanFact =
  */
 export type PlanMismatch = "fan_off_over_bridges" | "flow_low_over_walls";
 
+/**
+ * One stop the print's own G-code plans: an `M600` colour change or an
+ * `M601` pause, where the firmware waits for a person.
+ */
+export interface PlannedChange {
+  /**
+   * The colour loaded at it, as `#RRGGBB` in upper case, from the
+   * `;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an
+   * `M601`, and for an `M600` with no such line.
+   */
+  color: string | null;
+  /** Its place among the file's changes, counting from 0 in file order. */
+  index: number;
+  /** What it stops the print for. */
+  kind: PlannedChangeKind;
+  /**
+   * The first layer printed after it, counting the first as 1: the layer
+   * whose `;Z:` is the change's height.
+   */
+  layer: number;
+  /** The byte offset of the first byte of its `M600` or `M601` line. */
+  offset_bytes: number;
+  /** That layer's height, in millimetres. */
+  z_mm: number;
+}
+
+/** What a planned change stops the print for. */
+export type PlannedChangeKind = "color_change" | "pause";
+
+/** What told the supervisor a print had reached one of its planned changes. */
+export type PlannedChangeTrigger = "signal" | "position";
+
+/** A print's planned changes as the status read answers them. */
+export interface PlannedChanges {
+  /** Every change the file plans, in file order. */
+  changes: Array<PlannedChange>;
+  /**
+   * The colour expected at the job's current position, as `#RRGGBB`; null
+   * when the file names none there or the position is unknown.
+   */
+  expected_color: string | null;
+  /** The stretches between them, in file order. */
+  segments: Array<PlannedSegment>;
+  /**
+   * The index of the change the printer is waiting at now; null when it is
+   * waiting at none.
+   */
+  waiting: number | null;
+}
+
+/** One stretch of the print between its planned changes. */
+export interface PlannedSegment {
+  /**
+   * Its colour as `#RRGGBB`: segment 0's the file's `filament_colour`, every
+   * later one its change's; null where the file names none.
+   */
+  color: string | null;
+  /** The filament it feeds, in millimetres: the net of its extrusion moves. */
+  filament_mm: number;
+  /**
+   * Its number: segment 0 runs from the file's start to change 0, and
+   * segment n from change n-1 to change n, or to the file's end.
+   */
+  segment: number;
+}
+
 /** The decision policy took on one request. */
 export type PolicyDecision = "accepted" | { rejected: RejectionReason };
 
@@ -1468,6 +1600,13 @@ export interface Preflight {
    * Absent from a check recorded before this check existed.
    */
   material?: MaterialResult | null;
+  /**
+   * Each stretch of a file with planned colour changes, the filament it
+   * feeds and the spool meant for it: tool 0's result is checked against
+   * segment 0 alone, and each later segment against the spool a start's
+   * manifest names for it. Absent for a file that plans no change.
+   */
+  segments?: Array<PreflightSegment>;
   /**
    * Whether the declared build sheet suits that spool's material. Absent
    * from a check recorded before this check existed, and from a read that
@@ -1531,6 +1670,29 @@ export type PreflightObjection =
       spool: PreflightSpool;
     }
   | { verdict: "no_analysis"; remaining_g: number; spool: PreflightSpool };
+
+/**
+ * One stretch of a file with planned colour changes, as a filament check
+ * reads it.
+ */
+export interface PreflightSegment {
+  /** Its colour as `#RRGGBB`; null when the file names none. */
+  color: string | null;
+  /** The filament it feeds, in millimetres. */
+  filament_mm: number;
+  /**
+   * What it needs from the spool meant for it, in grams, by that spool's
+   * diameter and density; null when no spool is there to convert with.
+   */
+  required_g: number | null;
+  /** Its number: segment 0 runs from the file's start to the first change. */
+  segment: number;
+  /**
+   * The spool meant for it: the one on tool 0 for segment 0, and the one
+   * the manifest names for a later segment; null when none is.
+   */
+  spool_id: SpoolId | null;
+}
 
 /**
  * The spool a check judged, named beside its identifier so a reader need
@@ -2066,6 +2228,7 @@ export type RejectionReason =
         buffer_g: number;
         remaining_g: number;
         required_g: number;
+        segment?: number | null;
         spool_id: SpoolId;
         spool_name: string;
         tool: number;
@@ -2075,6 +2238,7 @@ export type RejectionReason =
   | {
       unverified_spool: {
         reason: UnverifiedReason;
+        segment?: number | null;
         spool_id: SpoolId;
         spool_name: string;
         tool: number;
@@ -2088,6 +2252,14 @@ export type RejectionReason =
   | { print_still_active: { state: PrinterState } }
   | { intervention_still_active: { intervention_id: InterventionId } }
   | { print_not_resumable: { recovery_event_id: EventId } }
+  | {
+      planned_change_waiting: {
+        change_index: number;
+        color: string | null;
+        layer: number;
+        z_mm: number;
+      };
+    }
   | { spool_refused: { cause: SpoolRefusalCause; message: string } };
 
 /**
@@ -2121,6 +2293,17 @@ export interface Rise {
    * capture time.
    */
   since: Timestamp;
+}
+
+/** The spool meant for one stretch after a planned change. */
+export interface SegmentSpool {
+  /**
+   * The stretch, counting the one after the first change as 1: segment 0
+   * is the spool loaded on tool 0 at the start, so it is never named here.
+   */
+  segment: number;
+  /** The spool meant for it. */
+  spool_id: SpoolId;
 }
 
 /**
@@ -2183,6 +2366,17 @@ export interface SignalPosition {
 export interface SlicerPlan {
   /** Each setting in force the plan at this height says is wrong. */
   at_odds?: Array<PlanMismatch>;
+  /**
+   * The planned change the printer is waiting at now, for a person to
+   * finish; absent when it is waiting at none.
+   */
+  change_waiting?: PlannedChange | null;
+  /**
+   * The colour the print should be laying at the current position, as
+   * `#RRGGBB`; absent when the file plans no change or names no colour
+   * there.
+   */
+  expected_color?: string | null;
   /** The part-cooling fan speed, in percent. */
   fan_percent?: SetValue | null;
   /** The final layer's height, in millimetres. */
@@ -2196,6 +2390,17 @@ export interface SlicerPlan {
   layer?: number | null;
   /** The slicer's own estimate of the minutes left, at the current position. */
   minutes_left?: number | null;
+  /**
+   * The slicer's own count of the minutes to that change, from the latest
+   * `M73 C` the position has reached; absent when there is no next change
+   * or no count.
+   */
+  minutes_to_next_change?: number | null;
+  /**
+   * The next change the file plans after the current position; absent when
+   * it plans none there.
+   */
+  next_change?: PlannedChange | null;
   /** How many objects the file lays down; absent when it labels none. */
   object_count?: number | null;
   /**
@@ -2522,6 +2727,12 @@ export interface StatusAnswer {
   interventions: Array<Intervention>;
   /** The job, when a snapshot could be taken. */
   job?: JobSnapshot | null;
+  /**
+   * The changes the print's G-code plans, the one the printer waits at and
+   * the colour expected where its job stands; absent when the file plans
+   * none or could not be read.
+   */
+  planned_changes?: PlannedChanges | null;
   /** The print. */
   print: PrintRecord;
   /** The printer, when a snapshot could be taken. */
@@ -2689,6 +2900,8 @@ export interface EventPayloads {
   camera_retry: CameraRetryPayload;
   charge_pended: ChargePendedPayload;
   detector_health_changed: DetectorHealthChangedPayload;
+  filament_change_planned_reached: FilamentChangePlannedReachedPayload;
+  filament_change_planned_resumed: FilamentChangePlannedResumedPayload;
   filament_change_signalled: FilamentChangeSignalledPayload;
   filament_consumed: FilamentConsumedPayload;
   file_tally_rebaselined: FileTallyRebaselinedPayload;
@@ -2736,6 +2949,8 @@ export const EVENT_KINDS = [
   "camera_retry",
   "charge_pended",
   "detector_health_changed",
+  "filament_change_planned_reached",
+  "filament_change_planned_resumed",
   "filament_change_signalled",
   "filament_consumed",
   "file_tally_rebaselined",
@@ -4135,9 +4350,119 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    }
   }
  },
+ "FilamentChangePlannedReachedPayload": {
+  "struct": {
+   "fields": {
+    "change": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PlannedChange"
+     }
+    },
+    "next_segment_filament_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "next_spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FilePosition"
+     }
+    },
+    "previous_color": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    },
+    "trigger": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PlannedChangeTrigger"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "FilamentChangePlannedResumedPayload": {
+  "struct": {
+   "fields": {
+    "change": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PlannedChange"
+     }
+    },
+    "position": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "FilePosition"
+     }
+    },
+    "previous_color": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "waited_s": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "FilamentChangeSignalledPayload": {
   "struct": {
    "fields": {
+    "planned_change": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
     "position": {
      "paired_with": "",
      "required": false,
@@ -4854,6 +5179,16 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "scalar": "number"
+     }
+    },
+    "segment_spools": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "SegmentSpool"
+      },
+      "non_empty": false
      }
     },
     "sheet": {
@@ -5698,6 +6033,147 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "flow_low_over_walls"
   ]
  },
+ "PlannedChange": {
+  "struct": {
+   "fields": {
+    "color": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "index": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PlannedChangeKind"
+     }
+    },
+    "layer": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "offset_bytes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "z_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PlannedChangeKind": {
+  "enum": [
+   "color_change",
+   "pause"
+  ]
+ },
+ "PlannedChangeTrigger": {
+  "enum": [
+   "signal",
+   "position"
+  ]
+ },
+ "PlannedChanges": {
+  "struct": {
+   "fields": {
+    "changes": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PlannedChange"
+      },
+      "non_empty": false
+     }
+    },
+    "expected_color": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "segments": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "PlannedSegment"
+      },
+      "non_empty": false
+     }
+    },
+    "waiting": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "PlannedSegment": {
+  "struct": {
+   "fields": {
+    "color": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "filament_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "segment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "PolicyDecision": {
   "union": {
    "tag_field": "",
@@ -5788,6 +6264,16 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "nullable": {
        "ref": "MaterialResult"
       }
+     }
+    },
+    "segments": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "list": {
+       "ref": "PreflightSegment"
+      },
+      "non_empty": false
      }
     },
     "sheet": {
@@ -5983,6 +6469,55 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "unit": false
     }
    }
+  }
+ },
+ "PreflightSegment": {
+  "struct": {
+   "fields": {
+    "color": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "filament_mm": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    },
+    "required_g": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "segment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "nullable": {
+       "ref": "SpoolId"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
   }
  },
  "PreflightSpool": {
@@ -7704,6 +8239,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
         "scalar": "number"
        }
       },
+      "segment": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
       "spool_id": {
        "paired_with": "",
        "required": true,
@@ -7829,6 +8373,42 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "payload": null,
      "unit": false
     },
+    "planned_change_waiting": {
+     "fields": {
+      "change_index": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "color": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "nullable": {
+         "scalar": "string"
+        }
+       }
+      },
+      "layer": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "integer"
+       }
+      },
+      "z_mm": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
     "print_already_ended": {
      "fields": {},
      "payload": null,
@@ -7920,6 +8500,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
         "ref": "UnverifiedReason"
        }
       },
+      "segment": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "nullable": {
+         "scalar": "integer"
+        }
+       }
+      },
       "spool_id": {
        "paired_with": "",
        "required": true,
@@ -7988,6 +8577,28 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "Timestamp"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "SegmentSpool": {
+  "struct": {
+   "fields": {
+    "segment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "integer"
+     }
+    },
+    "spool_id": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "SpoolId"
      }
     }
    },
@@ -8234,6 +8845,24 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       "non_empty": false
      }
     },
+    "change_waiting": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PlannedChange"
+      }
+     }
+    },
+    "expected_color": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
     "fan_percent": {
      "paired_with": "",
      "required": false,
@@ -8276,6 +8905,24 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "shape": {
       "nullable": {
        "scalar": "integer"
+      }
+     }
+    },
+    "minutes_to_next_change": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "integer"
+      }
+     }
+    },
+    "next_change": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PlannedChange"
       }
      }
     },
@@ -9396,6 +10043,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "shape": {
       "nullable": {
        "ref": "JobSnapshot"
+      }
+     }
+    },
+    "planned_changes": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "PlannedChanges"
       }
      }
     },
