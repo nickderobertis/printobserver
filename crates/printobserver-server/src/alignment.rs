@@ -702,6 +702,38 @@ mod tests {
         kept.iter().map(|checked| checked.print_z_mm).collect()
     }
 
+    /// Once a print carries on from a planned change, its growth is measured
+    /// only from frames checked after: one from before the wait, however far
+    /// below, is no longer a reference, and the first checked after it is.
+    #[test]
+    fn after_a_planned_change_growth_is_measured_from_frames_after_it() {
+        let state = tempfile::TempDir::new().expect("a state directory");
+        let store =
+            printobserver_store_sqlite::MemoryStore::new(state.path()).expect("an in-memory store");
+        let alignments = super::Alignments::new(state.path(), None, std::sync::Arc::new(store))
+            .expect("the verdicts' directories");
+        let print_id = printobserver_types::PrintId::new();
+        for (second, z) in [(0, 0.2), (60, 0.6)] {
+            alignments.record_checked_frame(print_id, at(second, z), 0.4);
+        }
+        let before = alignments.growth_reference(print_id, 1.0, 0.4);
+        assert_eq!(before.map(|checked| checked.print_z_mm), Some(0.6));
+
+        alignments.restart_growth(print_id);
+        assert_eq!(alignments.growth_reference(print_id, 1.0, 0.4), None);
+        alignments.record_checked_frame(print_id, at(3_000, 0.8), 0.4);
+        alignments.record_checked_frame(print_id, at(3_120, 1.4), 0.4);
+        let after = alignments.growth_reference(print_id, 1.4, 0.4);
+        assert_eq!(
+            after.map(|checked| checked.captured_at),
+            Some(at(3_000, 0.8).captured_at)
+        );
+        // A second change with nothing checked since forgets nothing more.
+        alignments.restart_growth(print_id);
+        alignments.restart_growth(print_id);
+        assert!(alignments.checked_frames(print_id).is_empty());
+    }
+
     #[test]
     fn a_check_measures_from_the_newest_frame_far_enough_below_it() {
         let kept = [at(0, 0.2), at(60, 0.8), at(120, 2.0), at(180, 2.6)];
