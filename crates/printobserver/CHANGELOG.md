@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.15.3](https://github.com/nickderobertis/printobserver/compare/v0.15.2...v0.15.3) - 2026-11-25
+
+### Fixed
+
+- *(cli)* print a served --json command's document every time ([#378](https://github.com/nickderobertis/printobserver/pull/378))
 ## [0.15.2](https://github.com/nickderobertis/printobserver/compare/v0.15.0...v0.15.2) - 2026-11-25
 
 ### Fixed
