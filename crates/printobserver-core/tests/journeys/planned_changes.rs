@@ -890,3 +890,60 @@ fn a_restart_while_the_printer_waits_leaves_it_waiting() {
     );
     assert_eq!(world.agent.turns().len(), checks_before + 1);
 }
+
+/// A supervisor restarted while the print runs towards a change it has not
+/// reached builds the print's index from the first read of its job, so the
+/// job freezing at the change's offset — with no check run since the restart
+/// and no webhook at all — reaches it once by position: no turn runs through
+/// the wait, and every actor's pause, resume and adjustment is refused naming
+/// it.
+#[test]
+fn a_restart_before_a_change_still_reaches_it_by_position() {
+    let (mut world, _, _) = colour_world();
+    let print_id = printing(&world);
+    world.restart();
+    block_on(world.core.restore_planned_changes()).expect("the history is read back");
+    let checks_before = world.agent.turns().len();
+    world.printer.extrudes(
+        FILE,
+        line_offset("M600", 0),
+        vec![on_tool(0, fed_before(0))],
+    );
+
+    printing_at(&world, past_change(0));
+    assert!(
+        watch(&world).is_empty(),
+        "reaching the change claimed a turn"
+    );
+    for _ in 0..5 {
+        world.clock.advance(120);
+        assert!(watch(&world).is_empty(), "the watch claimed a turn");
+        assert!(observe(&world).is_empty(), "the waiting print was checked");
+    }
+
+    let reached = of_print::<FilamentChangePlannedReachedPayload>(&world, print_id);
+    assert_eq!(reached.len(), 1, "{reached:?}");
+    assert_eq!(reached[0].1.change, change(0));
+    assert_eq!(reached[0].1.trigger, PlannedChangeTrigger::Position);
+    assert_eq!(
+        world.agent.turns().len(),
+        checks_before,
+        "a turn ran while it waited"
+    );
+    let signalled = every_of::<FilamentChangeSignalledPayload>(&world, print_id);
+    assert_eq!(signalled.len(), 1, "{signalled:?}");
+    assert_eq!(signalled[0].planned_change, Some(0));
+    for actor in [agent_actor(print_id), Actor::Operator, Actor::System] {
+        for action in refused_while_waiting(&actor) {
+            let kind = action.kind();
+            let outcome = world
+                .request(print_id, action)
+                .expect("the request is recorded");
+            assert_eq!(
+                outcome.record.decision,
+                waiting_at_the_first_change(),
+                "{actor:?}'s {kind:?} was not refused after the restart"
+            );
+        }
+    }
+}

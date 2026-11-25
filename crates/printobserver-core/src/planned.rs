@@ -44,6 +44,9 @@
 //! for a print whose file plans none. A print's copy is read from the history
 //! the first time its index, once built, plans a change, and for every open
 //! print as the server starts ([`Supervisor::restore_planned_changes`]).
+//! The index itself is built by the first read of the print's running job
+//! the printer watch or the periodic observation makes, once per print, so a
+//! restarted server reaches a change by position before any check of it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::PoisonError;
@@ -269,8 +272,11 @@ impl Supervisor {
     /// record a change it has reached, or one it has carried on from, and
     /// answer the check carrying on claims.
     ///
-    /// Only a print whose index is already built is followed here; the check
-    /// or the signal that builds it is what first reads the file.
+    /// A print whose index this supervisor has not built — one a restart
+    /// found open, before any check of it — has its index built here, once per
+    /// print: so a change is reached by position from the first read of the
+    /// job after a restart, with no check or signal to build it first. A build
+    /// that fails is left to the next check, as every failed build is.
     ///
     /// # Errors
     ///
@@ -280,10 +286,20 @@ impl Supervisor {
         print: &PrintRecord,
         job: &JobSnapshot,
     ) -> Result<Option<PendingTurn>, CoreError> {
-        let Some(memo) = self.planned_memo(print.id).await? else {
+        let Some(position) = position_of(print, job) else {
             return Ok(None);
         };
-        let Some(position) = position_of(print, job) else {
+        if self.gcode_indexes().built(print.id).is_none()
+            && self
+                .index_followed
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(print.id)
+        {
+            // Built or not, the build is the index the next read finds.
+            let _ = self.print_gcode_index(print.id).await;
+        }
+        let Some(memo) = self.planned_memo(print.id).await? else {
             return Ok(None);
         };
         if let Some(waiting) = memo.waiting {
@@ -521,6 +537,10 @@ impl Supervisor {
     /// it has closed.
     pub(crate) fn forget_planned_changes(&self, print_id: PrintId) {
         self.planned_memos().remove(&print_id);
+        self.index_followed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&print_id);
         self.checked_after_change
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

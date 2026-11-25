@@ -292,6 +292,9 @@ pub struct Supervisor {
     pub(crate) checked_after_change: Mutex<BTreeMap<PrintId, Duration>>,
     /// What this supervisor holds of each print's planned changes.
     pub(crate) planned_memos: Mutex<BTreeMap<PrintId, crate::planned::PlannedMemo>>,
+    /// The prints whose index following their job has asked to be built, so
+    /// a file that cannot be read is not read again on every round.
+    pub(crate) index_followed: Mutex<BTreeSet<PrintId>>,
 }
 
 /// One print's G-code read to one file position, and what it laid down.
@@ -375,6 +378,7 @@ impl Supervisor {
             gcode_indexes: crate::gcode_index::GcodeIndexes::default(),
             checked_after_change: Mutex::new(BTreeMap::new()),
             planned_memos: Mutex::new(BTreeMap::new()),
+            index_followed: Mutex::new(BTreeSet::new()),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
         std::thread::Builder::new()
