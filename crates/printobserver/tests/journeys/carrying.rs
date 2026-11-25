@@ -51,8 +51,7 @@ pub fn every_output_carries_only_what_the_answer_carried(world: &World) {
 /// comparing two facts rather than one.
 fn on_this_path(world: &World, one: &Driven, arguments: &[String], from: Reports) {
     let (machine, machine_answered) = run(world, from, arguments, true);
-    let printed: Vec<(String, String)> =
-        fields(&document(&machine.out, "this program's own output"));
+    let printed: Vec<(String, String)> = fields(&printed_document(&machine));
     assert_eq!(
         printed,
         fields(&document(&machine_answered, "the supervisor's own answer")),
@@ -77,6 +76,25 @@ fn on_this_path(world: &World, one: &Driven, arguments: &[String], from: Reports
         "`{}` printed a labelled line for something the answer did not carry: {lines:#?}",
         one.command.name
     );
+}
+
+/// The document one `--json` run printed, or a panic naming the run, its exit
+/// status and everything it wrote to standard error.
+///
+/// A run whose request was served and that printed no document is the failure
+/// this names, and naming only the empty output would leave its cause to
+/// guesswork: the run's own words on standard error are what say why.
+fn printed_document(ran: &Ran) -> Value {
+    serde_json::from_str(&ran.out).unwrap_or_else(|error| {
+        panic!(
+            "`printobserver {}` printed no document ({error}); it exited {:?} and wrote to \
+             standard error: {:?}; to standard output: {:?}",
+            ran.arguments.join(" "),
+            ran.code,
+            ran.err,
+            ran.out
+        )
+    })
 }
 
 /// One document, or a panic saying whose it was.

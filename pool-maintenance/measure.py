@@ -101,7 +101,7 @@ def command(argv: list[str], environment: dict[str, str], evidence: Path, name: 
 
 
 def main() -> None:
-    """Clear backlog, build and age an alternative, build normally, then measure."""
+    """Build normally, build an alternative, clear backlog, age it, then measure."""
     evidence = ROOT / "dist" / "pool-maintenance"
     evidence.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
@@ -109,13 +109,6 @@ def main() -> None:
     # A target-dir override would measure a different workload than the recipe.
     if any(key in environment for key in ("CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR")):
         sys.exit("pool-maintenance: unset Cargo target-dir overrides before measuring")
-    backlog = evidence / "backlog.json"
-    command(
-        ["just", "pool-maintenance"],
-        {**environment, "ONEBUDGETSPEC_RESULT": str(backlog)},
-        evidence,
-        "backlog",
-    )
     # The recipe owns target selection; Cargo metadata independently verifies it.
     metadata = run(
         ["cargo", "metadata", "--no-deps", "--format-version", "1"], cwd=ROOT, check=True
@@ -123,10 +116,12 @@ def main() -> None:
     target = Path(json.loads(metadata.stdout)["target_directory"])
     if target != ROOT / "target":
         sys.exit(f"pool-maintenance: Cargo target {target} differs from the declared recipe")
-    before = snapshot(target)
-    # Same instrumented nextest test-target compilation as the gate, without
-    # executing tests. Disabling debug assertions changes metadata in this same
-    # profile, allowing the ordinary configuration to supersede these units.
+    # One workspace-wide instrumented nextest test-target compilation, without
+    # executing tests. The gate compiles per package, so this ordinary build can
+    # supersede the gate's coverage output of dependencies whose features unify
+    # differently; that is backlog, so it is built before the backlog pass.
+    # Disabling debug assertions changes metadata in this same profile, giving
+    # the alternative build units the ordinary configuration supersedes.
     build = [
         "cargo",
         "llvm-cov",
@@ -138,19 +133,34 @@ def main() -> None:
         "-E",
         "none()",
     ]
+    command(build, environment, evidence, "ordinary")
+    before = snapshot(target)
     command(
         build,
         {**environment, "CARGO_PROFILE_DEV_DEBUG_ASSERTIONS": "false"},
         evidence,
         "alternative",
     )
-    alternative = age_created(target, before, snapshot(target))
-    aged = snapshot(target)
-    command(build, environment, evidence, "ordinary")
+    built = snapshot(target)
+    created = {name for name, value in built.items() if before.get(name) != value}
+    # Still the newest build of its units, the alternative survives this pass;
+    # everything already superseded and outside the window does not. Clearing
+    # backlog only now leaves just aging between it and the timed pass, so no
+    # retained build crosses the retention window between the two.
+    backlog = evidence / "backlog.json"
+    command(
+        ["just", "pool-maintenance"],
+        {**environment, "ONEBUDGETSPEC_RESULT": str(backlog)},
+        evidence,
+        "backlog",
+    )
+    cleared = snapshot(target)
+    if lost := created - cleared.keys():
+        msg = f"backlog pass removed alternative build entries: {sorted(lost)}"
+        raise ValueError(msg)
+    alternative = age_created(target, before, cleared)
     ready = snapshot(target)
-    ordinary = {
-        name for name, value in ready.items() if name not in alternative or aged.get(name) != value
-    }
+    ordinary = ready.keys() - alternative
     # These manifests list artifact paths including their Cargo metadata hashes.
     for name, entries in (("alternative", alternative), ("ordinary-before", ordinary)):
         (evidence / f"{name}.json").write_text(json.dumps(sorted(entries), indent=2) + "\n")
