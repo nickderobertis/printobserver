@@ -268,6 +268,53 @@ fn print_inside_a_folder(instance: &Scripted) {
         "the folder carries no tally, so leaving it out proves nothing: {folder}"
     );
     tallied_once_and_failed(instance, &tallied, &nested_path, failed_before);
+    folder_written(instance, failed_before);
+}
+
+/// Wait until `OctoPrint` has written the copy's analysis and its cancel to the
+/// folder's own metadata file on disk, which is where the folder is removed
+/// from.
+///
+/// `OctoPrint` keeps metadata in memory and writes it out afterwards: it
+/// updates its cache, then writes a temporary file into the folder and renames
+/// it over `.metadata.json`. The cancel is tallied on a thread of its own, and
+/// the API answers from the cache, so the tally this walk waited on can be read
+/// while that file is still being written. A folder removed then is removed by
+/// `shutil.rmtree`, which takes none of the metadata locks: it lists the
+/// temporary file, the rename takes it away, and the removal answers 500 with
+/// `[Errno 2] No such file or directory`. Once the file on disk holds both
+/// writes this walk caused, the analysis and the cancel, the folder has none in
+/// flight.
+fn folder_written(instance: &Scripted, failed_before: i64) {
+    let settings = raw::get(instance, "/api/settings");
+    let uploads = settings["folder"]["uploads"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the instance names no uploads folder: {settings}"));
+    let written = std::path::Path::new(uploads)
+        .join(FOLDER)
+        .join(".metadata.json");
+    wait::until("OctoPrint to write the folder's metadata", REACHED, || {
+        let text = std::fs::read_to_string(&written)
+            .map_err(|error| format!("{}: {error}", written.display()))?;
+        let metadata: serde_json::Value =
+            serde_json::from_str(&text).map_err(|error| format!("{text}: {error}"))?;
+        let entry = &metadata[NESTED];
+        let failed = entry["history"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|print| print["success"] == serde_json::Value::Bool(false))
+            .count();
+        let failed = i64::try_from(failed).expect("a count");
+        if entry.get("analysis").is_some() && failed > failed_before {
+            Ok(())
+        } else {
+            Err(format!(
+                "{failed} failures and the analysis {}: {entry}",
+                entry.get("analysis").is_some()
+            ))
+        }
+    });
 }
 
 /// One running reading of the job, past a position, bracketed by the

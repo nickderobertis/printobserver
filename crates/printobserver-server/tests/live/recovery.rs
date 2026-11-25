@@ -8,7 +8,9 @@
 //! socket and its heater targets. A recovery it is not granted is refused and
 //! leaves both as they were.
 //!
-//! It puts the hold print back running, as `just octoprint-up` left it.
+//! It starts the hold print at both ends: at its start, because the tier
+//! before it on the machine puts the print back only when it reaches its own
+//! end, and at its end, as `just octoprint-up` left it.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -304,14 +306,19 @@ agent = ["recover_lift", "recover_cool"]
 /// The agent, granted a lift and a cool, lifts the nozzle and cools the
 /// heaters of the real machine, and is refused a heat it is not granted.
 pub async fn walk(instance: &Scripted) {
-    let (_root, server, agent, secret) = started(instance).await;
     let printer = OctoPrintPrinter::new(
         OctoPrintConfig::new(&instance.url, instance.api_key.clone())
             .expect("the instance's configuration"),
     );
+    // The hold print is started here rather than trusted to be running: the
+    // tier before this one on the machine cancels it and puts it back only if
+    // it gets to its own end. It runs before the server starts, because a
+    // server whose first read finds the machine idle ends the print the alert
+    // is about.
+    hold_printing(&printer).await;
+    let (_root, server, agent, secret) = started(instance).await;
 
     // A turn, held open: its credential is the agent's.
-    job_is(&printer, PrinterState::Printing).await;
     let mut alert: Value = printobserver_types::serde_json::from_str(include_str!(
         "../../../printobserver-obico/samples/obico/failure-alert.json"
     ))
