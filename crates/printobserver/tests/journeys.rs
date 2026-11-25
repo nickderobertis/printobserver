@@ -580,3 +580,13 @@ fn a_served_answer_this_program_will_not_act_on_still_prints_its_document() {
 
     serving::an_answer_it_will_not_act_on_still_prints_its_document(&world);
 }
+
+/// A `--json` command the supervisor refused to authenticate prints the
+/// document it was answered with, beside the guidance on where the credential
+/// is read from.
+#[test]
+fn a_refused_credentials_answer_still_prints_its_document() {
+    let world = World::open(world::STOOD_IN);
+
+    serving::a_refused_credential_still_prints_the_supervisors_document(&world);
+}

@@ -9,7 +9,7 @@ use printobserver::failure::Exit;
 use printobserver_types::serde_json::{self, Value};
 
 use crate::machine::Reports;
-use crate::world::World;
+use crate::world::{OTHER_CREDENTIAL, World};
 
 use super::running;
 
@@ -83,5 +83,65 @@ pub fn an_answer_it_will_not_act_on_still_prints_its_document(world: &World) {
     assert_eq!(
         printed, sent,
         "a served answer printed something other than the supervisor's document"
+    );
+}
+
+/// A request the supervisor refused to authenticate still prints the document
+/// the supervisor answered it with.
+///
+/// The supervisor serves under the world's own credential, so the same command
+/// configured with the control credential is answered `401`. That answer is a
+/// configuration to change, so the command exits `unconfigured` and standard
+/// error says where the credential is read from — and standard output carries
+/// exactly the document the proxy saw the supervisor send, so a caller reading
+/// `--json` reads the refusal rather than nothing.
+pub fn a_refused_credential_still_prints_the_supervisors_document(world: &World) {
+    world.wants(Reports::Printing);
+    let print_id = world.print_id();
+
+    world.proxy.forget();
+    let ran = running::configured(
+        world,
+        &[
+            "pause".to_owned(),
+            "--print-id".to_owned(),
+            print_id,
+            "--actor".to_owned(),
+            "operator".to_owned(),
+            "--reason".to_owned(),
+            "a pause under a credential the supervisor refuses".to_owned(),
+            "--json".to_owned(),
+        ],
+        OTHER_CREDENTIAL,
+    );
+    let answered = world.proxy.the_one_request().answered;
+
+    assert_eq!(
+        ran.code,
+        Some(i32::from(Exit::Unconfigured.status())),
+        "a refused credential exited otherwise than `unconfigured`: {}",
+        ran.said()
+    );
+    assert!(
+        ran.err
+            .contains("refused the credential this program presented")
+            && ran.err.contains("`credential` in the `[client]` table")
+            && ran.err.contains("PRINTOBSERVER_CREDENTIAL"),
+        "a refused credential did not say on standard error where the credential is read \
+         from: {}",
+        ran.said()
+    );
+    let printed: Value = serde_json::from_str(&ran.out).unwrap_or_else(|error| {
+        panic!(
+            "a refused credential's answer printed no document ({error}); it exited {:?} and \
+             wrote to standard error: {:?}",
+            ran.code, ran.err
+        )
+    });
+    let sent: Value = serde_json::from_str(&answered)
+        .unwrap_or_else(|error| panic!("the supervisor's answer is no document ({error})"));
+    assert_eq!(
+        printed, sent,
+        "a refused credential printed something other than the supervisor's document"
     );
 }
