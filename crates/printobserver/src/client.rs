@@ -70,7 +70,9 @@ pub struct Outcome {
 /// # Errors
 ///
 /// Returns [`Failure`] when nothing answered at the configured address and
-/// when the supervisor answered something this program will not act on.
+/// when what the supervisor answered is not a document. An answer that is a
+/// document is produced whatever status it came under, with the exit that
+/// status earns: the request was served, and its answer is the output.
 pub fn produce(call: &Call, config: &ClientConfig) -> Result<Produced, Failure> {
     let operation = call
         .operation()
@@ -122,20 +124,30 @@ pub fn produce(call: &Call, config: &ClientConfig) -> Result<Produced, Failure> 
         // configured, which is a configuration to change rather than a request
         // to change — so it exits the way a program nothing configured does, and
         // says where the credential is read from.
-        UNAUTHENTICATED_STATUS => Err(Failure::of(
-            Exit::Unconfigured,
-            unauthenticated_note(call, config),
-        )),
-        status => Err(Failure::of(
-            Exit::Refused,
-            format!(
-                "the supervisor answered {status}: {}. Ask again for something it serves",
+        UNAUTHENTICATED_STATUS => Ok(Produced {
+            note: Some(format!(
+                "printobserver: {}",
+                unauthenticated_note(call, config)
+            )),
+            document,
+            exit: Exit::Unconfigured,
+        }),
+        // Whatever else it answered, it answered: the document is printed as
+        // every other answer is, so a caller reading the output reads why
+        // rather than nothing at all, and the exit says this program will not
+        // act on it.
+        status => Ok(Produced {
+            note: Some(format!(
+                "printobserver: the supervisor answered {status}: {}. Ask again for something it \
+                 serves",
                 document
                     .get("error")
                     .and_then(Value::as_str)
                     .unwrap_or("it said nothing this program can read")
-            ),
-        )),
+            )),
+            document,
+            exit: Exit::Refused,
+        }),
     }
 }
 
