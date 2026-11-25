@@ -17,11 +17,21 @@ import pytest
 from closures import closure
 from repo_checks.__main__ import main
 from repo_checks.checks_real_prints import (
+    FAULT_DIFF,
     POINTER_VERSION,
+    Hunk,
+    Planted,
+    PlantedError,
+    apply_planted,
     committed_pointers,
     lfs_filtered,
     lfs_tracked,
+    planted_gcode,
     pointer,
+    printed_bytes,
+    printed_gcode,
+    printed_size,
+    recoloured_source,
 )
 from repo_checks.expect import equal, truth
 from repo_checks.fixture_repository import init_repository
@@ -789,3 +799,193 @@ def test_the_reading_without_git_agrees_with_git_over_every_path() -> None:
     git_says = lfs_filtered(repo, names)
     equal([name for name in names if lfs_tracked(repo, name)], git_says)
     truth(len(git_says) >= 77, describing=f"git to hand the cases to LFS, not only {git_says}")
+
+
+#: The two cases derived from the bubbler print, each frame they recoloured and its source.
+PLANNED = "bubbler-colour-change-planned"
+OFF_PLAN = "bubbler-colour-change-off-plan"
+RECOLOURED = {
+    PLANNED: ("recolour-frame-180412-p65.7.jpg", "frame-180412-p65.7.jpg"),
+    OFF_PLAN: ("recolour-frame-170731-p13.8.jpg", "frame-170731-p13.8.jpg"),
+}
+#: The bubbler print's slice, as the source case keeps it and as the tests carry it plain.
+BUBBLER = f"{ROOT}/bubbler-guard-and-pad-pla-healthy/bubbler_guard_and_pad.gcode"
+BUBBLER_SLICE = (
+    REPO_ROOT / "crates/printobserver-server/tests/fixtures/real-prints/bubbler-guard-and-pad.gcode"
+)
+#: What the colour change planted adds: its comment, `M600` and the prime after it.
+PLANTED_LINES = b";COLOR_CHANGE,T0,#FF0000\nM600\nG1 E0.3 F1500 ; prime after color change\n"
+
+
+def test_both_derived_cases_pass_every_check(check: Run) -> None:
+    """The planned and the off-plan case, each read by every check, are refused by none."""
+    for name in CHECKS:
+        code, said = check(name, None)
+        equal((code, [line for line in said.splitlines() if "colour-change" in line]), (0, []))
+    for case in RECOLOURED:
+        truth((REPO_ROOT / ROOT / case / "case.json").is_file(), describing=f"{case} on disk")
+
+
+@pytest.mark.parametrize("case", list(RECOLOURED))
+def test_each_derived_case_names_the_frame_it_recoloured_and_plants_its_change(case: str) -> None:
+    """Its recoloured frame names a frame it carries, and its printed G-code is the slice planted.
+
+    The printed G-code is committed as the diff alone, so it is made here from the
+    plain copy of the slice the tests carry, whose sha256 is the object id the
+    source case's pointer names.
+    """
+    directory = REPO_ROOT / ROOT / case
+    data = json.loads((directory / "case.json").read_text(encoding="utf-8"))
+    recoloured, source = RECOLOURED[case]
+    frame = next(f for f in data["frames"] if f["file"] == recoloured)
+    equal(recoloured_source(frame), source, describing=f"{case}'s {recoloured}")
+    planted = planted_gcode(directory)
+    if planted is None:
+        pytest.fail(f"{case} plants no G-code")
+    clean = BUBBLER_SLICE.read_bytes()
+    kept = planted.clean.read_bytes()
+    pointed = pointer(kept)
+    stands_for = pointed.oid if pointed else hashlib.sha256(kept).hexdigest()
+    equal(hashlib.sha256(clean).hexdigest(), stands_for, describing="the plain slice's sha256")
+    printed = apply_planted(planted, clean)
+    equal(len(printed), printed_size(directory), describing="the printed size read off the diff")
+    equal(printed_gcode(directory), directory / "bubbler_guard_and_pad.gcode")
+    equal(printed.count(b"\nM600\n"), 1, describing="the changes the printed file plans")
+    truth(PLANTED_LINES in printed, describing="the planted colour change")
+    equal(printed.replace(PLANTED_LINES, b"").replace(b"#000000", b"#FF8000"), clean)
+
+
+def test_a_planted_file_is_made_from_the_slice_where_the_tree_holds_its_bytes(
+    tree: Callable[[], Tree],
+) -> None:
+    """The replay reads a planted case's G-code as the diff applied to the slice's own bytes."""
+    copy = tree()
+    (copy.root / BUBBLER).write_bytes(BUBBLER_SLICE.read_bytes())
+    directory = copy.root / ROOT / PLANNED
+    printed = printed_bytes(directory)
+    equal(len(printed), printed_size(directory))
+    truth(PLANTED_LINES in printed, describing="the planted colour change")
+    with pytest.raises(PlantedError, match="carries no printed G-code"):
+        printed_bytes(copy.root / ROOT / "healthy-printing")
+
+
+def test_a_recoloured_frame_naming_no_source_is_refused(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """A `recolour-*` frame's label says which of its case's frames it was made from."""
+    copy = tree()
+    data = case_json(copy, PLANNED)
+    frame = next(f for f in data["frames"] if f["file"] == RECOLOURED[PLANNED][0])
+    frame["label"] = "derived, not a camera frame: the walls from Z 50 made red"
+    write_case(copy, PLANNED, data)
+    refused_with(check("real-prints-schema", copy), PLANNED, "recoloured afterwards from")
+    refused_with(check("real-prints-files", copy), PLANNED, "unreadable")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # A frame of another case, which this one does not carry.
+        "agent-048-obs-180412-p65.7.jpg",
+        # A file the case carries that is no frame of it.
+        "fault.diff",
+        # A recoloured frame, which is no camera's.
+        "recolour-frame-180412-p65.7.jpg",
+    ],
+)
+def test_a_recoloured_frame_naming_a_source_the_case_does_not_carry_is_refused(
+    check: Run, tree: Callable[[], Tree], source: str
+) -> None:
+    """The frame it names is one of the case's own camera frames, carried beside it."""
+    copy = tree()
+    data = case_json(copy, PLANNED)
+    frame = next(f for f in data["frames"] if f["file"] == RECOLOURED[PLANNED][0])
+    frame["label"] = f"derived, not a camera frame: recoloured afterwards from {source}, red"
+    write_case(copy, PLANNED, data)
+    equal(check("real-prints-schema", copy), (0, ""))
+    refused_with(
+        check("real-prints-files", copy), PLANNED, RECOLOURED[PLANNED][0], source, "no frame"
+    )
+
+
+def test_a_recoloured_frames_source_missing_from_the_case_is_refused(
+    check: Run, tree: Callable[[], Tree]
+) -> None:
+    """A source listed among the frames, but not carried, is refused as one the case lacks."""
+    copy = tree()
+    (copy.root / ROOT / OFF_PLAN / RECOLOURED[OFF_PLAN][1]).unlink()
+    refused_with(check("real-prints-files", copy), OFF_PLAN, RECOLOURED[OFF_PLAN][0], "no frame")
+
+
+@pytest.mark.parametrize(
+    ("edit", "why"),
+    [
+        (
+            (f"--- {ROOT}/bubbler-guard-and-pad-pla-healthy/", f"--- {ROOT}/nowhere/"),
+            "which is not a file",
+        ),
+        ((f"+++ {ROOT}/{PLANNED}/", f"+++ {ROOT}/fan-cut-bridge/"), "no G-code of this case"),
+        (("@@ -113147,6 +113147,9 @@", "@@ -113147,7 +113147,9 @@"), "is not 7 lines long"),
+        (("@@ -113147,6 +113147,9 @@", "@ -113147,6 +113147,9 @@"), "no hunk header"),
+        (("--- tests/", "-- tests/"), "starts with no `---` and `+++`"),
+        (("; filament_cooling_moves = 2\n", "; filament_cooling_moves = 2"), "no newline"),
+    ],
+)
+def test_a_diff_that_describes_no_printed_gcode_is_refused(
+    check: Run, tree: Callable[[], Tree], edit: tuple[str, str], why: str
+) -> None:
+    """The diff names a slice the tree carries, makes this case's G-code, and is whole hunks."""
+    copy = tree()
+    copy.edit(f"{ROOT}/{PLANNED}/fault.diff", *edit)
+    refused_with(check("real-prints-files", copy), PLANNED, "fault.diff", why)
+    # With no printed file described, no position is held to one.
+    equal(check("real-prints-replay", copy), (0, ""))
+
+
+def test_a_position_past_the_planted_file_is_refused(check: Run, tree: Callable[[], Tree]) -> None:
+    """A planted file's size is the slice's and the diff's; a position past it is refused."""
+    copy = tree()
+    size = printed_size(copy.root / ROOT / PLANNED)
+    data = case_json(copy, PLANNED)
+    data["assertions"]["scenarios"][1]["file_position_bytes"] = size
+    write_case(copy, PLANNED, data)
+    refused_with(
+        check("real-prints-replay", copy),
+        PLANNED,
+        f"past the end of bubbler_guard_and_pad.gcode at {size} bytes",
+    )
+
+
+@pytest.mark.parametrize(
+    ("clean", "why"),
+    [
+        (pointer_to(b"the slice"), "fetch the cases"),
+        (b"a slice the diff was never made from\n", "is not the line"),
+    ],
+)
+def test_a_planted_file_is_made_only_from_the_slice_itself(clean: bytes, why: str) -> None:
+    """A pointer, or another slice, makes no printed G-code: every line is held to the diff."""
+    planted = planted_gcode(REPO_ROOT / ROOT / PLANNED)
+    if planted is None:
+        pytest.fail(f"{PLANNED} plants no G-code")
+    with pytest.raises(PlantedError, match=why):
+        apply_planted(planted, clean)
+
+
+def test_hunks_out_of_order_make_no_printed_gcode() -> None:
+    """A hunk starting inside the one before it describes no file the slice could become."""
+    planted = Planted(
+        clean=Path("slice.gcode"),
+        diff=Path(FAULT_DIFF),
+        printed=Path("printed.gcode"),
+        size=3,
+        hunks=(Hunk(2, (b" b\n",)), Hunk(1, (b" a\n",))),
+    )
+    with pytest.raises(PlantedError, match="overlaps the one before it"):
+        apply_planted(planted, b"a\nb\n")
+
+
+def test_a_case_carrying_its_printed_gcode_plants_none() -> None:
+    """A recorded case's own G-code is what it printed, whatever diff it keeps beside it."""
+    equal(planted_gcode(REPO_ROOT / FAN), None)
+    equal(printed_gcode(REPO_ROOT / FAN), REPO_ROOT / FAN / "fan-cut-test.gcode")
