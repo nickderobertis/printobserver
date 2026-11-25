@@ -1,7 +1,0 @@
-    Finished `test` profile [unoptimized] target(s) in 0.75s
-────────────
- Nextest run ID 6e2c092b-07c1-47cf-bf98-cf803858bd76 with nextest profile: default
-    Starting 1 test across 1 binary (113 tests skipped)
-        PASS [  10.217s] (1/1) printobserver::journeys an_operator_closes_a_record_left_open
-────────────
-     Summary [  10.219s] 1 test run: 1 passed, 113 skipped

@@ -508,8 +508,9 @@ impl World {
         let running = directory.join(format!("{HELD}{print_id}"));
         let _ = std::fs::remove_file(&running);
         let answered = self.post_a_failure_alert(obico_print_id);
-        assert!(
-            answered.contains(" 2"),
+        assert_eq!(
+            answered.split_whitespace().nth(1),
+            Some("202"),
             "the ingress did not take the alert raising a turn on {print_id}: {answered}"
         );
         for _ in 0..SETTLING_ROUNDS * SETTLING_POLLS {
