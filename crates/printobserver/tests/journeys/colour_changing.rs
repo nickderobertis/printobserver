@@ -28,9 +28,8 @@ const REACHED: &str = "filament_change_planned_reached";
 /// What it records when the job carries on past one.
 const RESUMED: &str = "filament_change_planned_resumed";
 
-/// How far past a change's line a job may stand and still be waiting at it,
-/// as the core crate's `PLANNED_CHANGE_REACH_BYTES` declares.
-const REACH_BYTES: u64 = 4096;
+/// How far past a change's line a job may stand and still be waiting at it.
+const REACH_BYTES: u64 = printobserver_core::PLANNED_CHANGE_REACH_BYTES;
 
 /// The smallest interval the printer watch may poll at, so each position the
 /// journey moves to is read within seconds.
