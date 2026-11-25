@@ -45,8 +45,8 @@
 //! the first time its index, once built, plans a change, and for every open
 //! print as the server starts ([`Supervisor::restore_planned_changes`]).
 //! The index itself is built by the first read of the print's running job
-//! the printer watch or the periodic observation makes, once per print, so a
-//! restarted server reaches a change by position before any check of it.
+//! the printer watch makes, once per print, so a restarted server reaches a
+//! change by position before any check of it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::PoisonError;
@@ -279,10 +279,13 @@ impl Supervisor {
     /// answer the check carrying on claims.
     ///
     /// A print whose index this supervisor has not built — one a restart
-    /// found open, before any check of it — has its index built here, once per
-    /// print: so a change is reached by position from the first read of the
-    /// job after a restart, with no check or signal to build it first. A build
-    /// that fails is left to the next check, as every failed build is.
+    /// found open, before any check of it — has its index built here when
+    /// `build` asks, once per print: the printer watch asks, so a change is
+    /// reached by position from the first read of the job after a restart,
+    /// with no check or signal to build it first. A scheduled check does not,
+    /// so it is recorded as it begins rather than after a whole file is read;
+    /// it builds the index itself. A build that fails is left to the next
+    /// check, as every failed build is.
     ///
     /// # Errors
     ///
@@ -291,11 +294,13 @@ impl Supervisor {
         &self,
         print: &PrintRecord,
         job: &JobSnapshot,
+        build: bool,
     ) -> Result<Option<PendingTurn>, CoreError> {
         let Some(position) = position_of(print, job) else {
             return Ok(None);
         };
-        if self.gcode_indexes().built(print.id).is_none()
+        if build
+            && self.gcode_indexes().built(print.id).is_none()
             && self
                 .index_followed
                 .lock()

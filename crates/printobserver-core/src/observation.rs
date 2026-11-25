@@ -158,7 +158,7 @@ impl Supervisor {
         }
         let job = self.read_job().await;
         if let Ok(read) = &job
-            && let Some(turn) = self.follow_planned_changes(&print, read).await?
+            && let Some(turn) = self.follow_planned_changes(&print, read, false).await?
         {
             return Ok(Some(turn));
         }

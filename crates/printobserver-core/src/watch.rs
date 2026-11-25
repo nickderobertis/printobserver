@@ -972,7 +972,9 @@ impl Supervisor {
             self.watch_unattended(observed, probe).await?;
             if let Some(active) = &active
                 && let Some(print) = self.stores().prints.print(active.print_id).await?
-                && let Some(turn) = self.follow_planned_changes(&print, &observed.job).await?
+                && let Some(turn) = self
+                    .follow_planned_changes(&print, &observed.job, true)
+                    .await?
             {
                 self.watch_state().pending_turns.push(turn);
             }
