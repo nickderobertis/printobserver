@@ -843,3 +843,50 @@ fn a_file_planning_no_change_is_checked_as_a_whole() {
     assert_eq!(*segment, None);
     assert!(checked_for(&world, &refused).segments.is_empty());
 }
+
+/// A supervisor restarted while the printer waits at a planned change reads
+/// that back as it starts: nothing checks the print, a pause is refused naming
+/// the change, and carrying on is still recorded and checked once.
+#[test]
+fn a_restart_while_the_printer_waits_leaves_it_waiting() {
+    let (mut world, _, _) = colour_world();
+    let print_id = printing(&world);
+    world.printer.extrudes(
+        FILE,
+        line_offset("M600", 0),
+        vec![on_tool(0, fed_before(0))],
+    );
+    printing_at(&world, past_change(0));
+    assert!(watch(&world).is_empty());
+
+    world.restart();
+    block_on(world.core.restore_planned_changes()).expect("the history is read back");
+    let checks_before = world.agent.turns().len();
+
+    world.clock.advance(120);
+    assert!(observe(&world).is_empty(), "the waiting print was checked");
+    let pause = world
+        .request(
+            print_id,
+            PrintAction::Pause {
+                reason: "the operator wants it stopped".to_owned(),
+                actor: Actor::Operator,
+            },
+        )
+        .expect("the pause is recorded");
+    assert_eq!(pause.record.decision, waiting_at_the_first_change());
+
+    printing_at(&world, carried_on_from(0));
+    let check = watch(&world);
+    assert_eq!(
+        check.len(),
+        1,
+        "carrying on was not checked after the restart"
+    );
+    run(&world, check);
+    assert_eq!(
+        of_print::<FilamentChangePlannedResumedPayload>(&world, print_id).len(),
+        1
+    );
+    assert_eq!(world.agent.turns().len(), checks_before + 1);
+}
