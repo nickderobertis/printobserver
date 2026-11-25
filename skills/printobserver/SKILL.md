@@ -41,8 +41,9 @@ A person's resume settles what they resumed over; judge only what is new or wors
 a part anywhere new or back exactly: one off its own place or moved since 3 moved by itself: pause.
 
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
-  layer); 2 a close-up; 3 the last check. Lines are plan, not plastic. A part off its drawn walls,
-  bare sheet inside them, or moved since 3 came loose.
+  layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
+  check. Panel 1's lines are plan, not plastic. A part off its drawn walls, bare sheet inside
+  them, or moved since 3 came loose.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.
@@ -59,8 +60,8 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 
 ## A planned colour change
 
-Each check, compare new material's colour in panel 2, which draws nothing, with the colour the
-plan expects: panel 1 draws walls red. At a planned change the printer waits for a person
+Each check, compare new material's colour in panel 2 with the colour the plan expects: panel 1
+draws walls red, panel 2 nothing. At a planned change the printer waits for a person
 (`filament_change_planned_reached`): no check runs, and a pause, resume or setting is refused
 `planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the colour
 expected from its layer and the one before: that colour from there up is expected; carry on.
