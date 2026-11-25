@@ -8,8 +8,10 @@ repository, a test or a test runner.
 
 Each `replay` entry waits for the turn before it to end. A `periodic_observation`
 is the server's own scheduled check; an alert is posted to its real webhook, as
-Obico's plugin posts one. Each decision point is then judged from the server's
-own history of what the agent requested during that turn.
+Obico's plugin posts one; a `planned_change_resumed` is the server's own check of a
+print that waited at a change its G-code plans and then read on past it. Each decision
+point is then judged from the server's own history of what the agent requested
+during that turn.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ import time
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from http import HTTPStatus
 from http.client import HTTPConnection
 from pathlib import Path
@@ -79,7 +81,18 @@ FAILED = "port_failure"
 FAILED_SITE = "supervision_turn"
 CAMERA_LOOK = "camera_look"
 #: The event kinds a replay entry is delivered under.
-TRIGGERS = {"periodic_observation", "obico_failure_alert"}
+TRIGGERS = {"periodic_observation", "obico_failure_alert", "filament_change_planned_resumed"}
+#: What the server writes down once a read finds the job waiting at a planned change.
+REACHED = "filament_change_planned_reached"
+#: A line of G-code that stops the print for a planned change: a colour change or a pause.
+PLANNED_STOP = re.compile(rb"^M60[01](?![0-9])[^\n]*\n", re.MULTILINE)
+#: How far past a planned change's line the server still reads a job as waiting at it:
+#: `printobserver-core`'s `PLANNED_CHANGE_REACH_BYTES`, which a wiring test holds this to.
+PLANNED_CHANGE_REACH_BYTES = 4096
+#: How long the job waits at a planned change before the replay carries on: a person
+#: loading the next spool. It ends at the event's own time, unless the event before is
+#: nearer, and is what the server's resumption reads as the wait.
+CHANGE_WAIT_S = 600
 #: The requests that make a check an acting one rather than a quiet one: those that
 #: change what the machine is doing. Every `set-*` request is one as well.
 ACTING = {"pause", "cancel", "resume"}
@@ -331,6 +344,31 @@ def harness_token() -> str | None:
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
     held = sign_in.get("accessToken") if isinstance(sign_in, dict) else None
     return held if isinstance(held, str) else None
+
+
+def planned_stop_before(gcode: bytes | None, position: int) -> tuple[int, int]:
+    """Where the job waits at the last planned change a position has carried on from.
+
+    The change's line offset, which the server names the change by, and the first
+    byte after that line, where the stopped job stands: its `M600` or `M601` has been
+    read and nothing after it. The position must lie past the change's reach.
+
+    Raises:
+        ReplayError: If the G-code is not at hand or plans no change the position has
+            carried on from.
+    """
+    if gcode is None:
+        msg = "a check after a planned change needs the case's G-code, to find the change"
+        raise ReplayError(msg)
+    stops = [
+        stop
+        for stop in PLANNED_STOP.finditer(gcode)
+        if stop.start() + PLANNED_CHANGE_REACH_BYTES < position
+    ]
+    if not stops:
+        msg = f"the G-code plans no change that a job at byte {position} has carried on from"
+        raise ReplayError(msg)
+    return stops[-1].start(), stops[-1].end()
 
 
 def refuse_a_pointer(data: bytes, case: str, name: str) -> bytes:
@@ -1450,6 +1488,9 @@ class Replay:
         self.first_layer_end = first_layer_end(gcode) if gcode is not None else None
         #: The case's calibration as the server is configured with it, once laid out.
         self.calibration: Path | None = None
+        self.gcode = gcode
+        #: The offset of the planned change the job waits at, until the server reaches it.
+        self.waiting_for: int | None = None
 
     def _install(self) -> Path:
         """Put the programs, the skill and the configuration where the installer puts them."""
@@ -1733,12 +1774,47 @@ class Replay:
         self._pass_the_first_layer(upcoming)
         if timeline.paused and upcoming.printer_state == "printing":
             self._operator_resumes()
+        ended = instant(timeline.moment.at)
         with timeline.lock:
             timeline.stand_at(following)
             timeline.moved_at_exit = True
             timeline.exited_from = exited_from
+            if upcoming.carries_on_from_a_change:
+                self._wait_at_the_change(upcoming, ended)
         if upcoming.is_alert:
             self._deliver_alert(upcoming)
+
+    def _wait_at_the_change(self, upcoming: Moment, after: datetime) -> None:
+        """Hold the job at the planned change the upcoming check carries on from.
+
+        Every read finds it stopped at the change's line, from [`CHANGE_WAIT_S`] before
+        the check's own time, so the server writes the change reached and runs no turn;
+        once it has, [`Replay._carry_on_once_reached`] moves the job past it.
+        """
+        change, stopped = planned_stop_before(self.gcode, upcoming.file_position_bytes)
+        since = max(
+            after + timedelta(seconds=1), instant(upcoming.at) - timedelta(seconds=CHANGE_WAIT_S)
+        )
+        self.waiting_for = change
+        self.timeline.wait_at_change(stopped, since)
+
+    def _carry_on_once_reached(self, events: list[HistoryEvent]) -> None:
+        """Carry the job on past the change it waits at, once the server has written it reached.
+
+        The next read finds it at the check's own position, past the change's reach,
+        and the server writes the resumption with the camera's frame and claims the
+        check that is the replay's event.
+        """
+        if self.waiting_for is None:
+            return
+        if any(
+            event["kind"] == REACHED
+            and event["payload"].get("change", {}).get("offset_bytes") == self.waiting_for
+            for event in events
+        ):
+            self.waiting_for = None
+            with self.timeline.lock:
+                self.timeline.carry_on()
 
     def _hand_the_line(self, moment: Moment) -> None:
         """Hand the outside supervisor the watch's line at one milestone, and keep its point."""
@@ -1917,7 +1993,9 @@ class Replay:
             if len(self.runs) > RUN_ALLOWANCE_PER_ENTRY * wanted:
                 msg = f"{len(self.runs)} harness runs for {wanted} events: stopping the spend"
                 raise ReplayError(msg)
-            ended = self._turns_ended(self._events())
+            events = self._events()
+            self._carry_on_once_reached(events)
+            ended = self._turns_ended(events)
             if self.timeline.finished and ended >= wanted:
                 return
             harness_exits = sum(1 for harness_run in self.runs if harness_run.ended_at)
@@ -1942,6 +2020,11 @@ class Replay:
         """Feed every event in order, and judge each decision point from the server's record."""
         if self.case.moments[0].is_outside:
             msg = f"{self.case.moments[0].id} is a watch line before printobserver's first verdict"
+            raise ReplayError(msg)
+        if self.case.moments[0].carries_on_from_a_change:
+            # The server reads a planned change only once a check has built the print's
+            # G-code index, which no check before the first event has.
+            msg = f"{self.case.moments[0].id} carries on from a change no check came before"
             raise ReplayError(msg)
         config = self._install()
         if any(moment.is_outside for moment in self.case.moments):

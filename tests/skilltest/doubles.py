@@ -371,6 +371,9 @@ class Timeline:
     #: Whether every fetch is refused, spending no frame: while the replay holds a print's
     #: alignment undecided to write the verdict its case records (`no_first_layer_frame`).
     withholding: bool = False
+    #: Where the job stands while it waits at a change its G-code plans, before the event
+    #: that carries on from it: every read finds it there until the replay carries on.
+    waiting_at: int | None = None
 
     def __post_init__(self) -> None:
         """Read the heater commands and capture times once, and stand at the first event."""
@@ -424,9 +427,25 @@ class Timeline:
         self.passing = passing
         self._set_clock(passing.at)
 
+    def wait_at_change(self, position: int, since: datetime) -> None:
+        """Stand at a planned change, as its `M600` or `M601` holds the job, from an instant on.
+
+        The event the replay stands at is the check after the job carries on, so it is
+        owed its own frame then; a fetch meanwhile answers what the camera saw while
+        the job waited, the latest frame captured by then.
+        """
+        self.waiting_at = position
+        self._set_clock(since)
+
+    def carry_on(self) -> None:
+        """The job carries on from the change it waited at, at the event's recorded time."""
+        self.waiting_at = None
+        self._set_clock(instant(self.moment.at))
+
     def stand_at(self, index: int) -> None:
         """Stand at one event: its recorded time, and its frame next for a fetch to answer."""
         self.passing = None
+        self.waiting_at = None
         self.index = index
         self.looked = False
         moment = self.case.moments[index]
@@ -499,6 +518,11 @@ class Timeline:
                 name = self.case.frames[self.passing.frame].file
                 self.fetches.append(name)
                 return FrameDue(name, self.frame_times[self.passing.frame])
+            if self.waiting_at is not None:
+                now = self.now()
+                shown = max([0, *(i for i, when in enumerate(self.frame_times) if when <= now)])
+                self.fetches.append(self.case.frames[shown].file)
+                return FrameDue(self.case.frames[shown].file, self.frame_times[shown])
             if self.owed_event_frame:
                 self.cursor = max(self.cursor, self.at_event_frame)
                 self.owed_event_frame = False
@@ -587,6 +611,8 @@ class Timeline:
         """
         if self.passing is not None:
             return self.passing.position
+        if self.waiting_at is not None:
+            return self.waiting_at
         low = self.moment.file_position_bytes
         if not self.looked:
             return low

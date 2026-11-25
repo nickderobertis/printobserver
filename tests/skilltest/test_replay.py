@@ -34,6 +34,7 @@ from replay import (
     refuse_a_pointer,
 )
 from repo_checks import expect
+from repo_checks.checks_real_prints import printed_bytes
 from starts import StartsReplay
 
 RUN_DIR = os.environ.get("SKILLTEST_RUN_DIR", "").strip()
@@ -69,7 +70,7 @@ def test_the_agent_supervises_the_print(name: str) -> None:
     replay = Replay(
         case,
         [program],
-        gcode=refuse_a_pointer(case.gcode.read_bytes(), case.name, case.gcode.name),
+        gcode=refuse_a_pointer(printed_bytes(case.directory), case.name, case.gcode.name),
         outside=lambda replaying: Outside(replaying, [program]),
         compaction_probe=name == the_longest_print(),
     )
