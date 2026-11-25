@@ -86,6 +86,15 @@
   "additionalProperties": false,
   "description": "A filament change was signalled during a print.",
   "properties": {
+    "planned_change": {
+      "description": "The index of the planned change the print stopped at, which the spool\nwas charged up to the offset of; absent when no change was planned at\nthat position, and on a record written before changes were planned.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
     "position": {
       "anyOf": [
         {

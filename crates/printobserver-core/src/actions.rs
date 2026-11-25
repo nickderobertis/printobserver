@@ -233,6 +233,28 @@ impl Supervisor {
         })
     }
 
+    /// The decision taken, or — for a pause, a resume or an adjustment of a
+    /// print waiting at a planned change — its refusal, whoever asks and
+    /// whatever else the decision found: a person at the printer is finishing
+    /// the change.
+    async fn refusing_while_waiting(
+        &self,
+        action: &PrintAction,
+        print: Option<&PrintRecord>,
+        decided: PolicyDecision,
+    ) -> Result<PolicyDecision, CoreError> {
+        let open = print.filter(|print| print.ended_at.is_none());
+        let Some(print) =
+            open.filter(|_| crate::planned::REFUSED_WHILE_WAITING.contains(&action.kind()))
+        else {
+            return Ok(decided);
+        };
+        Ok(match self.planned_change_waiting(print.id).await? {
+            Some(waiting) => PolicyDecision::Rejected(waiting.refusal()),
+            None => decided,
+        })
+    }
+
     /// Write one request into its print's history: what was asked for, the
     /// filament check a start was held to, and the rejection when there was
     /// one.
@@ -285,6 +307,9 @@ impl Supervisor {
     /// What an accepted request is checked against beyond the decision, and
     /// what it reads first.
     ///
+    /// A pause, a resume or an adjustment of a print waiting at a planned
+    /// change is refused first, whatever the decision found.
+    ///
     /// A start is held to the filament, material and sheet checks
     /// ([`crate::preflight`]), whose refusal replaces the decision and whose
     /// finding is answered. A cancel
@@ -296,6 +321,9 @@ impl Supervisor {
         print: Option<&PrintRecord>,
         decision: &mut PolicyDecision,
     ) -> Result<Option<Preflight>, CoreError> {
+        *decision = self
+            .refusing_while_waiting(action, print, decision.clone())
+            .await?;
         if *decision != PolicyDecision::Accepted {
             return Ok(None);
         }
@@ -315,7 +343,13 @@ impl Supervisor {
                     sheet: (*override_sheet_check).into(),
                 };
                 let (checked, refusal) = self
-                    .check_start(file_name, manifest.sheet.as_deref(), actor, asked)
+                    .check_start(
+                        file_name,
+                        manifest.sheet.as_deref(),
+                        &manifest.segment_spools,
+                        actor,
+                        asked,
+                    )
                     .await?;
                 if let Some(reason) = refusal {
                     *decision = PolicyDecision::Rejected(reason);

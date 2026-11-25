@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What told the supervisor a print had reached one of its planned changes.",
+  "oneOf": [
+    {
+      "const": "signal",
+      "description": "A filament-change signal arrived with the job at the change.",
+      "type": "string"
+    },
+    {
+      "const": "position",
+      "description": "The job's file position stood at the change or just past it.",
+      "type": "string"
+    }
+  ],
+  "title": "PlannedChangeTrigger"
+}

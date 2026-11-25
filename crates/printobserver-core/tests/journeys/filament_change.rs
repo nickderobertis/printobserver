@@ -515,6 +515,7 @@ fn a_change_whose_position_could_not_be_read_charges_the_last_position_and_says_
             spool_id: change.spool.id,
             spool_name: change.spool.name.clone(),
             reason: change.change_mark(false),
+            segment: None,
         })
     );
 

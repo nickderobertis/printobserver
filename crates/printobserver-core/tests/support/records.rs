@@ -17,11 +17,12 @@ use printobserver_core::{
     EffectiveBounds, ExecutionOutcome, FilePosition, ImageRecord, Intervention, InterventionId,
     InterventionOutcome, JobManifest, LoadedSpool, ManifestNarrowing, MaterialComparison,
     MaterialName, MaterialObjection, MaterialResult, PendingCharge, PendingTaken, PolicyDecision,
-    Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
+    Preflight, PreflightNeed, PreflightObjection, PreflightSegment, PreflightSpool, PreflightTool,
     PreflightToolResult, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, PrintSegmentKey,
-    RejectionReason, SafetyEnvelope, SheetComparison, SheetId, SheetObjection, SheetResult,
-    ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle, SpoolRecord, SpoolRefusalCause,
-    SpoolTrust, UnanalysedSpool, UncomparedMaterial, UnverifiedMark, UnverifiedReason,
+    RejectionReason, SafetyEnvelope, SegmentSpool, SheetComparison, SheetId, SheetObjection,
+    SheetResult, ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle, SpoolRecord,
+    SpoolRefusalCause, SpoolTrust, UnanalysedSpool, UncomparedMaterial, UnverifiedMark,
+    UnverifiedReason,
 };
 use printobserver_types::contract::TypeContract;
 
@@ -64,6 +65,7 @@ pub fn declared() -> Vec<TypeContract> {
         TypeContract::of::<Preflight>("Preflight"),
         TypeContract::of::<PreflightNeed>("PreflightNeed"),
         TypeContract::of::<PreflightObjection>("PreflightObjection"),
+        TypeContract::of::<PreflightSegment>("PreflightSegment"),
         TypeContract::of::<PreflightSpool>("PreflightSpool"),
         TypeContract::of::<PreflightTool>("PreflightTool"),
         TypeContract::of::<PreflightToolResult>("PreflightToolResult"),
@@ -82,6 +84,7 @@ pub fn declared() -> Vec<TypeContract> {
         TypeContract::of::<RecoveryTemperatures>("RecoveryTemperatures"),
         TypeContract::of::<RejectionReason>("RejectionReason"),
         TypeContract::of::<SafetyEnvelope>("SafetyEnvelope"),
+        TypeContract::of::<SegmentSpool>("SegmentSpool"),
         TypeContract::of::<SheetComparison>("SheetComparison"),
         TypeContract::of::<SheetId>("SheetId"),
         TypeContract::of::<SheetObjection>("SheetObjection"),

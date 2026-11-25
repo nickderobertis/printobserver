@@ -31,6 +31,17 @@
 //!   footprint is never smaller than what was laid and a nearly straight arc
 //!   about a far centre is no larger than the line it nearly is — read to the
 //!   nearest tenth of a millimetre and then widened to whole millimetres.
+//! * `M600` is a planned colour change and `M601` a planned pause, each a
+//!   [`PlannedChange`] at the offset of its line's first byte. The layer it
+//!   belongs to is the first that lays material after it, which in
+//!   `PrusaSlicer`'s output is the layer whose `;LAYER_CHANGE` it follows. An
+//!   `M600`'s colour is the `;COLOR_CHANGE,T<n>,#RRGGBB` on the line just
+//!   before it; the colour before the first change is the config block's
+//!   `; filament_colour = `, the first tool's when it lists several.
+//! * `M73 C<minutes>` is the slicer's count of the minutes to the next change.
+//!   The filament each stretch between changes feeds is the net of its
+//!   extrusion moves, counted as `OctoPrint`'s own reader counts what a print
+//!   fed, so a stretch's length is what the spool feeding it is charged.
 //!
 //! Everything else is a move or nothing to this reader: `G0`–`G3` with
 //! `G90`/`G91`, `M82`/`M83`, `G92` and `G28` are followed so that what laid
@@ -136,6 +147,20 @@ const FAN_FULL: f64 = 255.0;
 /// The longest chord an arc's toolpath is cut into, in millimetres.
 const CHORD_MM: f64 = 0.5;
 
+/// How far past a planned change's line a job's file position may stand and
+/// still be waiting at it, in bytes.
+///
+/// `OctoPrint`'s position is the offset after the last line it sent, and it
+/// goes on sending the few lines after an `M600` the firmware's command queue
+/// takes before the change blocks it: the prime and a handful of moves, a few
+/// hundred bytes. Four kilobytes holds every queue a firmware keeps, and a
+/// print that has carried on from the change is past it within seconds.
+pub const PLANNED_CHANGE_REACH_BYTES: u64 = 4096;
+
+/// The most planned changes one index names; a file planning more is no
+/// slicer's colour plan, and its further changes are not recorded.
+const CHANGE_LIMIT: usize = 1024;
+
 /// Where the reader stood at one point of the file: what a toolpath read of
 /// a layer starts from.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -217,6 +242,25 @@ pub struct GcodeIndex {
     blocks: Vec<(u64, Option<usize>)>,
     /// The spool the file's bytes were copied to as it was read.
     spool: Option<std::path::PathBuf>,
+    /// Every planned change, in file order.
+    changes: Vec<ChangeMark>,
+    /// The slicer's counts of the minutes to the next change.
+    change_minutes: Vec<Mark<i64>>,
+    /// The colour the file was sliced to start in, from its config block.
+    first_colour: Option<String>,
+    /// The net filament the whole file feeds, in millimetres.
+    extruded_mm: f64,
+}
+
+/// One planned change as the index holds it.
+#[derive(Debug, Clone, PartialEq)]
+struct ChangeMark {
+    /// What a client is told of it.
+    change: PlannedChange,
+    /// The offset just past its line.
+    at: u64,
+    /// The net filament the file had fed before it, in millimetres.
+    fed_before_mm: f64,
 }
 
 /// What a file set one adjustable to, as of a file position: the value, and
@@ -257,6 +301,8 @@ impl GcodeIndex {
             + self.flow.len()
             + self.fan.len()
             + self.objects.len()
+            + self.changes.len()
+            + self.change_minutes.len()
     }
 
     /// How many bytes the index itself holds on the heap and inline, which is
@@ -279,6 +325,99 @@ impl GcodeIndex {
                 .map(|outline| outline.hull_mm.capacity() * core::mem::size_of::<[f32; 2]>())
                 .sum::<usize>()
             + self.blocks.capacity() * core::mem::size_of::<(u64, Option<usize>)>()
+            + self.changes.capacity() * core::mem::size_of::<ChangeMark>()
+            + self
+                .changes
+                .iter()
+                .filter_map(|mark| mark.change.color.as_ref())
+                .map(String::capacity)
+                .sum::<usize>()
+            + self.change_minutes.capacity() * core::mem::size_of::<Mark<i64>>()
+            + self.first_colour.as_ref().map_or(0, String::capacity)
+    }
+
+    /// Every change the file plans, in file order: none for a file that plans
+    /// none.
+    #[must_use]
+    pub fn planned_changes(&self) -> Vec<PlannedChange> {
+        self.changes
+            .iter()
+            .map(|mark| mark.change.clone())
+            .collect()
+    }
+
+    /// One planned change, by its index.
+    #[must_use]
+    pub fn planned_change(&self, index: u32) -> Option<&PlannedChange> {
+        self.changes
+            .iter()
+            .map(|mark| &mark.change)
+            .find(|change| change.index == index)
+    }
+
+    /// The stretches of the file between its planned changes, each with its
+    /// colour and the filament it feeds: none for a file that plans no change.
+    #[must_use]
+    pub fn planned_segments(&self) -> Vec<PlannedSegment> {
+        if self.changes.is_empty() {
+            return Vec::new();
+        }
+        // Segment n runs from change n-1 (or the start) to change n (or the
+        // end), in the colour that change (or the file's start) loaded.
+        let colours = core::iter::once(&self.first_colour)
+            .chain(self.changes.iter().map(|mark| &mark.change.color));
+        let fed = core::iter::once(0.0)
+            .chain(self.changes.iter().map(|mark| mark.fed_before_mm))
+            .zip(
+                self.changes
+                    .iter()
+                    .map(|mark| mark.fed_before_mm)
+                    .chain(core::iter::once(self.extruded_mm)),
+            );
+        let segments: Vec<PlannedSegment> = (0_u32..)
+            .zip(colours.zip(fed))
+            .map(|(segment, (colour, (from, to)))| PlannedSegment {
+                segment,
+                color: colour.clone(),
+                filament_mm: millimetres(to - from),
+            })
+            .collect();
+        segments
+    }
+
+    /// The planned change a job standing at a file position is waiting at: the
+    /// last one whose line it has reached, when it is no further than
+    /// [`PLANNED_CHANGE_REACH_BYTES`] past it.
+    #[must_use]
+    pub fn change_waiting_at(&self, file_position_bytes: u64) -> Option<&PlannedChange> {
+        self.changes
+            .iter()
+            .rev()
+            .map(|mark| &mark.change)
+            .find(|change| change.offset_bytes <= file_position_bytes)
+            .filter(|change| waits_at(change, file_position_bytes))
+    }
+
+    /// How many planned changes a file position has read the line of.
+    fn changes_read(&self, position: i64) -> usize {
+        u64::try_from(position).map_or(0, |position| {
+            self.changes.partition_point(|mark| mark.at <= position)
+        })
+    }
+
+    /// The colour the print should be laying at a file position: the
+    /// colour of the stretch the position is in, a planned change counting
+    /// from the moment its line is read. Nothing for a file that plans no
+    /// change, or a stretch whose colour the file does not name.
+    #[must_use]
+    pub fn expected_color_at(&self, position: i64) -> Option<String> {
+        if self.changes.is_empty() {
+            return None;
+        }
+        match self.changes_read(position).checked_sub(1) {
+            None => self.first_colour.clone(),
+            Some(last) => self.changes[last].change.color.clone(),
+        }
     }
 
     /// Each object's footprint outline, in [`SlicerPlan::objects`]' order;
@@ -514,7 +653,19 @@ impl GcodeIndex {
                 at_odds.push(PlanMismatch::FlowLowOverWalls);
             }
         }
+        let next_change = self
+            .changes
+            .get(self.changes_read(position))
+            .map(|mark| mark.change.clone());
+        let minutes_to_next_change = next_change
+            .as_ref()
+            .and_then(|_| last_at(&self.change_minutes, position))
+            .map(|mark| mark.value);
         SlicerPlan {
+            expected_color: self.expected_color_at(position),
+            next_change,
+            minutes_to_next_change,
+            change_waiting: None,
             layer: layer_index.map(|index| index + 1),
             z_mm: layer_index.and_then(|index| self.layers[index].z_mm),
             final_z_mm,
@@ -607,6 +758,16 @@ fn set_value(
     (file.is_some() || changed.is_some()).then_some(SetValue { file, changed })
 }
 
+/// Whether a job at a file position is waiting at one planned change.
+const fn waits_at(change: &PlannedChange, position: u64) -> bool {
+    position >= change.offset_bytes && position - change.offset_bytes <= PLANNED_CHANGE_REACH_BYTES
+}
+
+/// A length of filament to the nearest thousandth of a millimetre.
+fn millimetres(length: f64) -> f64 {
+    (length.max(0.0) * 1000.0).round() / 1000.0
+}
+
 /// Whether a line ending at `at` lies wholly before `position`.
 fn reached(at: u64, position: i64) -> bool {
     u64::try_from(position).is_ok_and(|position| at <= position)
@@ -661,6 +822,198 @@ pub struct Rise {
     pub mm: [f64; 2],
 }
 
+/// Declare every field of an object whose value may be null required — and
+/// of each object written inline as one of its fields, as an enum variant's
+/// body is — so such a field is always sent, its null meaning what its
+/// description says, rather than left out.
+///
+/// The derive reads an `Option` as a field that may be absent, and its own
+/// `required` attribute drops the null with the absence; this keeps the null.
+pub(crate) fn null_is_sent(schema: &mut printobserver_types::schemars::Schema) {
+    use printobserver_types::serde_json::Value;
+    if let Some(Value::Object(properties)) = schema.get_mut("properties") {
+        for property in properties.values_mut() {
+            if property.get("properties").is_some()
+                && let Ok(inline) =
+                    printobserver_types::schemars::Schema::try_from(core::mem::take(property))
+            {
+                let mut inline = inline;
+                null_is_sent(&mut inline);
+                *property = inline.to_value();
+            }
+        }
+    }
+    let nullable = |property: &Value| match property.get("type") {
+        Some(Value::Array(types)) => types.iter().any(|named| named == "null"),
+        _ => property
+            .get("anyOf")
+            .and_then(Value::as_array)
+            .is_some_and(|arms| {
+                arms.iter()
+                    .any(|arm| arm.get("type") == Some(&Value::from("null")))
+            }),
+    };
+    let sent: Vec<Value> = schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| {
+            properties
+                .iter()
+                .filter(|(_, property)| nullable(property))
+                .map(|(name, _)| Value::from(name.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if sent.is_empty() {
+        return;
+    }
+    let required = schema
+        .ensure_object()
+        .entry("required")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    if let Value::Array(required) = required {
+        for name in sent {
+            if !required.contains(&name) {
+                required.push(name);
+            }
+        }
+    }
+}
+
+/// What a planned change stops the print for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum PlannedChangeKind {
+    /// An `M600`: the firmware stops so a person can load the next colour.
+    ColorChange,
+    /// An `M601`: the firmware pauses until a person resumes it.
+    Pause,
+}
+
+/// One stop the print's own G-code plans: an `M600` colour change or an
+/// `M601` pause, where the firmware waits for a person.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars", transform = null_is_sent)]
+pub struct PlannedChange {
+    /// Its place among the file's changes, counting from 0 in file order.
+    pub index: u32,
+    /// What it stops the print for.
+    pub kind: PlannedChangeKind,
+    /// The byte offset of the first byte of its `M600` or `M601` line.
+    pub offset_bytes: u64,
+    /// The first layer printed after it, counting the first as 1: the layer
+    /// whose `;Z:` is the change's height.
+    pub layer: u32,
+    /// That layer's height, in millimetres.
+    pub z_mm: f64,
+    /// The colour loaded at it, as `#RRGGBB` in upper case, from the
+    /// `;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an
+    /// `M601`, and for an `M600` with no such line.
+    pub color: Option<String>,
+}
+
+/// One stretch of the print between its planned changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars", transform = null_is_sent)]
+pub struct PlannedSegment {
+    /// Its number: segment 0 runs from the file's start to change 0, and
+    /// segment n from change n-1 to change n, or to the file's end.
+    pub segment: u32,
+    /// Its colour as `#RRGGBB`: segment 0's the file's `filament_colour`, every
+    /// later one its change's; null where the file names none.
+    pub color: Option<String>,
+    /// The filament it feeds, in millimetres: the net of its extrusion moves.
+    pub filament_mm: f64,
+}
+
+/// A print's planned changes as the status read answers them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars", transform = null_is_sent)]
+pub struct PlannedChanges {
+    /// Every change the file plans, in file order.
+    pub changes: Vec<PlannedChange>,
+    /// The stretches between them, in file order.
+    pub segments: Vec<PlannedSegment>,
+    /// The index of the change the printer is waiting at now; null when it is
+    /// waiting at none.
+    pub waiting: Option<u32>,
+    /// The colour expected at the job's current position, as `#RRGGBB`; null
+    /// when the file names none there or the position is unknown.
+    pub expected_color: Option<String>,
+}
+
+impl Sample for PlannedChange {
+    fn sample_full() -> Self {
+        Self {
+            index: 0,
+            kind: PlannedChangeKind::ColorChange,
+            offset_bytes: 48_213,
+            layer: 12,
+            z_mm: 2.4,
+            color: Some("#FF0000".to_owned()),
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            index: 1,
+            kind: PlannedChangeKind::Pause,
+            offset_bytes: 96_410,
+            layer: 24,
+            z_mm: 4.8,
+            color: None,
+        }]
+    }
+}
+
+impl Sample for PlannedSegment {
+    fn sample_full() -> Self {
+        Self {
+            segment: 1,
+            color: Some("#FF0000".to_owned()),
+            filament_mm: 812.4,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            segment: 0,
+            color: None,
+            filament_mm: 0.0,
+        }]
+    }
+}
+
+impl Sample for PlannedChanges {
+    fn sample_full() -> Self {
+        Self {
+            changes: vec![PlannedChange::sample_full()],
+            segments: vec![
+                PlannedSegment {
+                    segment: 0,
+                    color: Some("#FFFFFF".to_owned()),
+                    filament_mm: 301.7,
+                },
+                PlannedSegment::sample_full(),
+            ],
+            waiting: Some(0),
+            expected_color: Some("#FF0000".to_owned()),
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            waiting: None,
+            expected_color: None,
+            ..Self::sample_full()
+        }]
+    }
+}
+
 /// A setting in force that the plan at this height says is wrong for what is
 /// being laid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -711,6 +1064,24 @@ pub enum PlanFact {
 #[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct SlicerPlan {
+    /// The colour the print should be laying at the current position, as
+    /// `#RRGGBB`; absent when the file plans no change or names no colour
+    /// there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_color: Option<String>,
+    /// The next change the file plans after the current position; absent when
+    /// it plans none there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_change: Option<PlannedChange>,
+    /// The slicer's own count of the minutes to that change, from the latest
+    /// `M73 C` the position has reached; absent when there is no next change
+    /// or no count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minutes_to_next_change: Option<i64>,
+    /// The planned change the printer is waiting at now, for a person to
+    /// finish; absent when it is waiting at none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_waiting: Option<PlannedChange>,
     /// The layer the print is in, counting the first as 1; absent before the
     /// first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -758,6 +1129,10 @@ pub struct SlicerPlan {
 impl Sample for SlicerPlan {
     fn sample_full() -> Self {
         Self {
+            expected_color: Some("#FF0000".to_owned()),
+            next_change: Some(PlannedChange::sample_full()),
+            minutes_to_next_change: Some(17),
+            change_waiting: Some(PlannedChange::sample_full()),
             layer: Some(12),
             z_mm: Some(2.4),
             types: vec![
@@ -788,6 +1163,10 @@ impl Sample for SlicerPlan {
 
     fn sample_minimal() -> Self {
         Self {
+            expected_color: None,
+            next_change: None,
+            minutes_to_next_change: None,
+            change_waiting: None,
             layer: None,
             z_mm: None,
             final_z_mm: None,
@@ -870,6 +1249,38 @@ pub struct IndexBuilder {
     collected: Option<Vec<ToolpathSegment>>,
     /// Where the last move an outline reached ended.
     reached_last: Option<[f64; 2]>,
+    /// The planned changes so far.
+    changes: Vec<ChangeDraft>,
+    /// The minutes-to-change counts so far.
+    change_minutes: Vec<Mark<i64>>,
+    /// The last `;COLOR_CHANGE` read: the line it was on and its colour.
+    colour_comment: Option<(u64, String)>,
+    /// The config block's first `filament_colour`.
+    first_colour: Option<String>,
+    /// The net filament fed so far, in millimetres.
+    extruded_mm: f64,
+    /// How many layers had begun when material was last laid: the layer being
+    /// read has laid material when it equals the layers begun.
+    laid_in_layers: usize,
+}
+
+/// A planned change as the reader has seen it so far: its layer is settled
+/// once the file is read.
+#[derive(Debug, Clone, PartialEq)]
+struct ChangeDraft {
+    /// What it stops the print for.
+    kind: PlannedChangeKind,
+    /// The offset of its line's first byte.
+    offset: u64,
+    /// The offset just past its line.
+    at: u64,
+    /// The layer it belongs to, by its place among the layers: the one being
+    /// read when it has laid nothing yet, else the next.
+    layer: usize,
+    /// Its colour, when the line before named one.
+    color: Option<String>,
+    /// The net filament fed before it.
+    fed_before_mm: f64,
 }
 
 /// A spool being written.
@@ -1014,9 +1425,37 @@ impl IndexBuilder {
             }
             Some(spool.path)
         });
+        let changes = (0_u32..)
+            .zip(self.changes)
+            .map(|(index, draft)| {
+                // A change after the last layer began, laid in it, belongs to
+                // that last layer: there is no later one.
+                let layer = draft.layer.min(self.layers.len().saturating_sub(1));
+                ChangeMark {
+                    change: PlannedChange {
+                        index,
+                        kind: draft.kind,
+                        offset_bytes: draft.offset,
+                        layer: u32::try_from(layer + 1).unwrap_or(u32::MAX),
+                        z_mm: self
+                            .layers
+                            .get(layer)
+                            .and_then(|held| held.z_mm)
+                            .unwrap_or(0.0),
+                        color: draft.color,
+                    },
+                    at: draft.at,
+                    fed_before_mm: draft.fed_before_mm,
+                }
+            })
+            .collect();
         GcodeIndex {
             bytes: self.read,
             lines: self.lines,
+            changes,
+            change_minutes: self.change_minutes,
+            first_colour: self.first_colour,
+            extruded_mm: self.extruded_mm,
             layers: self.layers,
             type_names: self.type_names,
             labelled_types: self.labelled_types,
@@ -1098,6 +1537,8 @@ impl IndexBuilder {
             ('M', Some(106)) => self.fan_speed(&words[1..], Fan::Set),
             ('M', Some(107)) => self.fan_speed(&words[1..], Fan::Off),
             ('M', Some(486)) => self.object(raw, &words[1..]),
+            ('M', Some(600)) => self.planned(PlannedChangeKind::ColorChange),
+            ('M', Some(601)) => self.planned(PlannedChangeKind::Pause),
             _ => {}
         }
     }
@@ -1129,6 +1570,17 @@ impl IndexBuilder {
                     .parse::<f64>()
                     .ok()
                     .filter(|z| (0.0..=AXIS_LIMIT).contains(z));
+            }
+        } else if let Some(change) = comment.strip_prefix("COLOR_CHANGE,") {
+            // `T<n>,#RRGGBB`: the tool and the colour loaded at the change.
+            self.colour_comment = change
+                .split(',')
+                .nth(1)
+                .and_then(colour_of)
+                .map(|colour| (self.lines, colour));
+        } else if let Some(colours) = comment.trim_start().strip_prefix("filament_colour = ") {
+            if self.first_colour.is_none() {
+                self.first_colour = colours.split(';').next().and_then(colour_of);
             }
         } else if let Some(name) = comment.strip_prefix("TYPE:") {
             let name = name.trim();
@@ -1179,9 +1631,11 @@ impl IndexBuilder {
             }
         }
         let travel = (self.at[0] - start[0]).hypot(self.at[1] - start[1]);
+        self.extruded_mm += fed;
         if fed <= 0.0 || (travel <= TRAVEL_MM && code < 2) {
             return;
         }
+        self.laid_in_layers = self.layers.len();
         if let (Some(layer), Some(bit)) = (self.layers.last_mut(), self.current_type) {
             layer.types |= 1 << bit;
         }
@@ -1277,8 +1731,15 @@ impl IndexBuilder {
         }
     }
 
-    /// `M73`: the normal mode's estimate of the minutes left, `P` and `R`.
+    /// `M73`: the normal mode's estimate of the minutes left, `P` and `R`, and
+    /// the minutes to the next planned change, `C`.
     fn estimate(&mut self, words: &[Word]) {
+        if let Some(minutes) = number(words, 'C').filter(|minutes| *minutes >= 0.0) {
+            self.change_minutes.push(Mark {
+                at: self.read,
+                value: whole(minutes),
+            });
+        }
         if number(words, 'P').is_none() {
             return;
         }
@@ -1288,6 +1749,34 @@ impl IndexBuilder {
                 value: whole(minutes),
             });
         }
+    }
+
+    /// `M600` or `M601`: a stop the file plans, carrying the colour the line
+    /// just before it named.
+    fn planned(&mut self, kind: PlannedChangeKind) {
+        let named = self.colour_comment.take();
+        if self.changes.len() >= CHANGE_LIMIT {
+            return;
+        }
+        let color = match kind {
+            PlannedChangeKind::ColorChange => named
+                .filter(|(line, _)| line + 1 == self.lines)
+                .map(|(_, colour)| colour),
+            PlannedChangeKind::Pause => None,
+        };
+        let layer = if self.laid_in_layers == self.layers.len() {
+            self.layers.len()
+        } else {
+            self.layers.len() - 1
+        };
+        self.changes.push(ChangeDraft {
+            kind,
+            offset: self.line_began,
+            at: self.read,
+            layer,
+            color,
+            fed_before_mm: self.extruded_mm,
+        });
     }
 
     /// `M221 S<percent>`: the flow factor.
@@ -1350,6 +1839,14 @@ impl IndexBuilder {
         self.reached_last = None;
         self.blocks.push((self.read, place));
     }
+}
+
+/// A colour written `#RRGGBB`, upper-cased; nothing for anything else.
+fn colour_of(text: &str) -> Option<String> {
+    let text = text.trim();
+    let hex = text.strip_prefix('#')?;
+    (hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| text.to_ascii_uppercase())
 }
 
 /// Record a value a file set, where it set it — every time, the same value
@@ -2016,6 +2513,10 @@ impl crate::supervisor::Supervisor {
             .changes_since(print.id, &index, position, interventions)
             .await?;
         let mut plan = index.plan_with(position, flow, fan);
+        plan.change_waiting = self
+            .planned_change_waiting(print.id)
+            .await?
+            .map(|waiting| waiting.reached.change);
         plan.rise = self.rise_of(print.id, &index, position).await?;
         if plan.rise.is_none() {
             plan.unknown.push(PlanFact::Rise);

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a planned change stops the print for.",
+  "oneOf": [
+    {
+      "const": "color_change",
+      "description": "An `M600`: the firmware stops so a person can load the next colour.",
+      "type": "string"
+    },
+    {
+      "const": "pause",
+      "description": "An `M601`: the firmware pauses until a person resumes it.",
+      "type": "string"
+    }
+  ],
+  "title": "PlannedChangeKind"
+}

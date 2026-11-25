@@ -23,15 +23,15 @@ use super::charge::{
 use super::ids::{ActionId, InterventionId, SpoolId};
 use super::image::ImageRecord;
 use super::intervention::{Intervention, InterventionOutcome};
-use super::manifest::JobManifest;
+use super::manifest::{JobManifest, SegmentSpool};
 use super::policy::{
     EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope, SpoolField, SpoolRefusalCause,
 };
 use super::preflight::{
     DoubtedSpool, MaterialComparison, MaterialName, MaterialObjection, MaterialResult, Preflight,
-    PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool, PreflightToolResult,
-    PreflightVerdict, SheetComparison, SheetId, SheetObjection, SheetResult, ShortSpool,
-    UnanalysedSpool, UncomparedMaterial,
+    PreflightNeed, PreflightObjection, PreflightSegment, PreflightSpool, PreflightTool,
+    PreflightToolResult, PreflightVerdict, SheetComparison, SheetId, SheetObjection, SheetResult,
+    ShortSpool, UnanalysedSpool, UncomparedMaterial,
 };
 use super::print::{ManifestNarrowing, PrintRecord};
 use super::spool::{
@@ -333,13 +333,24 @@ impl Sample for JobManifest {
             sheet: Some("smooth-pei".to_owned()),
             allowed: allowed_ranges(),
             metadata: BTreeMap::from([("layer_height_mm".to_owned(), "0.2".to_owned())]),
+            segment_spools: vec![SegmentSpool::sample_full()],
         }
     }
 
     fn sample_minimal() -> Self {
         Self {
             sheet: None,
+            segment_spools: Vec::new(),
             ..Self::sample_full()
+        }
+    }
+}
+
+impl Sample for SegmentSpool {
+    fn sample_full() -> Self {
+        Self {
+            segment: 1,
+            spool_id: spool_id(),
         }
     }
 }
@@ -384,6 +395,7 @@ impl Sample for RejectionReason {
                 buffer_g: 12.0,
                 remaining_g: 80.0,
                 unverified: Some(UnverifiedReason::sample_full()),
+                segment: Some(1),
             },
             Self::InsufficientFilament {
                 tool: 0,
@@ -393,12 +405,14 @@ impl Sample for RejectionReason {
                 buffer_g: 12.0,
                 remaining_g: 80.0,
                 unverified: None,
+                segment: None,
             },
             Self::UnverifiedSpool {
                 tool: 0,
                 spool_id: spool_id(),
                 spool_name: "Galaxy black".to_owned(),
                 reason: UnverifiedReason::sample_full(),
+                segment: Some(2),
             },
             Self::AnalysisUnavailable {
                 file_name: "benchy.gcode".to_owned(),
@@ -421,6 +435,18 @@ impl Sample for RejectionReason {
             },
             Self::InterventionStillActive {
                 intervention_id: InterventionId::sample_full(),
+            },
+            Self::PlannedChangeWaiting {
+                change_index: 0,
+                layer: 12,
+                z_mm: 2.4,
+                color: Some("#FF0000".to_owned()),
+            },
+            Self::PlannedChangeWaiting {
+                change_index: 1,
+                layer: 24,
+                z_mm: 4.8,
+                color: None,
             },
         ]
     }
@@ -906,6 +932,16 @@ impl Sample for Preflight {
             verdict: PreflightVerdict::Insufficient,
             material: Some(MaterialResult::sample_full()),
             sheet: Some(SheetResult::sample_full()),
+            segments: vec![
+                PreflightSegment::sample_full(),
+                PreflightSegment {
+                    segment: 1,
+                    color: None,
+                    filament_mm: 812.4,
+                    required_g: None,
+                    spool_id: None,
+                },
+            ],
             checked_at: Timestamp::sample_full(),
         }
     }
@@ -914,7 +950,20 @@ impl Sample for Preflight {
         Self {
             material: None,
             sheet: None,
+            segments: Vec::new(),
             ..Self::sample_full()
+        }
+    }
+}
+
+impl Sample for PreflightSegment {
+    fn sample_full() -> Self {
+        Self {
+            segment: 0,
+            color: Some("#FFFFFF".to_owned()),
+            filament_mm: 301.7,
+            required_g: Some(0.9),
+            spool_id: Some(spool_id()),
         }
     }
 }

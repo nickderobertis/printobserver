@@ -27,11 +27,12 @@ use printobserver_core::{
     AgentStopUnactedPayload, BedClearActor, BedClearAssertedPayload, CameraDegradedPayload,
     CameraLookPayload, CameraRetryPayload, ChargePendedPayload, DetectorHealth,
     DetectorHealthChangedPayload, DetectorHealthStatus, DetectorStatus,
+    FilamentChangePlannedReachedPayload, FilamentChangePlannedResumedPayload,
     FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
     FrameCause, GcodeIndexedPayload, HeatedTool, InterventionExpiredPayload, Look,
-    OperatorAcknowledgementPayload, PeriodicObservationPayload, PortFailurePayload,
-    PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext, PrintEndedPayload,
-    PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
+    OperatorAcknowledgementPayload, PeriodicObservationPayload, PlannedChangeTrigger,
+    PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload, PrintContext,
+    PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
     PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
     RecoveryRequestedPayload, ScoringVerdict, SignalPosition, SpoolAdjustedPayload,
     SpoolCommandRejectedPayload, SpoolLoadedPayload, SpoolRegisteredPayload, SpoolRetiredPayload,
@@ -39,8 +40,8 @@ use printobserver_core::{
     UnattendedPrinterActivityPayload, agent_source, operator_source, system_source,
 };
 use printobserver_core::{
-    AgentContext, AgentEvent, AgentHeater, AgentPrint, AgentPrinter, PlanFact, PlanMismatch, Rise,
-    SetValue, SlicerPlan,
+    AgentContext, AgentEvent, AgentHeater, AgentPrint, AgentPrinter, PlanFact, PlanMismatch,
+    PlannedChange, PlannedChangeKind, PlannedChanges, PlannedSegment, Rise, SetValue, SlicerPlan,
 };
 use printobserver_types::contract::{Sample, TypeContract, schema_of};
 use printobserver_types::serde_json::Value;
@@ -121,6 +122,8 @@ fn declared_kinds() -> Vec<DeclaredKind> {
         kind_of::<CameraDegradedPayload>("CameraDegradedPayload"),
         kind_of::<CameraRetryPayload>("CameraRetryPayload"),
         kind_of::<GcodeIndexedPayload>("GcodeIndexedPayload"),
+        kind_of::<FilamentChangePlannedReachedPayload>("FilamentChangePlannedReachedPayload"),
+        kind_of::<FilamentChangePlannedResumedPayload>("FilamentChangePlannedResumedPayload"),
         kind_of::<PrintStartedPayload>("PrintStartedPayload"),
         kind_of::<PrintEndedPayload>("PrintEndedPayload"),
         kind_of::<FilamentConsumedPayload>("FilamentConsumedPayload"),
@@ -189,6 +192,26 @@ fn generated() -> Vec<(String, Value)> {
         schema_of::<BedClearActor>(),
     ));
     entries.push(("SlicerPlan.json".to_owned(), schema_of::<SlicerPlan>()));
+    entries.push((
+        "PlannedChange.json".to_owned(),
+        schema_of::<PlannedChange>(),
+    ));
+    entries.push((
+        "PlannedChangeKind.json".to_owned(),
+        schema_of::<PlannedChangeKind>(),
+    ));
+    entries.push((
+        "PlannedSegment.json".to_owned(),
+        schema_of::<PlannedSegment>(),
+    ));
+    entries.push((
+        "PlannedChanges.json".to_owned(),
+        schema_of::<PlannedChanges>(),
+    ));
+    entries.push((
+        "PlannedChangeTrigger.json".to_owned(),
+        schema_of::<PlannedChangeTrigger>(),
+    ));
     entries.push(("SetValue.json".to_owned(), schema_of::<SetValue>()));
     entries.push(("Rise.json".to_owned(), schema_of::<Rise>()));
     entries.push(("AgentContext.json".to_owned(), schema_of::<AgentContext>()));
@@ -247,6 +270,14 @@ fn each_kind_is_written_under_its_own_name() {
             ("CameraDegradedPayload", "camera_degraded"),
             ("CameraRetryPayload", "camera_retry"),
             ("GcodeIndexedPayload", "gcode_indexed"),
+            (
+                "FilamentChangePlannedReachedPayload",
+                "filament_change_planned_reached"
+            ),
+            (
+                "FilamentChangePlannedResumedPayload",
+                "filament_change_planned_resumed"
+            ),
             ("PrintStartedPayload", "print_started"),
             ("PrintEndedPayload", "print_ended"),
             ("FilamentConsumedPayload", "filament_consumed"),

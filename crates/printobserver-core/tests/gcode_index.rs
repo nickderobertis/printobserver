@@ -14,6 +14,9 @@ use core::task::{Context, Poll, Waker};
 
 use printobserver_core::gcode_index::{Claimed, GcodeIndexes};
 
+use printobserver_core::gcode_index::{
+    PLANNED_CHANGE_REACH_BYTES, PlannedChange, PlannedChangeKind, PlannedSegment,
+};
 use printobserver_core::{GcodeIndex, IndexBuilder, PlanFact, PlanMismatch, SetValue};
 use printobserver_printer_api::GcodeSink as _;
 use printobserver_types::PrintId;
@@ -631,4 +634,217 @@ M106S127.5
     assert_eq!(plan.objects, vec![[0, 0, 10, 20]], "{:?}", plan.objects);
     assert_eq!(plan.flow_factor.and_then(|set| set.file), Some(0.95));
     assert_eq!(plan.fan_percent.and_then(|set| set.file), Some(50.0));
+}
+
+/// Two planned colour changes, in `PrusaSlicer` 2.9.6's syntax.
+const TWO_COLOUR: &str = include_str!("fixtures/planned-changes/two-colour.gcode");
+
+/// An `M600` whose `;COLOR_CHANGE` is not the line before it, and an `M601`.
+const UNNAMED_AND_PAUSE: &str = include_str!("fixtures/planned-changes/unnamed-and-pause.gcode");
+
+/// The offset of the first byte of the `nth` line reading exactly `line`.
+fn line_offset(text: &str, line: &str, nth: usize) -> u64 {
+    let mut at = 0;
+    let mut seen = 0;
+    for each in text.split_inclusive('\n') {
+        if each.trim_end() == line {
+            if seen == nth {
+                return u64::try_from(at).expect("a small offset");
+            }
+            seen += 1;
+        }
+        at += each.len();
+    }
+    panic!("the file has no line {nth} reading {line:?}");
+}
+
+/// The offset just past the `nth` line reading exactly `line`.
+fn line_end(text: &str, line: &str, nth: usize) -> i64 {
+    let start = usize::try_from(line_offset(text, line, nth)).expect("a small offset");
+    let end = start + text[start..].find('\n').expect("the line ends") + 1;
+    i64::try_from(end).expect("a small offset")
+}
+
+/// As a signed position.
+fn signed(offset: u64) -> i64 {
+    i64::try_from(offset).expect("a small offset")
+}
+
+/// Each `M600` is a planned change at its own line's first byte, on the layer
+/// whose `;LAYER_CHANGE` it follows and whose `;Z:` is its height, carrying the
+/// colour the `;COLOR_CHANGE` line before it names.
+#[test]
+fn each_m600_is_indexed_with_its_offset_layer_height_and_colour() {
+    let index = indexed(TWO_COLOUR);
+    let changes = index.planned_changes();
+
+    assert_eq!(
+        changes,
+        vec![
+            PlannedChange {
+                index: 0,
+                kind: PlannedChangeKind::ColorChange,
+                offset_bytes: line_offset(TWO_COLOUR, "M600", 0),
+                layer: 3,
+                z_mm: 0.6,
+                color: Some("#FF0000".to_owned()),
+            },
+            PlannedChange {
+                index: 1,
+                kind: PlannedChangeKind::ColorChange,
+                offset_bytes: line_offset(TWO_COLOUR, "M600", 1),
+                layer: 5,
+                z_mm: 1.0,
+                color: Some("#0000FF".to_owned()),
+            },
+        ]
+    );
+    assert_eq!(index.planned_change(1), Some(&changes[1]));
+    assert_eq!(index.planned_change(2), None);
+}
+
+/// Each stretch between changes feeds the net of its own extrusion moves — the
+/// purge, perimeters and primes it lays less the retractions it makes — in the
+/// colour the file starts in or its change loads.
+#[test]
+fn each_segment_feeds_the_net_of_its_own_moves_in_its_own_colour() {
+    let segments = indexed(TWO_COLOUR).planned_segments();
+
+    assert_eq!(
+        segments,
+        vec![
+            PlannedSegment {
+                segment: 0,
+                color: Some("#FFFFFF".to_owned()),
+                // The 10 mm purge, two layers of 4 mm, and the third layer's
+                // retraction before its change.
+                filament_mm: 17.2,
+            },
+            PlannedSegment {
+                segment: 1,
+                color: Some("#FF0000".to_owned()),
+                // The prime, the unretraction and two layers, less the fifth
+                // layer's retraction before the second change.
+                filament_mm: 8.3,
+            },
+            PlannedSegment {
+                segment: 2,
+                color: Some("#0000FF".to_owned()),
+                // The prime, the unretraction and two layers, less the last
+                // retraction.
+                filament_mm: 7.1,
+            },
+        ]
+    );
+}
+
+/// The colour expected changes the moment a change's line is read, the next
+/// change is the one after the position, and the minutes to it are the latest
+/// `M73 C` the position has read.
+#[test]
+fn the_plan_names_the_colour_the_next_change_and_its_minutes_by_position() {
+    let index = indexed(TWO_COLOUR);
+    let first = index.planned_change(0).cloned();
+    let second = index.planned_change(1).cloned();
+    let at = |position: i64| index.plan_at(position);
+
+    let start = at(line_end(TWO_COLOUR, "M73 C2", 0));
+    assert_eq!(start.expected_color.as_deref(), Some("#FFFFFF"));
+    assert_eq!(start.next_change, first);
+    assert_eq!(start.minutes_to_next_change, Some(2));
+    assert_eq!(start.change_waiting, None);
+
+    let at_first = signed(line_offset(TWO_COLOUR, "M600", 0));
+    let before = at(at_first);
+    assert_eq!(before.expected_color.as_deref(), Some("#FFFFFF"));
+    assert_eq!(before.next_change, first);
+    assert_eq!(before.minutes_to_next_change, Some(0));
+
+    let between = at(line_end(TWO_COLOUR, "M600", 0));
+    assert_eq!(between.expected_color.as_deref(), Some("#FF0000"));
+    assert_eq!(between.next_change, second);
+    assert_eq!(between.minutes_to_next_change, Some(0));
+    let counting = at(line_end(TWO_COLOUR, "M73 C1", 1));
+    assert_eq!(counting.minutes_to_next_change, Some(1));
+    assert_eq!(counting.layer, Some(3));
+
+    let after = at(line_end(TWO_COLOUR, "M600", 1));
+    assert_eq!(after.expected_color.as_deref(), Some("#0000FF"));
+    assert_eq!(after.next_change, None);
+    assert_eq!(after.minutes_to_next_change, None);
+    let end = at(signed(index.bytes()));
+    assert_eq!(end.expected_color.as_deref(), Some("#0000FF"));
+    assert_eq!(index.expected_color_at(-1).as_deref(), Some("#FFFFFF"));
+}
+
+/// A job stands at a change from its line's first byte to a few kilobytes
+/// past it — at the later of two once it reaches that one's line — and at no
+/// change anywhere else.
+#[test]
+fn a_job_waits_at_a_change_from_its_line_to_just_past_it() {
+    let index = indexed(TWO_COLOUR);
+    let first = line_offset(TWO_COLOUR, "M600", 0);
+    let second = line_offset(TWO_COLOUR, "M600", 1);
+    let waiting = |position: u64| index.change_waiting_at(position).map(|change| change.index);
+
+    assert_eq!(waiting(first - 1), None);
+    assert_eq!(waiting(first), Some(0));
+    assert_eq!(waiting(second - 1), Some(0));
+    assert_eq!(waiting(second), Some(1));
+    assert_eq!(waiting(second + PLANNED_CHANGE_REACH_BYTES), Some(1));
+    assert_eq!(waiting(second + PLANNED_CHANGE_REACH_BYTES + 1), None);
+}
+
+/// An `M600` whose `;COLOR_CHANGE` is not on the line just before it, and an
+/// `M601`, are planned changes with no colour; a change made after its layer
+/// laid material belongs to the next layer.
+#[test]
+fn an_m600_with_no_colour_line_and_an_m601_are_indexed_with_no_colour() {
+    let index = indexed(UNNAMED_AND_PAUSE);
+
+    assert_eq!(
+        index.planned_changes(),
+        vec![
+            PlannedChange {
+                index: 0,
+                kind: PlannedChangeKind::ColorChange,
+                offset_bytes: line_offset(UNNAMED_AND_PAUSE, "M600", 0),
+                layer: 2,
+                z_mm: 0.4,
+                color: None,
+            },
+            PlannedChange {
+                index: 1,
+                kind: PlannedChangeKind::Pause,
+                offset_bytes: line_offset(UNNAMED_AND_PAUSE, "M601", 0),
+                layer: 4,
+                z_mm: 0.8,
+                color: None,
+            },
+        ]
+    );
+    let segments = index.planned_segments();
+    assert_eq!(segments.len(), 3);
+    assert!(segments.iter().all(|segment| segment.color.is_none()));
+    assert_eq!(index.plan_at(signed(index.bytes())).expected_color, None);
+}
+
+/// A file planning no change plans no segment, and its plan carries none of
+/// the four fields about changes.
+#[test]
+fn a_file_planning_no_change_carries_nothing_about_changes() {
+    let index = indexed(PLATE);
+    let plan = index.plan_at(signed(index.bytes()));
+
+    assert!(index.planned_changes().is_empty());
+    assert!(index.planned_segments().is_empty());
+    let fields = printobserver_types::serde_json::to_value(&plan).expect("the plan serializes");
+    for field in [
+        "expected_color",
+        "next_change",
+        "minutes_to_next_change",
+        "change_waiting",
+    ] {
+        assert!(fields.get(field).is_none(), "{field} is in {fields}");
+    }
 }

@@ -1,0 +1,62 @@
+{
+  "$defs": {
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One stretch of a file with planned colour changes, as a filament check\nreads it.",
+  "properties": {
+    "color": {
+      "description": "Its colour as `#RRGGBB`; null when the file names none.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "filament_mm": {
+      "description": "The filament it feeds, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "required_g": {
+      "description": "What it needs from the spool meant for it, in grams, by that spool's\ndiameter and density; null when no spool is there to convert with.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "segment": {
+      "description": "Its number: segment 0 runs from the file's start to the first change.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "spool_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool meant for it: the one on tool 0 for segment 0, and the one\nthe manifest names for a later segment; null when none is."
+    }
+  },
+  "required": [
+    "segment",
+    "filament_mm",
+    "color",
+    "required_g",
+    "spool_id"
+  ],
+  "title": "PreflightSegment",
+  "type": "object"
+}

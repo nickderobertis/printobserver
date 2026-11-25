@@ -109,6 +109,10 @@ pub enum RejectionReason {
         /// The spool's oldest mark, when the short spool is also unverified.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         unverified: Option<UnverifiedReason>,
+        /// The stretch of a file with planned changes the spool is short for;
+        /// absent for a file that plans none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        segment: Option<u32>,
     },
     /// A start was refused because the spool on one tool is unverified.
     UnverifiedSpool {
@@ -120,6 +124,10 @@ pub enum RejectionReason {
         spool_name: String,
         /// The spool's oldest mark.
         reason: UnverifiedReason,
+        /// The stretch of a file with planned changes the spool is named for;
+        /// absent for a file that plans none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        segment: Option<u32>,
     },
     /// A start was refused because `OctoPrint`'s analysis of the file had not
     /// appeared when the start's wait for it elapsed.
@@ -164,6 +172,20 @@ pub enum RejectionReason {
     PrintNotResumable {
         /// The `recovery_executed` event that made it so.
         recovery_event_id: EventId,
+    },
+    /// A pause, a resume or an adjustment was refused because the printer is
+    /// waiting at a change the print's G-code plans, for a person to finish it
+    /// on the printer.
+    #[schemars(transform = crate::gcode_index::null_is_sent)]
+    PlannedChangeWaiting {
+        /// The index of the change it is waiting at.
+        change_index: u32,
+        /// The first layer printed after it.
+        layer: u32,
+        /// That layer's height, in millimetres.
+        z_mm: f64,
+        /// The colour to load, as `#RRGGBB`; null when the file names none.
+        color: Option<String>,
     },
     /// A spool command could not be carried out.
     SpoolRefused {

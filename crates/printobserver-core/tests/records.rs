@@ -174,6 +174,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("material", "string", true),
             ("metadata", "map:string", true),
             ("nozzle_diameter_mm", "number", true),
+            ("segment_spools", "array:SegmentSpool", false),
             ("sheet", "string", false),
             ("slicer_profile", "string", true),
         ],
@@ -249,9 +250,20 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("checked_at", "Timestamp", true),
             ("file_name", "string", true),
             ("material", "MaterialResult", false),
+            ("segments", "array:PreflightSegment", false),
             ("sheet", "SheetResult", false),
             ("tools", "array:PreflightTool", true),
             ("verdict", "PreflightVerdict", true),
+        ],
+    ),
+    (
+        "PreflightSegment",
+        &[
+            ("color", "string", true),
+            ("filament_mm", "number", true),
+            ("required_g", "number", true),
+            ("segment", "integer", true),
+            ("spool_id", "SpoolId", true),
         ],
     ),
     (
@@ -339,6 +351,7 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("material_refused", "object", true),
             ("min_interval_not_elapsed", "object", true),
             ("out_of_bounds", "object", true),
+            ("planned_change_waiting", "object", true),
             ("print_not_resumable", "object", true),
             ("print_still_active", "object", true),
             ("sheet_refused", "object", true),
@@ -354,6 +367,10 @@ const DECLARED_FIELDS: &[StatedType] = &[
             ("segment", "integer", true),
             ("tool", "integer", true),
         ],
+    ),
+    (
+        "SegmentSpool",
+        &[("segment", "integer", true), ("spool_id", "SpoolId", true)],
     ),
     (
         "SafetyEnvelope",

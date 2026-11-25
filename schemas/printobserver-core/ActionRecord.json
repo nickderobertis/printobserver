@@ -291,6 +291,13 @@
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -1131,6 +1138,15 @@
                   "format": "double",
                   "type": "number"
                 },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
                   "description": "The spool loaded on it."
@@ -1182,6 +1198,15 @@
                 "reason": {
                   "$ref": "#/$defs/UnverifiedReason",
                   "description": "The spool's oldest mark."
+                },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
@@ -1368,6 +1393,52 @@
         },
         {
           "additionalProperties": false,
+          "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+          "properties": {
+            "planned_change_waiting": {
+              "additionalProperties": false,
+              "properties": {
+                "change_index": {
+                  "description": "The index of the change it is waiting at.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "color": {
+                  "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layer": {
+                  "description": "The first layer printed after it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "z_mm": {
+                  "description": "That layer's height, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "change_index",
+                "layer",
+                "z_mm",
+                "color"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planned_change_waiting"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "A spool command could not be carried out.",
           "properties": {
             "spool_refused": {
@@ -1395,6 +1466,27 @@
           "type": "object"
         }
       ]
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
     },
     "SheetId": {
       "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",

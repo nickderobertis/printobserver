@@ -502,5 +502,6 @@ pub fn manifest(allowed: &[(Adjustable, Range)]) -> JobManifest {
         sheet: Some("smooth-pei".to_owned()),
         allowed: allowed.iter().copied().collect(),
         metadata: BTreeMap::new(),
+        segment_spools: Vec::new(),
     }
 }

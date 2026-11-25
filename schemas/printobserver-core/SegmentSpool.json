@@ -1,0 +1,32 @@
+{
+  "$defs": {
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The spool meant for one stretch after a planned change.",
+  "properties": {
+    "segment": {
+      "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+      "format": "uint32",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "spool_id": {
+      "$ref": "#/$defs/SpoolId",
+      "description": "The spool meant for it."
+    }
+  },
+  "required": [
+    "segment",
+    "spool_id"
+  ],
+  "title": "SegmentSpool",
+  "type": "object"
+}

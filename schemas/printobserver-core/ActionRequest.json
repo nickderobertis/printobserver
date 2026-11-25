@@ -109,6 +109,13 @@
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -561,6 +568,34 @@
         "max"
       ],
       "type": "object"
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
