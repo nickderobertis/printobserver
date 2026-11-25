@@ -134,14 +134,14 @@ fn memo_of(history: &[EventRecord]) -> PlannedMemo {
     memo
 }
 
-/// The file position a job read reports for a print, when the job is that
-/// print's file, printing or paused, and reports one.
 /// How long a job read paused at a planned change stands at one position
 /// before that position alone reaches the change: long enough for the
 /// filament-change signal a pause there brings to arrive first, and well inside
 /// the interval between two scheduled checks.
 pub(crate) const PAUSED_AT_CHANGE_STAND: Duration = Duration::from_secs(30);
 
+/// The file position a job read reports for a print, when the job is that
+/// print's file, printing or paused, and reports one.
 fn position_of(print: &PrintRecord, job: &JobSnapshot) -> Option<u64> {
     let running = matches!(job.state, PrinterState::Printing | PrinterState::Paused);
     let same_file = print.file_name.is_none() || job.file_name == print.file_name;
