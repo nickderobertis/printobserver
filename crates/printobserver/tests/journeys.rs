@@ -93,6 +93,8 @@ mod pairing;
 mod redaction;
 #[path = "journeys/running.rs"]
 mod running;
+#[path = "journeys/serving.rs"]
+mod serving;
 #[path = "journeys/spooling.rs"]
 mod spooling;
 #[path = "journeys/starting.rs"]
@@ -565,4 +567,16 @@ fn a_stopped_supervisors_output_is_read_no_longer_than_the_drain() {
 #[test]
 fn a_supervisor_that_announces_itself_is_answered_at_once() {
     announcing::a_supervisor_that_announces_is_answered_at_once();
+}
+
+/// A `--json` command whose request the supervisor served under a status this
+/// program will not act on prints the document it was answered with.
+///
+/// A world of its own, because the journey holds the store's write lock while
+/// the command runs, and every journey beside it would wait on that lock too.
+#[test]
+fn a_served_answer_this_program_will_not_act_on_still_prints_its_document() {
+    let world = World::open(world::STOOD_IN);
+
+    serving::an_answer_it_will_not_act_on_still_prints_its_document(&world);
 }
