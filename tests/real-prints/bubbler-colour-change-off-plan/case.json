@@ -1,0 +1,148 @@
+{
+  "case": "bubbler-colour-change-off-plan",
+  "camera_calibration": "../cameras/core-one-2026-09-27.json",
+  "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), smooth PEI sheet",
+  "printed_on": "2026-10-31, 16:46 to 19:20, as bubbler-guard-and-pad-pla-healthy; derived 2026-11-25",
+  "times": "local, MDT (UTC-6)",
+  "derived_from": "bubbler-guard-and-pad-pla-healthy, a clean black PLA print of the bubbler guard and pad: its slice with a planted colour change, and its own frames, some recoloured",
+  "part": "the bubbler guard, a round cylinder to Z 142, and the saddle pad, an arched strip to Z 11.4, in black PLA",
+  "verdict": "derived failure: the colour changed where the G-code plans no change",
+  "fault": {
+    "kind": "a colour change where the G-code plans none",
+    "how": "fault.diff plants PrusaSlicer 2.9.6's colour change to #FF0000 (`;COLOR_CHANGE,T0,#FF0000`, `M600`, and its prime) after the `;AFTER_LAYER_CHANGE` block of layer Z 50, so the red starts on that layer, and names the filament black (`; filament_colour = #000000`) where its profile left the slicer's default orange; nothing else changes",
+    "planned_change_at_z_mm": 50.0,
+    "planned_change_at_progress_pct": 57.9,
+    "seen_change_at_z_mm": 6.0,
+    "seen_change_at_progress_pct": 6.6
+  },
+  "what_it_looks_like": "the guard's ring and the pad are black up to Z 6 and red from Z 6 to the top at Z 10.8, while the slice plans black until its one change at Z 50",
+  "fixable_by_the_agent": false,
+  "expected_agent_action": {
+    "operation": "pause",
+    "why": "a colour the plan does not expect at this layer is a wrong spool, a mixed-up change or a change the slice was never meant to carry; a person must check the spool loaded and the file before the print goes on"
+  },
+  "frames": [
+    {
+      "file": "frame-165325-p01.7.jpg",
+      "time": "2026-10-31 16:53:25",
+      "progress_pct": 1.7,
+      "z_mm": 1.0,
+      "label": "Z 1.0 early layers, in the black filament: the guard's C-shaped base wall on its brim with a comb of build-plate support in the saddle opening, and the pad starting at back right; all clean and stuck. A byte-for-byte copy of ../bubbler-guard-and-pad-pla-healthy/agent-005-obs-165325-p01.7.jpg."
+    },
+    {
+      "file": "frame-170731-p13.8.jpg",
+      "time": "2026-10-31 17:07:31",
+      "progress_pct": 13.8,
+      "z_mm": 10.8,
+      "label": "Z 10.8: the guard's saddle opening closed over its support teeth and the pad near its top, black throughout. A byte-for-byte copy of ../bubbler-guard-and-pad-pla-healthy/agent-016-obs-170731-p13.8.jpg, and the frame the recoloured one stands in for."
+    },
+    {
+      "file": "recolour-frame-170731-p13.8.jpg",
+      "time": "2026-10-31 17:07:31",
+      "progress_pct": 13.8,
+      "z_mm": 10.8,
+      "label": "derived, not a camera frame: recoloured afterwards from frame-170731-p13.8.jpg, every outer wall laid from Z 6 to the frame's Z 10.8 made #FF0000, and the toolhead over the ring left as it was; the slice plans black here, so the red is a defect"
+    }
+  ],
+  "sources": {
+    "gcode": "the printed G-code is ../bubbler-guard-and-pad-pla-healthy/bubbler_guard_and_pad.gcode with fault.diff applied: the diff is committed alone, because the printed file differs from that slice by nothing else, and the replay makes it from the slice",
+    "service_config": "../service-config.toml",
+    "frames": "frame-165325-p01.7.jpg and frame-170731-p13.8.jpg are ../bubbler-guard-and-pad-pla-healthy/agent-005-obs-165325-p01.7.jpg and ../bubbler-guard-and-pad-pla-healthy/agent-016-obs-170731-p13.8.jpg; recolour-frame-170731-p13.8.jpg is frame-170731-p13.8.jpg recoloured by tools/camera-calibration's camera_calibration.recolour, whose test there reproduces it byte for byte"
+  },
+  "assertions": {
+    "replay": [
+      "carry-on-before-any-change",
+      "colour-changed-off-plan"
+    ],
+    "scenarios": [
+      {
+        "id": "carry-on-before-any-change",
+        "at": "2026-10-31T16:53:25",
+        "file_position_bytes": 81512,
+        "file_position_source": "progress",
+        "summary": "A periodic observation of the healthy black first layers at 1.7%, long before any colour change; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "frame-165325-p01.7.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "colour-changed-off-plan",
+        "at": "2026-10-31T17:07:31",
+        "file_position_bytes": 661481,
+        "file_position_source": "progress",
+        "summary": "A periodic observation shows the walls red from Z 6 up, where the G-code expects black and plans its only change at Z 50; the agent should pause and name what a person must check.",
+        "trigger": "periodic_observation",
+        "event_image": "recolour-frame-170731-p13.8.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [
+            {
+              "operation": "pause"
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          }
+        ]
+      }
+    ]
+  }
+}

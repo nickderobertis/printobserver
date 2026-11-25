@@ -24,6 +24,7 @@
       "inputs": [
         "{projectRoot}/**/*",
         "{workspaceRoot}/tests/real-prints/cameras/**/*",
+        "{workspaceRoot}/tests/real-prints/bubbler-colour-change-*/**/*",
         "{workspaceRoot}/tests/real-prints/service-config.toml",
         "{workspaceRoot}/schemas/printobserver-panels/**/*",
         "{workspaceRoot}/crates/printobserver-panels/tests/fixtures/frames/**/*",
