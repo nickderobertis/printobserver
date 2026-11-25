@@ -32,7 +32,8 @@ Name no configuration: the environment names it. Give an actor only where a comm
    bridges; nothing else has one. Read the stated flow and fan first, settings, never design;
    change one only for a clear defect its stated value explains, or one the plan calls at odds,
    wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
-2. A clear defect with no setting, or a part moved, gone or not risen as planned: pause.
+2. A clear defect with no setting, a colour the plan does not expect here, or a part moved, gone
+   or not risen as planned: pause.
 3. Uncertain, growth aside: watch, never pause, unless clearly worsening.
 4. Nothing there: carry on.
 
@@ -58,12 +59,13 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 
 ## A planned colour change
 
-The plan names the colour expected and the next planned change. At one the printer waits for a
-person (`filament_change_planned_reached`): no check runs, and a pause, resume or setting is
-refused `planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the
-colour expected from its layer and the one before: that colour from that layer up is expected, so
-carry on. A colour that differs from the frame before anywhere else, an unplanned change
-included, is a defect: pause, naming what a person must check.
+Each check, compare new material's colour in panel 2, which draws nothing, with the colour the
+plan expects: panel 1 draws walls red. At a planned change the printer waits for a person
+(`filament_change_planned_reached`): no check runs, and a pause, resume or setting is refused
+`planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the colour
+expected from its layer and the one before: that colour from there up is expected; carry on.
+A colour other than expected, with no planned change at or just under this layer, is a wrong
+spool or a reload: a clear defect, never watched. Pause now, naming the spool and file to check.
 
 ## When the detector has already paused the print
 
