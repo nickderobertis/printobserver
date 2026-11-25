@@ -53,6 +53,14 @@ name = "printobserver-service-fixture"
 path = "src/bin/service_fixture.rs"
 required-features = ["test-fixtures"]
 
+# Test-only too: a harness whose supervision turn holds its print until a
+# journey lets it go, so a journey can keep one print open across a read of the
+# machine that would end every other.
+[[bin]]
+name = "printobserver-held-turn"
+path = "src/bin/held_turn.rs"
+required-features = ["test-fixtures"]
+
 [[test]]
 name = "journeys"
 path = "tests/journeys.rs"

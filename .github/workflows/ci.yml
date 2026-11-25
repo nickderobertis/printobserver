@@ -269,12 +269,15 @@ jobs:
       - if: always()
         run: just octoprint-down
       # A failed tier kept the instance's own logs before that bring-down, and
-      # they are uploaded so the first failing run is the one diagnosed.
+      # they are uploaded so the first failing run is the one diagnosed. The
+      # directory is a dot-directory, which the action leaves out unless told
+      # otherwise, and then uploads nothing.
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: octoprint-diagnostics-${{ matrix.platform.id }}
           path: .octoprint-diagnostics
+          include-hidden-files: true
           if-no-files-found: warn
       - if: always()
         run: just runner-temp cleanup
@@ -348,6 +351,7 @@ jobs:
         with:
           name: octoprint-diagnostics-macos-aarch64
           path: .octoprint-diagnostics
+          include-hidden-files: true
           if-no-files-found: warn
       - if: always()
         run: just runner-temp cleanup

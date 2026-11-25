@@ -115,6 +115,10 @@ pub const STOOD_IN: &str = "stood-in";
 /// provisioned.
 pub const SCRIPTED: &str = "scripted";
 
+/// The world whose printer port reaches a socket and whose supervisor runs the
+/// stand-in harness that holds every turn it is given ([`HeldTurns`]).
+pub const HOLDING_TURNS: &str = "holding-turns";
+
 /// What is on the far side of the printer port.
 pub enum Printer {
     /// A socket answering the documents a machine answers.
@@ -196,6 +200,49 @@ pub struct World {
     server: Child,
     /// What the supervisor has printed, read as it prints it.
     said: std::sync::Mutex<announced::Stream>,
+    /// The harness whose turns hold their print, when this world's supervisor
+    /// runs one ([`HOLDING_TURNS`]).
+    held: Option<HeldTurns>,
+}
+
+/// The directory a world's supervisor finds its harness in, holding the
+/// stand-in whose every supervision turn holds its print until it is let go.
+///
+/// The stand-in is `printobserver-held-turn`, put there under the name of the
+/// harness the world configures. While [`HOLD`] is in the directory every turn
+/// it runs stays running, having written [`HELD`] and its print's identifier
+/// beside itself; once it is gone each returns, refusing the turn.
+#[derive(Debug)]
+pub struct HeldTurns {
+    /// The directory, removed when it is dropped.
+    directory: TempDir,
+}
+
+/// The harness every world's supervisor is configured with.
+const HARNESS: &str = "claude-code";
+
+/// The file whose presence holds every turn the stand-in runs.
+const HOLD: &str = "hold";
+
+/// What the file a held turn writes is named, before its print.
+const HELD: &str = "held-";
+
+impl HeldTurns {
+    /// Put the stand-in in a directory of its own.
+    fn new() -> Self {
+        let directory = TempDir::new().expect("a directory for the harness");
+        let harness = printobserver_server::SIGN_INS
+            .iter()
+            .find(|entry| entry.identity() == HARNESS)
+            .unwrap_or_else(|| panic!("`{HARNESS}` is not in the adapter's table"));
+        let program = format!("{}{}", harness.program(), std::env::consts::EXE_SUFFIX);
+        std::fs::copy(
+            env!("CARGO_BIN_EXE_printobserver-held-turn"),
+            directory.path().join(program),
+        )
+        .expect("the stand-in harness copies into place");
+        Self { directory }
+    }
 }
 
 impl Drop for World {
@@ -219,6 +266,13 @@ impl World {
     /// naming the recipe that brings one up: a tier that quietly passed against
     /// no printer would prove nothing, so there is no fallback and no skip.
     pub fn open(world: &str) -> Self {
+        if world == HOLDING_TURNS {
+            let held = HeldTurns::new();
+            let mut opened =
+                Self::configured_with(STOOD_IN, &committed_skill(), Some(held.directory.path()));
+            opened.held = Some(held);
+            return opened;
+        }
         Self::configured_with(world, &committed_skill(), None)
     }
 
@@ -352,6 +406,7 @@ impl World {
             skill: skill.to_path_buf(),
             server,
             said: std::sync::Mutex::new(said),
+            held: None,
         };
         std::fs::write(world.client_config(), world.client_document(CREDENTIAL))
             .expect("the client configuration is writable");
@@ -429,6 +484,122 @@ impl World {
         }
     }
 
+    /// Raise a supervision turn on one print and answer once that turn is
+    /// running, so its print is held: no read that finds the machine's job
+    /// over ends it until [`World::lets_the_turn_go`].
+    ///
+    /// The turn is raised the way the detector raises one, by a failure alert
+    /// about `Obico`'s print `obico_print_id`, which the print carries
+    /// ([`World::open_record_an_alert_reaches`]). The supervisor takes the
+    /// print's turn before it reads anything for the turn and runs the harness
+    /// last, so the stand-in saying it is running is the turn being held.
+    ///
+    /// # Panics
+    ///
+    /// Panics when this world runs no stand-in that holds its turns, when the
+    /// ingress refuses the alert, or when no turn on the print ever runs.
+    pub fn holds_a_turn_on(&self, print_id: &str, obico_print_id: i64) {
+        let held = self
+            .held
+            .as_ref()
+            .expect("a world holding turns runs the stand-in that holds them");
+        let directory = held.directory.path();
+        std::fs::write(directory.join(HOLD), "").expect("the hold is writable");
+        let running = directory.join(format!("{HELD}{print_id}"));
+        let _ = std::fs::remove_file(&running);
+        let answered = self.post_a_failure_alert(obico_print_id);
+        assert_eq!(
+            answered.split_whitespace().nth(1),
+            Some("202"),
+            "the ingress did not take the alert raising a turn on {print_id}: {answered}"
+        );
+        for _ in 0..SETTLING_ROUNDS * SETTLING_POLLS {
+            if running.exists() {
+                return;
+            }
+            std::thread::sleep(SETTLING_PAUSE);
+        }
+        panic!(
+            "no turn on {print_id} ever ran: {:?}",
+            crate::running::read(self, &["history", "--print-id", print_id, "--limit", "100"])
+        );
+    }
+
+    /// Let every held turn return, and answer once the one on `print_id` has:
+    /// the supervisor writes the turn's refusal down after it has let go of
+    /// the print.
+    ///
+    /// # Panics
+    ///
+    /// Panics when this world runs no stand-in that holds its turns, or when
+    /// the turn's refusal is never written down.
+    pub fn lets_the_turn_go(&self, print_id: &str) {
+        let held = self
+            .held
+            .as_ref()
+            .expect("a world holding turns runs the stand-in that holds them");
+        std::fs::remove_file(held.directory.path().join(HOLD)).expect("the hold is removable");
+        for _ in 0..SETTLING_ROUNDS * SETTLING_POLLS {
+            let history =
+                crate::running::read(self, &["history", "--print-id", print_id, "--limit", "100"]);
+            let returned = history["events"].as_array().is_some_and(|events| {
+                events.iter().any(|event| {
+                    event["kind"] == "port_failure"
+                        && event["payload"]["site"] == "supervision_turn"
+                })
+            });
+            if returned {
+                return;
+            }
+            std::thread::sleep(SETTLING_PAUSE);
+        }
+        panic!("the turn on {print_id} never returned");
+    }
+
+    /// Post the committed `Obico` failure alert about one of `Obico`'s prints
+    /// to the supervisor's own ingress, and answer the status line it came
+    /// under.
+    ///
+    /// Its image names a port nothing listens on, so fetching it fails at once
+    /// and is recorded.
+    pub fn post_a_failure_alert(&self, obico_print_id: i64) -> String {
+        use std::io::{Read as _, Write as _};
+
+        let mut alert: Value = printobserver_types::serde_json::from_str(include_str!(
+            "../../../printobserver-obico/samples/obico/failure-alert.json"
+        ))
+        .expect("the committed sample is JSON");
+        alert["print"]["id"] = json!(obico_print_id);
+        alert["img_url"] = json!("http://127.0.0.1:9/snapshot.jpg");
+        let body = alert.to_string();
+        let address = self.proxy.address;
+        let mut stream =
+            std::net::TcpStream::connect(address).expect("the supervisor is reachable");
+        write!(
+            stream,
+            "POST {}?{}={SECRET} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n\
+             Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            printobserver_server::INGRESS_PATH,
+            printobserver_server::TOKEN_PARAM,
+            body.len()
+        )
+        .expect("the alert is written");
+        let mut answer = String::new();
+        stream
+            .read_to_string(&mut answer)
+            .expect("the answer is read");
+        answer.lines().next().unwrap_or_default().to_owned()
+    }
+
+    /// Open, directly in the store, a print record of one file carrying
+    /// `Obico`'s identifier for it, watched by an open supervision session of
+    /// its own, so an alert about that identifier lands on it; answer its
+    /// identifier.
+    #[must_use]
+    pub fn open_record_an_alert_reaches(&self, file: &str, obico_print_id: i64) -> String {
+        self.open_record(Some(obico_print_id), Some(file), None)
+    }
+
     /// Open, directly in the store, a print record of one file — or of none
     /// — that nothing will close but a read finding its job over, watched by a
     /// supervision session of its own, open or already closed for a reason;
@@ -439,11 +610,22 @@ impl World {
         file: Option<&str>,
         closed_for: Option<&str>,
     ) -> String {
+        self.open_record(None, file, closed_for)
+    }
+
+    /// Open a print record with a session of its own, carrying a provider's
+    /// identifier when given one.
+    fn open_record(
+        &self,
+        obico_print_id: Option<i64>,
+        file: Option<&str>,
+        closed_for: Option<&str>,
+    ) -> String {
         with_the_store(self.root.path().join("state"), |store, runtime| {
             runtime.block_on(async {
                 use printobserver_core::store::SessionStore as _;
                 let print = store
-                    .open_print(None, file.map(str::to_owned))
+                    .open_print(obico_print_id, file.map(str::to_owned))
                     .await
                     .expect("a record opens");
                 let now = printobserver_types::Timestamp::now();
@@ -1410,7 +1592,7 @@ pub fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
             "fan": "commandable",
         },
         "supervisor": {
-            "harness": "claude-code",
+            "harness": HARNESS,
             "skill_path": skill.display().to_string(),
             "printer_poll_s": WATCH_POLL_S,
         },

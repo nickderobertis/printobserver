@@ -28,6 +28,22 @@ const REASON: &str = "the printer was switched off mid-print and the print is ov
 /// Why a session the journey opens already closed was closed.
 const EARLIER_CLOSE: &str = "the harness closed this session before the record was";
 
+/// `Obico`'s identifier for the record of the running job, which the alert
+/// raising a turn on it names.
+const RUNNING_OBICO: i64 = 7101;
+
+/// `Obico`'s identifier for the record the journey's idle close is about.
+const IDLE_OBICO: i64 = 7102;
+
+/// Read the machine through the listing, which ends every open record the read
+/// finds over and whose turn is not held: the read the supervisor may make of
+/// its own accord at any moment — a periodic observation, the turn it claims,
+/// the printer watch — made here at the one moment that matters, so the
+/// journey meets it on every run rather than when the schedule lines up.
+fn a_read_of_its_own_accord(world: &World) {
+    let _ = running::read(world, &["prints"]);
+}
+
 /// What the record's end reason and its `print_ended` say for that reason.
 fn closed_for() -> String {
     format!("closed by the operator: {REASON}")
@@ -262,6 +278,11 @@ fn blank_reasons_are_refused(world: &World, left: &str) {
 /// A job of the record's own file printing, paused or cancelling holds it
 /// open, and the rejection names the state; so does any running job for a
 /// record naming no file, which cannot be told apart from it.
+///
+/// A read that finds the job cancelling ends the record, so before the
+/// machine is told to cancel, a turn on the record is raised and held: no read
+/// ends a record whose turn is held, the one made between the telling and the
+/// close included, and the close finds the record open and the job cancelling.
 fn a_running_job_holds_its_record_open(world: &World, running_one: &str) {
     for (state, word) in [
         (Reports::Printing, "printing"),
@@ -270,12 +291,19 @@ fn a_running_job_holds_its_record_open(world: &World, running_one: &str) {
     ] {
         world.wants(state);
         let cancelling = word == "cancelling";
-        world.machine_is_cancelling(cancelling);
+        if cancelling {
+            world.holds_a_turn_on(running_one, RUNNING_OBICO);
+            assert!(world.machine_is_cancelling(true));
+            a_read_of_its_own_accord(world);
+        }
         let ran = close(world, running_one, "cancelled", REASON);
         world.machine_is_cancelling(false);
         let refusal = rejected(world, running_one, &ran, "print_still_active");
         assert_eq!(refusal["state"], word, "{refusal}");
         still_open(world, running_one);
+        if cancelling {
+            world.lets_the_turn_go(running_one);
+        }
     }
 
     // A record naming no file cannot be told apart from the job the machine
@@ -286,6 +314,37 @@ fn a_running_job_holds_its_record_open(world: &World, running_one: &str) {
     let refusal = rejected(world, &nameless, &ran, "print_still_active");
     assert_eq!(refusal["state"], "printing", "{refusal}");
     still_open(world, &nameless);
+}
+
+/// A read that finds the machine cancelling ends every record open then, and
+/// once a second read has found the machine back on its job none that saw it
+/// cancelling can still end one; answers once that is so.
+///
+/// The supervisor reads a cancelling job as over, and it reads the machine of
+/// its own accord too — a periodic observation, the turn it claims, the printer
+/// watch — at moments no client chooses. So a record open while the machine
+/// says it is cancelling may be ended by such a read, and once was: a record
+/// this journey had opened before telling the machine to cancel was ended by an
+/// observation's turn and its close then refused. This drives that read itself
+/// rather than leaving it to chance, so the journey meets it on every run.
+///
+/// Every read that can end a record reads the machine and ends what it found
+/// over under one hold on the supervisor's resolution of prints, and the
+/// listing takes that same hold. So the second listing, which returns only once
+/// it has had that hold, returns only after every read that found the machine
+/// cancelling has ended all it was going to; every read after it finds the
+/// machine running its job, which ends no record of another file.
+fn a_read_of_the_machine_cancelling_ends_what_is_open(world: &World, running_one: &str) {
+    world.wants(Reports::Printing);
+    assert!(world.machine_is_cancelling(true));
+    a_read_of_its_own_accord(world);
+    world.machine_is_cancelling(false);
+    let read = status(world, running_one);
+    assert_eq!(
+        read["print"]["end_reason"], "the print reached Cancelling",
+        "a read of the machine cancelling left its job's record open: {read}"
+    );
+    let _ = running::read(world, &["prints"]);
 }
 
 /// A job of another file holds nothing open: the record closes, in the state
@@ -351,8 +410,19 @@ fn an_adjustment_holds_its_record_open(world: &World) {
     still_open(world, &adjusted);
 }
 
-/// The whole journey, over one world, whose print it takes somewhere else: it
-/// runs after every other journey of the tier.
+/// The whole journey, over a world of its own, whose print it takes somewhere
+/// else.
+///
+/// The supervisor reads the machine of its own accord, and a read that finds
+/// the job over ends every open record whose turn is not held, so no close
+/// here waits on that read's schedule. Every record a later close is about is
+/// opened only once [`a_read_of_the_machine_cancelling_ends_what_is_open`] has
+/// answered, so no read of the machine cancelling can end it first; and the two
+/// closes made while the machine says the job is over — the cancelling refusal
+/// and the idle close — are each about a record whose turn is held, with that
+/// read made before the close rather than left to chance.
+///
+/// The world must hold turns ([`crate::world::HOLDING_TURNS`]).
 ///
 /// # Panics
 ///
@@ -363,18 +433,20 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
         return;
     }
     world.wants(Reports::Printing);
-    let left = world.open_record_with_a_session(Some(STALE_FILE), None);
-    let running_one = world.open_record_with_a_session(Some(RUNNING_FILE), None);
-    let spools = holdings(world);
-
-    blank_reasons_are_refused(world, &left);
+    let running_one = world.open_record_an_alert_reaches(RUNNING_FILE, RUNNING_OBICO);
     a_running_job_holds_its_record_open(world, &running_one);
+    a_read_of_the_machine_cancelling_ends_what_is_open(world, &running_one);
+
+    let left = world.open_record_with_a_session(Some(STALE_FILE), None);
+    let spools = holdings(world);
+    blank_reasons_are_refused(world, &left);
     another_files_job_holds_nothing_open(world);
     a_closed_session_keeps_its_closure(world);
     an_adjustment_holds_its_record_open(world);
 
     // A machine that does not answer refuses no close: the record ends in the
-    // state it last knew.
+    // state it last knew. It is still open here, or what ended it is named.
+    still_open(world, &left);
     let last_known = status(world, &left)["print"]["state"].clone();
     assert!(world.machine_is_unreachable(true));
     let ran = close(world, &left, "interrupted", REASON);
@@ -400,10 +472,15 @@ pub fn an_operator_closes_a_record_left_open(world: &World) {
     // A machine showing no job closes a record in the state it reports. Every
     // read after it finds the machine idle and closes what else is open, so
     // this is the journey's last close.
-    let idle = world.open_record_with_a_session(Some(STALE_FILE), None);
+    // Every such read ends the record too, so its turn is held across the
+    // machine going idle and a read of it, and let go once the close is done.
+    let idle = world.open_record_an_alert_reaches(STALE_FILE, IDLE_OBICO);
+    world.holds_a_turn_on(&idle, IDLE_OBICO);
     world.wants(Reports::Operational);
+    a_read_of_its_own_accord(world);
     let ran = close(world, &idle, "failed", REASON);
     closed(world, &idle, &ran, "failed", "operational");
+    world.lets_the_turn_go(&idle);
 
     // With no record left open, an ended one is still refused as ended.
     assert!(

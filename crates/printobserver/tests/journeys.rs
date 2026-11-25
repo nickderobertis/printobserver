@@ -154,6 +154,18 @@ fn no_run_of_the_tiers_walk_prints_the_credential() {
     tier::run(&world, tier::CREDENTIAL);
 }
 
+/// An operator closes a record printobserver left open, and every close the
+/// record might still be live for is refused.
+///
+/// A world of its own, because the journey ends the print every other journey
+/// here acts on.
+#[test]
+fn an_operator_closes_a_record_left_open() {
+    let world = World::open(world::HOLDING_TURNS);
+
+    tier::run(&world, tier::CLOSING);
+}
+
 /// A record left open with the machine idle is ended by the operator's close,
 /// not by the printer watch, however long after the close comes.
 #[test]
