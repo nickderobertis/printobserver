@@ -58,12 +58,12 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 
 ## A planned colour change
 
-The file may plan colour changes; the plan names the colour expected and the next one. While the
-printer waits at one nothing checks it, and a pause, resume or setting is refused
-`planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the colour
-expected from its layer and the one before: that new colour from that layer up is expected, so
-carry on. A colour that differs from the frame before anywhere else is a defect: pause, naming
-what a person must check.
+The plan names the colour expected and the next planned change. At one the printer waits for a
+person (`filament_change_planned_reached`): no check runs, and a pause, resume or setting is
+refused `planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the
+colour expected from its layer and the one before: that colour from that layer up is expected, so
+carry on. A colour that differs from the frame before anywhere else, an unplanned change
+included, is a defect: pause, naming what a person must check.
 
 ## When the detector has already paused the print
 
