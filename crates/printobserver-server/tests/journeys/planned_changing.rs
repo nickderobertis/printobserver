@@ -136,6 +136,9 @@ async fn obicos_notification_at_a_planned_change_holds_the_print_until_it_carrie
         .printer
         .runs_job(FILE, PrinterState::Paused, Some(900));
     world.printer.at_byte(change_offset(0));
+    // Several polls read the job paused at the change before the signal
+    // arrives, as on a slow host: the signal still reaches it.
+    tokio::time::sleep(Duration::from_secs(1)).await;
     notify_a_filament_change(&world, job_started).await;
     notify_a_filament_change(&world, job_started).await;
 

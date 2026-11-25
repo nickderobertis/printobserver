@@ -136,6 +136,12 @@ fn memo_of(history: &[EventRecord]) -> PlannedMemo {
 
 /// The file position a job read reports for a print, when the job is that
 /// print's file, printing or paused, and reports one.
+/// How long a job read paused at a planned change stands at one position
+/// before that position alone reaches the change: long enough for the
+/// filament-change signal a pause there brings to arrive first, and well inside
+/// the interval between two scheduled checks.
+pub(crate) const PAUSED_AT_CHANGE_STAND: Duration = Duration::from_secs(30);
+
 fn position_of(print: &PrintRecord, job: &JobSnapshot) -> Option<u64> {
     let running = matches!(job.state, PrinterState::Printing | PrinterState::Paused);
     let same_file = print.file_name.is_none() || job.file_name == print.file_name;
@@ -314,9 +320,14 @@ impl Supervisor {
         let Some(index) = self.gcode_indexes().built(print.id) else {
             return Ok(None);
         };
-        if let Some(change) = index.change_waiting_at(position).cloned()
-            && !memo.reached.contains(&change.index)
+        let Some(change) = index.change_waiting_at(position).cloned() else {
+            self.forget_paused_at_change(print.id);
+            return Ok(None);
+        };
+        if !memo.reached.contains(&change.index)
+            && (job.state != PrinterState::Paused || self.stood_paused_at(print.id, position))
         {
+            self.forget_paused_at_change(print.id);
             self.reach_planned_change(
                 print,
                 &index,
@@ -328,6 +339,47 @@ impl Supervisor {
             .await?;
         }
         Ok(None)
+    }
+
+    /// Whether a job read paused at a planned change has stood at this one
+    /// position for [`PAUSED_AT_CHANGE_STAND`], counting from the first such
+    /// read. A pause at the change is when `Obico`'s filament-change signal
+    /// arrives, so the signal reaches it first, and the position reaches it
+    /// alone only when no signal came, as at an `M601`.
+    fn stood_paused_at(&self, print_id: PrintId, position: u64) -> bool {
+        let now = self.clock().elapsed();
+        let mut held = self
+            .paused_at_change
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        match held.get(&print_id) {
+            Some(&(at, since)) if at == position => {
+                now.saturating_sub(since) >= PAUSED_AT_CHANGE_STAND
+            }
+            _ => {
+                held.insert(print_id, (position, now));
+                false
+            }
+        }
+    }
+
+    /// Forget where a print's job stood paused at a planned change.
+    fn forget_paused_at_change(&self, print_id: PrintId) {
+        self.paused_at_change
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&print_id);
+    }
+
+    /// Whether a job stands paused at a planned change of its print's index:
+    /// reached or not, the print is a person's to change, and no check runs.
+    pub(crate) fn paused_at_planned_change(&self, print: &PrintRecord, job: &JobSnapshot) -> bool {
+        job.state == PrinterState::Paused
+            && position_of(print, job).is_some_and(|position| {
+                self.gcode_indexes()
+                    .built(print.id)
+                    .is_some_and(|index| index.change_waiting_at(position).is_some())
+            })
     }
 
     /// Whether a filament-change signal is one about a planned change: one

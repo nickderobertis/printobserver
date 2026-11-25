@@ -597,6 +597,46 @@ fn a_signal_with_the_job_paused_at_the_change_reaches_it_at_once() {
     world.journal.assert_no_violations();
 }
 
+/// A job read paused at a planned change with no signal yet — `OctoPrint`
+/// paused there, as at an `M601` — is not reached by that first read, so a
+/// signal arriving with no time passed reaches it as the signal; nor is the
+/// paused print checked while it stands. Once it has stood there half a
+/// minute with no signal, its position alone reaches the change.
+#[test]
+fn a_job_paused_at_a_planned_change_is_reached_by_position_only_once_it_has_stood() {
+    let (world, _, _) = colour_world();
+    let print_id = printing(&world);
+    let checks_before = world.agent.turns().len();
+    world.printer.extrudes(
+        FILE,
+        line_offset("M600", 0),
+        vec![on_tool(0, fed_before(0))],
+    );
+    world.printer.reports_state(PrinterState::Paused);
+    world.printer.reports_job(Some(FILE), PrinterState::Paused);
+    world
+        .printer
+        .reports_position(Some(line_offset("M600", 0)), Some(SIZE));
+
+    world.clock.advance(120);
+    assert!(observe(&world).is_empty(), "the paused print was checked");
+    assert!(watch(&world).is_empty());
+    assert!(
+        of_print::<FilamentChangePlannedReachedPayload>(&world, print_id).is_empty(),
+        "the first read paused at the change reached it before the signal could"
+    );
+    assert_eq!(world.agent.turns().len(), checks_before);
+
+    world.clock.advance(30);
+    assert!(watch(&world).is_empty());
+    let reached = of_print::<FilamentChangePlannedReachedPayload>(&world, print_id);
+    assert_eq!(reached.len(), 1, "{reached:?}");
+    assert_eq!(reached[0].1.trigger, PlannedChangeTrigger::Position);
+    assert_eq!(reached[0].1.change, change(0));
+    assert_eq!(world.agent.turns().len(), checks_before);
+    world.journal.assert_no_violations();
+}
+
 /// A filament change signalled where the file plans none — a runout — is
 /// handled as every unplanned one is: its turn runs, and its accounting record
 /// names no planned change.
