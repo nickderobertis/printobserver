@@ -119,6 +119,19 @@ pub const SCRIPTED: &str = "scripted";
 /// stand-in harness that holds every turn it is given ([`HeldTurns`]).
 pub const HOLDING_TURNS: &str = "holding-turns";
 
+/// The world whose stood-in machine runs [`TWO_COLOUR_FILE`], a slice planning
+/// two colour changes, and serves its bytes; a journey moves the job through it
+/// by [`Machine::stands_at`].
+pub const PLANNED_CHANGES: &str = "planned-changes";
+
+/// The name the [`PLANNED_CHANGES`] machine runs its slice under.
+pub const TWO_COLOUR_FILE: &str = "two-colour.gcode";
+
+/// That slice: the core crate's committed fixture, in `PrusaSlicer` 2.9.6
+/// syntax — white, then `#FF0000` at layer 3, then `#0000FF` at layer 5.
+pub const TWO_COLOUR: &[u8] =
+    include_bytes!("../../../printobserver-core/tests/fixtures/planned-changes/two-colour.gcode");
+
 /// What is on the far side of the printer port.
 pub enum Printer {
     /// A socket answering the documents a machine answers.
@@ -301,6 +314,9 @@ impl World {
         Self::over(
             match world {
                 STOOD_IN => Printer::StoodIn(Machine::start()),
+                PLANNED_CHANGES => {
+                    Printer::StoodIn(Machine::running(TWO_COLOUR_FILE, TWO_COLOUR.to_vec()))
+                }
                 SCRIPTED => crate::scripted::scripted(),
                 other => panic!("there is no `{other}` world to open"),
             },
@@ -1511,7 +1527,7 @@ fn with_the_store<T>(
 /// The file one printer can be asked to print.
 fn printable_file(printer: &Printer) -> String {
     match printer {
-        Printer::StoodIn(_) => crate::machine::RUNNING_FILE.to_owned(),
+        Printer::StoodIn(machine) => machine.running_file(),
         Printer::Scripted { file, .. } => file.clone(),
     }
 }
