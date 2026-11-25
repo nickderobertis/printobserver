@@ -985,7 +985,8 @@ async fn z_trust_is_lost_to_every_event_that_could_have_moved_z() {
 }
 
 /// A request no recovery action can represent — an action this program does
-/// not have, a field no action carries such as raw G-code, or no reason — is
+/// not have, a body that is no document of fields, a field no action carries
+/// such as raw G-code, or no reason — is
 /// refused as a request, with no recovery event and nothing sent.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_request_no_recovery_action_represents_is_refused_and_recorded_nowhere() {
@@ -996,6 +997,11 @@ async fn a_request_no_recovery_action_represents_is_refused_and_recorded_nowhere
             "recover_teleport",
             operator_body(json!({})),
             StatusCode::NOT_FOUND,
+        ),
+        (
+            "recover_lift",
+            json!(["operator", "lift it", 5.0]),
+            StatusCode::BAD_REQUEST,
         ),
         (
             "recover_lift",
