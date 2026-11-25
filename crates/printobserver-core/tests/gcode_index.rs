@@ -704,8 +704,9 @@ fn each_m600_is_indexed_with_its_offset_layer_height_and_colour() {
 }
 
 /// Each stretch between changes feeds the net of its own extrusion moves — the
-/// purge, perimeters and primes it lays less the retractions it makes — in the
-/// colour the file starts in or its change loads.
+/// purge, perimeters, infill and primes it lays less the retractions it makes
+/// — in the colour the file starts in or its change loads. Each layer lays 4
+/// mm of perimeter and 5 mm of infill.
 #[test]
 fn each_segment_feeds_the_net_of_its_own_moves_in_its_own_colour() {
     let segments = indexed(TWO_COLOUR).planned_segments();
@@ -716,23 +717,23 @@ fn each_segment_feeds_the_net_of_its_own_moves_in_its_own_colour() {
             PlannedSegment {
                 segment: 0,
                 color: Some("#FFFFFF".to_owned()),
-                // The 10 mm purge, two layers of 4 mm, and the third layer's
+                // The 10 mm purge, two layers of 9 mm, and the third layer's
                 // retraction before its change.
-                filament_mm: 17.2,
+                filament_mm: 27.2,
             },
             PlannedSegment {
                 segment: 1,
                 color: Some("#FF0000".to_owned()),
                 // The prime, the unretraction and two layers, less the fifth
                 // layer's retraction before the second change.
-                filament_mm: 8.3,
+                filament_mm: 18.3,
             },
             PlannedSegment {
                 segment: 2,
                 color: Some("#0000FF".to_owned()),
                 // The prime, the unretraction and two layers, less the last
                 // retraction.
-                filament_mm: 7.1,
+                filament_mm: 17.1,
             },
         ]
     );
@@ -778,8 +779,7 @@ fn the_plan_names_the_colour_the_next_change_and_its_minutes_by_position() {
 }
 
 /// A job stands at a change from its line's first byte to a few kilobytes
-/// past it — at the later of two once it reaches that one's line — and at no
-/// change anywhere else.
+/// past it, and at no change anywhere else.
 #[test]
 fn a_job_waits_at_a_change_from_its_line_to_just_past_it() {
     let index = indexed(TWO_COLOUR);
@@ -789,7 +789,10 @@ fn a_job_waits_at_a_change_from_its_line_to_just_past_it() {
 
     assert_eq!(waiting(first - 1), None);
     assert_eq!(waiting(first), Some(0));
-    assert_eq!(waiting(second - 1), Some(0));
+    assert_eq!(waiting(first + PLANNED_CHANGE_REACH_BYTES), Some(0));
+    assert!(first + PLANNED_CHANGE_REACH_BYTES + 1 < second);
+    assert_eq!(waiting(first + PLANNED_CHANGE_REACH_BYTES + 1), None);
+    assert_eq!(waiting(second - 1), None);
     assert_eq!(waiting(second), Some(1));
     assert_eq!(waiting(second + PLANNED_CHANGE_REACH_BYTES), Some(1));
     assert_eq!(waiting(second + PLANNED_CHANGE_REACH_BYTES + 1), None);
