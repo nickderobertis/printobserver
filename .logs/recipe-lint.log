@@ -1,0 +1,376 @@
+just node-modules
+bun install --frozen-lockfile
+bun install v1.3.14 (0d9b296a)
+
+Checked 134 installs across 158 packages (no changes) [11.00ms]
+uv run -q python -m repo_checks.gate_tier run 'affected' lint
+gate-tier: affected: every project: the change since 4c9d61cc9897 (the merge base of HEAD with origin/main) touches .logs/closing-held.log, .logs/closing.fixed.rs.txt, .logs/load-run-1.log, .logs/load-run-10.log, .logs/load-run-11.log and 39 more, which no project owns, so the graph cannot say which suites read it
+gate-tier: bunx nx run-many -t lint
+
+ NX   Running target lint for 35 projects:
+
+- release-artifacts-independent
+- printobserver-sdk-python-integration
+- printobserver-supervisor-api
+- printobserver-sdk-node-integration
+- printobserver-store-sqlite
+- printobserver-printer-api
+- printobserver-oneharness
+- printobserver-vision-api
+- printobserver-octoprint
+- repo-checks-host
+- printobserver-panels
+- printobserver-server
+- printobserver-obico
+- printobserver-types
+- repo-e2e-independent
+- printobserver-core
+- camera-calibration
+- printobserver-sdk
+- printobserver-sdk-python
+- release-artifacts
+- contract-codegen
+- release-drafting
+- skilltest-wiring
+- printobserver-sdk-node
+- real-prints-lfs
+- printobserver
+- octoprint-env
+- printer-smoke
+- skill-install
+- repo-checks
+- pool-maintenance
+- obico-env
+- skilltest
+- repo-e2e
+- github-workflows
+
+
+
+> nx run printobserver-types:lint  [existing outputs match the cache, left as is]
+
+> cargo clippy -p printobserver-types --all-targets --locked -- -D warnings
+
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling getrandom v0.3.4
+    Checking once_cell v1.21.4
+    Checking bit-vec v0.8.0
+    Checking ppv-lite86 v0.2.21
+    Checking quick-error v1.2.3
+    Checking unarray v0.1.4
+    Checking rand_core v0.9.5
+    Checking ahash v0.8.12
+    Checking tempfile v3.27.0
+    Checking bit-set v0.8.0
+    Checking rand_xorshift v0.4.0
+    Checking rand v0.9.5
+    Checking rand_chacha v0.9.0
+    Checking fancy-regex v0.16.2
+    Checking rusty-fork v0.3.1
+    Checking proptest v1.11.0
+    Checking referencing v0.34.0
+    Checking jsonschema v0.34.0
+    Checking printobserver-types v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-types)
+    Finished `dev` profile [unoptimized] target(s) in 36.09s
+
+> nx run printobserver-printer-api:lint  [existing outputs match the cache, left as is]
+
+> cargo clippy -p printobserver-printer-api --all-targets --locked -- -D warnings
+
+    Blocking waiting for file lock on package cache
+    Checking zerovec v0.11.8
+    Checking serde v1.0.229
+    Checking zerotrie v0.2.5
+    Checking ref-cast v1.0.27
+    Checking once_cell v1.21.4
+    Checking borrow-or-share v0.2.4
+    Checking unicode-ident v1.0.24
+    Checking uuid v1.26.0
+    Checking uuid-simd v0.8.0
+    Checking proc-macro2 v1.0.107
+    Checking quote v1.0.47
+    Checking tinystr v0.8.4
+    Checking potential_utf v0.1.6
+    Checking syn v3.0.5
+    Checking icu_locale_core v2.3.0
+    Checking icu_collections v2.3.0
+    Checking ahash v0.8.12
+    Checking fluent-uri v0.4.1
+    Checking schemars v1.2.2
+    Checking email_address v0.2.9
+    Checking icu_provider v2.3.1
+    Checking icu_normalizer v2.3.0
+    Checking icu_properties v2.3.0
+    Checking referencing v0.34.0
+    Checking idna_adapter v1.2.2
+    Checking idna v1.1.0
+    Checking printobserver-types v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-types)
+    Checking jsonschema v0.34.0
+    Checking printobserver-printer-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-printer-api)
+    Finished `dev` profile [unoptimized] target(s) in 17.50s
+
+> nx run printobserver-supervisor-api:lint
+
+
+> nx run printobserver-vision-api:lint
+
+
+> nx run printobserver-core:lint
+
+printobserver-core:     Blocking waiting for file lock on package cache
+printobserver-supervisor-api:     Blocking waiting for file lock on package cache
+printobserver-vision-api:     Blocking waiting for file lock on package cache
+printobserver-supervisor-api:     Blocking waiting for file lock on package cache
+printobserver-core:     Blocking waiting for file lock on package cache
+printobserver-supervisor-api:     Checking
+printobserver-supervisor-api:  printobserver-types v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-types)
+printobserver-vision-api:     Blocking waiting for file lock on package cache
+printobserver-core:     Blocking waiting for file lock on build directory
+printobserver-vision-api:     Blocking waiting for file lock on build directory
+printobserver-supervisor-api:     Checking printobserver-supervisor-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-supervisor-api)
+printobserver-supervisor-api:     Finished `dev` profile [unoptimized] target(s) in 7.21s
+
+> nx run printobserver-panels:lint
+
+printobserver-core:     Checking
+printobserver-core:  printobserver-supervisor-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-supervisor-api)
+printobserver-core:     Checking printobserver-vision-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-vision-api)
+printobserver-core:     Checking syn v3.0.5
+printobserver-core:     Checking cpu-time v1.0.0
+printobserver-core:     Checking peak_alloc v0.3.0
+printobserver-panels:     Blocking waiting for file lock on build directory
+printobserver-core:     Checking printobserver-core v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-core)
+printobserver-core:     Finished `dev` profile [unoptimized] target(s) in 1m 20s
+
+> nx run printobserver-store-sqlite:lint
+
+printobserver-vision-api:     Checking
+printobserver-vision-api:  printobserver-vision-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-vision-api)
+printobserver-store-sqlite:     Blocking waiting for file lock on build directory
+printobserver-vision-api:     Finished `dev` profile [unoptimized] target(s) in 1m 23s
+
+> nx run printobserver-oneharness:lint
+
+printobserver-panels:     Checking bytemuck v1.25.2
+printobserver-panels:     Checking smallvec v1.16.0
+printobserver-panels:     Checking zerovec v0.11.8
+printobserver-panels:     Checking zerotrie v0.2.5
+printobserver-panels:     Checking uuid v1.26.0
+printobserver-panels:     Checking bitflags v2.13.1
+printobserver-panels:     Checking either v1.18.0
+printobserver-panels:     Checking parking_lot_core v0.9.12
+printobserver-panels:     Checking itertools v0.14.0
+printobserver-panels:     Checking png v0.18.1
+printobserver-panels:     Checking printobserver-types v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-types)
+printobserver-panels:     Checking parking_lot v0.12.5
+printobserver-panels:     Checking safe_arch v1.2.0
+printobserver-panels:     Checking font-types v0.12.7
+printobserver-panels:     Checking tinystr v0.8.4
+printobserver-panels:     Checking potential_utf v0.1.6
+printobserver-panels:     Checking referencing v0.34.0
+printobserver-panels:     Checking icu_locale_core v2.3.0
+printobserver-panels:     Checking icu_collections v2.3.0
+printobserver-panels:     Checking read-fonts v0.47.0
+printobserver-panels:     Checking wide v1.7.1
+printobserver-panels:     Checking image v0.25.10
+printobserver-oneharness:     Blocking waiting for file lock on build directory
+printobserver-panels:     Checking icu_provider v2.3.1
+printobserver-panels:     Checking icu_normalizer v2.3.0
+printobserver-panels:     Checking icu_properties v2.3.0
+printobserver-panels:     Checking idna_adapter v1.2.2
+printobserver-panels:     Checking idna v1.1.0
+printobserver-panels:     Checking jsonschema v0.34.0
+printobserver-panels:     Checking printobserver-supervisor-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-supervisor-api)
+printobserver-panels:     Checking printobserver-vision-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-vision-api)
+printobserver-panels:     Checking printobserver-printer-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-printer-api)
+printobserver-panels:     Checking simba v0.10.2
+printobserver-panels:     Checking skrifa v0.50.0
+printobserver-panels:     Checking printobserver-core v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-core)
+printobserver-panels:     Checking nalgebra v0.35.0
+printobserver-panels:     Checking imageproc v0.27.0
+printobserver-panels:     Checking printobserver-panels v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-panels)
+printobserver-panels:     Finished `dev` profile [unoptimized] target(s) in 2m 00s
+
+> nx run printobserver-octoprint:lint
+
+printobserver-store-sqlite:     Checking
+printobserver-store-sqlite:  printobserver-vision-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-vision-api)
+printobserver-store-sqlite:    Compiling libsqlite3-sys v0.35.0
+printobserver-store-sqlite:     Checking printobserver-printer-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-printer-api)
+printobserver-store-sqlite:     Checking smallvec v1.16.0
+printobserver-store-sqlite:     Checking tempfile v3.27.0
+printobserver-octoprint:     Blocking waiting for file lock on build directory
+printobserver-store-sqlite:     Checking rusqlite v0.37.0
+printobserver-store-sqlite:     Checking printobserver-core v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-core)
+printobserver-store-sqlite:     Checking printobserver-store-sqlite v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-store-sqlite)
+printobserver-store-sqlite:     Finished `dev` profile [unoptimized] target(s) in 1m 48s
+
+> nx run printobserver-obico:lint
+
+printobserver-oneharness:     Checking printobserver-types v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-types)
+printobserver-obico:     Blocking
+printobserver-obico:  waiting for file lock on build directory
+printobserver-oneharness:     Checking printobserver-supervisor-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-supervisor-api)
+printobserver-oneharness:     Checking printobserver-oneharness v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-oneharness)
+printobserver-oneharness:     Finished `dev` profile [unoptimized] target(s) in 2m 01s
+printobserver-octoprint:     Checking printobserver-octoprint v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-octoprint)
+
+> nx run printobserver-server:lint
+
+printobserver-server:     Blocking
+printobserver-server:  waiting for file lock on build directory
+printobserver-octoprint:     Finished `dev` profile [unoptimized] target(s) in 1m 27s
+
+> nx run printobserver-sdk:lint
+
+printobserver-obico:     Checking smallvec v1.16.0
+printobserver-obico:     Checking tokio v1.54.1
+printobserver-obico:     Checking subtle v2.6.1
+printobserver-obico:     Checking printobserver-types v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-types)
+printobserver-obico:     Checking form_urlencoded v1.2.2
+printobserver-obico:     Checking fluent-uri v0.4.1
+printobserver-obico:     Checking tempfile v3.27.0
+printobserver-obico:     Checking icu_normalizer v2.3.0
+printobserver-obico:     Checking parking_lot_core v0.9.12
+printobserver-obico:     Checking rustls v0.23.46
+printobserver-sdk:     Blocking
+printobserver-sdk:  waiting for file lock on build directory
+printobserver-obico:     Checking idna_adapter v1.2.2
+printobserver-obico:     Checking parking_lot v0.12.5
+printobserver-obico:     Checking idna v1.1.0
+printobserver-obico:     Checking url v2.5.8
+printobserver-obico:     Checking rustls-platform-verifier v0.6.2
+printobserver-obico:     Checking referencing v0.34.0
+printobserver-obico:     Checking tokio-util v0.7.19
+printobserver-obico:     Checking tokio-rustls v0.26.5
+printobserver-obico:     Checking tower v0.5.3
+printobserver-obico:     Checking printobserver-printer-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-printer-api)
+printobserver-obico:     Checking printobserver-supervisor-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-supervisor-api)
+printobserver-obico:     Checking printobserver-vision-api v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-vision-api)
+printobserver-obico:     Checking h2 v0.4.19
+printobserver-obico:     Checking tower-http v0.6.11
+printobserver-obico:     Checking hyper v1.11.1
+printobserver-obico:     Checking hyper-util v0.1.20
+printobserver-obico:     Checking jsonschema v0.34.0
+printobserver-obico:     Checking hyper-rustls v0.27.9
+printobserver-obico:     Checking reqwest v0.13.1
+printobserver-obico:     Checking printobserver-core v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-core)
+printobserver-obico:     Checking printobserver-obico v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-obico)
+printobserver-obico:     Finished `dev` profile [unoptimized] target(s) in 1m 33s
+
+> nx run github-workflows:lint
+
+github-workflows: Checked 32 files in 199ms. No fixes applied.
+
+> nx run printobserver:lint
+
+printobserver-server:     Checking reqwest v0.13.1
+printobserver-server:     Checking oneharness v0.32.3
+printobserver-server:     Checking printobserver-octoprint v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-octoprint)
+printobserver:     Blocking
+printobserver:  waiting for file lock on build directory
+printobserver-server:     Checking printobserver-obico v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-obico)
+printobserver-server:     Checking printobserver-server v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-server)
+printobserver-server:     Finished `dev` profile [unoptimized] target(s) in 2m 32s
+printobserver-sdk:    Compiling serde_core v1.0.229
+
+> nx run repo-checks:lint
+
+printobserver-sdk:    Compiling serde v1.0.229
+printobserver-sdk:    Compiling serde_json v1.0.151
+repo-checks: [1;32mAll checks passed![0m
+
+> nx run contract-codegen:lint
+
+contract-codegen: [1;32mAll checks passed![0m
+
+> nx run release-artifacts:lint
+
+release-artifacts: [1;32mAll checks passed![0m
+
+> nx run printobserver-sdk-python:lint
+
+printobserver-sdk-python: [1;32mAll checks passed![0m
+
+> nx run printobserver-sdk-node:lint
+
+printobserver-sdk-node: Checked 23 files in 388ms. No fixes applied.
+
+> nx run octoprint-env:lint
+
+octoprint-env: [1;32mAll checks passed![0m
+
+> nx run printer-smoke:lint
+
+printer-smoke: [1;32mAll checks passed![0m
+
+> nx run repo-e2e:lint
+
+repo-e2e: [1;32mAll checks passed![0m
+
+> nx run skilltest:lint
+
+skilltest: [1;32mAll checks passed![0m
+
+> nx run printobserver-sdk-node-integration:lint
+
+printobserver-sdk-node-integration: Checked 6 files in 157ms. No fixes applied.
+
+> nx run camera-calibration:lint
+
+camera-calibration: [1;32mAll checks passed![0m
+
+> nx run pool-maintenance:lint
+
+pool-maintenance: [1;32mAll checks passed![0m
+
+> nx run release-artifacts-independent:lint
+
+release-artifacts-independent: [1;32mAll checks passed![0m
+
+> nx run repo-checks-host:lint
+
+repo-checks-host: [1;32mAll checks passed![0m
+
+> nx run release-drafting:lint
+
+release-drafting: [1;32mAll checks passed![0m
+
+> nx run obico-env:lint
+
+obico-env: [1;32mAll checks passed![0m
+
+> nx run repo-e2e-independent:lint
+
+repo-e2e-independent: [1;32mAll checks passed![0m
+
+> nx run real-prints-lfs:lint
+
+real-prints-lfs: [1;32mAll checks passed![0m
+
+> nx run skill-install:lint
+
+skill-install: [1;32mAll checks passed![0m
+
+> nx run skilltest-wiring:lint
+
+skilltest-wiring: [1;32mAll checks passed![0m
+
+> nx run printobserver-sdk-python-integration:lint
+
+printobserver-sdk-python-integration: [1;32mAll checks passed![0m
+printobserver-sdk:     Checking printobserver-sdk v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver-sdk)
+printobserver-sdk:     Finished `dev` profile [unoptimized] target(s) in 3m 10s
+printobserver:     Checking printobserver v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver)
+printobserver:     Finished `dev` profile [unoptimized] target(s) in 2m 09s
+
+
+
+ NX   Successfully ran target lint for 35 projects
+
+Nx read the output from the cache instead of running the command for 2 out of 35 tasks.
+
+uv run -q python -m repo_checks lint-windows-target
+x86_64-pc-windows-gnu: linted 13 crates for the Windows target

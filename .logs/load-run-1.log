@@ -1,0 +1,8 @@
+   Compiling printobserver v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver)
+    Finished `test` profile [unoptimized] target(s) in 12.24s
+────────────
+ Nextest run ID 8904048c-20b7-499c-b865-ddf906c70d96 with nextest profile: default
+    Starting 1 test across 1 binary (113 tests skipped)
+        PASS [  11.574s] (1/1) printobserver::journeys an_operator_closes_a_record_left_open
+────────────
+     Summary [  11.579s] 1 test run: 1 passed, 113 skipped

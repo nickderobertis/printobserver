@@ -159,7 +159,7 @@ fn no_run_of_the_tiers_walk_prints_the_credential() {
 /// here acts on.
 #[test]
 fn an_operator_closes_a_record_left_open() {
-    let world = World::open(world::STOOD_IN);
+    let world = World::open(world::HOLDING_TURNS);
 
     tier::run(&world, tier::CLOSING);
 }

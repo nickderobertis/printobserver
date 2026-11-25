@@ -1,0 +1,28 @@
+    Finished `test` profile [unoptimized] target(s) in 0.96s
+────────────
+ Nextest run ID 346ce48c-314d-4eb5-9080-f6b8b4d40dab with nextest profile: default
+    Starting 1 test across 1 binary (19 tests skipped)
+        FAIL [   0.103s] (1/1) printobserver::service the_documented_sign_in_works_under_the_units_own_user_and_restrictions
+  stdout ───
+
+    running 1 test
+    test the_documented_sign_in_works_under_the_units_own_user_and_restrictions ... FAILED
+
+    failures:
+
+    failures:
+        the_documented_sign_in_works_under_the_units_own_user_and_restrictions
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.09s
+
+  stderr ───
+
+    thread 'the_documented_sign_in_works_under_the_units_own_user_and_restrictions' (2663771) panicked at crates/printobserver/tests/service.rs:2371:5:
+    this host allows neither an unprivileged user namespace that can mount nor a password-free sudo, so this journey cannot apply the installed unit's restrictions to itself
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+  Cancelling due to test failure: 
+────────────
+     Summary [   0.106s] 1 test run: 0 passed, 1 failed, 19 skipped
+        FAIL [   0.103s] (1/1) printobserver::service the_documented_sign_in_works_under_the_units_own_user_and_restrictions
+error: test run failed

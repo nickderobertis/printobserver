@@ -1,0 +1,29 @@
+   Compiling printobserver v0.15.1 (/home/nick/.onevcs/workspaces/github.com-nickderobertis-printobserver-4b2cd94725a6/runs/s-75a7bb31a39a/worktree/crates/printobserver)
+    Finished `test` profile [unoptimized] target(s) in 10.81s
+────────────
+ Nextest run ID d1d3efdc-59ef-4df2-91e6-4e8ea76aeeca with nextest profile: default
+    Starting 1 test across 1 binary (113 tests skipped)
+        FAIL [   2.540s] (1/1) printobserver::journeys an_operator_closes_a_record_left_open
+  stdout ───
+
+    running 1 test
+    test an_operator_closes_a_record_left_open ... FAILED
+
+    failures:
+
+    failures:
+        an_operator_closes_a_record_left_open
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 113 filtered out; finished in 2.49s
+
+  stderr ───
+
+    thread 'an_operator_closes_a_record_left_open' (3277268) panicked at crates/printobserver/tests/journeys/closing.rs:300:23:
+    the close was rejected for another reason: {"record":{"decision":{"rejected":"print_already_ended"},"id":"01a20ffc-7ce4-7eb1-b19d-fc78bf75b83b","print_id":"01a20ffc-75b9-7643-b748-81572e76fce1","request":{"action":{"action":"close_print","actor":"operator","outcome":"cancelled","reason":"the printer was switched off mid-print and the print is over"},"actor":"operator","requested_at":"2026-11-24T23:55:35.004513695Z"}}}
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+  Cancelling due to test failure: 
+────────────
+     Summary [   2.543s] 1 test run: 0 passed, 1 failed, 113 skipped
+        FAIL [   2.540s] (1/1) printobserver::journeys an_operator_closes_a_record_left_open
+error: test run failed

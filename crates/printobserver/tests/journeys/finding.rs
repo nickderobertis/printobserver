@@ -7,14 +7,13 @@
 //! job with no print open for it, which is the state a print just started at
 //! the printer is in.
 
-use std::io::{Read as _, Write as _};
 use std::time::{Duration, Instant};
 
 use printobserver_core::store::PrintStore as _;
 use printobserver_types::serde_json::{Value, json};
 
 use crate::running;
-use crate::world::{SECRET, World};
+use crate::world::World;
 
 /// `Obico`'s own identifier for the print this journey's alert is about.
 const OBICO_PRINT: i64 = 5150;
@@ -43,37 +42,6 @@ fn end_the_print(world: &World) {
             "this journey finished it".to_owned(),
         ))
         .expect("the print ends");
-}
-
-/// Post the committed `Obico` failure alert about one of `Obico`'s prints to
-/// the supervisor's own ingress, and answer the status line it came under.
-///
-/// Its image names a port nothing listens on, so fetching it fails at once and
-/// is recorded; what this journey is about is which print the alert lands on.
-fn post_a_failure_alert(world: &World, obico_print_id: i64) -> String {
-    let mut alert: Value = printobserver_types::serde_json::from_str(include_str!(
-        "../../../printobserver-obico/samples/obico/failure-alert.json"
-    ))
-    .expect("the committed sample is JSON");
-    alert["print"]["id"] = json!(obico_print_id);
-    alert["img_url"] = json!("http://127.0.0.1:9/snapshot.jpg");
-    let body = alert.to_string();
-    let address = world.proxy.address;
-    let mut stream = std::net::TcpStream::connect(address).expect("the supervisor is reachable");
-    write!(
-        stream,
-        "POST {}?{}={SECRET} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n\
-         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        printobserver_server::INGRESS_PATH,
-        printobserver_server::TOKEN_PARAM,
-        body.len()
-    )
-    .expect("the alert is written");
-    let mut answer = String::new();
-    stream
-        .read_to_string(&mut answer)
-        .expect("the answer is read");
-    answer.lines().next().unwrap_or_default().to_owned()
 }
 
 /// Every identifier a listing carries, in the order it carries them.
@@ -145,7 +113,7 @@ pub fn a_print_started_at_the_printer_is_found_read_and_joined_by_its_alert(worl
         "a machine that could not be read had a job named active: {unreadable}"
     );
 
-    let answered = post_a_failure_alert(world, OBICO_PRINT);
+    let answered = world.post_a_failure_alert(OBICO_PRINT);
     assert_eq!(
         answered.split_whitespace().nth(1),
         Some("202"),

@@ -1,0 +1,28 @@
+    Finished `test` profile [unoptimized] target(s) in 1.60s
+────────────
+ Nextest run ID 1dd33e61-6b9c-47ac-aafb-6072dccacd59 with nextest profile: default
+    Starting 1 test across 1 binary (113 tests skipped)
+        FAIL [   2.692s] (1/1) printobserver::journeys an_operator_closes_a_record_left_open
+  stdout ───
+
+    running 1 test
+    test an_operator_closes_a_record_left_open ... FAILED
+
+    failures:
+
+    failures:
+        an_operator_closes_a_record_left_open
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 113 filtered out; finished in 2.65s
+
+  stderr ───
+
+    thread 'an_operator_closes_a_record_left_open' (3282939) panicked at crates/printobserver/tests/journeys/closing.rs:300:23:
+    the close was rejected for another reason: {"record":{"decision":{"rejected":"print_already_ended"},"id":"01a20ffc-96ec-7201-85cc-f9cd3baabf9a","print_id":"01a20ffc-8fb9-7173-9042-2e1dfab9bff2","request":{"action":{"action":"close_print","actor":"operator","outcome":"cancelled","reason":"the printer was switched off mid-print and the print is over"},"actor":"operator","requested_at":"2026-11-24T23:55:41.671972639Z"}}}
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+  Cancelling due to test failure: 
+────────────
+     Summary [   2.698s] 1 test run: 0 passed, 1 failed, 113 skipped
+        FAIL [   2.692s] (1/1) printobserver::journeys an_operator_closes_a_record_left_open
+error: test run failed

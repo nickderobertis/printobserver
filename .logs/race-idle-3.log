@@ -1,0 +1,50 @@
+    Finished `test` profile [unoptimized] target(s) in 0.83s
+────────────
+ Nextest run ID c394cf60-e72c-4c67-bf2d-432606b9dc29 with nextest profile: default
+    Starting 1 test across 1 binary (113 tests skipped)
+        FAIL [   7.406s] (1/1) printobserver::journeys an_operator_closes_a_record_left_open
+  stdout ───
+
+    running 1 test
+    test an_operator_closes_a_record_left_open ... FAILED
+
+    failures:
+
+    failures:
+        an_operator_closes_a_record_left_open
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 113 filtered out; finished in 7.39s
+
+  stderr ───
+
+    thread 'an_operator_closes_a_record_left_open' (3320147) panicked at crates/printobserver/tests/journeys/closing.rs:481:5:
+    assertion `left == right` failed: the close did not go through: {
+      "record": {
+        "decision": {
+          "rejected": "print_already_ended"
+        },
+        "id": "01a20ffd-50db-7f80-8982-620db16145e5",
+        "print_id": "01a20ffd-505f-7703-a294-d8e5898e4fcc",
+        "request": {
+          "action": {
+            "action": "close_print",
+            "actor": "operator",
+            "outcome": "failed",
+            "reason": "the printer was switched off mid-print and the print is over"
+          },
+          "actor": "operator",
+          "requested_at": "2026-11-24T23:56:29.271626966Z"
+        }
+      }
+    }
+    the supervisor's policy refused this action. Ask again inside what the answer says is allowed
+
+      left: Some(5)
+     right: Some(0)
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+  Cancelling due to test failure: 
+────────────
+     Summary [   7.408s] 1 test run: 0 passed, 1 failed, 113 skipped
+        FAIL [   7.406s] (1/1) printobserver::journeys an_operator_closes_a_record_left_open
+error: test run failed

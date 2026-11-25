@@ -1,0 +1,284 @@
+info: cargo-llvm-cov currently setting cfg(coverage); you can opt-out it by passing --no-cfg-coverage
+    Finished `test` profile [unoptimized] target(s) in 3.11s
+────────────
+ Nextest run ID b04e13f9-6c18-4279-8c06-6ce4918bfe9d with nextest profile: default
+    Starting 240 tests across 15 binaries (2 tests and 1 binary skipped)
+        PASS [   0.024s] (  1/240) printobserver credential::tests::standard_input_that_cannot_be_read_is_refused_saying_so
+        PASS [   0.025s] (  2/240) printobserver client::tests::a_short_spool_note_carries_its_figures_and_its_mark_when_it_has_one
+        PASS [   0.023s] (  3/240) printobserver credential::tests::a_refused_draw_is_refused_and_writes_nothing
+        PASS [   0.027s] (  4/240) printobserver failure::tests::every_exit_is_distinguishable_from_every_other_and_from_success
+        PASS [   0.034s] (  5/240) printobserver client::tests::each_material_and_sheet_refusal_note_names_what_was_compared
+        PASS [   0.026s] (  6/240) printobserver credential::tests::the_default_server_is_where_both_installers_have_it_listen
+        PASS [   0.057s] (  7/240) printobserver config::tests::neither_rendering_of_a_credential_shows_it
+        PASS [   0.039s] (  8/240) printobserver locations::tests::macos_keeps_the_linux_answer
+        PASS [   0.022s] (  9/240) printobserver locations::tests::the_migration_reads_the_windows_answer_and_writes_the_per_user_one
+        PASS [   0.056s] ( 10/240) printobserver locations::tests::each_family_resolves_its_per_user_configuration
+        PASS [   0.082s] ( 11/240) printobserver config::tests::the_operators_file_wins_and_the_default_fills_what_it_left
+        PASS [   0.057s] ( 12/240) printobserver locations::tests::linux_keeps_the_filesystem_hierarchy_answers
+        PASS [   0.061s] ( 13/240) printobserver locations::tests::macos_reads_library_application_support
+        PASS [   0.015s] ( 14/240) printobserver locations::tests::this_build_answers_with_its_own_platforms_locations
+        PASS [   0.046s] ( 15/240) printobserver locations::tests::the_linux_installer_writes_the_linux_answer
+        PASS [   0.040s] ( 16/240) printobserver locations::tests::the_readme_tells_each_platforms_own_locations
+        PASS [   0.014s] ( 17/240) printobserver locations::tests::windows_keeps_data_under_programdata_and_the_program_under_program_files
+        PASS [   0.077s] ( 18/240) printobserver locations::tests::the_per_user_installer_writes_the_per_user_answer
+        PASS [   0.026s] ( 19/240) printobserver parse::tests::a_query_value_is_escaped_where_it_would_say_something_else
+        PASS [   0.054s] ( 20/240) printobserver locations::tests::this_build_resolves_for_its_own_family
+        PASS [   0.067s] ( 21/240) printobserver locations::tests::the_smoke_test_defaults_to_each_platforms_own_configuration
+        PASS [   0.034s] ( 22/240) printobserver locations::tests::windows_reads_appdata
+        PASS [   0.013s] ( 23/240) printobserver parse::tests::a_value_that_is_not_of_its_own_kind_is_refused
+        PASS [   0.012s] ( 24/240) printobserver service::tests::both_hints_are_measured_in_tens_of_seconds
+        PASS [   0.073s] ( 25/240) printobserver locations::tests::the_windows_installer_writes_the_windows_answer
+        PASS [   0.012s] ( 26/240) printobserver service::tests::every_state_has_a_name_of_its_own
+        PASS [   0.018s] ( 27/240) printobserver service::tests::a_report_carries_what_its_state_means_and_nothing_else
+        PASS [   0.024s] ( 28/240) printobserver parse::tests::a_value_is_read_as_the_kind_its_parameter_declares
+        PASS [   0.012s] ( 29/240) printobserver watch::tests::a_sampling_is_a_kind_and_a_whole_number_of_seconds
+        PASS [   0.020s] ( 30/240) printobserver watch::tests::a_heartbeat_and_a_retry_take_any_whole_number_of_seconds
+        PASS [   0.020s] ( 31/240) printobserver watch::tests::a_sampled_kind_passes_its_first_and_then_one_per_interval
+        PASS [   0.085s] ( 32/240) printobserver locations::tests::unix_reads_xdg_config_home_and_falls_back_to_dot_config
+        PASS [   0.027s] ( 33/240) printobserver watch::tests::watching_a_print_reads_its_end_whatever_the_filters_say
+        PASS [   0.176s] ( 34/240) printobserver locations::tests::unix_per_user_layouts_match_the_installer
+        PASS [   0.296s] ( 35/240) printobserver::cli a_read_of_a_supervisor_that_is_not_there_says_where_it_looked
+        PASS [   0.390s] ( 36/240) printobserver::cli a_program_nothing_configured_says_what_to_configure
+        PASS [   0.430s] ( 37/240) printobserver::cli a_configuration_that_is_not_there_refuses_the_start
+        PASS [   0.126s] ( 38/240) printobserver::cli the_environment_names_the_server_and_wins_over_the_file
+        PASS [   0.068s] ( 39/240) printobserver::cli the_program_prints_its_own_version
+        PASS [   0.587s] ( 40/240) printobserver::cli a_configuration_file_this_program_will_not_read_is_refused
+        PASS [   0.473s] ( 41/240) printobserver::cli an_unreachable_address_stays_unreachable_while_listeners_come_and_go
+        PASS [   0.578s] ( 42/240) printobserver::cli a_duration_outside_what_this_program_declares_is_refused
+        PASS [   0.131s] ( 43/240) printobserver::cli the_servers_own_configuration_file_configures_a_client
+        PASS [   0.228s] ( 44/240) printobserver::cli the_installed_command_runs_and_exits_zero
+        PASS [   0.197s] ( 45/240) printobserver::cli the_repeatable_values_are_marked_in_the_surface_and_taken_more_than_once
+        PASS [   0.702s] ( 46/240) printobserver::cli an_answer_this_program_cannot_read_is_refused_rather_than_printed
+        PASS [   0.198s] ( 47/240) printobserver::cli the_tracing_suites_unreachable_address_stays_unreachable_while_listeners_come_and_go
+        PASS [   0.125s] ( 48/240) printobserver::credentials credential_issue_steps_past_staged_files_it_does_not_own
+        PASS [   0.249s] ( 49/240) printobserver::credentials credential_issue_holds_the_server_it_writes_to_an_address
+        PASS [   0.290s] ( 50/240) printobserver::credentials credential_issue_with_no_configuration_home_says_which_variable_to_set
+        PASS [   0.567s] ( 51/240) printobserver::credentials credential_issue_that_cannot_write_leaves_what_was_there
+        PASS [   1.558s] ( 52/240) printobserver::cli an_invocation_this_program_does_not_answer_to_is_refused
+        PASS [   0.185s] ( 53/240) printobserver::credentials credential_verifier_answers_a_document_and_refuses_what_is_not_text
+        PASS [   0.053s] ( 54/240) printobserver::credentials credential_verifier_refuses_standard_input_it_cannot_read
+        PASS [   1.159s] ( 55/240) printobserver::credentials a_legacy_installation_keeps_its_operators_credential_through_every_route
+        PASS [   1.185s] ( 56/240) printobserver::credentials an_operator_with_no_rooted_xdg_config_home_is_kept_under_home
+        PASS [   0.556s] ( 57/240) printobserver::credentials credential_issue_writes_the_operators_own_configuration_and_prints_only_its_verifier
+        PASS [   1.345s] ( 58/240) printobserver::credentials an_issued_credential_configures_every_command_by_the_documented_order
+        PASS [   0.438s] ( 59/240) printobserver::credentials credential_verifier_reads_standard_input_and_never_echoes_it
+        PASS [   0.247s] ( 60/240) printobserver::journeys a_configuration_granting_the_agent_close_print_is_refused_at_start
+        PASS [   1.602s] ( 61/240) printobserver::credentials a_replaced_credential_is_admitted_and_the_old_one_is_refused
+        PASS [   0.448s] ( 62/240) printobserver::credentials the_credential_commands_refuse_what_they_do_not_take
+        PASS [   1.920s] ( 63/240) printobserver::credentials a_plaintext_api_credential_is_admitted_and_warned_about_in_the_log_on_every_start
+        PASS [   0.980s] ( 64/240) printobserver::journeys a_configuration_granting_the_agent_a_z_home_or_its_own_clearance_is_refused_at_start
+        PASS [   2.116s] ( 65/240) printobserver::credentials racing_issues_publish_exactly_one_configuration_and_print_its_verifier
+        PASS [   1.360s] ( 66/240) printobserver::journeys a_recovery_fact_left_out_is_refused_at_start_by_name
+        PASS [   1.677s] ( 67/240) printobserver::journeys a_print_started_at_the_printer_is_found_and_joined_by_its_alert
+        PASS [   1.692s] ( 68/240) printobserver::journeys a_first_start_names_no_print_and_a_wrong_one_is_refused_saying_what_to_pass
+        PASS [   0.038s] ( 69/240) printobserver::journeys a_supervisor_that_announces_itself_is_answered_at_once
+        PASS [   0.098s] ( 70/240) printobserver::journeys a_supervisor_announcing_no_address_fails_naming_it
+        PASS [   0.206s] ( 71/240) printobserver::journeys a_supervisor_that_exits_unannounced_fails_when_its_output_ends
+        PASS [   0.639s] ( 72/240) printobserver::journeys a_store_a_published_release_wrote_is_migrated_and_still_reads
+        PASS [   1.734s] ( 73/240) printobserver::journeys a_recovery_fact_out_of_range_is_refused_at_start_by_name
+        PASS [   0.117s] ( 74/240) printobserver::journeys documented::a_link_out_of_the_skills_directory_is_refused
+        PASS [   0.069s] ( 75/240) printobserver::journeys documented::documented_arguments_require_closed_quotes
+        PASS [   0.052s] ( 76/240) printobserver::journeys documented::repository_asset_paths_stay_inside_their_root
+        PASS [   0.024s] ( 77/240) printobserver::journeys documented::unreadable_documentation_link_names_its_target
+        PASS [   0.026s] ( 78/240) printobserver::journeys documenting::documented_arguments_require_closed_quotes
+        PASS [   0.056s] ( 79/240) printobserver::journeys documenting::output_abstraction_preserves_malformed_identifiers_and_instants
+        PASS [   0.059s] ( 80/240) printobserver::journeys documenting::output_abstraction_replaces_a_resolved_state_directory_whole
+        PASS [   4.002s] ( 81/240) printobserver::credentials racing_replacements_each_succeed_and_leave_one_whole_configuration
+        PASS [   4.381s] ( 82/240) printobserver::journeys a_context_read_since_an_event_answers_only_what_came_after_it
+        PASS [   3.131s] ( 83/240) printobserver::journeys a_supervisor_that_never_announces_itself_fails_within_the_deadline
+        PASS [   3.043s] ( 84/240) printobserver::journeys an_operator_keeps_the_spool_ledger_through_this_program
+        PASS [   6.007s] ( 85/240) printobserver::journeys each_override_gets_a_start_past_its_own_check_through_this_program
+        PASS [   4.263s] ( 86/240) printobserver::journeys every_documented_example_of_supervising_from_outside_runs_over_a_print_at_its_milestones
+        PASS [   2.731s] ( 87/240) printobserver::journeys every_spool_refusal_is_answered_with_its_cause_through_this_program
+        PASS [  13.042s] ( 88/240) printobserver::journeys a_stopped_supervisors_output_is_read_no_longer_than_the_drain
+        PASS [   2.493s] ( 89/240) printobserver::journeys formats::parity_refuses_snapshots_that_keep_changing_through_the_existing_bound
+        PASS [  12.938s] ( 90/240) printobserver::journeys an_operator_closes_a_record_left_open
+        PASS [   7.835s] ( 91/240) printobserver::journeys every_documented_example_prints_what_the_document_shows
+        PASS [   1.761s] ( 92/240) printobserver::journeys harness_turn::a_turn_starts_the_program_behind_npms_launcher
+        PASS [   2.197s] ( 93/240) printobserver::journeys formats::parity_survives_an_image_and_event_arriving_between_reads
+        PASS [   0.671s] ( 94/240) printobserver::journeys looking::a_look_naming_no_print_is_refused_a_wait_above_ninety
+        PASS [   1.001s] ( 95/240) printobserver::journeys looking::a_look_answers_the_cameras_frame_and_keeps_it
+        PASS [   1.115s] ( 96/240) printobserver::journeys looking::a_look_naming_no_print_takes_and_keeps_a_frame_of_the_printer
+        PASS [   0.914s] ( 97/240) printobserver::journeys looking::a_look_with_no_camera_carries_no_frame
+        PASS [   0.911s] ( 98/240) printobserver::journeys looking::a_wait_above_ninety_is_refused
+        PASS [   0.026s] ( 99/240) printobserver::journeys scripted::tests::a_print_runs_for_the_sum_of_its_dwells_in_either_unit
+        PASS [   0.017s] (100/240) printobserver::journeys scripted::tests::a_print_with_no_dwell_runs_for_no_time
+        PASS [   0.078s] (101/240) printobserver::journeys scripted::tests::the_committed_hold_print_dwells_for_longer_than_the_bring_up_promises
+        PASS [   3.790s] (102/240) printobserver::journeys looking::a_camera_that_gives_no_frame_is_recorded_against_the_look
+        PASS [  18.764s] (103/240) printobserver::journeys a_record_left_open_past_a_default_poll_is_ended_by_its_close
+        PASS [   1.289s] (104/240) printobserver::journeys streaming::a_heartbeat_and_a_retry_of_any_length_are_taken
+        PASS [   5.510s] (105/240) printobserver::journeys streaming::a_quiet_stream_beats_and_a_signal_ends_it_as_interrupted
+        PASS [   4.540s] (106/240) printobserver::journeys streaming::a_quiet_watch_in_words_beats_and_ends_in_words
+        PASS [   6.478s] (107/240) printobserver::journeys streaming::a_heartbeat_comes_an_interval_after_the_last_line
+        PASS [   1.388s] (108/240) printobserver::journeys streaming::a_refused_credential_or_request_ends_the_stream_as_refused_at_once
+        PASS [   2.873s] (109/240) printobserver::journeys streaming::a_sampled_kind_passes_one_per_interval_by_received_at_for_the_whole_print
+        PASS [   4.314s] (110/240) printobserver::journeys streaming::a_server_restarted_inside_the_retry_is_followed_on_from_the_cursor
+        PASS [   5.128s] (111/240) printobserver::journeys streaming::a_server_that_goes_away_ends_the_stream_as_unreachable_after_the_retry
+        PASS [   2.453s] (112/240) printobserver::journeys streaming::a_watch_in_words_prints_a_line_per_event_and_the_end
+        PASS [   6.968s] (113/240) printobserver::journeys streaming::a_stream_that_comes_back_after_the_end_or_starts_there_prints_all_of_a_long_print
+        PASS [   2.779s] (114/240) printobserver::journeys streaming::a_watch_over_no_print_streams_every_event_stored_after_it_began
+        PASS [   2.377s] (115/240) printobserver::journeys streaming::a_watch_streams_a_prints_events_and_the_printers_and_ends_with_the_print
+        PASS [   1.844s] (116/240) printobserver::journeys streaming::a_watch_that_cannot_start_prints_no_line_and_exits_as_every_command_does
+        PASS [   0.160s] (117/240) printobserver::journeys streaming::an_answer_that_is_not_an_events_answer_ends_the_stream_as_refused
+        PASS [   2.463s] (118/240) printobserver::journeys streaming::every_value_of_a_repeated_option_rules_on_the_stream
+        PASS [  39.069s] (119/240) printobserver::journeys every_adjustment_of_the_tier_is_a_bounded_intervention
+        PASS [  25.798s] (120/240) printobserver::journeys looking::without_an_adjustment_the_detectors_pause_holds_past_the_grace
+        PASS [   1.171s] (121/240) printobserver::journeys streaming::the_events_command_prints_the_answer_the_route_served
+        PASS [   2.571s] (122/240) printobserver::journeys streaming::kind_filters_pass_exactly_what_they_name_and_still_end_with_the_print
+        PASS [   5.608s] (123/240) printobserver::journeys the_listing_and_a_refused_start_say_what_each_spool_holds
+        PASS [   1.758s] (124/240) printobserver::journeys the_operators_word_that_the_bed_is_clear_is_honoured_until_a_print_starts
+        PASS [   0.570s] (125/240) printobserver::journeys the_server_says_it_skipped_the_tallies_it_could_not_read_and_serves
+        PASS [   1.508s] (126/240) printobserver::journeys the_watchs_settings_out_of_range_are_refused_at_start_by_name
+        PASS [   1.199s] (127/240) printobserver::journeys traced::interposer::a_named_descriptor_that_is_not_one::is_replaced_by_a_connection_of_its_own
+        PASS [   0.491s] (128/240) printobserver::journeys traced::native_boundaries::a_descendant_connecting_after_its_parent_exits_is_observed
+        PASS [   0.395s] (129/240) printobserver::journeys traced::native_boundaries::a_refused_attempt_from_the_real_command_is_observed
+        PASS [   0.168s] (130/240) printobserver::journeys traced::native_boundaries::adjacent_invocations_do_not_inherit_each_others_endpoints
+        PASS [   0.133s] (131/240) printobserver::journeys traced::native_boundaries::ipv6_accepted_and_refused_attempts_are_both_observed
+        PASS [   0.082s] (132/240) printobserver::journeys traced::native_boundaries::the_real_commands_version_has_complete_empty_connection_evidence
+        PASS [  13.638s] (133/240) printobserver::journeys the_documented_operator_workflow_is_carried_out_from_the_documentation_alone
+        PASS [   1.700s] (134/240) printobserver::journeys traced::observing::a_descendant_closing_the_lifecycle_descriptor_still_holds_the_tree
+        PASS [   0.041s] (135/240) printobserver::journeys traced::observing::a_recording_is_read_only_for_the_process_it_was_loaded_into
+        PASS [   0.034s] (136/240) printobserver::journeys traced::observing::either_recording_reads_as_the_same_endpoints
+        PASS [   0.594s] (137/240) printobserver::journeys traced::observing::a_lifecycle_nobody_connected_to_is_refused_and_a_released_one_is_finished
+        PASS [   0.770s] (138/240) printobserver::journeys traced::observing::the_interposer_records_the_endpoint_a_run_connects_to
+        PASS [   0.938s] (139/240) printobserver::journeys traced::observing::the_interposer_refuses_and_records_a_watched_path
+        PASS [   0.087s] (140/240) printobserver::journeys traced::regression::connector
+        PASS [  16.246s] (141/240) printobserver::journeys the_configured_skill_directory_carries_the_documented_operator_workflow
+        PASS [   0.017s] (142/240) printobserver::journeys walk::tests::a_command_with_one_spelling_is_still_driven_once
+        PASS [   0.021s] (143/240) printobserver::journeys walk::tests::the_covering_points_spell_everything_the_whole_cross_product_does
+        PASS [  25.925s] (144/240) printobserver::journeys streaming::a_watch_started_after_a_prints_end_ends_with_it_at_once
+        PASS [   0.789s] (145/240) printobserver::journeys traced::regression::each_invocation_observes_its_descendants_and_refused_attempts_only
+        PASS [   3.535s] (146/240) printobserver::journeys traced::observing::the_interposer_reads_a_tree_only_once_its_last_process_has_finished
+        PASS [  31.592s] (147/240) printobserver::journeys streaming::a_watch_over_an_interrupted_print_says_it_was_interrupted
+        SLOW [> 60.000s] (───────) printobserver::journeys every_assertion_of_the_tier_refuses_the_defect_it_is_about
+        SLOW [> 60.000s] (───────) printobserver::journeys every_client_command_is_proven_against_a_real_supervisor
+        PASS [   4.889s] (148/240) printobserver::journeys watching::a_pause_inside_the_interval_is_taken_at_once_and_an_adjustment_is_not
+        PASS [   6.055s] (149/240) printobserver::journeys watching::a_cancel_after_the_adjustment_waits_for_it_to_be_recorded
+        PASS [   6.874s] (150/240) printobserver::journeys watching::a_look_naming_no_print_takes_no_event_meant_for_a_prints_agent
+        PASS [   5.659s] (151/240) printobserver::journeys watching::a_print_somebody_else_resumed_is_not_resumed_over_their_next_pause
+        PASS [   4.048s] (152/240) printobserver::journeys watching::a_repeated_detection_keeps_the_resume_and_is_the_one_acknowledged
+        PASS [   5.906s] (153/240) printobserver::journeys watching::a_resume_the_machine_refuses_leaves_the_print_paused
+        PASS [   5.541s] (154/240) printobserver::journeys watching::a_resume_the_policy_refuses_leaves_the_print_paused
+        PASS [   4.998s] (155/240) printobserver::journeys watching::a_state_the_vocabulary_does_not_name_reaches_the_turn_in_the_printers_own_word
+        PASS [   9.062s] (156/240) printobserver::journeys watching::a_spool_command_waits_for_the_print_a_turn_held_to_close
+        PASS [   5.954s] (157/240) printobserver::journeys watching::a_turn_acknowledges_its_event_only_after_it_has_looked
+        SLOW [> 60.000s] (───────) printobserver::journeys no_run_of_the_tiers_walk_prints_the_credential
+        PASS [   2.419s] (158/240) printobserver::journeys watching::a_turn_handed_an_image_decides_on_it_with_no_look
+        PASS [   5.332s] (159/240) printobserver::journeys watching::a_turn_handed_an_image_acknowledges_its_event_from_it
+        PASS [   2.064s] (160/240) printobserver::journeys watching::a_turn_is_handed_the_usage_of_each_command_its_role_may_run
+        PASS [   2.426s] (161/240) printobserver::journeys watching::adjustments_to_a_paused_print_skip_the_interval_and_nothing_else_does
+        PASS [   2.624s] (162/240) printobserver::journeys watching::an_acknowledgement_obico_refuses_is_recorded_against_the_detection
+        PASS [  10.956s] (163/240) printobserver::journeys watching::a_turn_acts_with_its_own_credential_and_no_other
+        PASS [   3.114s] (164/240) printobserver::journeys watching::an_adjustment_in_the_turn_resumes_the_print_when_the_turn_ends
+        PASS [   5.861s] (165/240) printobserver::journeys watching::acknowledging_stop_leaves_the_pause_for_a_person
+        PASS [  25.436s] (166/240) printobserver::journeys watching::a_print_cancelled_under_the_detectors_pause_is_not_resumed
+        PASS [   5.589s] (167/240) printobserver::journeys watching::an_agent_asking_to_close_its_print_is_refused_by_the_default_grants
+        PASS [   6.238s] (168/240) printobserver::journeys watching::an_event_during_a_turn_reaches_its_next_look_rather_than_a_second_turn
+        PASS [  74.424s] (169/240) printobserver::journeys no_run_of_the_tiers_walk_prints_the_credential
+        PASS [   0.081s] (170/240) printobserver::per_user a_client_command_reaches_the_server_the_per_user_configuration_names
+        PASS [   0.572s] (171/240) printobserver::per_user a_client_command_without_a_per_user_configuration_falls_back_as_before
+        PASS [   0.056s] (172/240) printobserver::per_user credential_issue_names_the_per_user_configuration_where_the_platform_has_one
+        PASS [   0.089s] (173/240) printobserver::per_user sign_in_falls_back_to_the_services_configuration_without_a_per_user_one
+        PASS [   0.084s] (174/240) printobserver::per_user sign_in_reads_the_per_user_configuration_where_the_platform_has_one
+        PASS [   0.074s] (175/240) printobserver::reference every_template_restates_the_sheet_table_defaults_as_the_config_has_them
+        PASS [   0.021s] (176/240) printobserver::reference the_architecture_restates_the_event_kinds_as_the_code_declares_them
+        PASS [   0.082s] (177/240) printobserver::reference the_artifact_names_every_command_the_surface_has
+        PASS [   0.048s] (178/240) printobserver::reference the_checked_in_surface_manifest_is_what_the_program_declares
+        PASS [   0.012s] (179/240) printobserver::reference the_documents_restate_the_events_and_watch_bounds_as_the_code_has_them
+        PASS [   0.059s] (180/240) printobserver::reference the_documents_restate_the_spool_check_and_history_window_defaults_as_the_code_has_them
+        PASS [   0.020s] (181/240) printobserver::reference the_documents_restate_the_timeline_kinds_and_the_spool_window_as_the_server_has_them
+        PASS [   8.810s] (182/240) printobserver::journeys watching::an_ended_print_releases_its_inbox
+        PASS [   0.605s] (183/240) printobserver::service a_launchd_program_on_a_markup_path_is_refused
+        PASS [   0.283s] (184/240) printobserver::service a_launchd_user_creation_failure_names_the_dscl_operation
+        PASS [   5.542s] (185/240) printobserver::journeys watching::the_documented_outside_supervision_leaves_a_waiting_event_to_the_prints_own_look
+        PASS [   0.632s] (186/240) printobserver::service a_launchd_system_user_is_created_at_the_first_free_reserved_id
+        PASS [   0.139s] (187/240) printobserver::service a_user_name_the_service_manager_could_not_run_as_is_refused
+        PASS [   0.021s] (188/240) printobserver::service a_value_a_unit_file_has_no_escape_for_is_refused
+        PASS [   0.078s] (189/240) printobserver::service an_installer_that_can_find_no_program_says_so
+        PASS [   0.921s] (190/240) printobserver::service a_reinstall_leaves_the_operators_own_configuration_alone
+        PASS [   0.056s] (191/240) printobserver::service an_unsupported_host_is_refused_before_installation
+        PASS [   1.950s] (192/240) printobserver::service a_started_server_hands_every_turn_the_directory_the_sign_in_wrote
+        PASS [   0.323s] (193/240) printobserver::service launchd_paths_that_are_property_list_markup_are_refused
+        PASS [   5.378s] (194/240) printobserver::journeys watching::what_a_turn_never_took_gets_exactly_one_more_turn_in_the_same_session
+        FAIL [   0.333s] (195/240) printobserver::service the_documented_sign_in_works_under_the_units_own_user_and_restrictions
+  stdout ───
+
+    running 1 test
+    test the_documented_sign_in_works_under_the_units_own_user_and_restrictions ... FAILED
+
+    failures:
+
+    failures:
+        the_documented_sign_in_works_under_the_units_own_user_and_restrictions
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.31s
+
+  stderr ───
+
+    thread 'the_documented_sign_in_works_under_the_units_own_user_and_restrictions' (4094948) panicked at crates/printobserver/tests/service.rs:2371:5:
+    this host allows neither an unprivileged user namespace that can mount nor a password-free sudo, so this journey cannot apply the installed unit's restrictions to itself
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   1.878s] (196/240) printobserver::service each_managers_definition_says_what_the_install_path_and_the_policy_state
+        PASS [   2.558s] (197/240) printobserver::service an_operator_on_their_own_account_authenticates_by_the_documented_route
+        PASS [   0.661s] (198/240) printobserver::service the_installed_configuration_reads_with_and_without_its_examples
+        PASS [   0.811s] (199/240) printobserver::service the_installed_files_document_the_credential_and_carry_none
+        PASS [   0.630s] (200/240) printobserver::service the_installer_places_four_things_and_starts_nothing
+        PASS [   1.715s] (201/240) printobserver::service launchd_system_user_id_selection_failures_are_actionable
+        PASS [   0.709s] (202/240) printobserver::service the_installer_takes_the_program_the_routes_left_on_path
+        PASS [   1.836s] (203/240) printobserver::service the_installed_definition_passes_the_service_managers_own_verifier
+        PASS [   0.801s] (204/240) printobserver::service_lifecycle a_refused_stopped_report_after_a_failed_start_still_exits_with_the_refusal
+        PASS [   0.280s] (205/240) printobserver::service_lifecycle a_service_that_will_not_start_reports_stopped_with_the_refusal_and_never_running
+        PASS [  96.272s] (206/240) printobserver::journeys every_assertion_of_the_tier_refuses_the_defect_it_is_about
+        PASS [   1.130s] (207/240) printobserver::service_lifecycle a_service_that_cannot_read_the_printers_tallies_says_it_skipped_them_and_serves
+        PASS [   0.065s] (208/240) printobserver::service_lifecycle the_fixture_refuses_a_refusal_naming_no_state
+        PASS [   1.086s] (209/240) printobserver::service_lifecycle a_service_under_a_plaintext_credential_warns_and_serves
+        PASS [   0.367s] (210/240) printobserver::sign_in a_configuration_without_the_values_signing_in_reads_is_refused
+        PASS [   0.201s] (211/240) printobserver::sign_in a_harness_directory_that_cannot_be_created_is_refused_naming_it
+        PASS [   0.169s] (212/240) printobserver::sign_in a_harness_ended_by_a_signal_exits_as_a_shell_reports_it
+        PASS [   0.619s] (213/240) printobserver::service_lifecycle the_service_reports_each_state_answers_while_running_and_stops_cleanly
+        PASS [   0.086s] (214/240) printobserver::sign_in a_harness_outside_the_table_is_refused_before_anything_runs
+        PASS [   0.264s] (215/240) printobserver::sign_in a_harness_program_not_on_the_path_is_refused_naming_it
+        PASS [   0.201s] (216/240) printobserver::sign_in an_existing_harness_directory_is_kept_and_made_private
+        PASS [   2.794s] (217/240) printobserver::service the_units_own_start_command_starts_a_server_that_answers_the_api
+        PASS [   0.156s] (218/240) printobserver::sign_in signing_in_starts_the_program_behind_npms_launcher
+        PASS [   0.303s] (219/240) printobserver::sign_in signing_in_runs_the_harnesss_own_sign_in_on_the_callers_terminal
+        PASS [   0.169s] (220/240) printobserver::surface a_command_accepting_an_address_or_a_credential_is_refused
+        PASS [   0.034s] (221/240) printobserver::surface a_command_naming_no_operation_is_refused
+        PASS [   0.245s] (222/240) printobserver::sign_in signing_in_starts_the_program_found_by_name_over_the_launcher
+        PASS [   0.117s] (223/240) printobserver::surface a_global_option_outside_the_fixed_four_is_refused
+        PASS [   0.061s] (224/240) printobserver::surface a_third_command_naming_no_operation_is_refused
+        PASS [   0.022s] (225/240) printobserver::surface an_operation_with_no_command_is_refused
+        PASS [   0.031s] (226/240) printobserver::surface an_option_nothing_outside_this_crate_names_is_refused
+        PASS [   0.210s] (227/240) printobserver::surface a_printer_wide_form_with_a_command_of_its_own_is_refused
+        PASS [   0.801s] (228/240) printobserver::sign_in signing_in_reaches_no_printer_and_no_failure_detector
+        PASS [   0.073s] (229/240) printobserver::surface every_action_of_the_vocabulary_has_a_command
+        PASS [   0.319s] (230/240) printobserver::surface a_command_that_accepts_no_form_of_a_required_field_is_refused
+        PASS [   0.041s] (231/240) printobserver::surface only_a_command_with_a_printer_wide_form_or_a_minted_print_takes_its_print_as_optional
+        PASS [   0.034s] (232/240) printobserver::surface only_the_commands_that_run_the_server_sign_it_in_and_handle_credentials_name_no_operation
+        PASS [   0.049s] (233/240) printobserver::surface the_global_options_are_the_four_the_task_fixes
+        PASS [   0.044s] (234/240) printobserver::surface the_server_declares_exactly_the_reads_this_task_names
+        PASS [   3.088s] (235/240) printobserver::service_lifecycle a_report_the_manager_refuses_is_said_and_the_service_goes_on
+        PASS [   0.312s] (236/240) printobserver::surface the_surface_this_program_ships_is_the_one_the_contracts_and_the_server_declare
+        PASS [  17.120s] (237/240) printobserver::journeys watching::another_prints_event_is_handled_while_a_look_waits
+        PASS [  24.819s] (238/240) printobserver::journeys watching::an_adjustment_under_the_detectors_pause_earns_a_resume_after_the_grace
+        SLOW [>120.000s] (───────) printobserver::journeys every_client_command_is_proven_against_a_real_supervisor
+        SLOW [> 60.000s] (───────) printobserver::surface the_parser_accepts_exactly_the_options_the_surface_declares
+        SLOW [>180.000s] (───────) printobserver::journeys every_client_command_is_proven_against_a_real_supervisor
+        PASS [ 111.093s] (239/240) printobserver::surface the_parser_accepts_exactly_the_options_the_surface_declares
+        SLOW [>240.000s] (───────) printobserver::journeys every_client_command_is_proven_against_a_real_supervisor
+        SLOW [>300.000s] (───────) printobserver::journeys every_client_command_is_proven_against_a_real_supervisor
+  Cancelling due to signal: 1 test still running
+     SIGTERM [ 324.778s] (240/240) printobserver::journeys every_client_command_is_proven_against_a_real_supervisor
+  stdout ───
+
+    running 1 test
+    test every_client_command_is_proven_against_a_real_supervisor has been running for over 60 seconds
+
+    (test aborted with signal 15: SIGTERM)
+
+────────────
+     Summary [ 332.075s] 240 tests run: 238 passed (3 slow), 2 failed, 2 skipped
+        FAIL [   0.333s] (195/240) printobserver::service the_documented_sign_in_works_under_the_units_own_user_and_restrictions
+     SIGTERM [ 324.778s] (240/240) printobserver::journeys every_client_command_is_proven_against_a_real_supervisor
+error: test run failed
