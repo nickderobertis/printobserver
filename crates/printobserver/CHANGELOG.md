@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.16.0](https://github.com/nickderobertis/printobserver/compare/v0.15.5...v0.16.0) - 2026-11-26
+
+### Added
+
+- *(supervisor)* [**breaking**] supervise planned filament colour changes ([#384](https://github.com/nickderobertis/printobserver/pull/384))
 ## [0.15.5](https://github.com/nickderobertis/printobserver/compare/v0.15.4...v0.15.5) - 2026-11-25
 
 ### Fixed
