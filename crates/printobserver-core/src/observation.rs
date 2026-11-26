@@ -157,6 +157,23 @@ impl Supervisor {
             return Ok(None);
         }
         let job = self.read_job().await;
+        if let Ok(read) = &job
+            && let Some(turn) = self.follow_planned_changes(&print, read, false).await?
+        {
+            return Ok(Some(turn));
+        }
+        // A print waiting at a planned change is not checked until it carries
+        // on, nor one paused at a planned change its signal has yet to reach,
+        // and one checked as it carried on is next checked an interval after
+        // that check.
+        if !self.turns_allowed(print.id).await?
+            || job
+                .as_ref()
+                .is_ok_and(|read| self.paused_at_planned_change(&print, read))
+            || !self.observation_due(print.id)
+        {
+            return Ok(None);
+        }
         if !self.inboxes().claim_if_idle(print.id) {
             return Ok(None);
         }

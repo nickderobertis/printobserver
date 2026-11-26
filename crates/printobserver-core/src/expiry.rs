@@ -222,6 +222,15 @@ const fn interval_left_s(interval_s: i64, since_last_s: i64) -> i64 {
     if left < 1 { 1 } else { left }
 }
 
+/// What a short or doubted spool was meant for: its tool, and the stretch of a
+/// file with planned changes when it was named for one.
+fn meant_for(tool: i64, segment: Option<u32>) -> String {
+    match segment {
+        Some(segment) => format!(" for segment {segment} on tool {tool}"),
+        None => format!(" on tool {tool}"),
+    }
+}
+
 /// Why policy refused a request, in words a reader of the record can act on.
 #[must_use]
 pub fn rejection_detail(reason: &RejectionReason) -> String {
@@ -262,14 +271,33 @@ pub fn rejection_detail(reason: &RejectionReason) -> String {
             required_g,
             buffer_g,
             remaining_g,
+            segment,
             ..
         } => format!(
-            "spool {spool_name} on tool {tool} holds {remaining_g}g, and the print needs \
-             {required_g}g and a {buffer_g}g buffer"
+            "spool {spool_name}{} holds {remaining_g}g, and the print needs {required_g}g and a \
+             {buffer_g}g buffer",
+            meant_for(*tool, *segment)
         ),
         RejectionReason::UnverifiedSpool {
-            tool, spool_name, ..
-        } => format!("spool {spool_name} on tool {tool} is unverified"),
+            tool,
+            spool_name,
+            segment,
+            ..
+        } => format!(
+            "spool {spool_name}{} is unverified",
+            meant_for(*tool, *segment)
+        ),
+        RejectionReason::PlannedChangeWaiting {
+            change_index,
+            layer,
+            z_mm,
+            color,
+        } => format!(
+            "the printer is waiting at planned change {change_index}, for {} to be loaded for \
+             layer {layer} (Z {z_mm} mm): a person finishes it on the printer, and nothing \
+             pauses, resumes or adjusts the print until it carries on",
+            color.as_deref().unwrap_or("the next filament")
+        ),
         RejectionReason::AnalysisUnavailable {
             file_name,
             waited_s,

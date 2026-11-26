@@ -33,6 +33,18 @@
 //! An operator overrides each check by its own flag, exactly as the weight is
 //! overridden, and the start's reason is the override's. One refusal takes no
 //! override and no mode: a manifest that declares no sheet at all.
+//!
+//! # A file with planned colour changes
+//!
+//! A single-nozzle print sliced with colour changes is fed by one spool per
+//! stretch between them, so its whole length is no one spool's. The file is
+//! read once through the G-code index ([`crate::gcode_index`]): when it plans a
+//! change, the spool on tool 0 is checked against segment 0's filament alone,
+//! every segment's filament is recorded with the spool meant for it, and each
+//! later segment a start's manifest names a spool for in `segment_spools` is
+//! checked against that spool, a short or doubted one refused naming the
+//! segment. A file planning no change, or one that cannot be read, is checked
+//! as a whole, as before.
 
 use std::time::Duration;
 
@@ -41,16 +53,17 @@ use printobserver_types::FileName;
 
 use crate::accounting::{NOTHING_MM, lengths_of, spool_on_tool};
 use crate::clock::seconds_between;
-use crate::config::PreflightMode;
+use crate::config::{PreflightMode, SpoolPolicy};
 use crate::delay::Delay;
 use crate::error::CoreError;
 use crate::filament::{buffer_g, grams_for_length};
+use crate::gcode_index::{GcodeIndex, IndexBuilder, PlannedSegment};
 use crate::records::{
     ActionKind, Actor, ActorClass, DoubtedSpool, MaterialComparison, MaterialName,
     MaterialObjection, MaterialResult, Preflight, PreflightNeed, PreflightObjection,
-    PreflightSpool, PreflightTool, PreflightToolResult, PreflightVerdict, RejectionReason,
-    SheetComparison, SheetId, SheetObjection, SheetResult, ShortSpool, SpoolRecord, SpoolTrust,
-    UnanalysedSpool, UncomparedMaterial, UnverifiedMarks,
+    PreflightSegment, PreflightSpool, PreflightTool, PreflightToolResult, PreflightVerdict,
+    RejectionReason, SegmentSpool, SheetComparison, SheetId, SheetObjection, SheetResult,
+    ShortSpool, SpoolRecord, SpoolTrust, UnanalysedSpool, UncomparedMaterial, UnverifiedMarks,
 };
 use crate::supervisor::Supervisor;
 
@@ -173,6 +186,9 @@ fn unanalysed(spool: &SpoolRecord) -> PreflightToolResult {
 /// The refusal one check makes, when it makes one: the first short tool, else
 /// the first unverified one, else a file still unanalysed.
 fn refusal(preflight: &Preflight, waited_s: u64) -> Option<RejectionReason> {
+    // With planned changes, tool 0 was checked against segment 0 alone.
+    let segment_of =
+        |tool: i64| (tool == CHECKED_TOOL && !preflight.segments.is_empty()).then_some(0);
     let short = preflight.tools.iter().find_map(|tool| match &tool.result {
         PreflightToolResult::Insufficient(short) => Some(RejectionReason::InsufficientFilament {
             tool: tool.tool,
@@ -182,6 +198,7 @@ fn refusal(preflight: &Preflight, waited_s: u64) -> Option<RejectionReason> {
             buffer_g: short.need.buffer_g,
             remaining_g: short.remaining_g,
             unverified: short.marks.first().map(|mark| mark.reason.clone()),
+            segment: segment_of(tool.tool),
         }),
         _ => None,
     });
@@ -193,6 +210,7 @@ fn refusal(preflight: &Preflight, waited_s: u64) -> Option<RejectionReason> {
                     spool_id: doubted.spool.id,
                     spool_name: doubted.spool.name.clone(),
                     reason: doubted.marks.oldest().reason.clone(),
+                    segment: segment_of(tool.tool),
                 })
             }
             _ => None,
@@ -209,6 +227,41 @@ fn refusal(preflight: &Preflight, waited_s: u64) -> Option<RejectionReason> {
             })
     };
     short.or_else(unverified).or_else(unanalysed)
+}
+
+/// The refusal one later segment's named spool makes, judged against that
+/// segment's filament: short, else in doubt.
+fn segment_refusal(segment: u32, result: &PreflightToolResult) -> Option<RejectionReason> {
+    match result {
+        PreflightToolResult::Insufficient(short) => Some(RejectionReason::InsufficientFilament {
+            tool: CHECKED_TOOL,
+            spool_id: short.spool.id,
+            spool_name: short.spool.name.clone(),
+            required_g: short.need.required_g,
+            buffer_g: short.need.buffer_g,
+            remaining_g: short.remaining_g,
+            unverified: short.marks.first().map(|mark| mark.reason.clone()),
+            segment: Some(segment),
+        }),
+        PreflightToolResult::UnverifiedSpool(doubted) => Some(RejectionReason::UnverifiedSpool {
+            tool: CHECKED_TOOL,
+            spool_id: doubted.spool.id,
+            spool_name: doubted.spool.name.clone(),
+            reason: doubted.marks.oldest().reason.clone(),
+            segment: Some(segment),
+        }),
+        _ => None,
+    }
+}
+
+/// What one spool must hold for one segment: its filament as that spool's
+/// grams, and the buffer the policy asks beyond them.
+fn need_for(segment: &PlannedSegment, spool: &SpoolRecord, policy: &SpoolPolicy) -> PreflightNeed {
+    let required_g = grams_for_length(segment.filament_mm, spool.diameter_mm, spool.density_g_cm3);
+    PreflightNeed {
+        required_g,
+        buffer_g: buffer_g(required_g, policy),
+    }
 }
 
 /// The refusal the material check makes, when it makes one.
@@ -355,12 +408,108 @@ impl Supervisor {
         file_name: &FileName,
         sheet: Option<&SheetId>,
     ) -> Result<Preflight, CoreError> {
+        Ok(self.preflight_for(file_name, sheet, &[]).await?.0)
+    }
+
+    /// The check of one file, with every later segment the manifest names a
+    /// spool for checked against that spool, and the refusal the first short
+    /// or doubted one of them makes.
+    async fn preflight_for(
+        &self,
+        file_name: &FileName,
+        sheet: Option<&SheetId>,
+        named: &[SegmentSpool],
+    ) -> Result<(Preflight, Option<RejectionReason>), CoreError> {
         let facts = self.read_file_facts(file_name.clone()).await.ok();
         let loaded = self.stores().filament.loaded_spools().await?;
         let mut preflight = self.judge(file_name, facts.as_ref(), &loaded);
+        let refused = match self.planned_index_of(file_name).await {
+            Some(index) => {
+                self.judge_segments(&mut preflight, &index, &loaded, named)
+                    .await?
+            }
+            None => None,
+        };
         preflight.material = Some(self.judge_material(file_name, &loaded).await);
         preflight.sheet = sheet.map(|sheet| self.judge_sheet(sheet, &loaded));
-        Ok(preflight)
+        Ok((preflight, refused))
+    }
+
+    /// The index of a file a start names, when it can be read and plans a
+    /// change: read through the same builder a print's index is, holding no
+    /// spool, and kept no longer than the check.
+    async fn planned_index_of(&self, file_name: &FileName) -> Option<GcodeIndex> {
+        let mut builder = IndexBuilder::new();
+        self.read_gcode(file_name.clone(), &mut builder)
+            .await
+            .ok()?;
+        let index = builder.finish();
+        index.planned_change(0).is_some().then_some(index)
+    }
+
+    /// Check tool 0 against segment 0 alone, record every segment with the
+    /// spool meant for it, and check each later segment the manifest names a
+    /// spool for against that spool. Answers the refusal the first short or
+    /// doubted named spool makes.
+    async fn judge_segments(
+        &self,
+        preflight: &mut Preflight,
+        index: &GcodeIndex,
+        loaded: &[SpoolRecord],
+        named: &[SegmentSpool],
+    ) -> Result<Option<RejectionReason>, CoreError> {
+        let policy = self.config().spools;
+        let segments = index.planned_segments();
+        let first = spool_on_tool(loaded, CHECKED_TOOL);
+        if let (Some(spool), Some(segment)) = (first, segments.first()) {
+            let result = judged(spool, need_for(segment, spool, &policy));
+            match preflight
+                .tools
+                .iter_mut()
+                .find(|tool| tool.tool == CHECKED_TOOL)
+            {
+                Some(tool) => tool.result = result,
+                None => preflight.tools.insert(
+                    0,
+                    PreflightTool {
+                        tool: CHECKED_TOOL,
+                        result,
+                    },
+                ),
+            }
+        }
+        let mut refused = None;
+        let mut checked = Vec::with_capacity(segments.len());
+        for segment in &segments {
+            let spool = if segment.segment == 0 {
+                first.cloned()
+            } else {
+                match named.iter().find(|named| named.segment == segment.segment) {
+                    Some(named) => self.stores().filament.spool(named.spool_id).await?,
+                    None => None,
+                }
+            };
+            if let Some(spool) = spool.as_ref().filter(|_| segment.segment > 0) {
+                let result = judged(spool, need_for(segment, spool, &policy));
+                refused = refused.or_else(|| segment_refusal(segment.segment, &result));
+                checked.push(result.verdict());
+            }
+            preflight.segments.push(PreflightSegment {
+                segment: segment.segment,
+                color: segment.color.clone(),
+                filament_mm: segment.filament_mm,
+                required_g: spool
+                    .as_ref()
+                    .map(|spool| need_for(segment, spool, &policy).required_g),
+                spool_id: spool.as_ref().map(|spool| spool.id),
+            });
+        }
+        preflight.verdict = checked
+            .into_iter()
+            .chain(Some(worst(&preflight.tools)))
+            .min_by_key(|verdict| severity(*verdict))
+            .unwrap_or(PreflightVerdict::Unchecked);
+        Ok(refused)
     }
 
     /// Whether the file was sliced for the material of the spool on tool 0:
@@ -456,6 +605,7 @@ impl Supervisor {
             tools,
             material: None,
             sheet: None,
+            segments: Vec::new(),
             checked_at: self.clock().now(),
         }
     }
@@ -524,6 +674,7 @@ impl Supervisor {
         &self,
         file_name: &FileName,
         sheet: Option<&str>,
+        segment_spools: &[SegmentSpool],
         actor: &Actor,
         asked: Overrides,
     ) -> Result<(Preflight, Option<RejectionReason>), CoreError> {
@@ -531,17 +682,20 @@ impl Supervisor {
         // A blank sheet names none, and is refused as declaring none.
         let declared = sheet.and_then(|sheet| SheetId::try_from(sheet.to_owned()).ok());
         let declared = declared.as_ref();
-        let mut preflight = if policy.preflight == PreflightMode::Off {
-            Preflight {
+        let (mut preflight, segment_refused) = if policy.preflight == PreflightMode::Off {
+            let unchecked = Preflight {
                 file_name: file_name.as_str().to_owned(),
                 tools: Vec::new(),
                 verdict: PreflightVerdict::Unchecked,
                 material: Some(MaterialResult::Unchecked),
                 sheet: Some(SheetResult::Unchecked),
+                segments: Vec::new(),
                 checked_at: self.clock().now(),
-            }
+            };
+            (unchecked, None)
         } else {
-            self.preflight(file_name, declared).await?
+            self.preflight_for(file_name, declared, segment_spools)
+                .await?
         };
         if declared.is_none() {
             preflight.sheet = Some(SheetResult::Undeclared);
@@ -550,16 +704,35 @@ impl Supervisor {
         if policy.preflight == PreflightMode::Off {
             return Ok((preflight, None));
         }
+        let segment_let_through = segment_refused.is_some();
         let refusals = [
-            (refusal(&preflight, policy.analysis_wait_s), asked.filament),
+            (
+                refusal(&preflight, policy.analysis_wait_s).or(segment_refused),
+                asked.filament,
+            ),
             (material_refusal(&preflight), asked.material),
             (sheet_refusal(&preflight), asked.sheet),
         ];
         if refusals.iter().all(|(refused, _)| refused.is_none()) {
             return Ok((preflight, None));
         }
+        // A later segment's spool lets the start through as tool 0's would,
+        // and the verdict says so whatever tool 0 was found to hold.
+        let through = |preflight: Preflight, how: LetThrough| {
+            let mut preflight = let_all_through(preflight, how);
+            if segment_let_through {
+                let let_through = match how {
+                    LetThrough::Overridden => PreflightVerdict::Overridden,
+                    LetThrough::Warned => PreflightVerdict::Warned,
+                };
+                if severity(let_through) < severity(preflight.verdict) {
+                    preflight.verdict = let_through;
+                }
+            }
+            preflight
+        };
         if policy.preflight == PreflightMode::Warn {
-            return Ok((let_all_through(preflight, LetThrough::Warned), None));
+            return Ok((through(preflight, LetThrough::Warned), None));
         }
         let operator = actor.class() == ActorClass::Operator;
         let standing = refusals.into_iter().find_map(|(refused, asked)| {
@@ -567,7 +740,7 @@ impl Supervisor {
         });
         Ok(match standing {
             Some(reason) => (preflight, Some(reason)),
-            None => (let_all_through(preflight, LetThrough::Overridden), None),
+            None => (through(preflight, LetThrough::Overridden), None),
         })
     }
 }

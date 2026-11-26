@@ -114,6 +114,9 @@ mod planning;
 
 #[path = "journeys/planned_geometry.rs"]
 mod planned_geometry;
+
+#[path = "journeys/planned_changes.rs"]
+mod planned_changes;
 #[path = "journeys/preflight.rs"]
 mod preflight;
 

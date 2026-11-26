@@ -5,8 +5,9 @@ change that was only meant to stand for a while. This document covers where the
 bounds come from, what a rejection carries, why the spool ledger refused a
 command, how a bounded intervention is restored, what expiry does when no prior value was available, what happens
 to a print the detector paused, who may command the spool ledger, the filament
-check a start is held to, the material and sheet a start is held to, and what
-marks a spool unverified, and what clears each mark.
+check a start is held to, the material and sheet a start is held to, what
+marks a spool unverified, and what clears each mark, and planned and
+unplanned filament changes.
 
 Every claim here is stated against the thing it describes: the fields a
 rejection carries are the fields the contracts' rejection type declares, the
@@ -85,6 +86,15 @@ because the record might still be live:
 - `intervention_still_active` — an adjustment of the print has neither expired
   nor been restored. It carries `intervention_id`.
 
+One more refuses a pause, a resume and every adjustment, to every actor, while
+the printer waits at a change the print's G-code plans:
+
+- `planned_change_waiting` — the printer is waiting at a planned colour change
+  or pause for a person to finish it on the printer. It carries
+  `change_index`, `layer`, `z_mm` and `color`, the colour to load or null.
+  Nothing composes an acceptable request until the print carries on; a cancel
+  and every spool command are not refused for it.
+
 One more refuses a resume:
 
 - `print_not_resumable` — a recovery action was executed while the print was
@@ -101,10 +111,11 @@ carry out:
   holds less than the print needs and its buffer. It carries `tool`,
   `spool_id`, `spool_name`, `required_g`, `buffer_g` and `remaining_g`, and
   `unverified` — the spool's oldest mark — when the short spool is also in
-  doubt.
+  doubt, and `segment` when the file plans colour changes and the spool is the
+  one meant for that segment.
 - `unverified_spool` — a start was refused because the spool on a tool is in
   doubt. It carries `tool`, `spool_id`, `spool_name` and `reason`, the spool's
-  oldest mark.
+  oldest mark, and `segment` as `insufficient_filament` does.
 - `analysis_unavailable` — a start was refused because OctoPrint had not
   analysed the file when the start's wait elapsed. It carries `file_name` and
   `waited_s`.
@@ -267,6 +278,15 @@ The server's `[spools]` table configures it, and every key is optional:
 A negative buffer or wait, or a mode outside the three, refuses the server's
 start naming the key.
 
+**A file with planned colour changes.** A single-nozzle print sliced with
+`M600` colour changes is fed by one spool per segment between them, so the
+spool on tool 0 is checked against segment 0's filament alone, read from the
+file's own G-code. The check records every segment with its colour, its
+filament, the spool meant for it and what it needs from that spool, under
+`segments`; a later segment's spool is the one the start's manifest names for
+it in `segment_spools`, which is checked against that segment and refused
+naming it. A file planning no change is checked as a whole, as before.
+
 **The override.** An operator who knows better — a spool just weighed, a file
 they trust — starts again with `--override-filament-check true`. The start goes
 ahead and the check is recorded as `overridden`, with the start's own reason.
@@ -370,3 +390,33 @@ What clears which, exactly as the contract's `marks_cleared_by` states it:
 Nothing else clears a mark. A spool in doubt is listed `unverified` in
 `spools`' `at_a_glance`, with its oldest mark, and refuses a start
 `unverified_spool` while the check is set to refuse.
+
+## Planned and unplanned filament changes
+
+A print's G-code may plan stops: an `M600` colour change, its colour on the
+`;COLOR_CHANGE,T<n>,#RRGGBB` line before it, or an `M601` pause. The printer
+waits at one for a person, which to everything else looks like a stall.
+
+- **Reached.** When a filament-change signal arrives with the job at a planned
+  change, or the job's file position stands at it or just past it, the server
+  records one `filament_change_planned_reached` for that change, charges the
+  spool on tool 0 up to the change's own offset and writes the
+  `filament_change_signalled` that accounts for every change, naming the
+  planned change. `Obico` repeats its notification every ten minutes; a repeat
+  writes nothing more and starts nothing.
+- **While it waits** no supervision turn runs for the print, and a pause, a
+  resume and every adjustment are refused `planned_change_waiting` to every
+  actor. A cancel and the spool commands are not, so a person can load the
+  next colour with `load-spool`, which charges what follows to it.
+- **Resumed.** When the position moves past the change the server records one
+  `filament_change_planned_resumed` with the camera's frame, and that event is
+  the print's next check, at once; the next scheduled check is an interval
+  after it, and growth is measured only from frames after it.
+- **Unplanned.** A filament change at no planned change — a runout — is handled
+  as before: its alert gets a turn, and its `filament_change_signalled` carries
+  no `planned_change`.
+
+A colour that differs from the frame before is expected exactly at a planned
+change: the check after it is quiet when the expected colour is there from the
+change's layer up. Anywhere else it is a finding, which the check pauses for,
+naming what a person must check.

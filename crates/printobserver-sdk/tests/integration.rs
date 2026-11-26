@@ -60,6 +60,7 @@ fn manifest(file_name: &str) -> JobManifest {
         file_name: file_name.to_owned(),
         material: "PLA".to_owned(),
         nozzle_diameter_mm: 0.4,
+        segment_spools: None,
         slicer_profile: "a journey's own profile".to_owned(),
         sheet: Some("smooth-pei".to_owned()),
         allowed,

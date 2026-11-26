@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, NamedTuple, NewType, NotRequired, TypedDict
 
 from jsonschema import Draft202012Validator
-from repo_checks.checks_real_prints import printed_gcode, stored_size
+from repo_checks.checks_real_prints import printed_gcode, printed_size, recoloured_source
 from turns_per_run import replays
 
 REPO = Path(__file__).resolve().parents[2]
@@ -57,6 +57,7 @@ class Trigger(StrEnum):
     PERIODIC_OBSERVATION = "periodic_observation"
     START_REQUEST = "start_request"
     OUTSIDE_SUPERVISION = "outside_supervision"
+    PLANNED_CHANGE_RESUMED = "planned_change_resumed"
 
 
 class Milestone(StrEnum):
@@ -191,6 +192,11 @@ class Moment:
         """Whether the Obico double delivers this event, rather than the server's own schedule."""
         return self.trigger in {Trigger.RECORDED_ALERT, Trigger.SYNTHETIC_ALERT}
 
+    @property
+    def carries_on_from_a_change(self) -> bool:
+        """Whether the job waits at a change its G-code plans first, and this is the check after."""
+        return self.trigger is Trigger.PLANNED_CHANGE_RESUMED
+
     def verdict(self, requests: list[Request]) -> str | None:
         """Why these requests fail this decision point, or nothing when they pass it."""
         broken = [
@@ -253,6 +259,8 @@ class Case:
     directory: Path
     frames: tuple[Frame, ...]
     moments: tuple[Moment, ...]
+    #: The printed G-code, whose name is what the printer holds it under; one a case
+    #: commits as its `fault.diff` alone names no file (`checks_real_prints.printed_bytes`).
     gcode: Path
     gcode_size: int
     history: tuple[RecordedEvent, ...]
@@ -406,6 +414,8 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
     directory = CASES / name
     document = _valid_document(directory / "case.json", CASES / "case.schema.json")
     scenarios = {scenario["id"]: scenario for scenario in document["assertions"]["scenarios"]}
+    # A recoloured frame stands in for the camera frame it was made from.
+    replaced = {recoloured_source(frame) for frame in document["frames"]}
     frames = sorted(
         (
             Frame(
@@ -417,6 +427,7 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
             for frame in document["frames"]
             if not NOT_FROM_THE_CAMERA.search(frame["file"])
             and frame.get("kind") != "obico_failure_alert"
+            and frame["file"] not in replaced
         ),
         key=lambda frame: frame.order,
     )
@@ -444,7 +455,8 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
         for entry in (replay if replay is not None else document["assertions"].get("replay", ()))
     )
     gcode = printed_gcode(directory)
-    if gcode is None:
+    size = printed_size(directory)
+    if gcode is None or size is None:
         msg = f"{name} has a replay and carries no G-code"
         raise ValueError(msg)
     history_path = directory / "printobserver-history.json"
@@ -466,7 +478,7 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
         frames=tuple(frames),
         moments=moments,
         gcode=gcode,
-        gcode_size=stored_size(gcode),
+        gcode_size=size,
         history=tuple(history),
         anchors=tuple(anchors),
         detector_recorded=document.get("detector") is not None,

@@ -49,15 +49,15 @@ pub use charge::{
 pub use ids::{ActionId, InterventionId, SpoolId};
 pub use image::ImageRecord;
 pub use intervention::{Intervention, InterventionOutcome};
-pub use manifest::JobManifest;
+pub use manifest::{JobManifest, SegmentSpool};
 pub use policy::{
     EffectiveBounds, PolicyDecision, RejectionReason, SafetyEnvelope, SpoolField, SpoolRefusalCause,
 };
 pub use preflight::{
     DoubtedSpool, MaterialComparison, MaterialName, MaterialObjection, MaterialResult, Preflight,
-    PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool, PreflightToolResult,
-    PreflightVerdict, SheetComparison, SheetId, SheetObjection, SheetResult, ShortSpool,
-    UnanalysedSpool, UncomparedMaterial,
+    PreflightNeed, PreflightObjection, PreflightSegment, PreflightSpool, PreflightTool,
+    PreflightToolResult, PreflightVerdict, SheetComparison, SheetId, SheetObjection, SheetResult,
+    ShortSpool, UnanalysedSpool, UncomparedMaterial,
 };
 pub use print::{ManifestNarrowing, PrintRecord};
 pub use recovery::{

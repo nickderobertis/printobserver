@@ -193,7 +193,7 @@ fn every_configuration_shows_the_camera_calibration() {
 
 /// One count the way the architecture reference writes it, as a word.
 fn counted(count: usize) -> &'static str {
-    const WORDS: [&str; 44] = [
+    const WORDS: [&str; 46] = [
         "Zero",
         "One",
         "Two",
@@ -238,6 +238,8 @@ fn counted(count: usize) -> &'static str {
         "Forty-one",
         "Forty-two",
         "Forty-three",
+        "Forty-four",
+        "Forty-five",
     ];
     WORDS.get(count).copied().unwrap_or_else(|| {
         panic!("{count} kinds: spell the count here and in the architecture reference")

@@ -1,0 +1,187 @@
+{
+  "$defs": {
+    "FilePosition": {
+      "additionalProperties": false,
+      "description": "How far into its file a print had got, and when that was read.",
+      "properties": {
+        "bytes": {
+          "description": "The byte the printer had read the file up to.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the position was read."
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes, when it was known.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bytes",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedChangeTrigger": {
+      "description": "What told the supervisor a print had reached one of its planned changes.",
+      "oneOf": [
+        {
+          "const": "signal",
+          "description": "A filament-change signal arrived with the job at the change.",
+          "type": "string"
+        },
+        {
+          "const": "position",
+          "description": "The job's file position stood at the change or just past it.",
+          "type": "string"
+        }
+      ]
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print reached one of the changes its G-code plans, and the printer is\nwaiting there for a person: recorded once per planned change of a print.\n\nFrom this event to the change's `filament_change_planned_resumed`, no\nsupervision turn runs for the print, and a pause, a resume or an adjustment\nis refused `planned_change_waiting` to every actor.",
+  "properties": {
+    "change": {
+      "$ref": "#/$defs/PlannedChange",
+      "description": "The change reached."
+    },
+    "next_segment_filament_mm": {
+      "description": "The filament the stretch after the change feeds, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "next_spool_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool the print's manifest names for the stretch after the change;\nnull when it names none."
+    },
+    "position": {
+      "$ref": "#/$defs/FilePosition",
+      "description": "Where the job stood when it was."
+    },
+    "previous_color": {
+      "description": "The colour of the stretch before it, as `#RRGGBB`; null when the file\nnames none.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "spool_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool charged up to the change: the one on tool 0; null when none\nwas loaded."
+    },
+    "trigger": {
+      "$ref": "#/$defs/PlannedChangeTrigger",
+      "description": "What told the supervisor it was reached."
+    }
+  },
+  "required": [
+    "change",
+    "trigger",
+    "position",
+    "next_segment_filament_mm",
+    "next_spool_id",
+    "previous_color",
+    "spool_id"
+  ],
+  "title": "FilamentChangePlannedReachedPayload",
+  "type": "object",
+  "x-event-kind": "filament_change_planned_reached"
+}

@@ -683,6 +683,9 @@ async fn the_preflight_mode_governs_the_material_and_sheet_checks() {
             }
         }
         if mode == "off" {
+            // Every watch round that follows the started job has run, so a
+            // read any of them made is in the count.
+            watch.polled_again(3).await;
             assert_eq!(
                 watch.octoprint.download_bytes(),
                 read_before,

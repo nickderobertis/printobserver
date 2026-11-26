@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "FilePosition": {
+      "additionalProperties": false,
+      "description": "How far into its file a print had got, and when that was read.",
+      "properties": {
+        "bytes": {
+          "description": "The byte the printer had read the file up to.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the position was read."
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes, when it was known.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bytes",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print carried on from a planned change it was waiting at: its file\nposition moved past the change. Recorded once per change reached, and the\ncheck it prompts runs at once.",
+  "properties": {
+    "change": {
+      "$ref": "#/$defs/PlannedChange",
+      "description": "The change the print carried on from."
+    },
+    "position": {
+      "$ref": "#/$defs/FilePosition",
+      "description": "Where the job stood when it was found to have carried on."
+    },
+    "previous_color": {
+      "description": "The colour of the stretch before it, as `#RRGGBB`; null when the file\nnames none.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "waited_s": {
+      "description": "How long the print waited at it, in whole seconds.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "change",
+    "waited_s",
+    "position",
+    "previous_color"
+  ],
+  "title": "FilamentChangePlannedResumedPayload",
+  "type": "object",
+  "x-event-kind": "filament_change_planned_resumed"
+}

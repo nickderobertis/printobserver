@@ -217,6 +217,11 @@ impl Supervisor {
         if let Some(signal) = alert.signal {
             self.handle_signal(&print, signal, alert.kind()).await?;
         }
+        // A print waiting at a planned change is given no turn, whatever
+        // arrives: the person at the printer is finishing the change.
+        if !self.turns_allowed(print.id).await? {
+            return Ok(Received { event, turn: None });
+        }
         let mut carried = event.clone();
         carried.image = image.or(carried.image);
         if let Some(detection) = alert.detection
@@ -1113,6 +1118,7 @@ impl Supervisor {
             .await?;
         self.close_session_of(print_id, reason).await?;
         self.drop_gcode_spool(print_id);
+        self.forget_planned_changes(print_id);
         self.follow_up_end(print_id).await;
         Ok(true)
     }

@@ -467,6 +467,143 @@
       ],
       "type": "object"
     },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedChanges": {
+      "additionalProperties": false,
+      "description": "A print's planned changes as the status read answers them.",
+      "properties": {
+        "changes": {
+          "description": "Every change the file plans, in file order.",
+          "items": {
+            "$ref": "#/$defs/PlannedChange"
+          },
+          "type": "array"
+        },
+        "expected_color": {
+          "description": "The colour expected at the job's current position, as `#RRGGBB`; null\nwhen the file names none there or the position is unknown.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "segments": {
+          "description": "The stretches between them, in file order.",
+          "items": {
+            "$ref": "#/$defs/PlannedSegment"
+          },
+          "type": "array"
+        },
+        "waiting": {
+          "description": "The index of the change the printer is waiting at now; null when it is\nwaiting at none.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "changes",
+        "segments",
+        "expected_color",
+        "waiting"
+      ],
+      "type": "object"
+    },
+    "PlannedSegment": {
+      "additionalProperties": false,
+      "description": "One stretch of the print between its planned changes.",
+      "properties": {
+        "color": {
+          "description": "Its colour as `#RRGGBB`: segment 0's the file's `filament_colour`, every\nlater one its change's; null where the file names none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filament_mm": {
+          "description": "The filament it feeds, in millimetres: the net of its extrusion moves.",
+          "format": "double",
+          "type": "number"
+        },
+        "segment": {
+          "description": "Its number: segment 0 runs from the file's start to change 0, and\nsegment n from change n-1 to change n, or to the file's end.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "segment",
+        "filament_mm",
+        "color"
+      ],
+      "type": "object"
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -839,6 +976,17 @@
         }
       ],
       "description": "The job, when a snapshot could be taken."
+    },
+    "planned_changes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlannedChanges"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The changes the print's G-code plans, the one the printer waits at and\nthe colour expected where its job stands; absent when the file plans\nnone or could not be read."
     },
     "print": {
       "$ref": "#/$defs/PrintRecord",

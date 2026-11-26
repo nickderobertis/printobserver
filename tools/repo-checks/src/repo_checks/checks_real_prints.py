@@ -94,11 +94,29 @@ Trigger = Literal[
     "periodic_observation",
     "start_request",
     "outside_supervision",
+    "planned_change_resumed",
 ]
 #: The triggers that happen during a print, whose position in its G-code is known.
 POSITIONED_TRIGGERS: frozenset[Trigger] = frozenset(
-    {"periodic_observation", "recorded_alert", "synthetic_alert", "outside_supervision"}
+    {
+        "periodic_observation",
+        "recorded_alert",
+        "synthetic_alert",
+        "outside_supervision",
+        "planned_change_resumed",
+    }
 )
+
+#: The name every frame recoloured afterwards from one of its case's frames starts with.
+RECOLOURED_PREFIX = "recolour-"
+#: How a recoloured frame's label names the frame it was made from.
+RECOLOURED_FROM = re.compile(r"recoloured afterwards from (?P<source>[^\s,;]+)")
+#: The diff a case's printed G-code was planted with, from its clean slice.
+FAULT_DIFF = "fault.diff"
+#: The header lines of a unified diff, naming the file it is from and the one it makes.
+DIFF_FROM = re.compile(rb"--- (?P<path>[^\t\n]+)\n")
+DIFF_TO = re.compile(rb"\+\+\+ (?P<path>[^\t\n]+)\n")
+DIFF_HUNK = re.compile(rb"@@ -(?P<start>\d+)(?:,(?P<count>\d+))? \+\d+(?:,\d+)? @@[^\n]*\n")
 
 # An event's id in a case's history, and a scenario's id within its case.
 EventId = NewType("EventId", str)
@@ -580,6 +598,42 @@ def real_prints_schema(repo: Repo) -> list[str]:
         return [str(error)]
 
 
+def recoloured_source(frame: dict[str, Any]) -> str | None:
+    """The frame a `recolour-*` frame's label says it was made from; none for any other frame.
+
+    `case.schema.json` refuses a `recolour-*` label naming none, so a case read
+    past its schema names one for every such frame.
+    """
+    if not str(frame.get("file", "")).startswith(RECOLOURED_PREFIX):
+        return None
+    named = RECOLOURED_FROM.search(str(frame.get("label", "")))
+    return named["source"] if named else None
+
+
+def _recoloured_findings(case: Case) -> Iterator[str]:
+    """Each `recolour-*` frame whose label names a frame its case does not carry.
+
+    A recoloured frame stands in for the camera frame it was made from, so that
+    frame is the case's own: listed among its frames, carried beside it, and no
+    recoloured frame itself.
+    """
+    frames = case.document.get("frames", [])
+    carried = {
+        str(frame.get("file"))
+        for frame in frames
+        if not str(frame.get("file", "")).startswith(RECOLOURED_PREFIX)
+    }
+    for frame in frames:
+        source = recoloured_source(frame)
+        if source is not None and (
+            source not in carried or not (case.directory / source).is_file()
+        ):
+            yield (
+                f"{case.name}: {frame['file']} is labelled as made from {source}, which is no "
+                "frame the case carries"
+            )
+
+
 def real_prints_files(repo: Repo) -> list[str]:
     """Every file a case.json refers to is carried, and every file of a case is named by it.
 
@@ -587,6 +641,9 @@ def real_prints_files(repo: Repo) -> list[str]:
     `../`, and names a file this tree must carry — a frame, a G-code and a crop
     alike. Anything else that names a file, such as a `<ref>:<path>` pointing
     at another commit, is a reference to no file here and is refused as one.
+    A `recolour-*` frame names, in its label, the frame of its case it was made
+    from; a printed G-code committed as its `fault.diff` alone names, in that
+    diff, the slice it applies to, which must be a file of this tree.
     """
     findings: list[str] = []
     for case in _readable(repo, "real-prints-files", findings):
@@ -598,6 +655,11 @@ def real_prints_files(repo: Repo) -> list[str]:
             for path in sorted(case.directory.iterdir())
             if path.name != CASE_FILE and not case.mentions(path.name)
         )
+        findings.extend(_recoloured_findings(case))
+        try:
+            planted_gcode(case.directory)
+        except PlantedError as error:
+            findings.append(f"{case.name}: {error}")
     return findings
 
 
@@ -713,12 +775,8 @@ def real_prints_scenarios(repo: Repo) -> list[str]:
     return findings
 
 
-def printed_gcode(directory: Path) -> Path | None:
-    """The G-code a case's print ran, when the case carries it.
-
-    Its one `.gcode` that is not the `.clean.gcode` slice a fault was planted
-    in. A case that printed a sibling's file names it with `../` and carries none.
-    """
+def _carried_gcode(directory: Path) -> Path | None:
+    """The one `.gcode` a case carries but the `.clean.gcode` slice a fault was planted in."""
     printed = sorted(
         path
         for path in directory.glob("*.gcode")
@@ -735,10 +793,201 @@ def stored_size(path: Path) -> int:
     return stands_for.size if stands_for else path.stat().st_size
 
 
+class PlantedError(ValueError):
+    """A case's `fault.diff` that does not describe the G-code it stands for."""
+
+
+@dataclass(frozen=True, slots=True)
+class Hunk:
+    """One hunk of a unified diff: where it starts in the file it is from, and its lines."""
+
+    #: Its first line in that file, counting from 1.
+    start: int
+    #: Each line, its `' '`, `'-'` or `'+'` first and its newline kept.
+    lines: tuple[bytes, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Planted:
+    """A printed G-code a case commits as the diff planting its fault into a clean slice.
+
+    A case derived from another case's print plants its fault into that print's
+    slice, which is megabytes of Git LFS object every suite run fetches against a
+    bandwidth budget; the diff alone carries everything the planted file adds. So
+    the file exists nowhere in the tree, and `apply_planted` makes it from the slice.
+    """
+
+    #: The clean slice the diff applies to, which the tree carries.
+    clean: Path
+    #: The diff, in the case's directory.
+    diff: Path
+    #: The case's printed G-code, named as the diff names the file it makes.
+    printed: Path
+    #: The printed file's size: the slice's, with what the diff adds less what it removes.
+    size: int
+    hunks: tuple[Hunk, ...]
+
+
+def _hunks(body: bytes) -> tuple[Hunk, ...]:
+    """Every hunk of a unified diff's body, each held to the line count its header states.
+
+    Raises:
+        PlantedError: If the body is anything but whole hunks of whole lines.
+    """
+    lines = body.splitlines(keepends=True)
+    hunks: list[Hunk] = []
+    at = 0
+    while at < len(lines):
+        header = DIFF_HUNK.fullmatch(lines[at])
+        if header is None:
+            msg = f"{FAULT_DIFF} line {at + 3} is no hunk header: {lines[at][:60]!r}"
+            raise PlantedError(msg)
+        count = int(header["count"] or 1)
+        at += 1
+        changed: list[bytes] = []
+        while at < len(lines) and lines[at][:1] in (b" ", b"-", b"+"):
+            if not lines[at].endswith(b"\n"):
+                msg = f"{FAULT_DIFF} line {at + 3} ends with no newline, which no slice's line does"
+                raise PlantedError(msg)
+            changed.append(lines[at])
+            at += 1
+        if sum(1 for line in changed if line[:1] != b"+") != count:
+            msg = (
+                f"{FAULT_DIFF}'s hunk at line {header['start'].decode()} is not {count} lines long"
+            )
+            raise PlantedError(msg)
+        hunks.append(Hunk(int(header["start"]), tuple(changed)))
+    if not hunks:
+        msg = f"{FAULT_DIFF} plants nothing: it has no hunk"
+        raise PlantedError(msg)
+    return tuple(hunks)
+
+
+def planted_gcode(directory: Path) -> Planted | None:
+    """The printed G-code a case commits as its `fault.diff` alone, when it does.
+
+    None for a case carrying its printed G-code, as every recorded one does, or
+    carrying no diff. The diff's `---` names the clean slice and its `+++` the
+    printed file, each from the repository's root, the printed one in this case.
+
+    Raises:
+        PlantedError: If the diff names no slice the tree carries, makes no G-code
+            of this case, or is no whole unified diff.
+    """
+    diff = directory / FAULT_DIFF
+    if _carried_gcode(directory) is not None or not diff.is_file():
+        return None
+    data = diff.read_bytes()
+    source = DIFF_FROM.match(data)
+    target = DIFF_TO.match(data, source.end()) if source else None
+    if source is None or target is None:
+        msg = f"{FAULT_DIFF} starts with no `---` and `+++` naming the slice and the file it makes"
+        raise PlantedError(msg)
+    root = directory.parents[len(Path(ROOT).parts)]
+    clean = root / source["path"].decode()
+    printed = root / target["path"].decode()
+    if not clean.is_file():
+        msg = f"{FAULT_DIFF} plants into {source['path'].decode()}, which is not a file"
+        raise PlantedError(msg)
+    if printed.parent != directory or printed.suffix != ".gcode":
+        msg = f"{FAULT_DIFF} makes {target['path'].decode()}, which is no G-code of this case"
+        raise PlantedError(msg)
+    hunks = _hunks(data[target.end() :])
+    grown = sum(
+        len(line) - 1 if line[:1] == b"+" else 1 - len(line)
+        for hunk in hunks
+        for line in hunk.lines
+        if line[:1] != b" "
+    )
+    return Planted(clean, diff, printed, stored_size(clean) + grown, hunks)
+
+
+def apply_planted(planted: Planted, clean: bytes) -> bytes:
+    """The printed G-code: the clean slice's bytes with the diff applied, every line held to it.
+
+    Raises:
+        PlantedError: If the bytes are a pointer, or not the slice the diff was made from.
+    """
+    if pointer(clean) is not None:
+        msg = (
+            f"{planted.clean.name} is a Git LFS pointer here, not the slice: "
+            "fetch the cases with `just real-prints-fetch`"
+        )
+        raise PlantedError(msg)
+    lines = clean.splitlines(keepends=True)
+    out: list[bytes] = []
+    at = 0
+    for hunk in planted.hunks:
+        if hunk.start - 1 < at:
+            msg = f"{FAULT_DIFF}'s hunk at line {hunk.start} overlaps the one before it"
+            raise PlantedError(msg)
+        out.extend(lines[at : hunk.start - 1])
+        at = hunk.start - 1
+        for line in hunk.lines:
+            if line[:1] == b"+":
+                out.append(line[1:])
+                continue
+            if at >= len(lines) or lines[at] != line[1:]:
+                msg = f"{planted.clean.name} line {at + 1} is not the line {FAULT_DIFF} expects"
+                raise PlantedError(msg)
+            if line[:1] == b" ":
+                out.append(line[1:])
+            at += 1
+    out.extend(lines[at:])
+    return b"".join(out)
+
+
+def printed_gcode(directory: Path) -> Path | None:
+    """The G-code a case's print ran: the one it carries, or the one its `fault.diff` makes.
+
+    A case that printed a sibling's file unchanged names it with `../` and has none.
+    A planted file's path names no file: its name is what the printer held it under.
+
+    Raises:
+        PlantedError: If the case's diff cannot describe its printed G-code.
+    """
+    planted = planted_gcode(directory)
+    return planted.printed if planted else _carried_gcode(directory)
+
+
+def printed_size(directory: Path) -> int | None:
+    """The size of a case's printed G-code, read without its bytes; none where it has none.
+
+    Raises:
+        PlantedError: If the case's diff cannot describe its printed G-code.
+    """
+    planted = planted_gcode(directory)
+    if planted is not None:
+        return planted.size
+    carried = _carried_gcode(directory)
+    return stored_size(carried) if carried else None
+
+
+def printed_bytes(directory: Path) -> bytes:
+    """A case's printed G-code, made from its clean slice where it commits only the diff.
+
+    Raises:
+        PlantedError: If the case has no printed G-code, or its slice is not here.
+    """
+    planted = planted_gcode(directory)
+    if planted is not None:
+        return apply_planted(planted, planted.clean.read_bytes())
+    carried = _carried_gcode(directory)
+    if carried is None:
+        msg = f"{directory.name} carries no printed G-code"
+        raise PlantedError(msg)
+    return carried.read_bytes()
+
+
 def _position_findings(case: Case) -> Iterator[str]:
     """Each way a scenario's file position is missing or outside its case's G-code."""
-    gcode = printed_gcode(case.directory)
-    size = stored_size(gcode) if gcode else None
+    try:
+        gcode = printed_gcode(case.directory)
+        size = printed_size(case.directory)
+    except PlantedError:
+        # `real-prints-files` names what is wrong with the diff; with no file
+        # described, there is nothing for a position to lie inside.
+        return
     for scenario in case.scenarios:
         where = f"{case.name}: scenario {scenario.id}"
         position = scenario.file_position_bytes

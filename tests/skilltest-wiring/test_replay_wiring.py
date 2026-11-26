@@ -92,7 +92,7 @@ from replay import (
 from replay import Secrets as Minted
 from replay import TestRecord as RecordedTest
 from repo_checks.__main__ import main as repo_check
-from repo_checks.checks_real_prints import POSITIONED_TRIGGERS, printed_gcode, stored_size
+from repo_checks.checks_real_prints import POSITIONED_TRIGGERS, printed_size, stored_size
 from repo_checks.checks_real_prints import Trigger as RepoCheckTrigger
 from repo_checks.expect import contains, equal, truth
 from repo_checks.fixture_repository import init_repository
@@ -107,6 +107,14 @@ FRAME = (HERE / "fixtures" / "frame.jpg").read_bytes()
 LONGEST_GCODE_LINE = 256
 #: The replays section 2 of the suite's design fixes, by case.
 REPLAYS = {
+    "bubbler-colour-change-planned": [
+        "carry-on-before-any-change",
+        "carried-on-from-the-planned-change",
+    ],
+    "bubbler-colour-change-off-plan": [
+        "carry-on-before-any-change",
+        "colour-changed-off-plan",
+    ],
     "jar-top-wrong-material-detach-spaghetti": [
         "wall-building-cleanly",
         "wall-top-porous-and-stringing",
@@ -478,10 +486,9 @@ def test_a_progress_position_is_the_frames_progress_through_its_gcode() -> None:
     for name, document, scenario in _scenarios():
         if scenario.get("file_position_source") != "progress":
             continue
-        gcode = printed_gcode(CASES / name)
-        if gcode is None:
+        size = printed_size(CASES / name)
+        if size is None:
             pytest.fail(f"{name} names a position and carries no G-code")
-        size = stored_size(gcode)
         expected = _frame_progress(document, scenario) / 100 * size
         off = abs(scenario["file_position_bytes"] - expected)
         truth(

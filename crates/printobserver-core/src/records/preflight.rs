@@ -226,8 +226,37 @@ pub struct Preflight {
     /// was given no sheet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sheet: Option<SheetResult>,
+    /// Each stretch of a file with planned colour changes, the filament it
+    /// feeds and the spool meant for it: tool 0's result is checked against
+    /// segment 0 alone, and each later segment against the spool a start's
+    /// manifest names for it. Absent for a file that plans no change.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<PreflightSegment>,
     /// When the check was made.
     pub checked_at: Timestamp,
+}
+
+/// One stretch of a file with planned colour changes, as a filament check
+/// reads it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(
+    crate = "printobserver_types::schemars",
+    transform = crate::gcode_index::null_is_sent
+)]
+pub struct PreflightSegment {
+    /// Its number: segment 0 runs from the file's start to the first change.
+    pub segment: u32,
+    /// Its colour as `#RRGGBB`; null when the file names none.
+    pub color: Option<String>,
+    /// The filament it feeds, in millimetres.
+    pub filament_mm: f64,
+    /// What it needs from the spool meant for it, in grams, by that spool's
+    /// diameter and density; null when no spool is there to convert with.
+    pub required_g: Option<f64>,
+    /// The spool meant for it: the one on tool 0 for segment 0, and the one
+    /// the manifest names for a later segment; null when none is.
+    pub spool_id: Option<SpoolId>,
 }
 
 /// A name that is never blank, trimmed of surrounding space as it is read.

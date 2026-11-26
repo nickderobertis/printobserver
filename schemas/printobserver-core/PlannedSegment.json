@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One stretch of the print between its planned changes.",
+  "properties": {
+    "color": {
+      "description": "Its colour as `#RRGGBB`: segment 0's the file's `filament_colour`, every\nlater one its change's; null where the file names none.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "filament_mm": {
+      "description": "The filament it feeds, in millimetres: the net of its extrusion moves.",
+      "format": "double",
+      "type": "number"
+    },
+    "segment": {
+      "description": "Its number: segment 0 runs from the file's start to change 0, and\nsegment n from change n-1 to change n, or to the file's end.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "segment",
+    "filament_mm",
+    "color"
+  ],
+  "title": "PlannedSegment",
+  "type": "object"
+}

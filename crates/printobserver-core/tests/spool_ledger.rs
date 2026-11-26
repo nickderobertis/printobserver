@@ -220,6 +220,7 @@ fn an_insufficient_filament_rejection_names_the_oldest_mark_only_when_there_is_o
         buffer_g: 12.0,
         remaining_g: 80.0,
         unverified: trust.oldest_mark().map(|mark| mark.reason.clone()),
+        segment: None,
     };
 
     let verified = serde_json::to_value(refusal(&SpoolTrust::Verified)).expect("a refusal writes");

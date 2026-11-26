@@ -22,6 +22,7 @@
 //! three a recovery writes are the printer's too, and are written with no
 //! print.
 
+use crate::gcode_index::PlannedChange;
 use crate::records::{
     AcknowledgementDisposition, ActionId, Actor, ChargeKey, ChargeMethod, ChargedFilament,
     ClearedMark, FilePosition, InterventionId, InterventionOutcome, LoadedSpool, PendingCharge,
@@ -1060,6 +1061,11 @@ pub struct FilamentChangeSignalledPayload {
     /// was known; absent, there is no position and so no claim about one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<SignalPosition>,
+    /// The index of the planned change the print stopped at, which the spool
+    /// was charged up to the offset of; absent when no change was planned at
+    /// that position, and on a record written before changes were planned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planned_change: Option<u32>,
 }
 
 /// The position a filament change charged up to, and how fresh it is.
@@ -1100,6 +1106,7 @@ impl Sample for FilamentChangeSignalledPayload {
                 position: FilePosition::sample_full(),
                 freshness: PositionFreshness::ReadAtSignal,
             }),
+            planned_change: Some(0),
         }
     }
 
@@ -1108,8 +1115,123 @@ impl Sample for FilamentChangeSignalledPayload {
             tool: None,
             spool_id: None,
             position: None,
+            planned_change: None,
             ..Self::sample_full()
         }
+    }
+}
+
+/// What told the supervisor a print had reached one of its planned changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", rename_all = "snake_case")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub enum PlannedChangeTrigger {
+    /// A filament-change signal arrived with the job at the change.
+    Signal,
+    /// The job's file position stood at the change or just past it.
+    Position,
+}
+
+/// A print reached one of the changes its G-code plans, and the printer is
+/// waiting there for a person: recorded once per planned change of a print.
+///
+/// From this event to the change's `filament_change_planned_resumed`, no
+/// supervision turn runs for the print, and a pause, a resume or an adjustment
+/// is refused `planned_change_waiting` to every actor.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(
+    crate = "printobserver_types::schemars",
+    transform = crate::gcode_index::null_is_sent
+)]
+pub struct FilamentChangePlannedReachedPayload {
+    /// The change reached.
+    pub change: PlannedChange,
+    /// The colour of the stretch before it, as `#RRGGBB`; null when the file
+    /// names none.
+    pub previous_color: Option<String>,
+    /// What told the supervisor it was reached.
+    pub trigger: PlannedChangeTrigger,
+    /// Where the job stood when it was.
+    pub position: FilePosition,
+    /// The spool charged up to the change: the one on tool 0; null when none
+    /// was loaded.
+    pub spool_id: Option<SpoolId>,
+    /// The spool the print's manifest names for the stretch after the change;
+    /// null when it names none.
+    pub next_spool_id: Option<SpoolId>,
+    /// The filament the stretch after the change feeds, in millimetres.
+    pub next_segment_filament_mm: f64,
+}
+
+impl EventPayload for FilamentChangePlannedReachedPayload {
+    const KIND: &'static str = "filament_change_planned_reached";
+}
+
+impl Sample for FilamentChangePlannedReachedPayload {
+    fn sample_full() -> Self {
+        Self {
+            change: PlannedChange::sample_full(),
+            previous_color: Some("#FFFFFF".to_owned()),
+            trigger: PlannedChangeTrigger::Position,
+            position: FilePosition::sample_full(),
+            spool_id: Some(sample_spool_id()),
+            next_spool_id: Some(sample_spool_id()),
+            next_segment_filament_mm: 812.4,
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            previous_color: None,
+            trigger: PlannedChangeTrigger::Signal,
+            spool_id: None,
+            next_spool_id: None,
+            ..Self::sample_full()
+        }]
+    }
+}
+
+/// A print carried on from a planned change it was waiting at: its file
+/// position moved past the change. Recorded once per change reached, and the
+/// check it prompts runs at once.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(
+    crate = "printobserver_types::schemars",
+    transform = crate::gcode_index::null_is_sent
+)]
+pub struct FilamentChangePlannedResumedPayload {
+    /// The change the print carried on from.
+    pub change: PlannedChange,
+    /// The colour of the stretch before it, as `#RRGGBB`; null when the file
+    /// names none.
+    pub previous_color: Option<String>,
+    /// How long the print waited at it, in whole seconds.
+    pub waited_s: i64,
+    /// Where the job stood when it was found to have carried on.
+    pub position: FilePosition,
+}
+
+impl EventPayload for FilamentChangePlannedResumedPayload {
+    const KIND: &'static str = "filament_change_planned_resumed";
+}
+
+impl Sample for FilamentChangePlannedResumedPayload {
+    fn sample_full() -> Self {
+        Self {
+            change: PlannedChange::sample_full(),
+            previous_color: Some("#FFFFFF".to_owned()),
+            waited_s: 412,
+            position: FilePosition::sample_full(),
+        }
+    }
+
+    fn sample_alternates() -> Vec<Self> {
+        vec![Self {
+            previous_color: None,
+            ..Self::sample_full()
+        }]
     }
 }
 

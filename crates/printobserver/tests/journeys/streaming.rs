@@ -145,7 +145,7 @@ fn in_scope(own: &Standalone, print_id: PrintId) -> Vec<EventRecord> {
 }
 
 /// One stream, running.
-struct Watching {
+pub struct Watching {
     /// The program, running.
     child: Child,
     /// Each line it printed, as it printed it.
@@ -162,7 +162,7 @@ fn watch(own: &Standalone, arguments: &[&str]) -> Watching {
 }
 
 /// Start `watch` configured by the file given.
-fn watch_with(arguments: &[&str], config: &std::path::Path) -> Watching {
+pub fn watch_with(arguments: &[&str], config: &std::path::Path) -> Watching {
     let mut child = Command::new(running::program())
         .arg("watch")
         .args(arguments)
@@ -231,7 +231,7 @@ impl Watching {
     }
 
     /// Wait for the stream to end, and answer every line and the exit.
-    fn finished(mut self) -> (Vec<String>, ExitStatus) {
+    pub fn finished(mut self) -> (Vec<String>, ExitStatus) {
         self.wait_out()
     }
 
@@ -294,7 +294,7 @@ impl Drop for Watching {
 }
 
 /// Every line, as a document.
-fn documents(lines: &[String]) -> Vec<Value> {
+pub fn documents(lines: &[String]) -> Vec<Value> {
     lines
         .iter()
         .map(|line| {

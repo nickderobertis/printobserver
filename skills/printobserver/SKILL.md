@@ -32,7 +32,8 @@ Name no configuration: the environment names it. Give an actor only where a comm
    bridges; nothing else has one. Read the stated flow and fan first, settings, never design;
    change one only for a clear defect its stated value explains, or one the plan calls at odds,
    wrong as it stands, seen or not: put it back to normal, flow one, the fan full.
-2. A clear defect with no setting, or a part moved, gone or not risen as planned: pause.
+2. A clear defect with no setting, a colour the plan does not expect here, or a part moved, gone
+   or not risen as planned: pause.
 3. Uncertain, growth aside: watch, never pause, unless clearly worsening.
 4. Nothing there: carry on.
 
@@ -40,8 +41,9 @@ A person's resume settles what they resumed over; judge only what is new or wors
 a part anywhere new or back exactly: one off its own place or moved since 3 moved by itself: pause.
 
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
-  layer); 2 a close-up; 3 the last check. Lines are plan, not plastic. A part off its drawn walls,
-  bare sheet inside them, or moved since 3 came loose.
+  layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
+  check. Panel 1's lines are plan, not plastic. A part off its drawn walls, bare sheet inside
+  them, or moved since 3 came loose.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.
@@ -55,6 +57,16 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
   printing: a clear defect, never watched. A part off the bed, a first layer not sticking, or one
   off its own place, left empty, has moved: pause now on the image in hand; no later frame undoes
   it. The facts' X and Y are the bed's, placing nothing in a frame.
+
+## A planned colour change
+
+Each check, compare new material's colour in panel 2 with the colour the plan expects: panel 1
+draws walls red, panel 2 nothing. At a planned change the printer waits for a person
+(`filament_change_planned_reached`): no check runs, and a pause, resume or setting is refused
+`planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the colour
+expected from its layer and the one before: that colour from there up is expected; carry on.
+A colour other than expected, with no planned change at or just under this layer, is a wrong
+spool or a reload: a clear defect, never watched. Pause now, naming the spool and file to check.
 
 ## When the detector has already paused the print
 

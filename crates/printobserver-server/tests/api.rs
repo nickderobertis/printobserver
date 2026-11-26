@@ -87,6 +87,8 @@ mod observing;
 mod operating;
 #[path = "journeys/pairing.rs"]
 mod pairing;
+#[path = "journeys/planned_changing.rs"]
+mod planned_changing;
 #[path = "journeys/printer_looking.rs"]
 mod printer_looking;
 #[path = "journeys/reconciling.rs"]

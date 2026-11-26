@@ -509,6 +509,13 @@
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -709,6 +716,70 @@
         {
           "const": "flow_low_over_walls",
           "description": "The flow factor is well under one while the current layer lays walls.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
           "type": "string"
         }
       ]
@@ -1004,6 +1075,27 @@
       ],
       "type": "object"
     },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
+    },
     "SetValue": {
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
@@ -1037,6 +1129,24 @@
             "$ref": "#/$defs/PlanMismatch"
           },
           "type": "array"
+        },
+        "change_waiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedChange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The planned change the printer is waiting at now, for a person to\nfinish; absent when it is waiting at none."
+        },
+        "expected_color": {
+          "description": "The colour the print should be laying at the current position, as\n`#RRGGBB`; absent when the file plans no change or names no colour\nthere.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "fan_percent": {
           "anyOf": [
@@ -1084,6 +1194,25 @@
             "integer",
             "null"
           ]
+        },
+        "minutes_to_next_change": {
+          "description": "The slicer's own count of the minutes to that change, from the latest\n`M73 C` the position has reached; absent when there is no next change\nor no count.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "next_change": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedChange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The next change the file plans after the current position; absent when\nit plans none there."
         },
         "object_count": {
           "description": "How many objects the file lays down; absent when it labels none.",
@@ -1142,6 +1271,13 @@
         }
       },
       "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",

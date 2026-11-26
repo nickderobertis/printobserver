@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-209 types. The set is every type any crate declares under
+218 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -921,6 +921,13 @@ Declared by `printobserver-server`.
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -1761,6 +1768,15 @@ Declared by `printobserver-server`.
                   "format": "double",
                   "type": "number"
                 },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
                   "description": "The spool loaded on it."
@@ -1812,6 +1828,15 @@ Declared by `printobserver-server`.
                 "reason": {
                   "$ref": "#/$defs/UnverifiedReason",
                   "description": "The spool's oldest mark."
+                },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
@@ -1998,6 +2023,52 @@ Declared by `printobserver-server`.
         },
         {
           "additionalProperties": false,
+          "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+          "properties": {
+            "planned_change_waiting": {
+              "additionalProperties": false,
+              "properties": {
+                "change_index": {
+                  "description": "The index of the change it is waiting at.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "color": {
+                  "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layer": {
+                  "description": "The first layer printed after it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "z_mm": {
+                  "description": "That layer's height, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "change_index",
+                "layer",
+                "z_mm",
+                "color"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planned_change_waiting"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "A spool command could not be carried out.",
           "properties": {
             "spool_refused": {
@@ -2025,6 +2096,27 @@ Declared by `printobserver-server`.
           "type": "object"
         }
       ]
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
     },
     "SheetId": {
       "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
@@ -3026,6 +3118,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -3866,6 +3965,15 @@ Declared by `printobserver-core`.
                   "format": "double",
                   "type": "number"
                 },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
                   "description": "The spool loaded on it."
@@ -3917,6 +4025,15 @@ Declared by `printobserver-core`.
                 "reason": {
                   "$ref": "#/$defs/UnverifiedReason",
                   "description": "The spool's oldest mark."
+                },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
@@ -4103,6 +4220,52 @@ Declared by `printobserver-core`.
         },
         {
           "additionalProperties": false,
+          "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+          "properties": {
+            "planned_change_waiting": {
+              "additionalProperties": false,
+              "properties": {
+                "change_index": {
+                  "description": "The index of the change it is waiting at.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "color": {
+                  "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layer": {
+                  "description": "The first layer printed after it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "z_mm": {
+                  "description": "That layer's height, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "change_index",
+                "layer",
+                "z_mm",
+                "color"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planned_change_waiting"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "A spool command could not be carried out.",
           "properties": {
             "spool_refused": {
@@ -4130,6 +4293,27 @@ Declared by `printobserver-core`.
           "type": "object"
         }
       ]
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
     },
     "SheetId": {
       "description": "A build sheet's identifier as the sheet table names it, such as `smooth-pei`: never blank, and trimmed of surrounding space as it is read.",
@@ -5242,6 +5426,15 @@ Declared by `printobserver-core`.
                   "format": "double",
                   "type": "number"
                 },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
                   "description": "The spool loaded on it."
@@ -5293,6 +5486,15 @@ Declared by `printobserver-core`.
                 "reason": {
                   "$ref": "#/$defs/UnverifiedReason",
                   "description": "The spool's oldest mark."
+                },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
@@ -5474,6 +5676,52 @@ Declared by `printobserver-core`.
           },
           "required": [
             "print_not_resumable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+          "properties": {
+            "planned_change_waiting": {
+              "additionalProperties": false,
+              "properties": {
+                "change_index": {
+                  "description": "The index of the change it is waiting at.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "color": {
+                  "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layer": {
+                  "description": "The first layer printed after it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "z_mm": {
+                  "description": "That layer's height, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "change_index",
+                "layer",
+                "z_mm",
+                "color"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planned_change_waiting"
           ],
           "type": "object"
         },
@@ -6146,6 +6394,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -6598,6 +6853,34 @@ Declared by `printobserver-core`.
         "max"
       ],
       "type": "object"
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -6756,6 +7039,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -7208,6 +7498,34 @@ Declared by `printobserver-core`.
         "max"
       ],
       "type": "object"
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -7984,6 +8302,70 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -8119,6 +8501,24 @@ Declared by `printobserver-core`.
           },
           "type": "array"
         },
+        "change_waiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedChange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The planned change the printer is waiting at now, for a person to\nfinish; absent when it is waiting at none."
+        },
+        "expected_color": {
+          "description": "The colour the print should be laying at the current position, as\n`#RRGGBB`; absent when the file plans no change or names no colour\nthere.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "fan_percent": {
           "anyOf": [
             {
@@ -8165,6 +8565,25 @@ Declared by `printobserver-core`.
             "integer",
             "null"
           ]
+        },
+        "minutes_to_next_change": {
+          "description": "The slicer's own count of the minutes to that change, from the latest\n`M73 C` the position has reached; absent when there is no next change\nor no count.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "next_change": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedChange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The next change the file plans after the current position; absent when\nit plans none there."
         },
         "object_count": {
           "description": "How many objects the file lays down; absent when it labels none.",
@@ -10130,6 +10549,70 @@ Declared by `printobserver-server`.
         }
       ]
     },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -10265,6 +10748,24 @@ Declared by `printobserver-server`.
           },
           "type": "array"
         },
+        "change_waiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedChange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The planned change the printer is waiting at now, for a person to\nfinish; absent when it is waiting at none."
+        },
+        "expected_color": {
+          "description": "The colour the print should be laying at the current position, as\n`#RRGGBB`; absent when the file plans no change or names no colour\nthere.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "fan_percent": {
           "anyOf": [
             {
@@ -10311,6 +10812,25 @@ Declared by `printobserver-server`.
             "integer",
             "null"
           ]
+        },
+        "minutes_to_next_change": {
+          "description": "The slicer's own count of the minutes to that change, from the latest\n`M73 C` the position has reached; absent when there is no next change\nor no count.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "next_change": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedChange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The next change the file plans after the current position; absent when\nit plans none there."
         },
         "object_count": {
           "description": "How many objects the file lays down; absent when it labels none.",
@@ -11670,6 +12190,343 @@ Declared by `printobserver-vision-api`.
 }
 ```
 
+### FilamentChangePlannedReachedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "FilePosition": {
+      "additionalProperties": false,
+      "description": "How far into its file a print had got, and when that was read.",
+      "properties": {
+        "bytes": {
+          "description": "The byte the printer had read the file up to.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the position was read."
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes, when it was known.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bytes",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedChangeTrigger": {
+      "description": "What told the supervisor a print had reached one of its planned changes.",
+      "oneOf": [
+        {
+          "const": "signal",
+          "description": "A filament-change signal arrived with the job at the change.",
+          "type": "string"
+        },
+        {
+          "const": "position",
+          "description": "The job's file position stood at the change or just past it.",
+          "type": "string"
+        }
+      ]
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print reached one of the changes its G-code plans, and the printer is\nwaiting there for a person: recorded once per planned change of a print.\n\nFrom this event to the change's `filament_change_planned_resumed`, no\nsupervision turn runs for the print, and a pause, a resume or an adjustment\nis refused `planned_change_waiting` to every actor.",
+  "properties": {
+    "change": {
+      "$ref": "#/$defs/PlannedChange",
+      "description": "The change reached."
+    },
+    "next_segment_filament_mm": {
+      "description": "The filament the stretch after the change feeds, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "next_spool_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool the print's manifest names for the stretch after the change;\nnull when it names none."
+    },
+    "position": {
+      "$ref": "#/$defs/FilePosition",
+      "description": "Where the job stood when it was."
+    },
+    "previous_color": {
+      "description": "The colour of the stretch before it, as `#RRGGBB`; null when the file\nnames none.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "spool_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool charged up to the change: the one on tool 0; null when none\nwas loaded."
+    },
+    "trigger": {
+      "$ref": "#/$defs/PlannedChangeTrigger",
+      "description": "What told the supervisor it was reached."
+    }
+  },
+  "required": [
+    "change",
+    "trigger",
+    "position",
+    "next_segment_filament_mm",
+    "next_spool_id",
+    "previous_color",
+    "spool_id"
+  ],
+  "title": "FilamentChangePlannedReachedPayload",
+  "type": "object",
+  "x-event-kind": "filament_change_planned_reached"
+}
+```
+
+### FilamentChangePlannedResumedPayload
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "FilePosition": {
+      "additionalProperties": false,
+      "description": "How far into its file a print had got, and when that was read.",
+      "properties": {
+        "bytes": {
+          "description": "The byte the printer had read the file up to.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the position was read."
+        },
+        "size_bytes": {
+          "description": "The file's size in bytes, when it was known.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bytes",
+        "observed_at"
+      ],
+      "type": "object"
+    },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print carried on from a planned change it was waiting at: its file\nposition moved past the change. Recorded once per change reached, and the\ncheck it prompts runs at once.",
+  "properties": {
+    "change": {
+      "$ref": "#/$defs/PlannedChange",
+      "description": "The change the print carried on from."
+    },
+    "position": {
+      "$ref": "#/$defs/FilePosition",
+      "description": "Where the job stood when it was found to have carried on."
+    },
+    "previous_color": {
+      "description": "The colour of the stretch before it, as `#RRGGBB`; null when the file\nnames none.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "waited_s": {
+      "description": "How long the print waited at it, in whole seconds.",
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "change",
+    "waited_s",
+    "position",
+    "previous_color"
+  ],
+  "title": "FilamentChangePlannedResumedPayload",
+  "type": "object",
+  "x-event-kind": "filament_change_planned_resumed"
+}
+```
+
 ### FilamentChangeSignalledPayload
 
 Declared by `printobserver-core`.
@@ -11763,6 +12620,15 @@ Declared by `printobserver-core`.
   "additionalProperties": false,
   "description": "A filament change was signalled during a print.",
   "properties": {
+    "planned_change": {
+      "description": "The index of the planned change the print stopped at, which the spool\nwas charged up to the offset of; absent when no change was planned at\nthat position, and on a record written before changes were planned.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
     "position": {
       "anyOf": [
         {
@@ -13589,6 +14455,34 @@ Declared by `printobserver-core`.
         "max"
       ],
       "type": "object"
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -13624,6 +14518,13 @@ Declared by `printobserver-core`.
       "description": "The nozzle the job is sliced for, in millimetres.",
       "format": "double",
       "type": "number"
+    },
+    "segment_spools": {
+      "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+      "items": {
+        "$ref": "#/$defs/SegmentSpool"
+      },
+      "type": "array"
     },
     "sheet": {
       "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
@@ -14632,6 +15533,13 @@ Declared by `printobserver-server`.
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -14699,6 +15607,34 @@ Declared by `printobserver-server`.
         "max"
       ],
       "type": "object"
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -17256,6 +18192,316 @@ Declared by `printobserver-core`.
 }
 ```
 
+### PlannedChange
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+  "properties": {
+    "color": {
+      "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "index": {
+      "description": "Its place among the file's changes, counting from 0 in file order.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "kind": {
+      "$ref": "#/$defs/PlannedChangeKind",
+      "description": "What it stops the print for."
+    },
+    "layer": {
+      "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "offset_bytes": {
+      "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "z_mm": {
+      "description": "That layer's height, in millimetres.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "index",
+    "kind",
+    "offset_bytes",
+    "layer",
+    "z_mm",
+    "color"
+  ],
+  "title": "PlannedChange",
+  "type": "object"
+}
+```
+
+### PlannedChangeKind
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a planned change stops the print for.",
+  "oneOf": [
+    {
+      "const": "color_change",
+      "description": "An `M600`: the firmware stops so a person can load the next colour.",
+      "type": "string"
+    },
+    {
+      "const": "pause",
+      "description": "An `M601`: the firmware pauses until a person resumes it.",
+      "type": "string"
+    }
+  ],
+  "title": "PlannedChangeKind"
+}
+```
+
+### PlannedChangeTrigger
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What told the supervisor a print had reached one of its planned changes.",
+  "oneOf": [
+    {
+      "const": "signal",
+      "description": "A filament-change signal arrived with the job at the change.",
+      "type": "string"
+    },
+    {
+      "const": "position",
+      "description": "The job's file position stood at the change or just past it.",
+      "type": "string"
+    }
+  ],
+  "title": "PlannedChangeTrigger"
+}
+```
+
+### PlannedChanges
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedSegment": {
+      "additionalProperties": false,
+      "description": "One stretch of the print between its planned changes.",
+      "properties": {
+        "color": {
+          "description": "Its colour as `#RRGGBB`: segment 0's the file's `filament_colour`, every\nlater one its change's; null where the file names none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filament_mm": {
+          "description": "The filament it feeds, in millimetres: the net of its extrusion moves.",
+          "format": "double",
+          "type": "number"
+        },
+        "segment": {
+          "description": "Its number: segment 0 runs from the file's start to change 0, and\nsegment n from change n-1 to change n, or to the file's end.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "segment",
+        "filament_mm",
+        "color"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A print's planned changes as the status read answers them.",
+  "properties": {
+    "changes": {
+      "description": "Every change the file plans, in file order.",
+      "items": {
+        "$ref": "#/$defs/PlannedChange"
+      },
+      "type": "array"
+    },
+    "expected_color": {
+      "description": "The colour expected at the job's current position, as `#RRGGBB`; null\nwhen the file names none there or the position is unknown.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "segments": {
+      "description": "The stretches between them, in file order.",
+      "items": {
+        "$ref": "#/$defs/PlannedSegment"
+      },
+      "type": "array"
+    },
+    "waiting": {
+      "description": "The index of the change the printer is waiting at now; null when it is\nwaiting at none.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "changes",
+    "segments",
+    "expected_color",
+    "waiting"
+  ],
+  "title": "PlannedChanges",
+  "type": "object"
+}
+```
+
+### PlannedSegment
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One stretch of the print between its planned changes.",
+  "properties": {
+    "color": {
+      "description": "Its colour as `#RRGGBB`: segment 0's the file's `filament_colour`, every\nlater one its change's; null where the file names none.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "filament_mm": {
+      "description": "The filament it feeds, in millimetres: the net of its extrusion moves.",
+      "format": "double",
+      "type": "number"
+    },
+    "segment": {
+      "description": "Its number: segment 0 runs from the file's start to change 0, and\nsegment n from change n-1 to change n, or to the file's end.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "segment",
+    "filament_mm",
+    "color"
+  ],
+  "title": "PlannedSegment",
+  "type": "object"
+}
+```
+
 ### PolicyDecision
 
 Declared by `printobserver-core`.
@@ -17783,6 +19029,15 @@ Declared by `printobserver-core`.
                   "format": "double",
                   "type": "number"
                 },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
                   "description": "The spool loaded on it."
@@ -17834,6 +19089,15 @@ Declared by `printobserver-core`.
                 "reason": {
                   "$ref": "#/$defs/UnverifiedReason",
                   "description": "The spool's oldest mark."
+                },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
@@ -18015,6 +19279,52 @@ Declared by `printobserver-core`.
           },
           "required": [
             "print_not_resumable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+          "properties": {
+            "planned_change_waiting": {
+              "additionalProperties": false,
+              "properties": {
+                "change_index": {
+                  "description": "The index of the change it is waiting at.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "color": {
+                  "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layer": {
+                  "description": "The first layer printed after it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "z_mm": {
+                  "description": "That layer's height, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "change_index",
+                "layer",
+                "z_mm",
+                "color"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planned_change_waiting"
           ],
           "type": "object"
         },
@@ -19123,6 +20433,57 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "PreflightSegment": {
+      "additionalProperties": false,
+      "description": "One stretch of a file with planned colour changes, as a filament check\nreads it.",
+      "properties": {
+        "color": {
+          "description": "Its colour as `#RRGGBB`; null when the file names none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filament_mm": {
+          "description": "The filament it feeds, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What it needs from the spool meant for it, in grams, by that spool's\ndiameter and density; null when no spool is there to convert with.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "segment": {
+          "description": "Its number: segment 0 runs from the file's start to the first change.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpoolId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The spool meant for it: the one on tool 0 for segment 0, and the one\nthe manifest names for a later segment; null when none is."
+        }
+      },
+      "required": [
+        "segment",
+        "filament_mm",
+        "color",
+        "required_g",
+        "spool_id"
+      ],
+      "type": "object"
+    },
     "PreflightSpool": {
       "additionalProperties": false,
       "description": "The spool a check judged, named beside its identifier so a reader need\nnot look it up.",
@@ -19791,6 +21152,13 @@ Declared by `printobserver-core`.
       ],
       "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
     },
+    "segments": {
+      "description": "Each stretch of a file with planned colour changes, the filament it\nfeeds and the spool meant for it: tool 0's result is checked against\nsegment 0 alone, and each later segment against the spool a start's\nmanifest names for it. Absent for a file that plans no change.",
+      "items": {
+        "$ref": "#/$defs/PreflightSegment"
+      },
+      "type": "array"
+    },
     "sheet": {
       "anyOf": [
         {
@@ -20098,6 +21466,13 @@ Declared by `printobserver-server`.
           ],
           "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
         },
+        "segments": {
+          "description": "Each stretch of a file with planned colour changes, the filament it\nfeeds and the spool meant for it: tool 0's result is checked against\nsegment 0 alone, and each later segment against the spool a start's\nmanifest names for it. Absent for a file that plans no change.",
+          "items": {
+            "$ref": "#/$defs/PreflightSegment"
+          },
+          "type": "array"
+        },
         "sheet": {
           "anyOf": [
             {
@@ -20261,6 +21636,57 @@ Declared by `printobserver-server`.
           "type": "object"
         }
       ]
+    },
+    "PreflightSegment": {
+      "additionalProperties": false,
+      "description": "One stretch of a file with planned colour changes, as a filament check\nreads it.",
+      "properties": {
+        "color": {
+          "description": "Its colour as `#RRGGBB`; null when the file names none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filament_mm": {
+          "description": "The filament it feeds, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What it needs from the spool meant for it, in grams, by that spool's\ndiameter and density; null when no spool is there to convert with.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "segment": {
+          "description": "Its number: segment 0 runs from the file's start to the first change.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpoolId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The spool meant for it: the one on tool 0 for segment 0, and the one\nthe manifest names for a later segment; null when none is."
+        }
+      },
+      "required": [
+        "segment",
+        "filament_mm",
+        "color",
+        "required_g",
+        "spool_id"
+      ],
+      "type": "object"
     },
     "PreflightSpool": {
       "additionalProperties": false,
@@ -21203,6 +22629,13 @@ Declared by `printobserver-core`.
           ],
           "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
         },
+        "segments": {
+          "description": "Each stretch of a file with planned colour changes, the filament it\nfeeds and the spool meant for it: tool 0's result is checked against\nsegment 0 alone, and each later segment against the spool a start's\nmanifest names for it. Absent for a file that plans no change.",
+          "items": {
+            "$ref": "#/$defs/PreflightSegment"
+          },
+          "type": "array"
+        },
         "sheet": {
           "anyOf": [
             {
@@ -21366,6 +22799,57 @@ Declared by `printobserver-core`.
           "type": "object"
         }
       ]
+    },
+    "PreflightSegment": {
+      "additionalProperties": false,
+      "description": "One stretch of a file with planned colour changes, as a filament check\nreads it.",
+      "properties": {
+        "color": {
+          "description": "Its colour as `#RRGGBB`; null when the file names none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filament_mm": {
+          "description": "The filament it feeds, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What it needs from the spool meant for it, in grams, by that spool's\ndiameter and density; null when no spool is there to convert with.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "segment": {
+          "description": "Its number: segment 0 runs from the file's start to the first change.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpoolId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The spool meant for it: the one on tool 0 for segment 0, and the one\nthe manifest names for a later segment; null when none is."
+        }
+      },
+      "required": [
+        "segment",
+        "filament_mm",
+        "color",
+        "required_g",
+        "spool_id"
+      ],
+      "type": "object"
     },
     "PreflightSpool": {
       "additionalProperties": false,
@@ -22380,6 +23864,75 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "PreflightObjection"
+}
+```
+
+### PreflightSegment
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One stretch of a file with planned colour changes, as a filament check\nreads it.",
+  "properties": {
+    "color": {
+      "description": "Its colour as `#RRGGBB`; null when the file names none.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "filament_mm": {
+      "description": "The filament it feeds, in millimetres.",
+      "format": "double",
+      "type": "number"
+    },
+    "required_g": {
+      "description": "What it needs from the spool meant for it, in grams, by that spool's\ndiameter and density; null when no spool is there to convert with.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "segment": {
+      "description": "Its number: segment 0 runs from the file's start to the first change.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "spool_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SpoolId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The spool meant for it: the one on tool 0 for segment 0, and the one\nthe manifest names for a later segment; null when none is."
+    }
+  },
+  "required": [
+    "segment",
+    "filament_mm",
+    "color",
+    "required_g",
+    "spool_id"
+  ],
+  "title": "PreflightSegment",
+  "type": "object"
 }
 ```
 
@@ -23617,6 +25170,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -23685,6 +25245,34 @@ Declared by `printobserver-core`.
         "max"
       ],
       "type": "object"
+    },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -24743,6 +26331,13 @@ Declared by `printobserver-core`.
           "format": "double",
           "type": "number"
         },
+        "segment_spools": {
+          "description": "The spool meant for each later stretch of a file with planned colour\nchanges, which a start checks against that stretch's filament. A\nmanifest naming none is checked as one without changes is.",
+          "items": {
+            "$ref": "#/$defs/SegmentSpool"
+          },
+          "type": "array"
+        },
         "sheet": {
           "description": "The build sheet the job goes down on, as one of the sheet ids the\nserver's sheet table names, such as `smooth-pei` or `textured-pei`.\n\nEvery start must declare one: a start whose manifest names none is\nrefused, and no override lets it through. Optional here only so that a\nmanifest stored before the field existed still loads.",
           "type": [
@@ -24943,6 +26538,70 @@ Declared by `printobserver-core`.
         {
           "const": "flow_low_over_walls",
           "description": "The flow factor is well under one while the current layer lays walls.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
           "type": "string"
         }
       ]
@@ -25238,6 +26897,27 @@ Declared by `printobserver-core`.
       ],
       "type": "object"
     },
+    "SegmentSpool": {
+      "additionalProperties": false,
+      "description": "The spool meant for one stretch after a planned change.",
+      "properties": {
+        "segment": {
+          "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+          "format": "uint32",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "spool_id": {
+          "$ref": "#/$defs/SpoolId",
+          "description": "The spool meant for it."
+        }
+      },
+      "required": [
+        "segment",
+        "spool_id"
+      ],
+      "type": "object"
+    },
     "SetValue": {
       "additionalProperties": false,
       "description": "One adjustable as the print's file set it at the current position, and as\na change made through this program since then left it.",
@@ -25271,6 +26951,24 @@ Declared by `printobserver-core`.
             "$ref": "#/$defs/PlanMismatch"
           },
           "type": "array"
+        },
+        "change_waiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedChange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The planned change the printer is waiting at now, for a person to\nfinish; absent when it is waiting at none."
+        },
+        "expected_color": {
+          "description": "The colour the print should be laying at the current position, as\n`#RRGGBB`; absent when the file plans no change or names no colour\nthere.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "fan_percent": {
           "anyOf": [
@@ -25318,6 +27016,25 @@ Declared by `printobserver-core`.
             "integer",
             "null"
           ]
+        },
+        "minutes_to_next_change": {
+          "description": "The slicer's own count of the minutes to that change, from the latest\n`M73 C` the position has reached; absent when there is no next change\nor no count.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "next_change": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlannedChange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The next change the file plans after the current position; absent when\nit plans none there."
         },
         "object_count": {
           "description": "How many objects the file lays down; absent when it labels none.",
@@ -25376,6 +27093,13 @@ Declared by `printobserver-core`.
         }
       },
       "type": "object"
+    },
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
     },
     "Timestamp": {
       "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
@@ -26341,6 +28065,13 @@ Declared by `printobserver-core`.
           ],
           "description": "Whether the file was sliced for the material of the spool on tool 0.\nAbsent from a check recorded before this check existed."
         },
+        "segments": {
+          "description": "Each stretch of a file with planned colour changes, the filament it\nfeeds and the spool meant for it: tool 0's result is checked against\nsegment 0 alone, and each later segment against the spool a start's\nmanifest names for it. Absent for a file that plans no change.",
+          "items": {
+            "$ref": "#/$defs/PreflightSegment"
+          },
+          "type": "array"
+        },
         "sheet": {
           "anyOf": [
             {
@@ -26504,6 +28235,57 @@ Declared by `printobserver-core`.
           "type": "object"
         }
       ]
+    },
+    "PreflightSegment": {
+      "additionalProperties": false,
+      "description": "One stretch of a file with planned colour changes, as a filament check\nreads it.",
+      "properties": {
+        "color": {
+          "description": "Its colour as `#RRGGBB`; null when the file names none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filament_mm": {
+          "description": "The filament it feeds, in millimetres.",
+          "format": "double",
+          "type": "number"
+        },
+        "required_g": {
+          "description": "What it needs from the spool meant for it, in grams, by that spool's\ndiameter and density; null when no spool is there to convert with.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "segment": {
+          "description": "Its number: segment 0 runs from the file's start to the first change.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spool_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpoolId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The spool meant for it: the one on tool 0 for segment 0, and the one\nthe manifest names for a later segment; null when none is."
+        }
+      },
+      "required": [
+        "segment",
+        "filament_mm",
+        "color",
+        "required_g",
+        "spool_id"
+      ],
+      "type": "object"
     },
     "PreflightSpool": {
       "additionalProperties": false,
@@ -32744,6 +34526,15 @@ Declared by `printobserver-core`.
               "format": "double",
               "type": "number"
             },
+            "segment": {
+              "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "spool_id": {
               "$ref": "#/$defs/SpoolId",
               "description": "The spool loaded on it."
@@ -32795,6 +34586,15 @@ Declared by `printobserver-core`.
             "reason": {
               "$ref": "#/$defs/UnverifiedReason",
               "description": "The spool's oldest mark."
+            },
+            "segment": {
+              "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "spool_id": {
               "$ref": "#/$defs/SpoolId",
@@ -32976,6 +34776,52 @@ Declared by `printobserver-core`.
       },
       "required": [
         "print_not_resumable"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+      "properties": {
+        "planned_change_waiting": {
+          "additionalProperties": false,
+          "properties": {
+            "change_index": {
+              "description": "The index of the change it is waiting at.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "color": {
+              "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "layer": {
+              "description": "The first layer printed after it.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "z_mm": {
+              "description": "That layer's height, in millimetres.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "change_index",
+            "layer",
+            "z_mm",
+            "color"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "planned_change_waiting"
       ],
       "type": "object"
     },
@@ -33230,6 +35076,45 @@ Declared by `printobserver-core`.
     "agent_min_interval_s"
   ],
   "title": "SafetyEnvelope",
+  "type": "object"
+}
+```
+
+### SegmentSpool
+
+Declared by `printobserver-core`.
+
+```json
+{
+  "$defs": {
+    "SpoolId": {
+      "description": "A lowercase hyphenated version 7 UUID identifying one registered spool.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "SpoolId",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The spool meant for one stretch after a planned change.",
+  "properties": {
+    "segment": {
+      "description": "The stretch, counting the one after the first change as 1: segment 0\nis the spool loaded on tool 0 at the start, so it is never named here.",
+      "format": "uint32",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "spool_id": {
+      "$ref": "#/$defs/SpoolId",
+      "description": "The spool meant for it."
+    }
+  },
+  "required": [
+    "segment",
+    "spool_id"
+  ],
+  "title": "SegmentSpool",
   "type": "object"
 }
 ```
@@ -34093,6 +35978,70 @@ Declared by `printobserver-core`.
         }
       ]
     },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
     "Rise": {
       "additionalProperties": false,
       "description": "How far the plan has risen since one earlier frame of this print that was\nseen: the height a camera should show the parts to have gained since then.",
@@ -34159,6 +36108,24 @@ Declared by `printobserver-core`.
       },
       "type": "array"
     },
+    "change_waiting": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlannedChange"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The planned change the printer is waiting at now, for a person to\nfinish; absent when it is waiting at none."
+    },
+    "expected_color": {
+      "description": "The colour the print should be laying at the current position, as\n`#RRGGBB`; absent when the file plans no change or names no colour\nthere.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "fan_percent": {
       "anyOf": [
         {
@@ -34205,6 +36172,25 @@ Declared by `printobserver-core`.
         "integer",
         "null"
       ]
+    },
+    "minutes_to_next_change": {
+      "description": "The slicer's own count of the minutes to that change, from the latest\n`M73 C` the position has reached; absent when there is no next change\nor no count.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "next_change": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlannedChange"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The next change the file plans after the current position; absent when\nit plans none there."
     },
     "object_count": {
       "description": "How many objects the file lays down; absent when it labels none.",
@@ -36038,6 +38024,15 @@ Declared by `printobserver-server`.
                   "format": "double",
                   "type": "number"
                 },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
                   "description": "The spool loaded on it."
@@ -36089,6 +38084,15 @@ Declared by `printobserver-server`.
                 "reason": {
                   "$ref": "#/$defs/UnverifiedReason",
                   "description": "The spool's oldest mark."
+                },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
@@ -36270,6 +38274,52 @@ Declared by `printobserver-server`.
           },
           "required": [
             "print_not_resumable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+          "properties": {
+            "planned_change_waiting": {
+              "additionalProperties": false,
+              "properties": {
+                "change_index": {
+                  "description": "The index of the change it is waiting at.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "color": {
+                  "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layer": {
+                  "description": "The first layer printed after it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "z_mm": {
+                  "description": "That layer's height, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "change_index",
+                "layer",
+                "z_mm",
+                "color"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planned_change_waiting"
           ],
           "type": "object"
         },
@@ -37628,6 +39678,15 @@ Declared by `printobserver-core`.
                   "format": "double",
                   "type": "number"
                 },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
                   "description": "The spool loaded on it."
@@ -37679,6 +39738,15 @@ Declared by `printobserver-core`.
                 "reason": {
                   "$ref": "#/$defs/UnverifiedReason",
                   "description": "The spool's oldest mark."
+                },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
@@ -37860,6 +39928,52 @@ Declared by `printobserver-core`.
           },
           "required": [
             "print_not_resumable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+          "properties": {
+            "planned_change_waiting": {
+              "additionalProperties": false,
+              "properties": {
+                "change_index": {
+                  "description": "The index of the change it is waiting at.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "color": {
+                  "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layer": {
+                  "description": "The first layer printed after it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "z_mm": {
+                  "description": "That layer's height, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "change_index",
+                "layer",
+                "z_mm",
+                "color"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planned_change_waiting"
           ],
           "type": "object"
         },
@@ -42032,6 +44146,143 @@ Declared by `printobserver-server`.
       ],
       "type": "object"
     },
+    "PlannedChange": {
+      "additionalProperties": false,
+      "description": "One stop the print's own G-code plans: an `M600` colour change or an\n`M601` pause, where the firmware waits for a person.",
+      "properties": {
+        "color": {
+          "description": "The colour loaded at it, as `#RRGGBB` in upper case, from the\n`;COLOR_CHANGE,T<n>,#RRGGBB` line just before its `M600`; null for an\n`M601`, and for an `M600` with no such line.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "index": {
+          "description": "Its place among the file's changes, counting from 0 in file order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/PlannedChangeKind",
+          "description": "What it stops the print for."
+        },
+        "layer": {
+          "description": "The first layer printed after it, counting the first as 1: the layer\nwhose `;Z:` is the change's height.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset_bytes": {
+          "description": "The byte offset of the first byte of its `M600` or `M601` line.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "z_mm": {
+          "description": "That layer's height, in millimetres.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "index",
+        "kind",
+        "offset_bytes",
+        "layer",
+        "z_mm",
+        "color"
+      ],
+      "type": "object"
+    },
+    "PlannedChangeKind": {
+      "description": "What a planned change stops the print for.",
+      "oneOf": [
+        {
+          "const": "color_change",
+          "description": "An `M600`: the firmware stops so a person can load the next colour.",
+          "type": "string"
+        },
+        {
+          "const": "pause",
+          "description": "An `M601`: the firmware pauses until a person resumes it.",
+          "type": "string"
+        }
+      ]
+    },
+    "PlannedChanges": {
+      "additionalProperties": false,
+      "description": "A print's planned changes as the status read answers them.",
+      "properties": {
+        "changes": {
+          "description": "Every change the file plans, in file order.",
+          "items": {
+            "$ref": "#/$defs/PlannedChange"
+          },
+          "type": "array"
+        },
+        "expected_color": {
+          "description": "The colour expected at the job's current position, as `#RRGGBB`; null\nwhen the file names none there or the position is unknown.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "segments": {
+          "description": "The stretches between them, in file order.",
+          "items": {
+            "$ref": "#/$defs/PlannedSegment"
+          },
+          "type": "array"
+        },
+        "waiting": {
+          "description": "The index of the change the printer is waiting at now; null when it is\nwaiting at none.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "changes",
+        "segments",
+        "expected_color",
+        "waiting"
+      ],
+      "type": "object"
+    },
+    "PlannedSegment": {
+      "additionalProperties": false,
+      "description": "One stretch of the print between its planned changes.",
+      "properties": {
+        "color": {
+          "description": "Its colour as `#RRGGBB`: segment 0's the file's `filament_colour`, every\nlater one its change's; null where the file names none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filament_mm": {
+          "description": "The filament it feeds, in millimetres: the net of its extrusion moves.",
+          "format": "double",
+          "type": "number"
+        },
+        "segment": {
+          "description": "Its number: segment 0 runs from the file's start to change 0, and\nsegment n from change n-1 to change n, or to the file's end.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "segment",
+        "filament_mm",
+        "color"
+      ],
+      "type": "object"
+    },
     "PrintId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one print.",
       "format": "uuid",
@@ -42404,6 +44655,17 @@ Declared by `printobserver-server`.
         }
       ],
       "description": "The job, when a snapshot could be taken."
+    },
+    "planned_changes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlannedChanges"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The changes the print's G-code plans, the one the printer waits at and\nthe colour expected where its job stands; absent when the file plans\nnone or could not be read."
     },
     "print": {
       "$ref": "#/$defs/PrintRecord",

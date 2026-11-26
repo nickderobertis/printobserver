@@ -1,0 +1,21 @@
+--- tests/real-prints/bubbler-guard-and-pad-pla-healthy/bubbler_guard_and_pad.gcode
++++ tests/real-prints/bubbler-colour-change-off-plan/bubbler_guard_and_pad.gcode
+@@ -113147,6 +113147,9 @@
+ G1 X90.451 Y113.109 Z50 F4015.614
+ ;AFTER_LAYER_CHANGE
+ ;50
++;COLOR_CHANGE,T0,#FF0000
++M600
++G1 E0.3 F1500 ; prime after color change
+ G1 X90.451 Y113.109 F21000
+ G1 Z50 F720
+ G1 E.7 F1500
+@@ -192654,7 +192657,7 @@
+ ; fan_always_on = 1
+ ; fan_below_layer_time = 40
+ ; filament_abrasive = 0
+-; filament_colour = #FF8000
++; filament_colour = #000000
+ ; filament_cooling_final_speed = 1.5
+ ; filament_cooling_initial_speed = 10
+ ; filament_cooling_moves = 2

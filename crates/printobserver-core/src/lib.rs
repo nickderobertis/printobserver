@@ -69,6 +69,7 @@ pub mod kinds;
 pub mod listing;
 pub mod look;
 pub mod observation;
+pub mod planned;
 pub mod preflight;
 pub mod records;
 pub mod recovery;
@@ -107,16 +108,18 @@ pub use filament::{
     marks_cleared_by,
 };
 pub use gcode_index::{
-    BedArea, GcodeIndex, IndexBuilder, PlanFact, PlanMismatch, Rise, SetValue, SlicerPlan,
+    BedArea, GcodeIndex, IndexBuilder, PLANNED_CHANGE_REACH_BYTES, PlanFact, PlanMismatch,
+    PlannedChange, PlannedChangeKind, PlannedChanges, PlannedSegment, Rise, SetValue, SlicerPlan,
 };
 pub use inbox::{AlertCameraFrame, Arrival, Inboxes};
 pub use kinds::{
     ActionExecutedPayload, ActionRejectedPayload, ActionRequestedPayload, AgentAssessmentPayload,
     AgentStopUnactedPayload, BedClearActor, BedClearAssertedPayload, CameraDegradedPayload,
     CameraLookPayload, CameraRetryPayload, ChargePendedPayload, DetectorHealthChangedPayload,
-    DetectorStatus, FilamentChangeSignalledPayload, FilamentConsumedPayload,
-    FileTallyRebaselinedPayload, FrameCause, GcodeIndexedPayload, HeatedTool,
-    InterventionExpiredPayload, OperatorAcknowledgementPayload, PeriodicObservationPayload,
+    DetectorStatus, FilamentChangePlannedReachedPayload, FilamentChangePlannedResumedPayload,
+    FilamentChangeSignalledPayload, FilamentConsumedPayload, FileTallyRebaselinedPayload,
+    FrameCause, GcodeIndexedPayload, HeatedTool, InterventionExpiredPayload,
+    OperatorAcknowledgementPayload, PeriodicObservationPayload, PlannedChangeTrigger,
     PortFailurePayload, PortFailureSite, PositionFreshness, PreflightCheckedPayload,
     PrintEndedPayload, PrintStartedPayload, PrintUntrackedPayload, PrinterConnectionChangedPayload,
     PrinterResetPayload, RebaselineDisposition, RecoveryExecutedPayload, RecoveryRejectedPayload,
@@ -134,12 +137,12 @@ pub use records::{
     EffectiveBounds, ExecutionOutcome, FilePosition, ImageRecord, Intervention, InterventionId,
     InterventionOutcome, JobManifest, LoadedSpool, ManifestNarrowing, MaterialComparison,
     MaterialName, MaterialObjection, MaterialResult, PendingCharge, PendingTaken, PolicyDecision,
-    Preflight, PreflightNeed, PreflightObjection, PreflightSpool, PreflightTool,
+    Preflight, PreflightNeed, PreflightObjection, PreflightSegment, PreflightSpool, PreflightTool,
     PreflightToolResult, PreflightVerdict, PrintAction, PrintOutcome, PrintRecord, PrintSegmentKey,
-    RejectionReason, SafetyEnvelope, SheetComparison, SheetId, SheetObjection, SheetResult,
-    ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle, SpoolRecord, SpoolRefusalCause,
-    SpoolTrust, UnanalysedSpool, UncomparedMaterial, UnverifiedMark, UnverifiedMarks,
-    UnverifiedReason, UnverifiedReasonKind,
+    RejectionReason, SafetyEnvelope, SegmentSpool, SheetComparison, SheetId, SheetObjection,
+    SheetResult, ShortSpool, SpoolCommand, SpoolField, SpoolId, SpoolLifecycle, SpoolRecord,
+    SpoolRefusalCause, SpoolTrust, UnanalysedSpool, UncomparedMaterial, UnverifiedMark,
+    UnverifiedMarks, UnverifiedReason, UnverifiedReasonKind,
 };
 pub use records::{
     ActionAllowance, AwayFromBed, BedTemperature, DEFAULT_CLEARANCE_MARGIN_MM, DEFAULT_MAX_LIFT_MM,

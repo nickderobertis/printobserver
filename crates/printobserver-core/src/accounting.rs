@@ -1205,14 +1205,17 @@ impl Supervisor {
 
     /// Handle what the printer itself signalled, as an alert relayed it.
     ///
-    /// A filament change reads the job afresh — the printer is paused at the
-    /// change, so that is where the spool stopped feeding — charges the spool
-    /// on each tool up to it, writes `filament_change_signalled`, and marks
-    /// the spool as one whose change nobody has confirmed. When no fresh
-    /// position can be read it charges up to the last position recorded and
-    /// says so, with the mark that says its figure may be overstated. A spool
-    /// already holding the print's mark — a second signal before any load —
-    /// has its open segment pended instead, and is marked again.
+    /// A filament change at a change the print's G-code plans is that change
+    /// reached ([`crate::planned`]), and one repeated while the print waits
+    /// there is nothing more. Any other reads the job afresh — the printer is
+    /// paused at the change, so that is where the spool stopped feeding —
+    /// charges the spool on each tool up to it, writes
+    /// `filament_change_signalled`, and marks the spool as one whose change
+    /// nobody has confirmed. When no fresh position can be read it charges up
+    /// to the last position recorded and says so, with the mark that says its
+    /// figure may be overstated. A spool already holding the print's mark — a
+    /// second signal before any load — has its open segment pended instead,
+    /// and is marked again.
     pub(crate) async fn handle_signal(
         &self,
         print: &PrintRecord,
@@ -1220,18 +1223,45 @@ impl Supervisor {
         source_kind: &EventKind,
     ) -> Result<(), CoreError> {
         let PrinterSignal::FilamentChange = signal;
-        if print.ended_at.is_some()
-            || self
+        if print.ended_at.is_some() || self.signal_at_planned_change(print, source_kind).await? {
+            return Ok(());
+        }
+        if !self.charges_changes(print).await? {
+            return Ok(());
+        }
+        let (whereabouts, job) = self.position_now(print).await?;
+        self.charge_filament_change(print, source_kind, whereabouts, job, None)
+            .await
+    }
+
+    /// Whether a filament change during a print is charged: the print is open,
+    /// tracked and not yet settled.
+    async fn charges_changes(&self, print: &PrintRecord) -> Result<bool, CoreError> {
+        Ok(print.ended_at.is_none()
+            && self
                 .stores()
                 .filament
                 .print_settlement(print.id)
                 .await?
-                .is_some()
-            || self.print_started_of(print.id).await?.is_none()
-        {
+                .is_none()
+            && self.print_started_of(print.id).await?.is_some())
+    }
+
+    /// Charge the spool on each tool up to where a filament change stopped it,
+    /// write `filament_change_signalled` — naming the planned change it was,
+    /// when it was one — and mark the spool as one whose change nobody has
+    /// confirmed.
+    pub(crate) async fn charge_filament_change(
+        &self,
+        print: &PrintRecord,
+        source_kind: &EventKind,
+        whereabouts: Whereabouts,
+        job: Option<JobSnapshot>,
+        planned_change: Option<u32>,
+    ) -> Result<(), CoreError> {
+        if planned_change.is_some() && !self.charges_changes(print).await? {
             return Ok(());
         }
-        let (whereabouts, job) = self.position_now(print).await?;
         let read_now = matches!(whereabouts, Whereabouts::ReadNow(_));
         let position = whereabouts.position().cloned();
         let signal_position = position.clone().map(|position| SignalPosition {
@@ -1260,6 +1290,7 @@ impl Supervisor {
                     spool_id,
                     source_kind: source_kind.clone(),
                     position: signal_position.clone(),
+                    planned_change,
                 },
             )
         };

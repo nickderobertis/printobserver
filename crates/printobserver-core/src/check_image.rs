@@ -104,6 +104,13 @@ pub trait CheckImages: Send + Sync {
         let _ = print_id;
         false
     }
+
+    /// Measure `print_id`'s growth only from frames checked after now: it
+    /// waited at a planned change, and a frame from before the wait would
+    /// count the wait as no growth. By default there is nothing to forget.
+    fn restart_growth(&self, print_id: PrintId) {
+        let _ = print_id;
+    }
 }
 
 /// When an event's frame was captured: what the arrival knew, else what its

@@ -65,6 +65,8 @@ mod bed_clearing;
 mod carrying;
 #[path = "journeys/closing.rs"]
 mod closing;
+#[path = "journeys/colour_changing.rs"]
+mod colour_changing;
 #[path = "journeys/confirming.rs"]
 mod confirming;
 #[path = "journeys/contexting.rs"]

@@ -970,6 +970,14 @@ impl Supervisor {
         drop(resolving);
         if let Some(observed) = &observed {
             self.watch_unattended(observed, probe).await?;
+            if let Some(active) = &active
+                && let Some(print) = self.stores().prints.print(active.print_id).await?
+                && let Some(turn) = self
+                    .follow_planned_changes(&print, &observed.job, true)
+                    .await?
+            {
+                self.watch_state().pending_turns.push(turn);
+            }
         }
         Ok(Watched {
             turns: std::mem::take(&mut self.watch_state().pending_turns),
@@ -1286,6 +1294,9 @@ impl Supervisor {
             .await;
             return Ok(None);
         }
+        if !self.turns_allowed(print.id).await? {
+            return Ok(None);
+        }
         let arrival = Arrival {
             frame_captured_at: None,
             event,
@@ -1307,6 +1318,33 @@ pub(crate) fn concerns_its_end(kind: &EventKind) -> bool {
         UnattendedPrinterActivityPayload::KIND,
     ]
     .contains(&kind.as_str())
+}
+
+/// What a print carrying on from a planned change says: which colour is now
+/// expected, from which layer, and what came before it.
+fn resumed_noticed(resumed: &crate::kinds::FilamentChangePlannedResumedPayload) -> String {
+    let named = |colour: Option<&str>| {
+        colour.map_or_else(
+            || "a colour the file does not name".to_owned(),
+            str::to_owned,
+        )
+    };
+    let change = &resumed.change;
+    let what = match change.kind {
+        crate::gcode_index::PlannedChangeKind::ColorChange => "colour change",
+        crate::gcode_index::PlannedChangeKind::Pause => "pause",
+    };
+    format!(
+        "{}: the print carried on from planned {what} {} after waiting {} s; the expected colour \
+         is {} from layer {} (Z {} mm) up, and the colour before it was {}",
+        crate::kinds::FilamentChangePlannedResumedPayload::KIND,
+        change.index,
+        resumed.waited_s,
+        named(change.color.as_deref()),
+        change.layer,
+        change.z_mm,
+        named(resumed.previous_color.as_deref()),
+    )
 }
 
 /// What one event says the watch noticed, in words, for the situation of the
@@ -1341,6 +1379,11 @@ pub(crate) fn noticed_of(event: &EventRecord) -> Option<String> {
             degraded.attempts,
             degraded.detail
         ));
+    }
+    if let Some(Ok(resumed)) =
+        event.payload_as::<crate::kinds::FilamentChangePlannedResumedPayload>()
+    {
+        return Some(resumed_noticed(&resumed));
     }
     if let Some(Ok(health)) = event.payload_as::<DetectorHealthChangedPayload>() {
         return Some(format!(

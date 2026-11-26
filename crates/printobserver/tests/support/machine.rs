@@ -36,9 +36,27 @@
 //! journey asserts that both halves arrived, so a host that stopped
 //! distinguishing them fails loudly rather than quietly answering half a
 //! status.
+//!
+//! # A file it holds, and the bytes of it
+//!
+//! [`Machine::running`] starts one holding a file's bytes and running it: the
+//! job names that file and the position a journey stores in
+//! [`Machine::stands_at`], so the server can read the file and follow the job
+//! through it. A request is about that file when its target's last segment is
+//! the file's name, as a heater is told by the last segment; it is for the
+//! bytes when its target is the link this host itself answered for them — a
+//! path of its own minting, which no vendor spells. A machine started with
+//! [`Machine::start`] holds no file, reports no position and answers both as
+//! before.
+//!
+//! The position is a field rather than a setter because `tests/integration.rs`
+//! compiles this module and never moves a job: a field the serving thread
+//! reads is live in both binaries, where a method only one calls is dead code
+//! in the other.
 
 use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use printobserver_types::serde_json::{Map as JsonMap, Value, json};
@@ -144,11 +162,30 @@ struct Answering {
     unreachable: bool,
 }
 
+/// A file this machine holds and runs.
+#[derive(Debug)]
+struct Held {
+    /// Its name.
+    name: String,
+    /// Every byte of it.
+    bytes: Vec<u8>,
+}
+
+/// The path of the link this machine answers a held file's bytes at: its own,
+/// so a request for it is told apart without any vendor's path.
+const HELD_BYTES_AT: &str = "/the-bytes-this-machine-holds";
+
 /// The host, for as long as this process runs.
 #[derive(Debug, Clone)]
 pub struct Machine {
     /// Where it answers.
     pub address: SocketAddr,
+    /// The file it holds and runs, when it was started holding one.
+    held: Option<Arc<Held>>,
+    /// How far into the file it holds its job has read, in bytes: what a
+    /// journey stores here is the position the next job read reports. A
+    /// machine holding no file reports none.
+    pub stands_at: Arc<AtomicU64>,
     /// What it is reporting.
     reported: Arc<Mutex<Reporting>>,
     /// How it answers what it is asked.
@@ -158,24 +195,48 @@ pub struct Machine {
 impl Machine {
     /// Start one, reporting a machine part-way through a print.
     pub fn start() -> Self {
+        Self::holding(None)
+    }
+
+    /// Start one running the file given, by name, with its job at its first
+    /// byte until a journey moves [`Self::stands_at`].
+    pub fn running(name: &str, bytes: Vec<u8>) -> Self {
+        Self::holding(Some(Held {
+            name: name.to_owned(),
+            bytes,
+        }))
+    }
+
+    /// Start one, holding the file given.
+    fn holding(held: Option<Held>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
-        let address = listener.local_addr().expect("the bound address");
-        let reported = Arc::new(Mutex::new(Reporting::default()));
-        let answering = Arc::new(Mutex::new(Answering::default()));
-        let reporting = Arc::clone(&reported);
-        let answers = Arc::clone(&answering);
+        let machine = Self {
+            address: listener.local_addr().expect("the bound address"),
+            held: held.map(Arc::new),
+            stands_at: Arc::new(AtomicU64::new(0)),
+            reported: Arc::new(Mutex::new(Reporting::default())),
+            answering: Arc::new(Mutex::new(Answering::default())),
+        };
+        let serving = machine.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
-                let reported = Arc::clone(&reporting);
-                let answering = Arc::clone(&answers);
-                std::thread::spawn(move || answer(stream, &reported, &answering));
+                let machine = serving.clone();
+                std::thread::spawn(move || {
+                    let running = machine
+                        .held
+                        .as_deref()
+                        .map(|held| (held, machine.stands_at.load(Ordering::SeqCst)));
+                    answer(
+                        stream,
+                        &machine.reported,
+                        &machine.answering,
+                        running,
+                        machine.address,
+                    );
+                });
             }
         });
-        Self {
-            address,
-            reported,
-            answering,
-        }
+        machine
     }
 
     /// Tell it to refuse everything it is asked, or to stop.
@@ -229,6 +290,13 @@ impl Machine {
         self.reported.lock().expect("what it reports").state = state;
     }
 
+    /// The file it runs: the one it holds, or [`RUNNING_FILE`].
+    pub fn running_file(&self) -> String {
+        self.held
+            .as_ref()
+            .map_or_else(|| RUNNING_FILE.to_owned(), |held| held.name.clone())
+    }
+
     /// Put the temperatures it reports back where it started.
     pub fn holds_its_starting_temperatures(&self) {
         let mut reported = self.reported.lock().expect("what it reports");
@@ -260,21 +328,48 @@ fn connection_document(reported: Reporting) -> Value {
     })
 }
 
-/// The document the job read is answered with.
-fn job_document(reported: Reporting) -> Value {
+/// The document the job read is answered with, naming the file it holds and
+/// where in it the job stands when it holds one.
+fn job_document(reported: Reporting, running: Option<(&Held, u64)>) -> Value {
     let (text, _) = reported.said();
-    json!({
+    let (name, size) = running.map_or((RUNNING_FILE, 4211), |(held, _)| {
+        (held.name.as_str(), held.bytes.len())
+    });
+    let mut document = json!({
         "state": text,
         "job": {
-            "file": { "name": RUNNING_FILE, "origin": "local", "size": 4211 },
+            "file": { "name": name, "origin": "local", "size": size },
             "estimatedPrintTime": 3600.0,
         },
         "progress": { "completion": 42.0, "printTime": 900, "printTimeLeft": 1200 },
+    });
+    if let Some((_, position)) = running {
+        document["progress"]["filepos"] = json!(position);
+    }
+    document
+}
+
+/// The document a read of the file it holds is answered with: what the file
+/// is, and the link its bytes are answered at.
+fn file_document(held: &Held, address: SocketAddr) -> Value {
+    json!({
+        "name": held.name,
+        "origin": "local",
+        "type": "machinecode",
+        "size": held.bytes.len(),
+        "refs": { "download": format!("http://{address}{HELD_BYTES_AT}") },
     })
 }
 
 /// Read one request, do what it asks, and answer the document it is for.
-fn answer(mut stream: TcpStream, reported: &Mutex<Reporting>, answering: &Mutex<Answering>) {
+fn answer(
+    mut stream: TcpStream,
+    reported: &Mutex<Reporting>,
+    answering: &Mutex<Answering>,
+    running: Option<(&Held, u64)>,
+    address: SocketAddr,
+) {
+    let file = running.map(|(file, _)| file);
     let Some(request) = read_request(&mut stream) else {
         return;
     };
@@ -306,11 +401,27 @@ fn answer(mut stream: TcpStream, reported: &Mutex<Reporting>, answering: &Mutex<
         do_what_it_asks(&target, body.unwrap_or_default(), reported);
     }
 
+    if let Some(held) = file.filter(|_| target == HELD_BYTES_AT) {
+        let _ = stream.write_all(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n",
+                held.bytes.len()
+            )
+            .as_bytes(),
+        );
+        let _ = stream.write_all(&held.bytes);
+        return;
+    }
     let reporting = *reported.lock().expect("what it reports");
     let body = if target.contains('?') {
         connection_document(reporting).to_string()
+    } else if let Some(held) =
+        file.filter(|held| target.rsplit('/').next() == Some(held.name.as_str()))
+    {
+        file_document(held, address).to_string()
     } else {
-        job_document(reporting).to_string()
+        job_document(reporting, running).to_string()
     };
     let _ = stream.write_all(
         format!(

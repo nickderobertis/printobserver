@@ -1070,6 +1070,20 @@ async fn status(
         Ok(session) => session,
         Err(error) => return refusal(store_status(&error), error),
     };
+    // The context read built the print's index when it answered a plan, so
+    // this reads no file; a print it answered none for has none to answer.
+    let planned_changes = if context.slicer.is_some() {
+        match state
+            .supervisor
+            .planned_changes(&context.print, context.job.as_ref())
+            .await
+        {
+            Ok(planned) => planned,
+            Err(error) => return refusal(core_status(&error), error),
+        }
+    } else {
+        None
+    };
     answer(
         StatusCode::OK,
         &StatusAnswer {
@@ -1079,6 +1093,7 @@ async fn status(
             session,
             interventions: context.interventions,
             detector: context.detector,
+            planned_changes,
         },
     )
 }

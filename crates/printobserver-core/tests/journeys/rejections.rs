@@ -131,6 +131,9 @@ fn refuse(reason: &RejectionReason) -> Refused {
         RejectionReason::PrintNotResumable { .. } => {
             unreachable!("{reason:?} follows a recovery, which this walk does not drive")
         }
+        RejectionReason::PlannedChangeWaiting { .. } => {
+            unreachable!("{reason:?} needs a print waiting at a planned change")
+        }
     };
 
     let against = match reason {
@@ -226,8 +229,11 @@ fn as_reached(stated: RejectionReason, decision: &PolicyDecision) -> RejectionRe
 /// which assert the printer is never asked and the refusal is recorded. And
 /// `print_not_resumable` is reached only after a recovery action moved the
 /// printer under a paused print, which the server's recovery journeys drive
-/// against the virtual printer and assert the resume reaches nothing.
-const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 8] = [
+/// against the virtual printer and assert the resume reaches nothing; and
+/// `planned_change_waiting` only while a print waits at a change its G-code
+/// plans, which the `planned_changes` journeys reach for every actor class and
+/// every action it refuses.
+const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 9] = [
     "InsufficientFilament",
     "UnverifiedSpool",
     "AnalysisUnavailable",
@@ -236,6 +242,7 @@ const DECLARED_AHEAD_OF_THEIR_PRODUCER: [&str; 8] = [
     "SheetNotDeclared",
     "SpoolRefused",
     "PrintNotResumable",
+    "PlannedChangeWaiting",
 ];
 
 /// Every rejected variant the contracts declare, each built to be reached.

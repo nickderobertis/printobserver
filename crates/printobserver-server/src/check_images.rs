@@ -538,6 +538,10 @@ impl CheckImages for PanelImages {
         self.whole.check_image(print_id, frame)
     }
 
+    fn restart_growth(&self, print_id: PrintId) {
+        self.alignments.restart_growth(print_id);
+    }
+
     fn composes(&self, print_id: PrintId) -> bool {
         self.alignments.calibration().is_some()
             && self.camera_snapshot_url.is_some()

@@ -83,6 +83,7 @@ fn a_short_spool_refuses_the_start_naming_what_it_needs_and_holds() {
             buffer_g,
             remaining_g: held,
             unverified,
+            segment: None,
         }) = &outcome.record.decision
         else {
             panic!("expected a shortfall, found {:?}", outcome.record.decision);
@@ -119,6 +120,7 @@ fn an_unverified_spool_refuses_the_start_naming_it_and_its_mark() {
             spool_id: spool.id,
             spool_name: "In Doubt".to_owned(),
             reason: printobserver_core::UnverifiedReason::UnchargedPrint { print_id: earlier },
+            segment: None,
         })
     );
     assert!(!printer_asked_to_start(&world));

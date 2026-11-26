@@ -520,6 +520,15 @@
                   "format": "double",
                   "type": "number"
                 },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is short for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
                   "description": "The spool loaded on it."
@@ -571,6 +580,15 @@
                 "reason": {
                   "$ref": "#/$defs/UnverifiedReason",
                   "description": "The spool's oldest mark."
+                },
+                "segment": {
+                  "description": "The stretch of a file with planned changes the spool is named for;\nabsent for a file that plans none.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "spool_id": {
                   "$ref": "#/$defs/SpoolId",
@@ -752,6 +770,52 @@
           },
           "required": [
             "print_not_resumable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A pause, a resume or an adjustment was refused because the printer is\nwaiting at a change the print's G-code plans, for a person to finish it\non the printer.",
+          "properties": {
+            "planned_change_waiting": {
+              "additionalProperties": false,
+              "properties": {
+                "change_index": {
+                  "description": "The index of the change it is waiting at.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "color": {
+                  "description": "The colour to load, as `#RRGGBB`; null when the file names none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "layer": {
+                  "description": "The first layer printed after it.",
+                  "format": "uint32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "z_mm": {
+                  "description": "That layer's height, in millimetres.",
+                  "format": "double",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "change_index",
+                "layer",
+                "z_mm",
+                "color"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "planned_change_waiting"
           ],
           "type": "object"
         },
