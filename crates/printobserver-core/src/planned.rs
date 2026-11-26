@@ -44,9 +44,9 @@
 //! for a print whose file plans none. A print's copy is read from the history
 //! the first time its index, once built, plans a change, and for every open
 //! print as the server starts ([`Supervisor::restore_planned_changes`]).
-//! The index itself is built by the first read of the print's running job
-//! the printer watch makes, once per print, so a restarted server reaches a
-//! change by position before any check of it.
+//! The index of a print found open as the server starts is built by the
+//! first read of its running job the printer watch makes, once, so a
+//! restarted server reaches a change by position before any check of it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::PoisonError;
@@ -215,6 +215,10 @@ impl Supervisor {
     pub async fn restore_planned_changes(&self) -> Result<(), CoreError> {
         for print in self.stores().prints.open_prints().await? {
             self.load_planned_memo(print.id).await?;
+            self.index_owed
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(print.id);
         }
         Ok(())
     }
@@ -278,13 +282,15 @@ impl Supervisor {
     /// record a change it has reached, or one it has carried on from, and
     /// answer the check carrying on claims.
     ///
-    /// A print whose index this supervisor has not built — one a restart
-    /// found open, before any check of it — has its index built here when
-    /// `build` asks, once per print: the printer watch asks, so a change is
-    /// reached by position from the first read of the job after a restart,
-    /// with no check or signal to build it first. A scheduled check does not,
-    /// so it is recorded as it begins rather than after a whole file is read;
-    /// it builds the index itself. A build that fails is left to the next
+    /// A print a restart found open, whose index this supervisor has not
+    /// built, has its index built here when `build` asks, once per print: the
+    /// printer watch asks, so a change is reached by position from the first
+    /// read of the job after a restart, with no check or signal to build it
+    /// first. A scheduled check does not, so it is recorded as it begins
+    /// rather than after a whole file is read; it builds the index itself. A
+    /// print this supervisor started is never read here: its index is built
+    /// by its first check, as it always was, so a start whose preflight is off
+    /// reads nothing of its file. A build that fails is left to the next
     /// check, as every failed build is.
     ///
     /// # Errors
@@ -302,10 +308,10 @@ impl Supervisor {
         if build
             && self.gcode_indexes().built(print.id).is_none()
             && self
-                .index_followed
+                .index_owed
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
-                .insert(print.id)
+                .remove(&print.id)
         {
             // Built or not, the build is the index the next read finds.
             let _ = self.print_gcode_index(print.id).await;
@@ -594,7 +600,7 @@ impl Supervisor {
     /// it has closed.
     pub(crate) fn forget_planned_changes(&self, print_id: PrintId) {
         self.planned_memos().remove(&print_id);
-        self.index_followed
+        self.index_owed
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&print_id);

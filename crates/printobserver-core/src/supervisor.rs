@@ -292,9 +292,11 @@ pub struct Supervisor {
     pub(crate) checked_after_change: Mutex<BTreeMap<PrintId, Duration>>,
     /// What this supervisor holds of each print's planned changes.
     pub(crate) planned_memos: Mutex<BTreeMap<PrintId, crate::planned::PlannedMemo>>,
-    /// The prints whose index following their job has asked to be built, so
-    /// a file that cannot be read is not read again on every round.
-    pub(crate) index_followed: Mutex<BTreeSet<PrintId>>,
+    /// The prints a restart found open whose index the printer watch still
+    /// owes a build from its first read of their job. Each is taken out as
+    /// that build is asked, so a file that cannot be read is not read again
+    /// on every round, and a print this supervisor started is never here.
+    pub(crate) index_owed: Mutex<BTreeSet<PrintId>>,
     /// Where each print's job was first read paused at a planned change it
     /// has not reached, and when, on the clock nothing steps.
     pub(crate) paused_at_change: Mutex<BTreeMap<PrintId, (u64, Duration)>>,
@@ -381,7 +383,7 @@ impl Supervisor {
             gcode_indexes: crate::gcode_index::GcodeIndexes::default(),
             checked_after_change: Mutex::new(BTreeMap::new()),
             planned_memos: Mutex::new(BTreeMap::new()),
-            index_followed: Mutex::new(BTreeSet::new()),
+            index_owed: Mutex::new(BTreeSet::new()),
             paused_at_change: Mutex::new(BTreeMap::new()),
         });
         let weak: Weak<Self> = Arc::downgrade(&supervisor);
