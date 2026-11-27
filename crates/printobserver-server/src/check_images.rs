@@ -228,7 +228,7 @@ impl core::fmt::Display for WholeFrameReason {
                 formatter,
                 "the print's first-layer alignment is inconclusive on the frame judged last: {}, so a later check's frame is judged again; this is no evidence of a defect",
                 match why {
-                    InconclusiveReason::Covered => "the toolhead covers the part, which sits hidden under the head on this frame: bare sheet beside the head is no sign the part is gone, loose or not risen",
+                    InconclusiveReason::Covered => "the toolhead covers the part, which sits hidden under the head on this frame: bare sheet beside the head alone is no sign the part is gone, but a part seen moved, loose or in spaghetti is",
                     InconclusiveReason::NotClearlyFound => "the printed first layer was not clearly found",
                 }
             ),

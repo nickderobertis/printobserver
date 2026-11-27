@@ -362,13 +362,16 @@ async fn a_covered_first_layer_is_judged_again_and_a_moved_camera_is_never_drawn
     );
     assert!(bounds_the_unseen_rise(&first), "{first}");
     // On the live print the agent read bare sheet beside the head as a part
-    // gone and paused a healthy print: the reason says where the part is.
+    // gone and paused a healthy print: the reason says where the part is. It
+    // still says a part seen moved, loose or in spaghetti is gone, so a part
+    // that came loose beside the head is paused as before.
     assert!(
         first["image_fallback"]["message"]
             .as_str()
             .is_some_and(|message| message.contains("hidden under the head")
-                && message.contains("no sign the part is gone")),
-        "a covered part is said to be hidden under the head, not gone: {first}"
+                && message.contains("no sign the part is gone")
+                && message.contains("a part seen moved, loose or in spaghetti is")),
+        "a covered part is said to be hidden under the head, not gone, and a part seen moved still gone: {first}"
     );
     assert_eq!(server.print_alignment(print_id), PrintAlignment::Pending);
 

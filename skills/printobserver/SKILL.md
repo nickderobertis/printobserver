@@ -43,10 +43,10 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
   layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
-  check. Panel 1's lines are plan, not plastic. A visible part off its drawn walls, bare sheet
-  inside them, or moved since 3 came loose. An outline or new layers the head or gantry covers, or
-  too thin to see, are hidden: judge them next check, never paused for. A whole frame for an
-  inconclusive alignment is no evidence of a defect.
+  check. Panel 1's lines are plan, not plastic. A part seen off its drawn walls, bare sheet inside
+  them, or moved since 3 came loose. Only what the head or gantry covers, or too thin to see, is
+  hidden: judge it next check, not paused. A whole frame for an inconclusive alignment is no
+  evidence of a defect.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.
@@ -58,9 +58,9 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
   height, on the top edge of a part printing to plan and clear of one that stopped below it; a part
   this layer draws is not finished. Risen less than the rise, likely, unsure or unclear is not
   printing: a clear defect, never watched; where a whole frame's line bounds it, past 5 mm. A part
-  off the bed, a first layer not sticking, or one off its own place, left empty, has moved: pause
-  now on the image in hand; no later frame undoes it. The facts' X and Y are the bed's, placing
-  nothing in a frame.
+  off the bed, a first layer not sticking, in spaghetti, or off its own place, left empty, has
+  moved: pause now on the image in hand, even part hidden; no later frame undoes it. The facts' X
+  and Y are the bed's, placing nothing in a frame.
 
 ## A planned colour change
 
