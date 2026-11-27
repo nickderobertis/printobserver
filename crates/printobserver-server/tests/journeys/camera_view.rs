@@ -327,7 +327,7 @@ async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view
     assert!(found.get("image_fallback").is_none(), "{found}");
     let note = found["image"].as_str().expect("a note");
     assert!(
-        note.contains("the camera has shifted slightly since it was calibrated, but the drawing goes through a correction taken from this print's own first layer"),
+        note.contains("the camera has shifted slightly since it was calibrated, but the drawing goes through a correction taken from this print's own first layer, found 20 px from where the drawing puts it"),
         "the note says the drawing went through the correction: {note}"
     );
     let PrintAlignment::Passed {

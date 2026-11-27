@@ -179,9 +179,12 @@ agreeing landmarks sit about 59 and 79 px from where that calibration has them,
 while the part moved about 15 px. The server judges the first layer on each
 check's own frame: at 13:14, 13:36 and 13:42 the toolhead covers the part, so
 the alignment is inconclusive and those checks are handed the whole frame for
-it; at 13:44 the layer is clearly found, and its shift becomes the print's
-correction, so every later check is shown the three-panel image drawn through
-it. Before that release, the server refused this print's projection at 59.7 px
+it; at 13:44 the layer is clearly found, so every later check is shown the
+three-panel image, drawn through the correction that pass put in force. That
+pass stood 6.6 mm above the first layer, where the search scores the box's body
+rather than its first layer, so its correction moves the drawing by nothing: the
+-20 px it found is the box's projected height, and drawing through it floated the
+outline over the toolhead, off a healthy part. Before that release, the server refused this print's projection at 59.7 px
 and handed every check the whole frame, and its agent paused a healthy print
 because the head hid the part.
 

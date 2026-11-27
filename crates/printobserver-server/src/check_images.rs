@@ -259,11 +259,6 @@ pub fn whole_frame_note(reason: &WholeFrameReason) -> String {
 /// difference as the camera or the bed having shifted in view.
 const CAMERA_HOLDS: &str = "the camera does not shift in regular operation and the drawing already accounts for the bed's travel, so ";
 
-/// What a check's note says of the drawing instead when it went through the
-/// print's correction while the landmarks had moved: the camera has shifted,
-/// and the drawing was checked against the print's own first layer.
-const CAMERA_CORRECTED: &str = "the camera has shifted slightly since it was calibrated, but the drawing goes through a correction taken from this print's own first layer, found where the drawing puts it, and already accounts for the bed's travel, so ";
-
 /// The line saying a check or a look was shown the three-panel image of the
 /// frame captured at `current_at`, beside the frame `previous_at` names: panel
 /// 3 empty when no earlier check's frame is at hand — the print's first check,
@@ -271,8 +266,9 @@ const CAMERA_CORRECTED: &str = "the camera has shifted slightly since it was cal
 ///
 /// A check's names which frame each panel is and when each was captured, and
 /// says what the skill says: the camera does not shift — or, `corrected`, that
-/// it shifted and the drawing went through the print's correction for it — and
-/// the drawing follows the bed, so a part off it has moved unless there is strong evidence
+/// it shifted, that the drawing went through the print's correction for it,
+/// and how far from the drawing the print's first layer was found — and the
+/// drawing follows the bed, so a part off it has moved unless there is strong evidence
 /// otherwise, and no later frame undoes it. A turn handed a check's image decides on it, with no look to
 /// stall on, so this is what it decides from. A look's says only what each
 /// panel is.
@@ -281,12 +277,27 @@ pub fn composite_note(
     made_for: ImageUse,
     current_at: Timestamp,
     previous_at: Option<Timestamp>,
-    corrected: bool,
+    corrected: Option<f64>,
 ) -> String {
-    let holds = if corrected {
-        CAMERA_CORRECTED
+    // A drawing through a correction taken while the landmarks had moved is
+    // only as close to the part as the print's own first layer was found to
+    // it, and says so: on a small part under a shifted camera, an agent held
+    // to the walls alone read a part a few millimetres off them as moved.
+    let (holds, beyond) = corrected.map_or_else(
+        || (CAMERA_HOLDS.to_owned(), String::new()),
+        |offset_px| {
+            (
+                format!(
+                    "the camera has shifted slightly since it was calibrated, but the drawing goes through a correction taken from this print's own first layer, found {offset_px:.0} px from where the drawing puts it, so the drawing may stand that far off the part; it already accounts for the bed's travel, so "
+                ),
+                format!(" more than {offset_px:.0} px"),
+            )
+        },
+    );
+    let hidden = if corrected.is_some() {
+        "; where the head hides the part's top, its lower walls below the drawing are no sign it has not risen"
     } else {
-        CAMERA_HOLDS
+        ""
     };
     let (current, previous, moved) = match (made_for, previous_at) {
         (ImageUse::Look, at) => (
@@ -304,7 +315,7 @@ pub fn composite_note(
             ),
             "panel 3 empty, no earlier check's frame being at hand".to_owned(),
             format!(
-                "; {holds}a part off its drawn walls in panel 1 has moved unless there is strong evidence otherwise, and no later frame undoes that"
+                "; {holds}a part{beyond} off its drawn walls in panel 1 has moved unless there is strong evidence otherwise, and no later frame undoes that{hidden}"
             ),
         ),
         (ImageUse::Check, Some(at)) => (
@@ -313,7 +324,7 @@ pub fn composite_note(
             ),
             format!("panel 3 the previous check's frame, captured {at}"),
             format!(
-                "; {holds}a part off its drawn walls in panel 1, or moved since panel 3, has moved unless there is strong evidence otherwise, and no later frame undoes that"
+                "; {holds}a part{beyond} off its drawn walls in panel 1, or moved since panel 3, has moved unless there is strong evidence otherwise, and no later frame undoes that{hidden}"
             ),
         ),
     };
@@ -646,11 +657,15 @@ impl PanelImages {
         };
         let destination = self.composite_destination(shown.frame, previous);
         write_image(&self.whole.directory, &destination, &composed.jpeg)?;
+        let corrected = match (&judged.alignment, refit) {
+            (PrintAlignment::Passed { offset_px, .. }, true) => Some(*offset_px),
+            _ => None,
+        };
         let mut note = composite_note(
             shown.made_for,
             shown.captured_at,
             earlier.as_ref().map(|(_, at)| *at),
-            refit,
+            corrected,
         );
         if shown.made_for == ImageUse::Check
             && let Some(clause) = self.growth_clause(print_id, plan, &current, url, calibration)

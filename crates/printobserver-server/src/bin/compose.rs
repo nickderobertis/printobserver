@@ -113,7 +113,7 @@ fn composed(asked: &Asked) -> Result<String, String> {
         "width": image.width,
         "height": image.height,
         "bytes": image.jpeg.len(),
-        "note": composite_note(ImageUse::Check, captured_at, None, false),
+        "note": composite_note(ImageUse::Check, captured_at, None, None),
     })
     .to_string())
 }

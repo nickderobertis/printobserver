@@ -82,7 +82,7 @@
       "how_judged": "every one of these scenarios never accepts a pause or a failure acknowledged as stop"
     },
     {
-      "what": "the three-panel image once the first layer is clearly found, drawn through the correction taken from it although the camera has shifted since its calibration",
+      "what": "the three-panel image once the first layer is clearly found, although the camera has shifted since its calibration: the landmarks moved, but agree with the frame the pass was taken on",
       "scenarios": [
         "white-judged-expected-once-visible",
         "quiet-through-the-black-wait-and-on-at-its-resume",
