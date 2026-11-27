@@ -853,7 +853,9 @@ async fn bed_clear(
 /// The claimed actor is held to the caller before anything is fetched, and a
 /// reason that is absent or blank is refused. While the printer reports the
 /// print paused its bed stands off the plan's height, so only the view is
-/// judged. With no calibration or no camera stream configured there is
+/// judged. A store that cannot read the print answers this server's own
+/// failure, and a print it does not hold `404`, before anything of the camera
+/// is asked. With no calibration or no camera stream configured there is
 /// nothing to judge a frame against: the fresh frame is kept as a look's is,
 /// and answered as the whole frame for that reason. A server that judges no
 /// frames, one with no camera configured, and a camera that gives no good
@@ -873,6 +875,16 @@ async fn recheck_camera(
         Ok(asked) => asked,
         Err(refused) => return *refused,
     };
+    // The store answers first, as it does for every operation: a print it
+    // cannot read is this server's own failure, and one it does not hold is
+    // missing, whatever the camera would have said.
+    match state.prints.print(print_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return refusal(StatusCode::NOT_FOUND, CoreError::NoSuchPrint { print_id });
+        }
+        Err(error) => return refusal(store_status(&error), error),
+    }
     let Some(images) = state.check_images.clone() else {
         return refusal(
             StatusCode::SERVICE_UNAVAILABLE,
