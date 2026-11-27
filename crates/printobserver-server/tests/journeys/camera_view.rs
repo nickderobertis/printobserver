@@ -361,6 +361,15 @@ async fn a_covered_first_layer_is_judged_again_and_a_moved_camera_is_never_drawn
         "{first}"
     );
     assert!(bounds_the_unseen_rise(&first), "{first}");
+    // On the live print the agent read bare sheet beside the head as a part
+    // gone and paused a healthy print: the reason says where the part is.
+    assert!(
+        first["image_fallback"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("hidden under the head")
+                && message.contains("no sign the part is gone")),
+        "a covered part is said to be hidden under the head, not gone: {first}"
+    );
     assert_eq!(server.print_alignment(print_id), PrintAlignment::Pending);
 
     let paused = situation(&checks.next(PAUSED.1, true).await);
