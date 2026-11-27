@@ -905,7 +905,8 @@ async fn alert_with_detector_picture(
 /// 1920x1080 stream, which no calibration of that stream composes. The event
 /// keeps the detector's picture, and the image line says panel 1 is the
 /// camera's frame and when it was captured. Where the camera gives no frame,
-/// the check is shown the detector's picture whole, saying why.
+/// the check is shown the detector's picture whole, saying why; and the next
+/// alert the camera answers is composed again, that picture no check's panel 3.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_alert_is_shown_the_cameras_own_frame_composed_whatever_the_detectors_picture() {
     let bytes = slice("jar-top-petg.gcode");
@@ -994,7 +995,55 @@ async fn an_alert_is_shown_the_cameras_own_frame_composed_whatever_the_detectors
             "{installer}: the alert's check is shown the detector's picture whole, saying why: {}",
             fallen_back.note
         );
+
+        // The detector's picture that check was shown is no later check's
+        // panel 3: of another size than the camera's frames, it would have the
+        // composer refuse every check after it.
+        alert_after_a_detector_picture(
+            &journey,
+            &calibration,
+            (&index, walls),
+            (&camera_frame, captured),
+            (print_id, &verdict, &detector.url()),
+        )
+        .await;
     }
+}
+
+/// The third alert of [`an_alert_is_shown_the_cameras_own_frame_composed_whatever_the_detectors_picture`],
+/// after one shown the detector's picture: composed of the camera's frame, panel 3
+/// the camera's own last frame, `last`, rather than that picture.
+async fn alert_after_a_detector_picture(
+    journey: &Journey,
+    calibration: &Value,
+    (index, walls): (&GcodeIndex, u64),
+    last: (&[u8], Timestamp),
+    (print_id, verdict, picture_url): (PrintId, &PrintAlignment, &str),
+) {
+    let installer = journey.installer;
+    let later_frame = frame(PETG, FRAMES[2]);
+    let (recovered, later_url, _) = alert_with_detector_picture(
+        journey,
+        calibration,
+        Scripted::frame(later_frame.clone()),
+        picture_url,
+        (print_id, 3),
+    )
+    .await;
+    assert_eq!(
+        recovered.image,
+        expected_composite(
+            index,
+            walls,
+            &later_frame,
+            Some(last),
+            &later_url,
+            &calibration_at(calibration, &later_url),
+            correction_of(verdict),
+        ),
+        "{installer}: the next alert's check is composed, panel 3 the camera's own last frame rather than the detector's picture: {}",
+        recovered.note
+    );
 }
 
 /// One reason a check is shown the whole frame, and how a journey brings it

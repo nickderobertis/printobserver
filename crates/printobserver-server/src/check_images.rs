@@ -785,7 +785,11 @@ impl CheckImages for PanelImages {
         };
         let mut image = self.image_of(print_id, &shown, judged.as_ref())?;
         image.records = judged.map(|judged| judged.records).unwrap_or_default();
-        if request.made_for == ImageUse::Check {
+        // Only the camera's own frame is a later check's panel 3 or the
+        // reference its growth is measured from: a detector's picture need be
+        // neither the calibration's size nor its stream, and the composer
+        // refuses a previous frame of another size than the current one.
+        if request.made_for == ImageUse::Check && request.own_camera {
             self.alignments.record_check(
                 print_id,
                 &PreviousCheck {
@@ -804,6 +808,8 @@ impl CheckImages for PanelImages {
                     MIN_RISE_MM,
                 );
             }
+        }
+        if request.made_for == ImageUse::Check {
             image.records.extend(self.alignments.note_check_image(
                 print_id,
                 LastCheckImage {
