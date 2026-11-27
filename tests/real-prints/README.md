@@ -26,6 +26,7 @@ it.
 | `petg-clip-detach-and-stringing-web` | a spool clip came loose and tangled; later a PETG web in a bin made Obico warn and pause | warned, paused, warned | acknowledged each alert | keep printing and tell a person about the clip; watch the warning; stop on the pause; watch after the resume |
 | `petg-printer-reset-nozzle-on-part` | Obico's false alarm over an infill floor; then the printer reset with the nozzle on a part and heated it on its own | warned once | acknowledged `watch` | watch the warning; after the reset, send nothing and tell a person |
 | `bed-and-sheet-check` | the bed before prints and after a few, clear or not, with which sheet is on | n/a | n/a | start only on a clear bed with the right sheet for the material |
+| `two-colour-planned-change` | a black-white-black box with two colour changes the G-code plans; each loaded with the planned colour | silent | quiet through each wait; carried on after each change, judging each new colour expected once the part showed | carry on; never pause for a planned change |
 
 Each directory holds one case:
 
@@ -150,6 +151,36 @@ whose `provenance.json` records each model's name and sha256; `agent-turn.json`,
 so only the assessments and requests in `printobserver-history.json` are here;
 and the plate prints of 2026-10-07 to 2026-10-10 that finished without a fault,
 each of whose bed frames is in `bed-and-sheet-check`.
+
+## The two-colour print, and the replay it waits for
+
+`two-colour-planned-change` is a real print of 2026-11-26: PrusaSlicer 2.9.6's
+slice of a 20 mm box with two planned colour changes, black to white at Z 4 and
+back to black at Z 8, supervised by printobserver v0.16.0. A person loaded the
+planned colour at both changes, so it has no wrong-colour decision point; the
+derived `bubbler-colour-change-off-plan` covers that.
+
+- Its five `agent-*` pictures are 5 of the 19 its history records: the check
+  before the first change, each change's resumption check, and the first check
+  after each in which the part is visible.
+- `agent-turn.json` holds those five turns. Each was handed the whole frame,
+  ran no command and answered from the picture.
+- Its G-code is the file OctoPrint printed, byte for byte. Obico's plugin had
+  dropped the slice's blank lines and written an `M117` at each layer, so the
+  history's positions are this file's bytes and not the slicer's own.
+- The operator's local paths and tool names in its history's start request were
+  replaced with neutral words.
+
+**Its `assertions` carry no `replay` yet. It waits for a calibration fitted to
+the camera's current position.** The camera had moved since every calibration
+under `cameras/` was fitted. On this print the server refused the projection
+with the printed first layer 59.7 px away, against the 30 px limit, so every
+check was handed the whole frame. The live suite fails any case whose checks
+fall back like that. A calibration cannot be fitted from this print alone,
+because `tools/camera-calibration` needs frames over at least 20 mm of height
+and the box is 12 mm tall. Until a calibration from a taller print names this
+case, `tests/skilltest-wiring` drives its scenarios through the real server
+with the mock harness.
 
 Every text file under this directory is kept byte for byte, so
 `tests/real-prints/.gitattributes` turns line-ending conversion off here.

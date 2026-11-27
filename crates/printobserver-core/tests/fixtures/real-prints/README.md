@@ -21,6 +21,12 @@ gate test reads.
   (its header, start G-code and first layer, Z 0.2), 22,937 to 32,191 (Z 0.8)
   and 166,943 to 171,464 (Z 5.8), the heights its recorded frames of the parts
   growing and of the parts carried down after extrusion stopped were taken at.
+- `two-colour-box.gcode` —
+  `tests/real-prints/two-colour-planned-change/two-colour-box.gcode`, whole:
+  `PrusaSlicer` 2.9.6's slice with two planned colour changes, as `OctoPrint`
+  printed it after Obico's plugin dropped its blank lines and wrote an `M117`
+  at each layer, some with CRLF endings. `.gitattributes` keeps it byte for
+  byte, because the history's offsets are those bytes.
 
 The panels crate's recorded-frame tests and `tools/camera-calibration`'s tests
 read these too, beside the bubbler plate's slice the server's tests carry.

@@ -851,3 +851,119 @@ fn a_file_planning_no_change_carries_nothing_about_changes() {
         assert!(fields.get(field).is_none(), "{field} is in {fields}");
     }
 }
+
+/// The G-code a real two-colour print ran: `PrusaSlicer` 2.9.6's slice of a
+/// 20 mm box, black with a change to white at Z 4 and back to black at Z 8, as
+/// `OctoPrint` held and printed it — Obico's plugin had dropped its blank lines
+/// and written an `M117` at each layer. It is the case
+/// `tests/real-prints/two-colour-planned-change`'s G-code, byte for byte.
+const REAL_TWO_COLOUR: &str = include_str!("fixtures/real-prints/two-colour-box.gcode");
+
+/// Where the real slice plans its two changes: each `M600` at the offset the
+/// print's own history recorded, on the layer and height it follows, with the
+/// colour of the `;COLOR_CHANGE` before it.
+#[test]
+fn a_real_two_colour_slice_plans_each_change_where_the_print_reached_it() {
+    let index = indexed_in(REAL_TWO_COLOUR, 4096);
+
+    assert_eq!(
+        index.planned_changes(),
+        vec![
+            PlannedChange {
+                index: 0,
+                kind: PlannedChangeKind::ColorChange,
+                offset_bytes: 35_454,
+                layer: 20,
+                z_mm: 4.0,
+                color: Some("#FFFFFF".to_owned()),
+            },
+            PlannedChange {
+                index: 1,
+                kind: PlannedChangeKind::ColorChange,
+                offset_bytes: 57_998,
+                layer: 40,
+                z_mm: 8.0,
+                color: Some("#000000".to_owned()),
+            },
+        ]
+    );
+    assert_eq!(line_offset(REAL_TWO_COLOUR, "M600", 1), 57_998);
+    assert_eq!(index.layer_count(), 60);
+    assert_eq!(index.bytes(), 116_177);
+    let colours: Vec<_> = index
+        .planned_segments()
+        .into_iter()
+        .map(|segment| (segment.segment, segment.color))
+        .collect();
+    assert_eq!(
+        colours,
+        vec![
+            (0, Some("#000000".to_owned())),
+            (1, Some("#FFFFFF".to_owned())),
+            (2, Some("#000000".to_owned())),
+        ],
+        "the first stretch is the filament colour the slice's settings name"
+    );
+}
+
+/// The colour expected before, between and after the real slice's changes,
+/// and the slicer's `M73 C` count of the minutes to the next one — which reads
+/// `C0.01` just before the first change, a whole zero minutes.
+#[test]
+fn a_real_two_colour_slice_names_the_colour_and_minutes_by_position() {
+    let index = indexed_in(REAL_TWO_COLOUR, 4096);
+    let first = index.planned_change(0).cloned();
+    let second = index.planned_change(1).cloned();
+    let at = |position: i64| index.plan_at(position);
+
+    let start = at(364);
+    assert_eq!(start.expected_color.as_deref(), Some("#000000"));
+    assert_eq!(start.next_change, first);
+    assert_eq!(start.minutes_to_next_change, Some(4));
+    let early = at(15_312);
+    assert_eq!(
+        (early.layer, early.minutes_to_next_change),
+        (Some(4), Some(2))
+    );
+    let last_count = at(35_087);
+    assert_eq!(last_count.layer, Some(19));
+    assert_eq!(last_count.minutes_to_next_change, Some(0));
+    let reached = at(35_454);
+    assert_eq!(reached.expected_color.as_deref(), Some("#000000"));
+    assert_eq!(reached.next_change, first);
+
+    let between = at(35_459);
+    assert_eq!(between.expected_color.as_deref(), Some("#FFFFFF"));
+    assert_eq!(between.next_change, second);
+    assert_eq!(between.layer, Some(20));
+    assert_eq!(between.z_mm, Some(4.0));
+    assert_eq!(at(35_507).minutes_to_next_change, Some(3));
+    assert_eq!(at(45_860).minutes_to_next_change, Some(1));
+    let before_second = at(57_998);
+    assert_eq!(before_second.expected_color.as_deref(), Some("#FFFFFF"));
+    assert_eq!(before_second.minutes_to_next_change, Some(0));
+
+    let after = at(58_003);
+    assert_eq!(after.expected_color.as_deref(), Some("#000000"));
+    assert_eq!(after.next_change, None);
+    assert_eq!(after.minutes_to_next_change, None);
+    assert_eq!((after.layer, after.z_mm), (Some(40), Some(8.0)));
+    let end = at(116_177);
+    assert_eq!(end.expected_color.as_deref(), Some("#000000"));
+    assert_eq!(end.final_z_mm, Some(12.0));
+}
+
+/// The job the real print stood at during each wait is at its change, and the
+/// position the server's check after each resume read is past it.
+#[test]
+fn a_real_two_colour_print_waits_at_each_change_it_reached() {
+    let index = indexed_in(REAL_TWO_COLOUR, 4096);
+    let waiting = |position: u64| index.change_waiting_at(position).map(|change| change.index);
+
+    // The positions the print's history recorded each change reached and each
+    // resumption at.
+    assert_eq!(waiting(35_566), Some(0));
+    assert_eq!(waiting(39_662), None);
+    assert_eq!(waiting(58_003), Some(1));
+    assert_eq!(waiting(62_152), None);
+}

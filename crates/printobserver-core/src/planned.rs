@@ -104,6 +104,16 @@ impl Waiting {
     }
 }
 
+/// A change one read has taken to record its resumption, and when the
+/// print's last check after a change had begun before it.
+#[derive(Debug)]
+struct Claimed {
+    /// The change the print waited at.
+    waiting: Waiting,
+    /// When the print's last check after a change had begun, if one had.
+    checked_before: Option<Duration>,
+}
+
 /// What this supervisor holds of one print's planned changes.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PlannedMemo {
@@ -195,6 +205,68 @@ impl Supervisor {
         let memo = memo_of(&history);
         self.planned_memos().insert(print_id, memo.clone());
         Ok(memo)
+    }
+
+    /// Take the change a print waits at from its memo, when it is still the
+    /// one numbered `index`, and mark the check after it begun, so that no
+    /// scheduled check runs while its resumption is being recorded. Nothing
+    /// when another read has claimed it first; otherwise the change and when
+    /// the print's last check after a change had begun, to put back.
+    ///
+    /// Proven against the real server by `tests/skilltest-wiring`'s replay of
+    /// the real two-colour print, whose watch and scheduled check land
+    /// together and which recorded a resumption twice before this claim, and
+    /// by the core journey `reads_past_a_change_at_once_record_its_resumption_once`,
+    /// which holds the write open to force the overlap every time.
+    fn claim_waiting(&self, print_id: PrintId, index: u32) -> Option<Claimed> {
+        let waiting = {
+            let mut memos = self.planned_memos();
+            let memo = memos.get_mut(&print_id)?;
+            if memo
+                .waiting
+                .as_ref()
+                .is_none_or(|waiting| waiting.reached.change.index != index)
+            {
+                return None;
+            }
+            memo.waiting.take()?
+        };
+        let checked_before = self
+            .checked_after_change
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(print_id, self.clock().elapsed());
+        Some(Claimed {
+            waiting,
+            checked_before,
+        })
+    }
+
+    /// Put a claimed change back as the one a print waits at, when recording
+    /// its resumption failed, so that the next read records it instead.
+    ///
+    /// No test drives this through the real server: making its store refuse
+    /// one append mid-resumption would mean building a fault-injecting store
+    /// into the server for this one path. The core journeys
+    /// `a_resumption_the_store_refused_is_recorded_by_the_next_read` (no
+    /// earlier check) and `a_later_refused_resumption_keeps_the_earlier_checks_schedule`
+    /// (an earlier one) drive both arms through the supervisor instead.
+    fn unclaim_waiting(&self, print_id: PrintId, claimed: Claimed) {
+        {
+            let mut checked = self
+                .checked_after_change
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            match claimed.checked_before {
+                Some(before) => checked.insert(print_id, before),
+                None => checked.remove(&print_id),
+            };
+        }
+        let mut memos = self.planned_memos();
+        let memo = memos.entry(print_id).or_default();
+        if memo.waiting.is_none() {
+            memo.waiting = Some(claimed.waiting);
+        }
     }
 
     /// The memos, held for one read or write.
@@ -322,9 +394,18 @@ impl Supervisor {
         if let Some(waiting) = memo.waiting {
             let change = &waiting.reached.change;
             if position > change.offset_bytes + crate::gcode_index::PLANNED_CHANGE_REACH_BYTES {
-                return self
-                    .resume_planned_change(print, waiting, job, position)
+                // Claimed before the first await, so that of two reads past the
+                // change at once only one records its resumption.
+                let Some(claimed) = self.claim_waiting(print.id, change.index) else {
+                    return Ok(None);
+                };
+                let resumed = self
+                    .resume_planned_change(print, claimed.waiting.clone(), job, position)
                     .await;
+                if resumed.is_err() {
+                    self.unclaim_waiting(print.id, claimed);
+                }
+                return resumed;
             }
             return Ok(None);
         }

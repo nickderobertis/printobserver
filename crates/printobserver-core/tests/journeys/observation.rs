@@ -515,6 +515,46 @@ fn a_round_whose_prints_cannot_be_read_claims_nothing() {
     );
 }
 
+/// A turn of the print that ends after a scheduled check has waited out the
+/// port's idle work, and before the check claims the print, may have started
+/// idle work that wait never saw, such as a compaction of the session the
+/// check's own turn would cancel. So that check claims nothing, and the next
+/// round's, whose wait sees that work, claims the print.
+#[test]
+fn a_turn_ending_after_a_checks_wait_leaves_the_check_to_the_next_round() {
+    let world = World::new();
+    let print = world.open_print(7);
+    let received =
+        block_on(world.core.receive_event(failure_alert(7))).expect("the alert is written down");
+    let alert = received.turn.expect("the alert claims the idle print");
+    let core = std::sync::Arc::clone(&world.core);
+    let running = std::sync::Mutex::new(Some(alert));
+    // The alert's turn runs to its end inside the check's wait, as a turn
+    // ending on another worker does while the check reads the printer.
+    world.agent.on_idle_work_ended(move || {
+        let Some(turn) = running.lock().expect("the turn holds").take() else {
+            return;
+        };
+        let core = std::sync::Arc::clone(&core);
+        std::thread::spawn(move || block_on(core.run_supervision(turn)))
+            .join()
+            .expect("the alert's turn ends")
+            .expect("the alert's turn is supervised");
+    });
+
+    assert_eq!(
+        observe_and_supervise(&world),
+        0,
+        "the check claimed a print whose turn ended after its wait"
+    );
+    assert_eq!(world.agent.turns().len(), 1, "only the alert's turn ran");
+    assert!(observations(&world, print.id).is_empty());
+
+    assert_eq!(observe_and_supervise(&world), 1);
+    assert_eq!(observations(&world, print.id).len(), 1);
+    assert_eq!(world.agent.turns().len(), 2);
+}
+
 /// Alerts handed to the print while its observation was being written, and
 /// lost with that observation, are not lost with it: the newest is answered as
 /// a turn of its own, carrying the earlier one as what arrived while busy.

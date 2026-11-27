@@ -1,0 +1,2972 @@
+{
+  "events": [
+    {
+      "id": "01a219c3-d02a-72f1-97ee-2be4314ac32b",
+      "kind": "supervision_session_closed",
+      "payload": {
+        "close_reason": "the print reached Operational",
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:29:52.938157500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a219c3-d026-70a0-b7d0-3b93aff19c13",
+      "kind": "filament_consumed",
+      "payload": {
+        "analysed_length_mm": 903.5275099999972,
+        "charge_key": {
+          "key": "print",
+          "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+          "segment": 4,
+          "tool": 0
+        },
+        "charged": {
+          "density_g_cm3": 1.24,
+          "diameter_mm": 1.75,
+          "grams": 0.8518249728299121,
+          "remaining_after_g": 638.8475325660196,
+          "remaining_before_g": 639.6993575388495,
+          "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+        },
+        "length_mm": 285.60295999999994,
+        "method": "slicer_estimate",
+        "position": {
+          "bytes": 95073,
+          "observed_at": "2026-11-26T21:29:37.890872400Z",
+          "size_bytes": 116177
+        },
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:29:52.934242200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a219c3-d026-70a0-b7d0-3bab7387be26",
+      "kind": "print_ended",
+      "payload": {
+        "last_position": {
+          "bytes": 95073,
+          "observed_at": "2026-11-26T21:29:37.890872400Z",
+          "size_bytes": 116177
+        },
+        "outcome": "completed",
+        "reason": "the print reached Operational",
+        "state": "operational"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:29:52.933981800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a219c2-7aed-74c0-9bd3-e96905b4c3dd",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a219c2-7aec-7380-812b-62344607bc57",
+        "file_position_bytes": 76995
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:28:25.581090100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a219c2-7aec-7380-812b-624f1a9b40c6",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a219c2-26e8-7542-ab19-c059c2b98f42",
+          "reason": "The person confirmed loading black, which is expected from layer 40 to the end, and dark material now caps the box. That black top wasn't there in the all-white 19:44 frame, so the part has grown since then, as the planned 4 mm rise says it should. The nozzle is still working on its top, and the walls look even with no lifting or shift. The tangle of white strands at the back right corner of the sheet is outside the part, unchanged, and left over from the purge. Flow (1.0) and fan (100%) are at normal values."
+        },
+        "action_id": "01a219c2-7aec-7380-812b-62344607bc57",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:28:25.580761400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a219c2-7ae4-70c0-8eb4-c7c8f3163467",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "Looked at the new frame and checked colour, growth and place against the plan. I sent no commands.",
+          "disposition": "continue",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Printing normally at layer 54 (10.8 mm) with about a minute left. The box is in its place with its white middle section, and new black layers now sit on top, as the plan expects.",
+          "why": "The person confirmed loading black, which is expected from layer 40 to the end, and dark material now caps the box. That black top wasn't there in the all-white 19:44 frame, so the part has grown since then, as the planned 4 mm rise says it should. The nozzle is still working on its top, and the walls look even with no lifting or shift. The tangle of white strands at the back right corner of the sheet is outside the part, unchanged, and left over from the purge. Flow (1.0) and fan (100%) are at normal values."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:28:25.572383200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a219c2-26e8-7542-ab19-c059c2b98f42",
+      "image": {
+        "id": "01a219c2-26e8-7542-ab19-c042b36d21f8",
+        "sha256": "ed77d2c922670ad253ad43143d45a38da2edf7f694af9c1493c0aee3053ce6b8"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T21:28:04.067612900Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.6390937965345981
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 74248,
+          "print_time_left_s": 4199,
+          "print_time_s": 7185,
+          "size_bytes": 116177,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.02
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-11-26T21:28:03.304106200Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.97
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:28:04.067663500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a219c1-116e-7362-8250-9bddc97b212b",
+      "kind": "spool_unloaded",
+      "payload": {
+        "actor": "operator",
+        "reason": "colour change 2: the #000000 spool is on the printer (person's word: printing black)",
+        "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c",
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:26:53.037826800Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a219c1-116e-7362-8250-9beadc3d4e47",
+      "kind": "spool_loaded",
+      "payload": {
+        "actor": "operator",
+        "cleared_marks": [
+          {
+            "reason": {
+              "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+              "reason": "filament_change_unconfirmed"
+            },
+            "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c"
+          }
+        ],
+        "reason": "colour change 2: the #000000 spool is on the printer (person's word: printing black)",
+        "replaced": "01a21932-92c3-7e61-a71c-79df1f4be04c",
+        "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:26:53.037812300Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a219c1-116d-7292-897a-6e9a7264766c",
+      "kind": "filament_consumed",
+      "payload": {
+        "analysed_length_mm": 903.5275099999972,
+        "charge_key": {
+          "key": "print",
+          "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+          "segment": 3,
+          "tool": 0
+        },
+        "charged": {
+          "density_g_cm3": 1.24,
+          "diameter_mm": 1.75,
+          "grams": 0.271505599224778,
+          "remaining_after_g": 639.6993575388495,
+          "remaining_before_g": 639.9708631380743,
+          "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+        },
+        "length_mm": 91.03138000000104,
+        "method": "gcode_extrusion",
+        "note": "fed after a filament change nobody confirmed, and charged to the spool loaded after it",
+        "position": {
+          "bytes": 67354,
+          "observed_at": "2026-11-26T21:26:53.017002600Z",
+          "size_bytes": 116177
+        },
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:26:53.037783100Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a219c0-946f-75c2-8364-c6fdbd40c86b",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a219c0-946e-7592-8404-6061b50132da",
+        "file_position_bytes": 62711
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:26:21.039261300Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a219c0-946e-7592-8404-607dffc4e486",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a219c0-4f07-7d81-a565-cf0d0a7a7cfa",
+          "reason": "This is the planned colour change, so black from layer 40 up is expected and the print should carry on. The box is still in its place next to the head with even walls. Only about 0.6 mm of black has gone down so far, partly hidden by the head, so I'll check its colour as more black builds up. New tangled white strands near the back right corner of the sheet are outside the part's outline, most likely purged during the change; a person should clear them after the print. The long wait before resuming didn't leave any visible damage, and flow (1.0) and fan (100%) are at normal values."
+        },
+        "action_id": "01a219c0-946e-7592-8404-6061b50132da",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:26:21.038895600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a219c0-9466-7381-9a65-5076bee10778",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "Looked at the frame after the colour change resumed. I sent no commands.",
+          "disposition": "continue",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The planned change back to black went through: the print resumed after a long wait (about 101 minutes) and is on layer 43 (8.6 mm). Black is expected from layer 40 to the end, with about 3 minutes left.",
+          "why": "This is the planned colour change, so black from layer 40 up is expected and the print should carry on. The box is still in its place next to the head with even walls. Only about 0.6 mm of black has gone down so far, partly hidden by the head, so I'll check its colour as more black builds up. New tangled white strands near the back right corner of the sheet are outside the part's outline, most likely purged during the change; a person should clear them after the print. The long wait before resuming didn't leave any visible damage, and flow (1.0) and fan (100%) are at normal values."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:26:21.030286Z",
+      "source": "system"
+    },
+    {
+      "id": "01a219c0-4f07-7d81-a565-cf0d0a7a7cfa",
+      "image": {
+        "id": "01a219c0-4f07-7d81-a565-cef0e30e6f66",
+        "sha256": "1b331aa6a7280e0e303687e28cbaa8c28f0e2cc287d163f6031e0e4a9166282a"
+      },
+      "kind": "filament_change_planned_resumed",
+      "payload": {
+        "change": {
+          "color": "#000000",
+          "index": 1,
+          "kind": "color_change",
+          "layer": 40,
+          "offset_bytes": 57998,
+          "z_mm": 8.0
+        },
+        "position": {
+          "bytes": 62152,
+          "observed_at": "2026-11-26T21:26:02.945955100Z",
+          "size_bytes": 116177
+        },
+        "previous_color": "#FFFFFF",
+        "waited_s": 6062
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T21:26:03.253063Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21963-cd55-7662-b5a8-cc3692ffb511",
+      "kind": "spool_unverified",
+      "payload": {
+        "reason": {
+          "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+          "reason": "filament_change_unconfirmed"
+        },
+        "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:45:00.757274700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21963-cd55-7662-b5a8-cc2c5e786658",
+      "kind": "filament_consumed",
+      "payload": {
+        "analysed_length_mm": 903.5275099999972,
+        "charge_key": {
+          "key": "print",
+          "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+          "segment": 2,
+          "tool": 0
+        },
+        "charged": {
+          "density_g_cm3": 1.24,
+          "diameter_mm": 1.75,
+          "grams": 0.41771951234488314,
+          "remaining_after_g": 999.357651887752,
+          "remaining_before_g": 999.775371400097,
+          "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c"
+        },
+        "length_mm": 140.05450999999823,
+        "method": "gcode_extrusion",
+        "position": {
+          "bytes": 57998,
+          "observed_at": "2026-11-26T19:45:00.735693400Z",
+          "size_bytes": 116177
+        },
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:45:00.757260300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21963-cd55-7662-b5a8-cc172746b2ee",
+      "kind": "filament_change_signalled",
+      "payload": {
+        "planned_change": 1,
+        "position": {
+          "freshness": "read_at_signal",
+          "position": {
+            "bytes": 57998,
+            "observed_at": "2026-11-26T19:45:00.735693400Z",
+            "size_bytes": 116177
+          }
+        },
+        "source_kind": "filament_change_planned_reached",
+        "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c",
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:45:00.757066300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21963-cd3f-7c03-8b7e-5939e4925bbb",
+      "kind": "filament_change_planned_reached",
+      "payload": {
+        "change": {
+          "color": "#000000",
+          "index": 1,
+          "kind": "color_change",
+          "layer": 40,
+          "offset_bytes": 57998,
+          "z_mm": 8.0
+        },
+        "next_segment_filament_mm": 375.934,
+        "next_spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+        "position": {
+          "bytes": 58003,
+          "observed_at": "2026-11-26T19:45:00.735693400Z",
+          "size_bytes": 116177
+        },
+        "previous_color": "#FFFFFF",
+        "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c",
+        "trigger": "position"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:45:00.735799100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21963-2387-7813-bd4c-692169bc3d72",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21963-2386-7d23-8b0b-fc24baa63c95",
+        "file_position_bytes": 53621
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:44:17.287094600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21963-2386-7d23-8b0b-fc3bebb80331",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a21962-e578-7c53-a754-379f32ac96ea",
+          "reason": "The person confirmed loading white, and white is expected from layer 20 until black returns at layer 40. The walls look solid and even. The open crossed lines on top are the planned infill, not a defect. The part sits where the head has been working all along and has clearly risen, as the planned 6.6 mm rise says it should. The thin strands on the back right of the sheet are outside the part's outline and haven't grown."
+        },
+        "action_id": "01a21963-2386-7d23-8b0b-fc24baa63c95",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:44:17.286915Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21963-237e-7c10-9d5d-a01df8c97b57",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame and checked the part's colour, place and growth against the plan. I sent no commands.",
+          "disposition": "continue",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The part is printing well at layer 34 (6.8 mm). The box is in view next to the print head with white walls and open cross-hatched infill, and it has plainly grown since the layer-1 frame. White is the colour expected for these layers.",
+          "why": "The person confirmed loading white, and white is expected from layer 20 until black returns at layer 40. The walls look solid and even. The open crossed lines on top are the planned infill, not a defect. The part sits where the head has been working all along and has clearly risen, as the planned 6.6 mm rise says it should. The thin strands on the back right of the sheet are outside the part's outline and haven't grown."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:44:17.278874900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21962-e578-7c53-a754-379f32ac96ea",
+      "image": {
+        "id": "01a21962-e578-7c53-a754-378017fa3141",
+        "sha256": "262ec7633f164ab7958022a28a80fe2f17912d5dc71459274b924dc593d37fd5"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:44:01.396943900Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.4473604930407912
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 51973,
+          "print_time_left_s": 1314,
+          "print_time_s": 942,
+          "size_bytes": 116177,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.02
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-11-26T19:44:00.559637100Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.06
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:44:01.396987500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21961-8471-7051-9dc2-212c9de92b51",
+      "kind": "spool_unloaded",
+      "payload": {
+        "actor": "operator",
+        "reason": "colour change 1: the #FFFFFF spool is on the printer (person's word: done, loaded white)",
+        "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:42:31.025221600Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a21961-8471-7051-9dc2-213fc431ba63",
+      "kind": "spool_loaded",
+      "payload": {
+        "actor": "operator",
+        "cleared_marks": [
+          {
+            "reason": {
+              "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+              "reason": "filament_change_unconfirmed"
+            },
+            "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+          }
+        ],
+        "reason": "colour change 1: the #FFFFFF spool is on the printer (person's word: done, loaded white)",
+        "replaced": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+        "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c",
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:42:31.025208900Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a21961-8471-7051-9dc2-21151696f464",
+      "kind": "filament_consumed",
+      "payload": {
+        "analysed_length_mm": 903.5275099999972,
+        "charge_key": {
+          "key": "print",
+          "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+          "segment": 1,
+          "tool": 0
+        },
+        "charged": {
+          "density_g_cm3": 1.24,
+          "diameter_mm": 1.75,
+          "grams": 0.22462859990300185,
+          "remaining_after_g": 999.775371400097,
+          "remaining_before_g": 1000.0,
+          "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c"
+        },
+        "length_mm": 75.31428999999872,
+        "method": "gcode_extrusion",
+        "note": "fed after a filament change nobody confirmed, and charged to the spool loaded after it",
+        "position": {
+          "bytes": 43005,
+          "observed_at": "2026-11-26T19:42:31.005082100Z",
+          "size_bytes": 116177
+        },
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:42:31.025154100Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a21961-4547-7633-84cc-ce9f3164c158",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21961-4546-7490-8c8c-9d6e4d365d3e",
+        "file_position_bytes": 41283
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:42:14.855484800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21961-4547-7633-84cc-ce82ec65194e",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a21961-0d5e-7102-8ca4-9a0229c843f3",
+          "reason": "This is the planned colour change, so white from layer 20 up is expected and the print should carry on. The part is still hidden under the print head, as in earlier frames, so I can't check its new colour directly. The material at the nozzle tip looks light, which fits white. A few thin light strands on the back right of the sheet are outside the part's outline and look like leftovers from the purge, not a defect. Flow (1.0) and fan (100%) are at normal values."
+        },
+        "action_id": "01a21961-4546-7490-8c8c-9d6e4d365d3e",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:42:14.855321800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21961-4540-7ad3-a9d9-16025fe49613",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "Looked at the frame after the colour change resumed. I sent no commands.",
+          "disposition": "continue",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The planned change to white went through: the print resumed after a 270-second wait and is now on layer 24 (4.8 mm). White is expected from layer 20 up, and black returns at layer 40.",
+          "why": "This is the planned colour change, so white from layer 20 up is expected and the print should carry on. The part is still hidden under the print head, as in earlier frames, so I can't check its new colour directly. The material at the nozzle tip looks light, which fits white. A few thin light strands on the back right of the sheet are outside the part's outline and look like leftovers from the purge, not a defect. Flow (1.0) and fan (100%) are at normal values."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:42:14.848809900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21961-0d5e-7102-8ca4-9a0229c843f3",
+      "image": {
+        "id": "01a21961-0d5e-7102-8ca4-99f541767e2e",
+        "sha256": "148dcf0d6353b671d4cb0a4deeb9b9f1f6a7b4e5515373d8934ffb73751c8c09"
+      },
+      "kind": "filament_change_planned_resumed",
+      "payload": {
+        "change": {
+          "color": "#FFFFFF",
+          "index": 0,
+          "kind": "color_change",
+          "layer": 20,
+          "offset_bytes": 35454,
+          "z_mm": 4.0
+        },
+        "position": {
+          "bytes": 39662,
+          "observed_at": "2026-11-26T19:41:58.633372300Z",
+          "size_bytes": 116177
+        },
+        "previous_color": "#000000",
+        "waited_s": 270
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:42:00.538704900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2195c-e628-7fe0-88f4-0017cba49b9e",
+      "kind": "spool_unverified",
+      "payload": {
+        "reason": {
+          "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+          "reason": "filament_change_unconfirmed"
+        },
+        "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:37:28.359641800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2195c-e627-7932-a484-e4bb5710e365",
+      "kind": "filament_consumed",
+      "payload": {
+        "analysed_length_mm": 903.5275099999972,
+        "charge_key": {
+          "key": "print",
+          "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+          "segment": 0,
+          "tool": 0
+        },
+        "charged": {
+          "density_g_cm3": 1.24,
+          "diameter_mm": 1.75,
+          "grams": 0.929136861925748,
+          "remaining_after_g": 639.9708631380743,
+          "remaining_before_g": 640.9,
+          "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+        },
+        "length_mm": 311.52436999999924,
+        "method": "gcode_extrusion",
+        "position": {
+          "bytes": 35454,
+          "observed_at": "2026-11-26T19:37:28.336724900Z",
+          "size_bytes": 116177
+        },
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:37:28.359599700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2195c-e627-7932-a484-e4a238d9a971",
+      "kind": "filament_change_signalled",
+      "payload": {
+        "planned_change": 0,
+        "position": {
+          "freshness": "read_at_signal",
+          "position": {
+            "bytes": 35454,
+            "observed_at": "2026-11-26T19:37:28.336724900Z",
+            "size_bytes": 116177
+          }
+        },
+        "source_kind": "filament_change_planned_reached",
+        "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+        "tool": 0
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:37:28.359391300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2195c-e610-7ab1-a997-be38be2d47e5",
+      "kind": "filament_change_planned_reached",
+      "payload": {
+        "change": {
+          "color": "#FFFFFF",
+          "index": 0,
+          "kind": "color_change",
+          "layer": 20,
+          "offset_bytes": 35454,
+          "z_mm": 4.0
+        },
+        "next_segment_filament_mm": 215.369,
+        "next_spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c",
+        "position": {
+          "bytes": 35566,
+          "observed_at": "2026-11-26T19:37:28.336724900Z",
+          "size_bytes": 116177
+        },
+        "previous_color": "#000000",
+        "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+        "trigger": "position"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:37:28.336893400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2195c-0856-7580-9f4b-4147c698e7ce",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a2195c-0855-73a3-ad3b-09a358851835",
+        "file_position_bytes": 30344
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:36:31.574227300Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2195c-0856-7580-9f4b-413727ff8477",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a2195b-d63a-7cb0-bd1a-9409be8a7d84",
+          "reason": "The person's resume settles the earlier question about where the part is, and the paused frames showed it sitting correctly at the sheet centre. In this view the head covers the part, as it did before. The visible bed has no stray plastic or blobs, and flow (1.0) and fan (100%) are at normal values. A small overshoot of the nozzle temperature right after a resume is expected. The planned change to white is at layer 20."
+        },
+        "action_id": "01a2195c-0855-73a3-ad3b-09a358851835",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:36:31.574018500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2195c-084e-74c0-90af-84a883707e3f",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "Looked at the new frame after the resume. I sent no commands.",
+          "disposition": "continue",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "A person has resumed the print, which is now on layer 14 (2.8 mm). The print head is back at the spot where it hid the part before, and nothing new or worse is visible.",
+          "why": "The person's resume settles the earlier question about where the part is, and the paused frames showed it sitting correctly at the sheet centre. In this view the head covers the part, as it did before. The visible bed has no stray plastic or blobs, and flow (1.0) and fan (100%) are at normal values. A small overshoot of the nozzle temperature right after a resume is expected. The planned change to white is at layer 20."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:36:31.566785600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2195b-d63a-7cb0-bd1a-9409be8a7d84",
+      "image": {
+        "id": "01a2195b-d63a-7cb0-bd1a-93f799e63533",
+        "sha256": "b8b3924d320e7b345f02262e99ebff5039e577edefee2ca160792416ddbf160f"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:36:18.743376400Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.252235812596297
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 29304,
+          "print_time_left_s": 1573,
+          "print_time_s": 480,
+          "size_bytes": 116177,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.96
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-11-26T19:36:17.837982400Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 224.28
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:36:18.743415600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2195a-2957-7601-8cde-4c5abbcaee9f",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a2195a-2955-7952-a3ea-e211479eaf5c",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:34:28.951110900Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2195a-2956-70c2-8fd8-6f0a5c81d3ab",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a21959-fdd7-7971-958d-3e5d5684c828",
+          "reason": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. It has been paused for about twenty minutes with the bed at 60 °C and the nozzle at 220 °C. I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a2195a-2955-7952-a3ea-e211479eaf5c",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:34:28.950901Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2195a-2946-7d72-a9c7-f10877762ce5",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the earlier paused frames. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), about twenty minutes after my pause, and still needs a person to resume it. The black box is unchanged in its planned place at the sheet centre and looks fine.",
+          "why": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. It has been paused for about twenty minutes with the bed at 60 °C and the nozzle at 220 °C. I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:34:28.934629Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21959-fdd7-7971-958d-3e5d5684c828",
+      "image": {
+        "id": "01a21959-fdd7-7971-958d-3e4572081379",
+        "sha256": "28b1d5e9a468c38c6350cc4488bb0e3428d252a77d011e99e386ce77e73f587e"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:34:17.812860700Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.0
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:34:16.874858700Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.97
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:34:17.812893100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21958-4f0c-7593-b21b-c1eb7711a323",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21958-4f0c-7593-b21b-c1c2835fc745",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:32:27.532872800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21958-4f0c-7593-b21b-c1d8dc14d6da",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a21958-255a-7d40-8729-666049011c1e",
+          "reason": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. The bed and nozzle are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a21958-4f0c-7593-b21b-c1c2835fc745",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:32:27.532696400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21958-4f04-7371-bba1-527021772f71",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the earlier paused frames. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), about eighteen minutes after my pause, and still needs a person to resume it. The black box is unchanged in its planned place at the sheet centre and looks fine.",
+          "why": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. The bed and nozzle are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:32:27.524226400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21958-255a-7d40-8729-666049011c1e",
+      "image": {
+        "id": "01a21958-255a-7d40-8729-66536f723d86",
+        "sha256": "1638bacda66ee130988a4284c6920bf1718a09d67331a77d1de769f05a78e199"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:32:16.855962900Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.02
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:32:15.949775600Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.98
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:32:16.855998Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21956-784a-7fb2-97c2-07c54673821e",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21956-7849-7131-81d2-3cbcd29c91f4",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:30:27.018479700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21956-784a-7fb2-97c2-07b826f229cf",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a21956-4cf9-77b0-bd9b-3919aa772f4d",
+          "reason": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. The bed and nozzle are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a21956-7849-7131-81d2-3cbcd29c91f4",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:30:27.018304600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21956-7842-7633-9780-d62d880b7e34",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the earlier paused frames. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), about sixteen minutes after my pause, and still needs a person to resume it. The black box is unchanged in its planned place at the sheet centre and looks fine.",
+          "why": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. The bed and nozzle are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:30:27.010249700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21956-4cf9-77b0-bd9b-3919aa772f4d",
+      "image": {
+        "id": "01a21956-4cf8-7093-8657-24f498b81a32",
+        "sha256": "228037d703e53164688a859703f42e73c586639733f754223ad3d43638d6a15c"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:30:15.925430400Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.02
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:30:15.056608400Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.0
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:30:15.925466500Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21954-9d7a-76a0-bac2-a42b87321baa",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21954-9d79-7c71-90aa-f59eaab30433",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:28:25.466461200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21954-9d7a-76a0-bac2-a417245794fb",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a21954-74b3-7102-9835-f79a4d50b127",
+          "reason": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. Nobody has acted on the earlier reports, so it's worth reminding the person who started the print. The bed and nozzle are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a21954-9d79-7c71-90aa-f59eaab30433",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:28:25.466269300Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21954-9d73-7b81-9533-a69cbdee3ffa",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the earlier paused frames. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), about fourteen minutes after my pause, and still needs a person to resume it. The black box is unchanged in its planned place at the sheet centre and looks fine.",
+          "why": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. Nobody has acted on the earlier reports, so it's worth reminding the person who started the print. The bed and nozzle are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:28:25.459185Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21954-74b3-7102-9835-f79a4d50b127",
+      "image": {
+        "id": "01a21954-74b3-7102-9835-f782d0ba2184",
+        "sha256": "e67e80f652ebdf3cf5c6049bcb2320552f7e274dbca70016c293431129e6e35c"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:28:15.025345200Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.0
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:28:14.211897400Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.02
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:28:15.025384100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21952-d381-74b2-9300-8970779d00b9",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21952-d37f-7941-a8e6-5c44076b3171",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:26:28.225109600Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21952-d380-7551-92d0-87c9c8d233bb",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a21952-9cae-7311-ba55-2330a6f71e81",
+          "reason": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. The bed and nozzle are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a21952-d37f-7941-a8e6-5c44076b3171",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:26:28.224784200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21952-d375-7dc2-9b3d-da35933d7c8a",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the earlier paused frames. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), about twelve minutes after my pause, and is waiting for a person to resume it. The black box is unchanged in its planned place at the sheet centre and looks fine.",
+          "why": "The part sits flat on its planned spot with clean walls and nothing new or worse has appeared, so my earlier pause was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. The bed and nozzle are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:26:28.213823600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21952-9cae-7311-ba55-2330a6f71e81",
+      "image": {
+        "id": "01a21952-9cae-7311-ba55-232ab18e03ad",
+        "sha256": "42edfd0e9136773fd5b1e75bd6bcc4805bf42e7b3cf014be75fbdfff6a8821dd"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:26:14.185633200Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.98
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:26:13.266208400Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.02
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:26:14.185691400Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21950-ecc0-7983-a6ae-c6b8e73ad340",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21950-ecc0-7983-a6ae-c697971046e6",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:24:23.616892300Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21950-ecc0-7983-a6ae-c6ae4db371c0",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a21950-c434-7221-b46d-ae7af35686da",
+          "reason": "The part sits flat on its planned spot with clean walls and nothing has changed, so the pause I asked for was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. The bed (60 °C) and nozzle (220 °C) are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a21950-ecc0-7983-a6ae-c697971046e6",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:24:23.616585500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21950-ecb9-76e3-853b-5741316fd331",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the earlier paused frames. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), about ten minutes after my pause, and is waiting for a person to resume it. The black box is unchanged in its planned place at the sheet centre and looks fine.",
+          "why": "The part sits flat on its planned spot with clean walls and nothing has changed, so the pause I asked for was a false alarm: the print head had hidden the part in earlier frames. I have no resume command, so a person needs to resume the print. The bed (60 °C) and nozzle (220 °C) are holding temperature. I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:24:23.609871300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21950-c434-7221-b46d-ae7af35686da",
+      "image": {
+        "id": "01a21950-c433-79e1-a576-cc8fcafd21e2",
+        "sha256": "062cb9cec9105372fd5ffc990806d37c2e07c500fc11494148f3a1127c471985"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:24:13.233379900Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.05
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:24:12.288927900Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.95
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:24:13.233417Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2194f-1411-7b23-ad57-e77ecf30d5ea",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a2194f-1410-7800-b568-61559eb4d2ee",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:22:22.609594300Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2194f-1411-7b23-ad57-e76e610de557",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a2194e-eba4-71c2-be66-fb1a4dad8e0d",
+          "reason": "The part sits flat on its planned spot with clean walls and nothing has changed, so the pause I asked for was a false alarm: the print head had hidden the part in earlier frames. The thin dark strands toward the back of the sheet are outside the part's outline. I have no resume command, so a person needs to resume the print soon, ahead of the planned change to white at layer 20. I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a2194f-1410-7800-b568-61559eb4d2ee",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:22:22.609438900Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2194f-1409-7752-a44d-8f5faae7347c",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the earlier paused frames. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), about eight minutes after my pause, and still needs a person to resume it. The black box is unchanged in its planned place at the sheet centre and looks fine.",
+          "why": "The part sits flat on its planned spot with clean walls and nothing has changed, so the pause I asked for was a false alarm: the print head had hidden the part in earlier frames. The thin dark strands toward the back of the sheet are outside the part's outline. I have no resume command, so a person needs to resume the print soon, ahead of the planned change to white at layer 20. I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:22:22.601676200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2194e-eba4-71c2-be66-fb1a4dad8e0d",
+      "image": {
+        "id": "01a2194e-eba4-71c2-be66-fb0a35bf944e",
+        "sha256": "7958de67110573b40459036353aaeca04ace6aa74e2fac66d736fc716e371bf4"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:22:12.257718300Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.0
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:22:11.369058900Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.97
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:22:12.257752Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2194d-420b-70c1-8c25-dcefbc7c3d05",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a2194d-420a-7e00-979a-7e761b7f1453",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:20:23.307027900Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2194d-420a-7e00-979a-7e8e53eddb62",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a2194d-1351-7433-9a9c-d899b2a4878d",
+          "reason": "The part sits flat on its planned spot with clean walls, so my earlier pause was a false alarm: the print head had been hiding the part. There's nothing new or worse. The thin dark strands toward the back of the sheet are outside the part's outline. I have no resume command, so a person needs to resume the print, ideally soon, since the paused part is sitting on a heated bed with the nozzle at 220 °C. I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a2194d-420a-7e00-979a-7e761b7f1453",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:20:23.306842200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2194d-4203-7742-9141-7c5ae73de626",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the last two. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), about six minutes after my pause, and still needs a person to resume it. The black box is unchanged in its planned place at the sheet centre and looks fine.",
+          "why": "The part sits flat on its planned spot with clean walls, so my earlier pause was a false alarm: the print head had been hiding the part. There's nothing new or worse. The thin dark strands toward the back of the sheet are outside the part's outline. I have no resume command, so a person needs to resume the print, ideally soon, since the paused part is sitting on a heated bed with the nozzle at 220 °C. I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:20:23.299663300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2194d-1351-7433-9a9c-d899b2a4878d",
+      "image": {
+        "id": "01a2194d-1351-7433-9a9c-d888ad13362a",
+        "sha256": "b0176479691d05fd45f26f46b5f5c863554562e42bf3551a74bbcb4a2539edc2"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:20:11.342254800Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.01
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:20:10.442542900Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 219.98
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:20:11.342295600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2194b-62d4-7fc3-8cfb-386c2512dbd7",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a2194b-62d3-7a30-b283-d35e0497eb3b",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:18:20.628184700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2194b-62d3-7a30-b283-d36734aac19e",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a2194b-3af9-7f82-8122-fb7ebe69e9a8",
+          "reason": "Nothing has changed since the last check. The part is where it should be, so the pause I asked for was a false alarm: in earlier frames the print head was hiding the part. The thin dark strands toward the back of the sheet are outside the part's outline and look like ooze from the nozzle. I have no resume command, so a person needs to resume the print. I'm reporting stop only because it is paused."
+        },
+        "action_id": "01a2194b-62d3-7a30-b283-d35e0497eb3b",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:18:20.627716500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a2194b-62ca-7e72-8498-a55187ff02ae",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new frame, which matches the last one. I sent no commands.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "The print is still paused at layer 13 (2.6 mm), waiting for a person to resume it. The black box is unchanged, in its planned place at the sheet centre, sitting flat and looking normal.",
+          "why": "Nothing has changed since the last check. The part is where it should be, so the pause I asked for was a false alarm: in earlier frames the print head was hiding the part. The thin dark strands toward the back of the sheet are outside the part's outline and look like ooze from the nozzle. I have no resume command, so a person needs to resume the print. I'm reporting stop only because it is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:18:20.618804800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a2194b-3af9-7f82-8122-fb7ebe69e9a8",
+      "image": {
+        "id": "01a2194b-3af9-7f82-8122-fb6f4de26445",
+        "sha256": "f2ed0fce5faadcf172b2cfc07de6a6757c702017bb07d1d811c0b5bb7cb3db9f"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:18:10.421950100Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.02
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:18:09.522342300Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.0
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:18:10.421993200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21949-9e34-7c20-9abd-9250067b6a41",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21949-9e33-72d3-9b4e-d7469ab59331",
+        "file_position_bytes": 27748
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:16:24.756528200Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21949-9e34-7c20-9abd-924d760947bf",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a21949-6296-7382-8f0b-28ad5346f5d5",
+          "reason": "The part was hidden under the print head in the earlier frames. It now sits on its planned spot at the sheet centre with clean walls and no lifting, so the 59.7 px alignment gap must be a calibration offset, not a part that moved. A few thin dark strands toward the back of the sheet are outside the part's outline and look like ooze from the nozzle; a person can pick them off. A person should resume the print; I'm reporting stop only because the print is paused."
+        },
+        "action_id": "01a21949-9e33-72d3-9b4e-d7469ab59331",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:16:24.756288500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21949-9e2c-7162-882e-e997a998f089",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the new full frame with the head out of the way. I sent no commands: I have no resume command, and the print is still paused from my last turn.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": true,
+          "summary": "My pause was a false alarm. With the print paused and the head parked, the frame clearly shows the black box at the centre of the sheet, where it's planned. It's square, sitting flat and looks normal at about 2.6 mm.",
+          "why": "The part was hidden under the print head in the earlier frames. It now sits on its planned spot at the sheet centre with clean walls and no lifting, so the 59.7 px alignment gap must be a calibration offset, not a part that moved. A few thin dark strands toward the back of the sheet are outside the part's outline and look like ooze from the nozzle; a person can pick them off. A person should resume the print; I'm reporting stop only because the print is paused."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:16:24.748875800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21949-6296-7382-8f0b-28ad5346f5d5",
+      "image": {
+        "id": "01a21949-6296-7382-8f0b-2893845274bc",
+        "sha256": "97c143e31a3d69044b1169039ee3bc6ee26ff51e45fee7c1912d5d2d83234dde"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:16:09.490445500Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.23884245590779588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 27748,
+          "print_time_left_s": 1537,
+          "print_time_s": 435,
+          "size_bytes": 116177,
+          "state": "paused"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.26
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "paused",
+          "observed_at": "2026-11-26T19:16:08.605144100Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.11
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:16:09.490486600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21948-0baa-7b82-9a7f-caba9ee4ee41",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21948-0ba9-7801-b8cf-2492c65dd617",
+        "file_position_bytes": 26853
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:14:41.706333800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21948-0ba9-7801-b8cf-24a56dcd5171",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "stop",
+          "event_id": "01a21947-8a45-7e92-b721-f0538996bc78",
+          "reason": "By 2.4 mm a 20×20 mm black part should be easy to see on the grey sheet, but the planned spot is empty. Together with the failed alignment check, that means the part is missing, has moved or isn't sticking. A part away from its own place with that spot left empty counts as moved, which calls for a pause right away. It could also be hidden under the print head, which hasn't moved between the last two frames, so I can't be fully sure. A person should check whether a part exists and is stuck down where planned, and that the nozzle isn't printing in mid-air, before resuming."
+        },
+        "action_id": "01a21948-0ba9-7801-b8cf-2492c65dd617",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:14:41.705974Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21948-0b9f-7c22-bb03-d550f2286f07",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "Looked at the camera frame and the print's full context, then asked for a pause. The pause was accepted and went through.",
+          "disposition": "stop",
+          "escalating": true,
+          "should_continue": false,
+          "summary": "I paused the print at layer 12 (2.4 mm) because there's no black box on the bed: its planned spot at the centre of the sheet is bare. The first-layer alignment check also found the first layer 59.7 px away from where it should be.",
+          "why": "By 2.4 mm a 20×20 mm black part should be easy to see on the grey sheet, but the planned spot is empty. Together with the failed alignment check, that means the part is missing, has moved or isn't sticking. A part away from its own place with that spot left empty counts as moved, which calls for a pause right away. It could also be hidden under the print head, which hasn't moved between the last two frames, so I can't be fully sure. A person should check whether a part exists and is stuck down where planned, and that the nozzle isn't printing in mid-air, before resuming."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:14:41.695592600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21947-f758-7372-afb5-8b54e9167f80",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21947-f740-7e93-85cb-3f903679d4af",
+        "file_position_bytes": 26853
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:14:36.504113400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21947-f757-7cb1-8c2c-4a9d4cd9bff8",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "pause",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "reason": "At layer 12 (Z 2.4 mm) there is no black box visible on the bed. Its planned spot at the sheet centre is bare, and the first-layer alignment check put the printed first layer 59.7 px from its projected position. The part looks to be missing, displaced or not sticking. A person should check whether a part exists and is stuck down where planned, and check that the nozzle is not printing in air, before resuming."
+        },
+        "action_id": "01a21947-f740-7e93-85cb-3f903679d4af",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:14:36.503800400Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21947-8a45-7e92-b721-f0538996bc78",
+      "image": {
+        "id": "01a21947-8a45-7e92-b721-f044717828e5",
+        "sha256": "d54f19b0b2ec4bfa3c1ee8104b4fef652d3525228c5fc5ad95f5cdd6e3608b22"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:14:08.577027400Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.2129337132134588
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 24738,
+          "print_time_left_s": 1652,
+          "print_time_s": 406,
+          "size_bytes": 116177,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.76
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-11-26T19:14:07.831752Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 220.06
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 220.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:14:08.577075900Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21946-00bb-7fd3-aace-9403576e6513",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21946-00ba-79e0-a437-d18e3981454e",
+        "file_position_bytes": 7767
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:12:27.835659900Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21946-00bb-7fd3-aace-93fa73c6c85c",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "watch",
+          "event_id": "01a21945-b279-7c50-89e9-00fdfd880934",
+          "reason": "The nozzle only just reached temperature and layer 1 has just begun, so an empty spot where the part goes isn't a defect yet. There's no debris, no stray plastic on the bed and nothing out of place. The first layer hasn't been confirmed as down and sticking, so I'm watching the next frame more closely instead of simply carrying on."
+        },
+        "action_id": "01a21946-00ba-79e0-a437-d18e3981454e",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:12:27.835332500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21946-00b0-7372-8150-e66183ecf90c",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "medium",
+          "did": "Looked at the whole camera frame and checked the stated settings (flow 1.0, fan 0%, both normal for a PLA first layer). I sent no commands.",
+          "disposition": "watch",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The print has reached layer 1 at 0.2 mm with the nozzle at 230 °C, but no first-layer plastic is visible yet where the part goes in the middle of the bed. The nozzle is over the back of the bed with a small ooze curl at its tip, so it is probably still on the purge or just starting the first layer.",
+          "why": "The nozzle only just reached temperature and layer 1 has just begun, so an empty spot where the part goes isn't a defect yet. There's no debris, no stray plastic on the bed and nothing out of place. The first layer hasn't been confirmed as down and sticking, so I'm watching the next frame more closely instead of simply carrying on."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:12:27.824145600Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21945-b279-7c50-89e9-00fdfd880934",
+      "image": {
+        "id": "01a21945-b279-7c50-89e9-00edb2536f80",
+        "sha256": "0b623f6cfa0b3ad63904779422ba9f57c29c4c7e359de56ef9dc52b2d495d9d4"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:12:07.797073500Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.03635831532919597
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 4224,
+          "print_time_left_s": 7720,
+          "print_time_s": 285,
+          "size_bytes": 116177,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 60.02
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-11-26T19:12:06.904878800Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 232.82
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 230.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:12:07.797120300Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21944-0d91-7b62-8242-94f6b8e33bb8",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21944-0d90-73f0-a0f7-3060ed69190a",
+        "file_position_bytes": 1480
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:10:20.049810700Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21944-0d91-7b62-8242-94e5de93e141",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a21943-da21-7260-8732-a773775ec88e",
+          "reason": "The G-code hasn't reached a layer yet, so no printed part is expected. The part of the bed I can see is clean, and the gantry across the front is normal motion. The file's fan setting of 0% is normal before printing starts and doesn't explain any defect, so I'm not changing any settings."
+        },
+        "action_id": "01a21944-0d90-73f0-a0f7-3060ed69190a",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:10:20.049357800Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21944-0d85-7580-a817-9b300583eeb2",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the camera frame and the print's facts. I sent no commands.",
+          "disposition": "continue",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "Still in the start-up sequence: the bed is at 60 °C and the nozzle is holding 150 °C, which looks like the bed-probing stage. There's no plastic on the bed yet, as expected.",
+          "why": "The G-code hasn't reached a layer yet, so no printed part is expected. The part of the bed I can see is clean, and the gantry across the front is normal motion. The file's fan setting of 0% is normal before printing starts and doesn't explain any defect, so I'm not changing any settings."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:10:20.037672700Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21943-da21-7260-8732-a773775ec88e",
+      "image": {
+        "id": "01a21943-da21-7260-8732-a766e6da1405",
+        "sha256": "28c81d21c984d26436ae4c1f88703640ea94ba91e2ffbeab050afb1ee9ffb2b3"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:10:06.877783Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.012739182454358434
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1480,
+          "print_time_left_s": 677,
+          "print_time_s": 123,
+          "size_bytes": 116177,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 59.76
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-11-26T19:10:05.881134500Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 150.75
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 150.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:10:06.877836800Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21942-2bcc-73b2-9630-2a301e499b71",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21942-2bcb-7980-acd8-2b1c50cc556b",
+        "file_position_bytes": 1138
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:08:16.716473100Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21942-2bcc-73b2-9630-2a2508e2a56b",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "acknowledge_failure",
+          "actor": {
+            "agent": {
+              "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+            }
+          },
+          "disposition": "continue",
+          "event_id": "01a21942-0158-7313-af9d-788798f208b8",
+          "reason": "The G-code hasn't reached a layer yet and both heaters are still below target, so printing hasn't begun. An empty bed is normal here. The frame shows a clean smooth PEI sheet with no debris, no plastic and nothing out of place, so there's no defect to act on."
+        },
+        "action_id": "01a21942-2bcb-7980-acd8-2b1c50cc556b",
+        "actor": {
+          "agent": {
+            "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+          }
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:08:16.716168500Z",
+      "source": "agent"
+    },
+    {
+      "id": "01a21942-2bbf-7571-b43b-71534c66ea37",
+      "kind": "agent_assessment",
+      "payload": {
+        "assessment": {
+          "confidence": "high",
+          "did": "Looked at the camera frame and the print's facts. I sent no commands.",
+          "disposition": "continue",
+          "escalating": false,
+          "should_continue": true,
+          "summary": "The print has just started and the printer is still heating (bed 36/60 °C, nozzle 146/170 °C). The bed is clear and nothing has been printed yet, which is expected at this point.",
+          "why": "The G-code hasn't reached a layer yet and both heaters are still below target, so printing hasn't begun. An empty bed is normal here. The frame shows a clean smooth PEI sheet with no debris, no plastic and nothing out of place, so there's no defect to act on."
+        },
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:08:16.703963Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21942-2bbf-7571-b43b-7146e34d90a1",
+      "kind": "supervision_session_opened",
+      "payload": {
+        "harness_identity": "claude-code",
+        "session_name": "print-01a21941-52aa-7e52-a1a7-5223c08952fc"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:08:16.703417100Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21942-0158-7313-af9d-788798f208b8",
+      "image": {
+        "id": "01a21942-0158-7313-af9d-787ae0385854",
+        "sha256": "751d95dff38a3535926db78627091001bbb394c90b0c04e7276c00c962a9bf4c"
+      },
+      "kind": "periodic_observation",
+      "payload": {
+        "frame_captured_at": "2026-11-26T19:08:05.845261200Z",
+        "interval_s": 120,
+        "job": {
+          "completion": {
+            "out_of_range": false,
+            "value": 0.009795398400716148
+          },
+          "estimated_print_time_s": 703,
+          "filament": [
+            {
+              "length_mm": 903.5275099999972,
+              "tool": 0,
+              "volume_cm3": 2.173238343732519
+            }
+          ],
+          "file_name": "two-colour-box.gcode",
+          "file_origin": "local",
+          "file_position_bytes": 1138,
+          "print_time_left_s": 703,
+          "print_time_s": 0,
+          "size_bytes": 116177,
+          "state": "printing"
+        },
+        "printer": {
+          "bed": {
+            "actual_c": {
+              "out_of_range": false,
+              "value": 35.91
+            },
+            "offset_c": {
+              "out_of_range": false,
+              "value": 0.0
+            },
+            "target_c": {
+              "out_of_range": false,
+              "value": 60.0
+            }
+          },
+          "connection": "printing",
+          "observed_at": "2026-11-26T19:08:04.828614400Z",
+          "tools": [
+            {
+              "actual_c": {
+                "out_of_range": false,
+                "value": 143.42
+              },
+              "offset_c": {
+                "out_of_range": false,
+                "value": 0.0
+              },
+              "target_c": {
+                "out_of_range": false,
+                "value": 170.0
+              }
+            }
+          ]
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:08:05.845305200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21941-5ffb-7963-9d8f-0a704ab295a8",
+      "kind": "gcode_indexed",
+      "payload": {
+        "bytes": 116177,
+        "file_name": "two-colour-box.gcode",
+        "layers": 60
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:07:24.539285200Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21941-5314-7950-aec7-bca473663b23",
+      "kind": "action_executed",
+      "payload": {
+        "action_id": "01a21941-52e4-7321-bf91-27d31488102f"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:07:21.236406800Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a21941-5314-7950-aec7-bc9934aedeef",
+      "kind": "print_started",
+      "payload": {
+        "file_name": "two-colour-box.gcode",
+        "loaded": [
+          {
+            "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+            "tool": 0
+          }
+        ],
+        "preflight": {
+          "checked_at": "2026-11-26T19:07:21.150388900Z",
+          "file_name": "two-colour-box.gcode",
+          "material": {
+            "loaded": "PLA",
+            "sliced_for": "PLA",
+            "spool": {
+              "id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+              "name": "Prusament PLA black"
+            },
+            "tool": 0,
+            "verdict": "passed"
+          },
+          "segments": [
+            {
+              "color": "#000000",
+              "filament_mm": 311.524,
+              "required_g": 0.9291357583824258,
+              "segment": 0,
+              "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+            },
+            {
+              "color": "#FFFFFF",
+              "filament_mm": 215.369,
+              "required_g": 0.6423487087577991,
+              "segment": 1,
+              "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c"
+            },
+            {
+              "color": "#000000",
+              "filament_mm": 375.934,
+              "required_g": 1.1212417733199973,
+              "segment": 2,
+              "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+            }
+          ],
+          "sheet": {
+            "allowed": [
+              "smooth-pei"
+            ],
+            "material": "PLA",
+            "sheet": "smooth-pei",
+            "verdict": "passed"
+          },
+          "tools": [
+            {
+              "result": {
+                "need": {
+                  "buffer_g": 5.0,
+                  "required_g": 0.9291357583824258
+                },
+                "remaining_g": 640.9,
+                "spool": {
+                  "id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+                  "name": "Prusament PLA black"
+                },
+                "verdict": "passed"
+              },
+              "tool": 0
+            }
+          ],
+          "verdict": "passed"
+        },
+        "started_by": "01a21941-52e4-7321-bf91-27d31488102f"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:07:21.236072Z",
+      "source": "system"
+    },
+    {
+      "id": "01a21941-5313-7cc1-beba-fca52d1c6eec",
+      "kind": "preflight_checked",
+      "payload": {
+        "action_id": "01a21941-52e4-7321-bf91-27d31488102f",
+        "preflight": {
+          "checked_at": "2026-11-26T19:07:21.150388900Z",
+          "file_name": "two-colour-box.gcode",
+          "material": {
+            "loaded": "PLA",
+            "sliced_for": "PLA",
+            "spool": {
+              "id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+              "name": "Prusament PLA black"
+            },
+            "tool": 0,
+            "verdict": "passed"
+          },
+          "segments": [
+            {
+              "color": "#000000",
+              "filament_mm": 311.524,
+              "required_g": 0.9291357583824258,
+              "segment": 0,
+              "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+            },
+            {
+              "color": "#FFFFFF",
+              "filament_mm": 215.369,
+              "required_g": 0.6423487087577991,
+              "segment": 1,
+              "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c"
+            },
+            {
+              "color": "#000000",
+              "filament_mm": 375.934,
+              "required_g": 1.1212417733199973,
+              "segment": 2,
+              "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+            }
+          ],
+          "sheet": {
+            "allowed": [
+              "smooth-pei"
+            ],
+            "material": "PLA",
+            "sheet": "smooth-pei",
+            "verdict": "passed"
+          },
+          "tools": [
+            {
+              "result": {
+                "need": {
+                  "buffer_g": 5.0,
+                  "required_g": 0.9291357583824258
+                },
+                "remaining_g": 640.9,
+                "spool": {
+                  "id": "01a21932-93a1-7c31-9cce-4a2c0602b24b",
+                  "name": "Prusament PLA black"
+                },
+                "verdict": "passed"
+              },
+              "tool": 0
+            }
+          ],
+          "verdict": "passed"
+        }
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:07:21.235162600Z",
+      "source": "operator"
+    },
+    {
+      "id": "01a21941-5312-7ac3-a87d-63366926ffdc",
+      "kind": "action_requested",
+      "payload": {
+        "action": {
+          "action": "start_print",
+          "actor": "operator",
+          "file_name": "two-colour-box.gcode",
+          "manifest": {
+            "allowed": {},
+            "file_name": "two-colour-box.gcode",
+            "material": "Prusament PLA @COREONE 0.6",
+            "metadata": {
+              "bed_frame": "bed-20261126-130536.jpg in the run folder's preflight folder",
+              "bed_frame_age_s": "95",
+              "bed_frame_max_age_s": "120",
+              "bed_frame_sha256": "1d024f271cf8b46adb2988e97cea40e3c3df4946f6ace280ff769ea2866d2a6e",
+              "bed_frame_taken_at": "2026-11-26T13:05:46-06:00",
+              "bed_verdict": "clear",
+              "gcode_sha256": "90e7b30db1fef5fc98282175b4b9633169db331517b1b694c33cc89a3bf90356",
+              "octoprint_state": "Operational",
+              "preflight_file": "two-colour-box.gcode",
+              "preflight_passed": "true",
+              "preflight_report": "20261126-130536.json in the run folder's preflight folder",
+              "preflight_stamp": "20261126-130536",
+              "started_by": "the operator's start command",
+              "user_approved": "true"
+            },
+            "nozzle_diameter_mm": 0.6,
+            "segment_spools": [
+              {
+                "segment": 1,
+                "spool_id": "01a21932-92c3-7e61-a71c-79df1f4be04c"
+              },
+              {
+                "segment": 2,
+                "spool_id": "01a21932-93a1-7c31-9cce-4a2c0602b24b"
+              }
+            ],
+            "sheet": "smooth-pei",
+            "slicer_profile": "0.20mm STRUCTURAL @COREONE 0.6"
+          },
+          "reason": "the operator's start command: preflight 20261126-130536.json passed, the bed frame was judged clear, and a person approved this print"
+        },
+        "action_id": "01a21941-52e4-7321-bf91-27d31488102f",
+        "actor": "operator"
+      },
+      "print_id": "01a21941-52aa-7e52-a1a7-5223c08952fc",
+      "received_at": "2026-11-26T19:07:21.234699300Z",
+      "source": "operator"
+    }
+  ]
+}

@@ -18,3 +18,7 @@ tests/real-prints/**/*.gcode filter=lfs diff=lfs merge=lfs -text
 tests/real-prints/**/*.jpg filter=lfs diff=lfs merge=lfs -text
 tests/real-prints/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
 tests/real-prints/**/*.png filter=lfs diff=lfs merge=lfs -text
+
+# A real slice as OctoPrint printed it: Obico's plugin wrote some of its lines
+# with CRLF endings, and the offsets its tests assert are those bytes.
+crates/printobserver-core/tests/fixtures/real-prints/two-colour-box.gcode -text
