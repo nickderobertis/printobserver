@@ -212,6 +212,12 @@ impl Supervisor {
     /// scheduled check runs while its resumption is being recorded. Nothing
     /// when another read has claimed it first; otherwise the change and when
     /// the print's last check after a change had begun, to put back.
+    ///
+    /// Proven against the real server by `tests/skilltest-wiring`'s replay of
+    /// the real two-colour print, whose watch and scheduled check land
+    /// together and which recorded a resumption twice before this claim, and
+    /// by the core journey `reads_past_a_change_at_once_record_its_resumption_once`,
+    /// which holds the write open to force the overlap every time.
     fn claim_waiting(&self, print_id: PrintId, index: u32) -> Option<Claimed> {
         let waiting = {
             let mut memos = self.planned_memos();
@@ -238,6 +244,13 @@ impl Supervisor {
 
     /// Put a claimed change back as the one a print waits at, when recording
     /// its resumption failed, so that the next read records it instead.
+    ///
+    /// No test drives this through the real server: making its store refuse
+    /// one append mid-resumption would mean building a fault-injecting store
+    /// into the server for this one path. The core journeys
+    /// `a_resumption_the_store_refused_is_recorded_by_the_next_read` (no
+    /// earlier check) and `a_later_refused_resumption_keeps_the_earlier_checks_schedule`
+    /// (an earlier one) drive both arms through the supervisor instead.
     fn unclaim_waiting(&self, print_id: PrintId, claimed: Claimed) {
         {
             let mut checked = self
