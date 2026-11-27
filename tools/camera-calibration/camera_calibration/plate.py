@@ -237,7 +237,9 @@ def solids(text: str) -> list[Solid]:
     """Every connected piece of an ASCII STL mesh, with its enclosed volume, in file order.
 
     Raises:
-        PlateError: If the text is no ASCII STL of whole triangles.
+        PlateError: If the text is no ASCII STL of whole triangles, or a piece of
+            it is not closed, consistently wound and enclosing a positive volume:
+            an open or inside-out mesh has no volume that is its filament.
     """
     corners: list[Vertex] = []
     for line in text.splitlines():
@@ -248,6 +250,9 @@ def solids(text: str) -> list[Solid]:
             except ValueError as error:
                 msg = f"an STL vertex line {line.strip()!r} is no three numbers"
                 raise PlateError(msg) from error
+            if not all(math.isfinite(one) for one in (x, y, z)):
+                msg = f"an STL vertex line {line.strip()!r} is not three finite numbers"
+                raise PlateError(msg)
             corners.append((x, y, z))
     if not corners or len(corners) % 3:
         msg = f"the STL carries {len(corners)} vertices: no mesh of whole triangles"
@@ -268,14 +273,29 @@ def solids(text: str) -> list[Solid]:
     pieces: dict[Vertex, list[Triangle]] = {}
     for triangle in found:
         pieces.setdefault(root(triangle[0]), []).append(triangle)
-    return [
-        Solid(
-            len(piece),
-            sum(_signed_volume(triangle) for triangle in piece),
-            _footprint_centre(piece),
-        )
-        for piece in pieces.values()
-    ]
+    found_solids = []
+    for piece in pieces.values():
+        centre = _footprint_centre(piece)
+        volume = sum(_signed_volume(triangle) for triangle in piece)
+        where = f"the piece of the STL around ({centre[0]:g}, {centre[1]:g}) mm"
+        if not _closed(piece):
+            msg = f"{where} is not closed: an edge of it is not shared by exactly one other face"
+            raise PlateError(msg)
+        if not volume > 0:
+            msg = f"{where} encloses {volume:g} mm3: its faces point inward"
+            raise PlateError(msg)
+        found_solids.append(Solid(len(piece), volume, centre))
+    return found_solids
+
+
+def _closed(piece: list[Triangle]) -> bool:
+    """Whether every edge of a piece is met once, in the opposite direction, by another face."""
+    edges: dict[tuple[Vertex, Vertex], int] = {}
+    for triangle in piece:
+        for a, b in ((0, 1), (1, 2), (2, 0)):
+            edge = (triangle[a], triangle[b])
+            edges[edge] = edges.get(edge, 0) + 1
+    return all(count == 1 and edges.get((b, a)) == 1 for (a, b), count in edges.items())
 
 
 def _footprint_centre(piece: list[Triangle]) -> tuple[float, float]:
@@ -342,7 +362,8 @@ def _recorded(text: str) -> list[Solid]:
     """The marks a `telemetry` record names, each with its volume and centre.
 
     Raises:
-        PlateError: If the text is no such record, or its figures disagree.
+        PlateError: If the text is no such record, a figure of it is not finite, a mark
+            encloses no volume, or its figures disagree.
     """
     try:
         record = json.loads(text)
@@ -359,6 +380,15 @@ def _recorded(text: str) -> list[Solid]:
     except (ValueError, TypeError, KeyError, IndexError) as error:
         msg = f"no plate telemetry record: {error!r}"
         raise PlateError(msg) from error
+    if type(count) is not int:
+        msg = f"the record's mark_count {count!r} is no whole number"
+        raise PlateError(msg)
+    figures = [volume, *(one for piece in pieces for one in (piece.volume_mm3, *piece.centre_mm))]
+    if not all(math.isfinite(one) for one in figures) or not all(
+        piece.volume_mm3 > 0 for piece in pieces
+    ):
+        msg = "the record carries a volume or a centre that is not finite, or a mark of no volume"
+        raise PlateError(msg)
     if count != len(pieces) or not math.isclose(
         volume, sum(piece.volume_mm3 for piece in pieces), rel_tol=1e-9
     ):

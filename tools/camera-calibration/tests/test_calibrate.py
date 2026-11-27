@@ -679,8 +679,6 @@ def test_the_workspace_lock_holds_this_tools_requirements() -> None:
     expect.passing(run, describing="`uv lock --check` at the workspace root")
 
 
-# The calibration plate, and the coverage and whole-bed report it is printed for.
-
 PLATE = TOOL / "plates" / "calibration-plate-250x220.stl"
 TELEMETRY = TOOL / "telemetry" / "plate.json"
 """Where the plate's test records the generated mesh, for the filament budget to read."""
@@ -750,14 +748,20 @@ def _volume_mm3(piece: np.ndarray) -> float:
     return float(np.einsum("ij,ij->i", piece[:, 0], np.cross(piece[:, 1], piece[:, 2])).sum() / 6)
 
 
-def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(tmp_path: Path) -> None:
-    """The generated plate is nine closed single-layer marks reaching the whole printable area."""
-    run = _generate_plate(tmp_path)
-    expect.passing(run, describing="the plate generator for a 250 x 220 mm bed")
+@pytest.mark.parametrize(("width", "depth"), [(250.0, 220.0), (180.0, 320.0)])
+def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(
+    tmp_path: Path, width: float, depth: float
+) -> None:
+    """The generated plate is nine closed single-layer marks reaching the whole printable area.
+
+    The CORE One's bed and one of other proportions: the marks lie apart, and
+    together they are centred on the bed, as a slicer centring the plate leaves them.
+    """
+    run = _generate_plate(tmp_path, f"{width:g}x{depth:g}")
+    expect.passing(run, describing=f"the plate generator for a {width:g} x {depth:g} mm bed")
     expect.contains(run.stdout, "9 marks", describing="the generator's report")
     pieces = _pieces((tmp_path / "plate.stl").read_text(encoding="ascii"))
     expect.equal(len(pieces), 9, describing="the plate's marks")
-    width, depth = 250.0, 220.0
     boxes = []
     for piece in pieces:
         heights = sorted({round(float(z), 6) for z in piece[..., 2].ravel()})
@@ -796,6 +800,16 @@ def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(tmp_path:
     for name, (x, y) in places.items():
         expect.truth(reached(x, y, 10.0), describing=f"a mark within 10 mm of the {name}")
     expect.truth(reached(width / 2, depth / 2, 0.0), describing="a mark over the centre")
+    for at, (low, high) in enumerate(boxes):
+        for other_low, other_high in boxes[at + 1 :]:
+            apart = (high < other_low).any() or (other_high < low).any()
+            expect.truth(apart, describing=f"the mark from {low} to {high} lies apart")
+    lowest = np.min([low for low, _ in boxes], axis=0)
+    highest = np.max([high for _, high in boxes], axis=0)
+    expect.truth(
+        np.allclose((lowest + highest) / 2, [width / 2, depth / 2]),
+        describing=f"the marks, from {lowest} to {highest}, are centred on the bed",
+    )
     grams = sum(_volume_mm3(piece) for piece in pieces) / 1000 * 1.24
     expect.truth(grams <= PLATE_MASS_BOUND_G, describing=f"the plate takes {grams:.2f} g of PLA")
 
@@ -865,9 +879,20 @@ def test_plate_mass_reports_the_committed_plates_pla(tmp_path: Path) -> None:
         describing=f"the reported {reported['value']} g is the mesh's {grams} g",
     )
     expect.contains(reported["detail"], "9 marks", describing="the reported detail")
+    # Every facet's three vertices in the reverse order: the same mesh turned inside out.
+    committed = PLATE.read_text(encoding="ascii").splitlines()
+    lines, at = [], 0
+    while at < len(committed):
+        step = 3 if "vertex" in committed[at] else 1
+        lines += committed[at : at + step][::-1]
+        at += step
+    triangle = "  vertex 0 0 0\n  vertex 1 0 0\n  vertex 0 1 0\n"
     for name, text, refusal in (
         ("short.stl", "solid x\n  vertex 1 2\nendsolid x\n", "no three numbers"),
+        ("nan.stl", "solid x\n" + triangle.replace("1 0 0", "nan 0 0") + "endsolid x\n", "finite"),
         ("empty.stl", "solid x\nendsolid x\n", "carries 0 vertices"),
+        ("open.stl", f"solid x\n{triangle}endsolid x\n", "is not closed"),
+        ("inward.stl", "\n".join(lines) + "\n", "its faces point inward"),
         ("absent.stl", None, "absent.stl"),
     ):
         broken = tmp_path / name
@@ -913,8 +938,15 @@ def test_plate_mass_reports_a_recorded_plates_pla(tmp_path: Path) -> None:
     expect.contains(reported["detail"], "9 marks; mark at (25, 25) mm", describing="the detail")
     short = json.loads(record.read_text(encoding="utf-8"))
     short["mark_count"] = 8
+    negative = json.loads(record.read_text(encoding="utf-8"))
+    negative["mesh_volume_mm3"] = -negative["mesh_volume_mm3"]
+    for one in negative["marks"]:
+        one["volume_mm3"] = -one["volume_mm3"]
     for name, text, refusal in (
         ("short.json", json.dumps(short), "names 8 marks"),
+        ("counted.json", json.dumps({**short, "mark_count": 9.0}), "no whole number"),
+        ("negative.json", json.dumps(negative), "a mark of no volume"),
+        ("infinite.json", json.dumps({**short, "mesh_volume_mm3": "inf"}), "not finite"),
         ("bare.json", "{}", "no plate telemetry record"),
         ("absent.json", None, "absent.json"),
     ):
@@ -1055,6 +1087,30 @@ def test_the_whole_bed_report_is_the_fits_largest_disagreement_with_its_refits(
             abs(printed - largest) <= 0.005,
             describing=f"the printed {printed} px at z = {z} is the largest, {largest} px",
         )
+
+
+def test_a_refit_that_sees_the_bed_behind_it_disagrees_without_bound() -> None:
+    """A grid point an alternative camera sees behind it is an infinite disagreement.
+
+    Driven on the report's own measure rather than through a fit: no marks a
+    person can make refit to a camera behind the bed, so no run reaches this
+    path, and the report must still say such a camera holds nowhere on it.
+    """
+    camera = _camera_of(json.loads(COMMITTED.read_text(encoding="utf-8")))
+    behind = camera.vector()
+    behind[10] -= 1e5
+    points = _bed_grid(0.0)
+    bed = plate.Bed(250.0, 220.0)
+    expect.equal(
+        coverage.disagreement_px(camera, [camera], coverage.grid(bed, 0.0)),
+        0.0,
+        describing="the fit against itself",
+    )
+    expect.equal(
+        coverage.disagreement_px(camera, [camera, Camera.of_vector(behind)], points),
+        float("inf"),
+        describing="the fit against a camera seeing the whole bed behind it",
+    )
 
 
 @pytest.mark.parametrize(
