@@ -31,6 +31,10 @@
         "{workspaceRoot}/crates/printobserver-core/tests/fixtures/real-prints/**/*",
         "{workspaceRoot}/crates/printobserver-server/tests/fixtures/real-prints/**/*"
       ]
+    },
+    "budgets": {
+      "command": "bunx onebudgetspec check tools/camera-calibration/budgets.yaml",
+      "cache": false
     }
   }
 }

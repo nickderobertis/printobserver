@@ -17,6 +17,8 @@ the whole outline near each mark.
 from __future__ import annotations
 
 import itertools
+import os
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,6 +66,8 @@ class Fitted:
     camera: Camera
     residuals_px: np.ndarray
     frames: tuple[int, ...]
+    matched_mm: np.ndarray
+    """Where on the bed (N, 2) each mark's outline lies nearest it, under the fitted camera."""
 
     @property
     def rms_px(self) -> float:
@@ -103,6 +107,27 @@ def residuals_px(
         projected = np.hstack([camera.project(world[:, :3]), camera.project(world[:, 3:])])
         points = np.array([observed[index].px for index in members])
         out[members] = point_to_segments(points, projected)
+    return out
+
+
+def matched_points(
+    camera: Camera, observed: list[Observation], outlines: list[np.ndarray]
+) -> np.ndarray:
+    """Where on the bed (N, 2) each mark lies: the point of its outline nearest it under `camera`.
+
+    The nearest point is found in the image and carried back to the bed along
+    its segment, which is straight in the bed and nearly so in the image.
+    """
+    out = np.empty((len(observed), 2))
+    for index, (one, world) in enumerate(zip(observed, outlines, strict=True)):
+        a, b = camera.project(world[:, :3]), camera.project(world[:, 3:])
+        ab = b - a
+        length = (ab * ab).sum(1)
+        length[length == 0] = 1e-9
+        t = np.clip(((one.px - a) * ab).sum(1) / length, 0, 1)
+        distance = np.linalg.norm(a + t[:, None] * ab - one.px, axis=1)
+        nearest = int(np.argmin(np.nan_to_num(distance, nan=np.inf)))
+        out[index] = world[nearest, :2] + t[nearest] * (world[nearest, 3:5] - world[nearest, :2])
     return out
 
 
@@ -194,7 +219,12 @@ def fit(marks: Marks, image_size: tuple[int, int], start: Camera | None = None) 
     refined = _solve(best, observed, near, image_size, FINE_EVALUATIONS)
     near = [near_segments(refined, one) for one in observed]
     final = _solve(refined, observed, near, image_size, FINE_EVALUATIONS)
-    return Fitted(final, residuals_px(final, observed, near), tuple(one.frame for one in observed))
+    return Fitted(
+        final,
+        residuals_px(final, observed, near),
+        tuple(one.frame for one in observed),
+        matched_points(final, observed, near),
+    )
 
 
 def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Camera:
@@ -210,6 +240,19 @@ def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Cam
         _looking_at(target + np.array([dx, -150.0, 150.0]), target, roll, 1000.0, image_size)
         for dx, roll in itertools.product((-150.0, 0.0, 150.0), (0.0, 90.0, 180.0, 270.0))
     ]
-    fitted = [_solve(start, observed, coarse, image_size, COARSE_EVALUATIONS) for start in starts]
+    # Each start is fitted on its own, so they run side by side, one process
+    # each: this grid is most of a fit's time. Each start's result is the one
+    # it would reach alone, so the same marks still fit the same camera.
+    with ProcessPoolExecutor(max_workers=min(len(starts), os.cpu_count() or 1)) as pool:
+        fitted = list(
+            pool.map(
+                _solve,
+                starts,
+                itertools.repeat(observed),
+                itertools.repeat(coarse),
+                itertools.repeat(image_size),
+                itertools.repeat(COARSE_EVALUATIONS),
+            )
+        )
     above = [camera for camera in fitted if camera_position(camera)[2] > target[2]] or fitted
     return min(above, key=lambda camera: float(np.sum(residuals_px(camera, observed, coarse) ** 2)))

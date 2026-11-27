@@ -53,6 +53,7 @@ name = "camera-calibration"
 source = { virtual = "tools/camera-calibration" }
 dependencies = [
     { name = "numpy" },
+    { name = "onebudgetspec-sdk" },
     { name = "opencv-python-headless" },
     { name = "scipy" },
 ]
@@ -68,6 +69,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.3" },
+    { name = "onebudgetspec-sdk", specifier = "==0.1.5" },
     { name = "opencv-python-headless", specifier = ">=4.12" },
     { name = "scipy", specifier = ">=1.16" },
 ]
