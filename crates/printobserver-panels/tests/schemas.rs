@@ -1,4 +1,6 @@
-//! The calibration file's schema is generated from its one Rust type.
+//! The calibration file's schema is generated from its one Rust type, and so
+//! are the shapes of the view correction the server records, each in a file of
+//! its own named for its type.
 //!
 //! The `printobserver-types:schemas` graph target runs this beside the other
 //! declaring crates' `schemas` tests: with `PRINTOBSERVER_SCHEMAS=write` it
@@ -10,17 +12,33 @@
 #[path = "support/schema_files.rs"]
 mod schema_files;
 
-use printobserver_panels::CameraCalibration;
+use printobserver_panels::{
+    CameraCalibration, InconclusiveReason, ReferenceLandmark, ViewCorrection, ViewModel,
+    ViewOutcome,
+};
 use printobserver_types::contract::schema_of;
+use printobserver_types::schemars::JsonSchema;
+
+/// One type's schema, under the file named for it.
+fn named<T: JsonSchema>() -> (String, printobserver_types::serde_json::Value) {
+    (format!("{}.json", T::schema_name()), schema_of::<T>())
+}
 
 #[test]
 fn the_calibration_schema_is_what_the_type_generates() {
     let findings = schema_files::reconcile(
         "printobserver-panels",
-        &[(
-            "camera-calibration.json".to_owned(),
-            schema_of::<CameraCalibration>(),
-        )],
+        &[
+            (
+                "camera-calibration.json".to_owned(),
+                schema_of::<CameraCalibration>(),
+            ),
+            named::<ViewCorrection>(),
+            named::<ViewModel>(),
+            named::<ReferenceLandmark>(),
+            named::<ViewOutcome>(),
+            named::<InconclusiveReason>(),
+        ],
     );
     assert!(findings.is_empty(), "{findings:#?}");
     let schema = schema_of::<CameraCalibration>();

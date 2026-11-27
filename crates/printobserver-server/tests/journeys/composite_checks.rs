@@ -241,6 +241,7 @@ fn expected_composite(
         object_layer_below: below.as_ref(),
         print_z_mm: index.layer_z_mm(layer).expect("a height"),
         calibration,
+        correction: None,
     })
     .expect("the composite composes")
     .jpeg

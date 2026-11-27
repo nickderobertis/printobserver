@@ -62,8 +62,15 @@ pub fn decoded(case: &str, file: &str) -> RgbImage {
         .to_rgb8()
 }
 
-/// The print height a frame was recorded at, from the fixtures' manifest.
-pub fn recorded_z(case: &str, file: &str) -> f64 {
+/// The file position a frame was recorded at, from the fixtures' manifest.
+pub fn recorded_position(case: &str, file: &str) -> u64 {
+    manifest_entry(case, file)["file_position_bytes"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("{case}/{file} records a file position"))
+}
+
+/// One frame's entry in the fixtures' manifest.
+fn manifest_entry(case: &str, file: &str) -> Value {
     let manifest: Value = serde_json::from_slice(
         &std::fs::read(fixtures().join("frames.json")).expect("the manifest is there"),
     )
@@ -73,7 +80,14 @@ pub fn recorded_z(case: &str, file: &str) -> f64 {
         .expect("frames")
         .iter()
         .find(|entry| entry["case"] == case && entry["file"] == file)
-        .and_then(|entry| entry["z_mm"].as_f64())
+        .cloned()
+        .unwrap_or_else(|| panic!("{case}/{file} is in the manifest"))
+}
+
+/// The print height a frame was recorded at, from the fixtures' manifest.
+pub fn recorded_z(case: &str, file: &str) -> f64 {
+    manifest_entry(case, file)["z_mm"]
+        .as_f64()
         .unwrap_or_else(|| panic!("{case}/{file} records a height"))
 }
 
@@ -104,6 +118,7 @@ fn gcode_of(case: &str) -> PathBuf {
             "crates/printobserver-server/tests/fixtures/real-prints/bubbler-guard-and-pad.gcode",
         ),
         "petg-spool-jam-air-print" => core.join("air-print-plate-three-layers.gcode"),
+        "two-colour-planned-change" => core.join("two-colour-box.gcode"),
         other => panic!("no slice for {other}"),
     }
 }
@@ -112,8 +127,11 @@ fn gcode_of(case: &str) -> PathBuf {
 /// G-code streamed in 64 KiB pieces and spooled as the server spools it.
 pub fn index(case: &str) -> Arc<GcodeIndex> {
     static HELD: OnceLock<Mutex<BTreeMap<String, Arc<GcodeIndex>>>> = OnceLock::new();
-    let held = HELD.get_or_init(Mutex::default);
-    if let Some(index) = held.lock().expect("held").get(case) {
+    // Held across the build: two tests building one case at once would write
+    // its one spool file together, and a reader of the other's toolpath would
+    // find it cut short.
+    let mut held = HELD.get_or_init(Mutex::default).lock().expect("held");
+    if let Some(index) = held.get(case) {
         return Arc::clone(index);
     }
     let spool = spool_dir().join(format!("{case}.gcode"));
@@ -123,9 +141,7 @@ pub fn index(case: &str) -> Arc<GcodeIndex> {
         let _ = builder.take(piece);
     }
     let index = Arc::new(builder.finish());
-    held.lock()
-        .expect("held")
-        .insert(case.to_owned(), Arc::clone(&index));
+    held.insert(case.to_owned(), Arc::clone(&index));
     index
 }
 

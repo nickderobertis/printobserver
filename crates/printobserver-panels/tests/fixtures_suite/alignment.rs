@@ -8,7 +8,9 @@
 
 use printobserver_core::LayerToolpath;
 use printobserver_panels::{
-    AlignmentInputs, AlignmentVerdict, BedPose, CameraCalibration, verify_first_layer_alignment,
+    AlignmentInputs, AlignmentVerdict, BedPose, CameraCalibration, FirstLayerInputs,
+    FirstLayerVerdict, InconclusiveReason, ViewCorrection, judge_first_layer,
+    verify_first_layer_alignment,
 };
 
 use crate::support::{calibration, frame, index, recorded_z, snapshot_url, toolpath};
@@ -52,6 +54,28 @@ fn verdict(
         calibration,
     })
     .expect("the check rules on a calibrated frame")
+}
+
+/// The first-layer judgement of one frame, the nozzle placed nowhere: the
+/// controls test the search's confidence rule, not the coverage test.
+fn judgement(
+    calibration: &CameraCalibration,
+    jpeg: &[u8],
+    first: &LayerToolpath,
+    print_z: f64,
+) -> FirstLayerVerdict {
+    judge_first_layer(&FirstLayerInputs {
+        alignment: AlignmentInputs {
+            frame_jpeg: jpeg,
+            camera_snapshot_url: &snapshot_url(),
+            first_layer: first,
+            print_z_mm: print_z,
+            calibration,
+        },
+        nozzle_xy_mm: None,
+    })
+    .expect("the check rules on a calibrated frame")
+    .verdict
 }
 
 /// How far, on average, a first layer's projection moves between two
@@ -135,11 +159,25 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
         );
 
         let healthy = verdict(&calibration, &frame(case, past), &first, print_z);
-        observed.push(format!("{case}: healthy {:.1} px", healthy.offset_px));
+        observed.push(format!(
+            "{case}: healthy {:.1} px at contrast {:.1}",
+            healthy.offset_px, healthy.match_strength
+        ));
         assert!(
             healthy.passed && healthy.offset_px <= threshold,
             "{case}/{past}: offset {:.1} px against a threshold of {threshold} px; it should pass",
             healthy.offset_px
+        );
+        assert_eq!(
+            judgement(&calibration, &frame(case, past), &first, print_z),
+            FirstLayerVerdict::Passed
+        );
+        let correction = ViewCorrection::translation(healthy.shift_px, Vec::new());
+        let [cx, cy] = correction.shift_px();
+        assert!(
+            (cx - healthy.shift_px[0]).hypot(cy - healthy.shift_px[1]) < 1e-9,
+            "{case}: the correction a pass takes is its found shift, {:?}, not [{cx}, {cy}]",
+            healthy.shift_px
         );
 
         let bare = verdict(&calibration, &frame(case, empty), &first, print_z);
@@ -148,6 +186,11 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
             !bare.passed,
             "{case}/{empty} (an empty bed): offset {:.1} px against a threshold of {threshold} px; it should fail",
             bare.offset_px
+        );
+        assert_eq!(
+            judgement(&calibration, &frame(case, empty), &first, print_z),
+            FirstLayerVerdict::Inconclusive(InconclusiveReason::NotClearlyFound),
+            "{case}/{empty}: an empty bed is not clearly found"
         );
 
         let wrong = moved_by(&calibration, &first, print_z, 49.0);
@@ -165,6 +208,11 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
             !off.passed,
             "{case}/{past} with the projection moved {moved:.1} px: offset {:.1} px against a threshold of {threshold} px; it should fail",
             off.offset_px
+        );
+        assert_eq!(
+            judgement(&wrong, &frame(case, past), &first, print_z),
+            FirstLayerVerdict::Inconclusive(InconclusiveReason::NotClearlyFound),
+            "{case}/{past}: a projection moved {moved:.1} px is not clearly found"
         );
     }
     eprintln!("{observed:#?}");

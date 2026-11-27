@@ -1,5 +1,5 @@
 {
- "about": "Plain copies of recorded real-print frames, outside the Git LFS paths: each entry names the case frame it was copied from, when it was captured, and the print height (z_mm) and file position the case records for it.",
+ "about": "Plain copies of recorded real-print frames, outside the Git LFS paths: each entry names the case frame it was copied from, when it was captured, and the print height (z_mm) and file position the case records for it; a frame its case does not keep names the history it was stored in.",
  "frames": [
   {
    "case": "jar-top-wrong-material-first-layer-detach",
@@ -243,6 +243,177 @@
    "z_mm": 5.8,
    "progress_pct": 9.8,
    "file_position_bytes": 3634575
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "130805-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:08:05",
+   "captured_at": "2026-11-26 13:08:05",
+   "z_mm": 0.2,
+   "progress_pct": null,
+   "file_position_bytes": 1138
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "131006-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:10:06",
+   "captured_at": "2026-11-26 13:10:06",
+   "z_mm": 0.2,
+   "progress_pct": null,
+   "file_position_bytes": 1480
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "131207-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:12:07",
+   "captured_at": "2026-11-26 13:12:07",
+   "z_mm": 0.2,
+   "progress_pct": null,
+   "file_position_bytes": 4224
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "131408-periodic_observation.jpg",
+   "source": "tests/real-prints/two-colour-planned-change/agent-131408-obs-covered-l10.jpg",
+   "captured_at": "2026-11-26 13:14:08",
+   "z_mm": 2.0,
+   "progress_pct": null,
+   "file_position_bytes": 24738
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "131609-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:16:09",
+   "captured_at": "2026-11-26 13:16:09",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "131810-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:18:10",
+   "captured_at": "2026-11-26 13:18:10",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "132011-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:20:11",
+   "captured_at": "2026-11-26 13:20:11",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "132212-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:22:12",
+   "captured_at": "2026-11-26 13:22:12",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "132413-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:24:13",
+   "captured_at": "2026-11-26 13:24:13",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "132614-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:26:14",
+   "captured_at": "2026-11-26 13:26:14",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "132815-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:28:15",
+   "captured_at": "2026-11-26 13:28:15",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "133015-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:30:15",
+   "captured_at": "2026-11-26 13:30:15",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "133216-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:32:16",
+   "captured_at": "2026-11-26 13:32:16",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "133417-periodic_observation.jpg",
+   "source": "the 2026-11-26 print's history: the frame stored for its periodic_observation check at 13:34:17",
+   "captured_at": "2026-11-26 13:34:17",
+   "z_mm": 2.6,
+   "progress_pct": null,
+   "file_position_bytes": 27748
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "133618-periodic_observation.jpg",
+   "source": "tests/real-prints/two-colour-planned-change/agent-133618-obs-l14.jpg",
+   "captured_at": "2026-11-26 13:36:18",
+   "z_mm": 2.8,
+   "progress_pct": null,
+   "file_position_bytes": 29304
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "134200-filament_change_planned_resumed.jpg",
+   "source": "tests/real-prints/two-colour-planned-change/agent-134200-resumed-white-l24.jpg",
+   "captured_at": "2026-11-26 13:42:00",
+   "z_mm": 4.6,
+   "progress_pct": null,
+   "file_position_bytes": 39662
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "134401-periodic_observation.jpg",
+   "source": "tests/real-prints/two-colour-planned-change/agent-134401-obs-white-l34.jpg",
+   "captured_at": "2026-11-26 13:44:01",
+   "z_mm": 6.8,
+   "progress_pct": null,
+   "file_position_bytes": 51973
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "152603-filament_change_planned_resumed.jpg",
+   "source": "tests/real-prints/two-colour-planned-change/agent-152603-resumed-black-l43.jpg",
+   "captured_at": "2026-11-26 15:26:03",
+   "z_mm": 8.6,
+   "progress_pct": null,
+   "file_position_bytes": 62152
+  },
+  {
+   "case": "two-colour-planned-change",
+   "file": "152804-periodic_observation.jpg",
+   "source": "tests/real-prints/two-colour-planned-change/agent-152804-obs-black-l54.jpg",
+   "captured_at": "2026-11-26 15:28:04",
+   "z_mm": 10.8,
+   "progress_pct": null,
+   "file_position_bytes": 74248
   }
  ]
 }

@@ -79,6 +79,7 @@ fn compose_at(
         object_layer_below: None,
         print_z_mm: print_z,
         calibration: &calibration,
+        correction: None,
     })
     .expect("the check composes");
     (image, path)
@@ -289,6 +290,7 @@ fn a_support_only_layer_shows_the_part_below_in_grey() {
         object_layer_below: Some(&under),
         print_z_mm: print_z,
         calibration: &calibration,
+        correction: None,
     })
     .expect("the check composes");
     let samples = sampled(&calibration, &under, &[ExtrusionKind::Wall], print_z);

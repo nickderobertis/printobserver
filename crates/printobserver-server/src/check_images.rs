@@ -330,6 +330,7 @@ pub fn compose_at(
         object_layer_below: below.as_ref(),
         print_z_mm,
         calibration,
+        correction: None,
     })
     .map_err(WholeFrameReason::Refused)
 }
