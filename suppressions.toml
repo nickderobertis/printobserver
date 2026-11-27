@@ -4951,7 +4951,7 @@ reason = "A namespace of assertions read as `expect.equal(...)`, matching the vo
 rule = "invalid_states_unrepresentable"
 file = "crates/printobserver-panels/src/alignment.rs"
 site = "pub struct AlignmentVerdict {"
-reason = "The task's contract fixes this type as `AlignmentVerdict { offset_px: f64, passed: bool }`, which the server reads. Only `verify_first_layer_alignment` builds one, setting `passed` from `offset_px` and the calibration's threshold, so no verdict this crate answers is contradictory."
+reason = "The task's contract fixes this type's `offset_px: f64` and `passed: bool`, which the server reads, beside the search's `shift_px` and `match_strength`. Only `verify_first_layer_alignment` builds one, setting `offset_px` as the length of `shift_px` and `passed` from it, the contrast and the calibration's threshold, so no verdict this crate answers is contradictory."
 
 [[suppression]]
 rule = "S603"
