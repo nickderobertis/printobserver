@@ -276,7 +276,7 @@ def _positive(text: str) -> float:
     return value
 
 
-def _uncovered(fitted: fitting.Fitted, bed: tuple[float, float]) -> str | None:
+def _uncovered(fitted: fitting.Fitted, bed: plate.Bed) -> str | None:
     """What the matched marks leave uncovered of the bed, said in a sentence, or `None`."""
     missing = coverage.uncovered(fitted.matched_mm, bed)
     if not missing:
@@ -284,7 +284,7 @@ def _uncovered(fitted: fitting.Fitted, bed: tuple[float, float]) -> str | None:
     cells = ", ".join(missing)
     return (
         f"the matched marks reach none of the {cells} cell{'s' * (len(missing) > 1)} of a "
-        f"{coverage.CELLS} x {coverage.CELLS} grid over the {bed[0]:g} x {bed[1]:g} mm "
+        f"{coverage.CELLS} x {coverage.CELLS} grid over the {bed.width_mm:g} x {bed.depth_mm:g} mm "
         f"printable area; a fit needs marks in the bed's four corner cells and its centre "
         f"cell, as the calibration plate's marks lie"
     )
@@ -295,7 +295,7 @@ def _whole_bed(
     marks: Marks,
     size: tuple[int, int],
     start: Camera | None,
-    bed: tuple[float, float],
+    bed: plate.Bed,
 ) -> str:
     """The whole-bed report: the fit against the same fit over perturbed marks."""
     alternatives = [
@@ -424,7 +424,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(whole_bed)
     if uncovered is not None:
-        print(f"--allow-uncovered: {uncovered}; trust this fit only near its marks")
+        print(
+            f"camera_calibration: --allow-uncovered: {uncovered}; trust this fit only near "
+            f"its marks",
+            file=sys.stderr,
+        )
     return 0
 
 

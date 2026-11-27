@@ -22,6 +22,7 @@ import numpy as np
 
 from camera_calibration.marks import Curve, Marks
 from camera_calibration.model import Camera
+from camera_calibration.plate import Bed
 
 CELLS = 3
 """The grid the printable area is cut into, along each side."""
@@ -48,16 +49,16 @@ PERTURBATION_SEEDS = (1, 2, 3)
 """The seeds of the perturbed refits the whole-bed report compares the fit with."""
 
 
-def cell_of(point: tuple[float, float], bed: tuple[float, float]) -> tuple[int, int] | None:
+def cell_of(point: tuple[float, float], bed: Bed) -> tuple[int, int] | None:
     """The grid cell a bed point lies in, or `None` for a point off the printable area."""
     x, y = point
-    width, depth = bed
+    width, depth = bed.width_mm, bed.depth_mm
     if not (0 <= x <= width and 0 <= y <= depth):
         return None
     return (min(int(x / width * CELLS), CELLS - 1), min(int(y / depth * CELLS), CELLS - 1))
 
 
-def uncovered(points: np.ndarray, bed: tuple[float, float]) -> list[str]:
+def uncovered(points: np.ndarray, bed: Bed) -> list[str]:
     """The names of the required cells no bed point (N, 2) lies in, in `REQUIRED_CELLS` order."""
     reached = {cell_of((float(x), float(y)), bed) for x, y in points}
     return [name for cell, name in REQUIRED_CELLS.items() if cell not in reached]
@@ -77,10 +78,10 @@ def perturbed(marks: Marks, seed: int) -> Marks:
     return replace(marks, frames=tuple(frames))
 
 
-def grid(bed: tuple[float, float], z: float) -> np.ndarray:
+def grid(bed: Bed, z: float) -> np.ndarray:
     """The report's points (`REPORT_GRID` squared, 3) across the bed at world height `z`."""
-    xs = np.linspace(0.0, bed[0], REPORT_GRID)
-    ys = np.linspace(0.0, bed[1], REPORT_GRID)
+    xs = np.linspace(0.0, bed.width_mm, REPORT_GRID)
+    ys = np.linspace(0.0, bed.depth_mm, REPORT_GRID)
     x, y = np.meshgrid(xs, ys)
     return np.column_stack([x.ravel(), y.ravel(), np.full(x.size, z)])
 

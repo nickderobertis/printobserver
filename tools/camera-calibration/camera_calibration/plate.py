@@ -22,6 +22,7 @@ import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from onebudgetspec_sdk import report
 
@@ -52,6 +53,13 @@ LEAST_BED_MM = 2 * (INSET_MM + ARM_MM) + ARM_MM
 centre marks overlapping."""
 
 
+class Bed(NamedTuple):
+    """A printable area, in millimetres from its front-left corner."""
+
+    width_mm: float
+    depth_mm: float
+
+
 class PlateError(ValueError):
     """A bed the plate's marks cannot be laid on."""
 
@@ -68,7 +76,7 @@ class Mark:
     kernel: tuple[float, float]
 
 
-def bed_mm(text: str) -> tuple[float, float]:
+def bed_mm(text: str) -> Bed:
     """A `<W>x<D>` printable area in millimetres, refused unless both sides are positive.
 
     Raises:
@@ -82,7 +90,7 @@ def bed_mm(text: str) -> tuple[float, float]:
     if not all(math.isfinite(side) and side > 0 for side in (width, depth)):
         msg = f"{text!r} is not a <W>x<D> printable area in millimetres, such as 250x220"
         raise argparse.ArgumentTypeError(msg)
-    return width, depth
+    return Bed(width, depth)
 
 
 def _counter_clockwise(points: list[tuple[float, float]]) -> tuple[tuple[float, float], ...]:
@@ -136,13 +144,13 @@ def _cross(name: str, x: float, y: float) -> Mark:
     return Mark(name, _counter_clockwise(points), (x, y))
 
 
-def marks(bed: tuple[float, float]) -> tuple[Mark, ...]:
+def marks(bed: Bed) -> tuple[Mark, ...]:
     """The plate's nine marks for a printable area `bed` (width, depth) in millimetres.
 
     Raises:
         PlateError: If a side is too short for the marks to lie apart.
     """
-    width, depth = bed
+    width, depth = bed.width_mm, bed.depth_mm
     if min(width, depth) < LEAST_BED_MM:
         msg = (
             f"a {width:g} x {depth:g} mm bed is too small for the plate: each side needs at "
@@ -195,13 +203,13 @@ def _normal(triangle: Triangle) -> Vertex:
     return (nx / length, ny / length, nz / length)
 
 
-def stl(bed: tuple[float, float]) -> bytes:
+def stl(bed: Bed) -> bytes:
     """The plate for a printable area `bed`, as ASCII STL with LF line endings.
 
     Raises:
         PlateError: If a side is too short for the marks to lie apart.
     """
-    name = f"printobserver-calibration-plate-{bed[0]:g}x{bed[1]:g}"
+    name = f"printobserver-calibration-plate-{bed.width_mm:g}x{bed.depth_mm:g}"
     lines = [f"solid {name}"]
     for mark in marks(bed):
         for triangle in triangles(mark):

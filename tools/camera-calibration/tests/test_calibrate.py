@@ -31,6 +31,7 @@ from camera_calibration import coverage, gcode, plate
 from camera_calibration import fit as fitting
 from camera_calibration.marks import load
 from camera_calibration.model import Camera
+from onebudgetspec_sdk import list_budgets
 
 TOOL = Path(__file__).resolve().parents[1]
 ROOT = TOOL.parents[1]
@@ -187,7 +188,7 @@ def test_the_fit_reproduces_the_committed_calibration(
         describing=f"the committed marks' whole-bed report, {surface} and {below} px, flags them",
     )
     expect.contains(
-        run.stdout,
+        run.stderr,
         "--allow-uncovered: the matched marks reach none of the front-left, front-right, "
         "back-left, back-right cells",
         describing="the coverage the committed marks leave, named under the opt-out",
@@ -351,6 +352,7 @@ def test_the_readme_states_the_bounds_these_tests_hold() -> None:
         f"Each corner's arms and each bar are {plate.ARM_MM:g} mm long and "
         f"{plate.WIDTH_MM:g} mm wide",
         f"about {plate_grams:.1f} g of PLA",
+        f"plates/{PLATE.name}",
     ]
     for bound in stated:
         expect.contains(readme, bound, describing="the README's statement of the fit's bounds")
@@ -677,8 +679,12 @@ def test_the_workspace_lock_holds_this_tools_requirements() -> None:
 # The calibration plate, and the coverage and whole-bed report it is printed for.
 
 PLATE = TOOL / "plates" / "calibration-plate-250x220.stl"
-PLATE_MASS_BOUND_G = 1.5
-"""The `calibration-plate-filament-grams` budget's target."""
+PLATE_MASS_BOUND_G = next(
+    one.threshold
+    for one in list_budgets(paths=[TOOL / "budgets.yaml"]).budgets
+    if one.id == "calibration-plate-filament-grams"
+)
+"""The `calibration-plate-filament-grams` budget's target, as `budgets.yaml` registers it."""
 
 PLATE_HEIGHTS_MM = (0.0, 10.0, 20.0, 30.0, 40.0)
 """The bed lowered to five heights spanning 40 mm, one frame at each, as the README asks."""
@@ -696,7 +702,7 @@ COMMITTED_WHOLE_BED_PX = 100.0
 """What the committed marks' whole-bed report reads over, as the README states."""
 
 
-def _plate_stl(directory: Path, bed: str = BED_MM) -> subprocess.CompletedProcess[str]:
+def _generate_plate(directory: Path, bed: str = BED_MM) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
         [
             sys.executable,
@@ -741,7 +747,7 @@ def _volume_mm3(piece: np.ndarray) -> float:
 
 def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(tmp_path: Path) -> None:
     """The generated plate is nine closed single-layer marks reaching the whole printable area."""
-    run = _plate_stl(tmp_path)
+    run = _generate_plate(tmp_path)
     expect.passing(run, describing="the plate generator for a 250 x 220 mm bed")
     expect.contains(run.stdout, "9 marks", describing="the generator's report")
     pieces = _pieces((tmp_path / "plate.stl").read_text(encoding="ascii"))
@@ -791,7 +797,7 @@ def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(tmp_path:
 
 def test_the_committed_plate_is_what_the_generator_writes(tmp_path: Path) -> None:
     """The committed 250 x 220 mm plate is byte for byte the generator's output."""
-    expect.passing(_plate_stl(tmp_path), describing="the plate generator")
+    expect.passing(_generate_plate(tmp_path), describing="the plate generator")
     expect.equal(
         (tmp_path / "plate.stl").read_bytes() == PLATE.read_bytes(),
         True,
@@ -807,7 +813,7 @@ def test_a_bed_the_plate_cannot_be_laid_on_is_refused(
     tmp_path: Path, bed: str, refusal: str
 ) -> None:
     """A bed too small for the marks, or no bed at all, is refused with exit 2 and no file."""
-    run = _plate_stl(tmp_path, bed)
+    run = _generate_plate(tmp_path, bed)
     expect.equal(run.returncode, 2, describing="the exit status")
     expect.contains(run.stderr, refusal, describing="the refusal")
     expect.truth(not (tmp_path / "plate.stl").exists(), describing="no plate is written")
@@ -855,7 +861,7 @@ def test_plate_mass_reports_the_committed_plates_pla(tmp_path: Path) -> None:
 def test_a_plate_path_that_cannot_be_written_is_refused(tmp_path: Path) -> None:
     """A plate written over a directory is refused with exit 2, naming the path."""
     (tmp_path / "plate.stl").mkdir()
-    run = _plate_stl(tmp_path)
+    run = _generate_plate(tmp_path)
     expect.equal(run.returncode, 2, describing="the exit status")
     expect.contains(run.stderr, str(tmp_path / "plate.stl"), describing="the refusal")
 
@@ -875,8 +881,8 @@ def _plate_marks(
     committed = json.loads(MARKS.read_text(encoding="utf-8"))
     image = FRAMES / committed["frames"][0]["case"] / committed["frames"][0]["file"]
     slice_lines = [";LAYER_CHANGE", f";Z:{PLATE_LAYER_MM}", "G90", "M83"]
-    kept = [mark for mark in plate.marks((250.0, 220.0)) if keep(mark.name)]
-    for mark in plate.marks((250.0, 220.0)):
+    kept = [mark for mark in plate.marks(plate.Bed(250.0, 220.0)) if keep(mark.name)]
+    for mark in plate.marks(plate.Bed(250.0, 220.0)):
         ring = [*mark.outline, mark.outline[0]]
         slice_lines += [";TYPE:External perimeter", f"G1 X{ring[0][0]} Y{ring[0][1]}"]
         slice_lines += [f"G1 X{x} Y{y} E0.05" for x, y in ring[1:]]
