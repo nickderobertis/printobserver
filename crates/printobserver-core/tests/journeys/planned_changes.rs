@@ -29,7 +29,7 @@ use printobserver_core::{
     SegmentSpool, ShownImage, SpoolRecord, block_on,
 };
 use printobserver_printer_api::{BoxFuture, PrinterError, PrinterState};
-use printobserver_types::{EventPayload, EventRecord, PrintId};
+use printobserver_types::{EventKind, EventPayload, EventRecord, PrintId};
 use printobserver_vision_api::NormalizedAlert;
 
 use crate::fakes::{PrinterMethod, printer_snapshot};
@@ -405,6 +405,46 @@ fn a_print_frozen_at_a_planned_change_is_left_alone_until_it_carries_on() {
     assert_eq!(next.len(), 1, "no check ran an interval after the change's");
     run(&world, next);
     assert_eq!(world.core.until_next_observation(), interval);
+    world.journal.assert_no_violations();
+}
+
+/// Two reads finding the job carried on past the change at once — the watch's
+/// and the scheduled check's land together on a real server — record its
+/// resumption once and claim one check: the second read, arriving while the
+/// first is still writing it, finds the change already taken.
+#[test]
+fn two_reads_past_a_change_at_once_record_its_resumption_once() {
+    let (world, _, _) = colour_world();
+    let print_id = printing(&world);
+    world.printer.extrudes(
+        FILE,
+        line_offset("M600", 0),
+        vec![on_tool(0, fed_before(0))],
+    );
+    printing_at(&world, past_change(0));
+    assert!(
+        watch(&world).is_empty(),
+        "reaching the change claimed a turn"
+    );
+    world.clock.advance(120);
+
+    printing_at(&world, carried_on_from(0));
+    let resumed_kind =
+        EventKind::new(FilamentChangePlannedResumedPayload::KIND).expect("the kind is one");
+    world.store.holds_appends_of(resumed_kind);
+    let (first, second) = std::thread::scope(|scope| {
+        let first = scope.spawn(|| watch(&world));
+        world.store.await_a_held_append();
+        let second = watch(&world);
+        world.store.lets_appends_through();
+        (first.join().expect("the first read ends"), second)
+    });
+    assert!(second.is_empty(), "the second read claimed a check");
+    assert_eq!(first.len(), 1, "the first read claimed no check");
+    let resumed = of_print::<FilamentChangePlannedResumedPayload>(&world, print_id);
+    assert_eq!(resumed.len(), 1, "{resumed:?}");
+    assert_eq!(resumed[0].1.change, change(0));
+    run(&world, first);
     world.journal.assert_no_violations();
 }
 

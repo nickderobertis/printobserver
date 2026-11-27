@@ -197,6 +197,32 @@ impl Supervisor {
         Ok(memo)
     }
 
+    /// Take the change a print waits at from its memo, when it is still the
+    /// one numbered `index`: nothing when another read has claimed it first.
+    fn claim_waiting(&self, print_id: PrintId, index: u32) -> Option<Waiting> {
+        let mut memos = self.planned_memos();
+        let memo = memos.get_mut(&print_id)?;
+        if memo
+            .waiting
+            .as_ref()
+            .is_some_and(|waiting| waiting.reached.change.index == index)
+        {
+            memo.waiting.take()
+        } else {
+            None
+        }
+    }
+
+    /// Put a claimed change back as the one a print waits at, when recording
+    /// its resumption failed, so that the next read records it instead.
+    fn unclaim_waiting(&self, print_id: PrintId, waiting: Waiting) {
+        let mut memos = self.planned_memos();
+        let memo = memos.entry(print_id).or_default();
+        if memo.waiting.is_none() {
+            memo.waiting = Some(waiting);
+        }
+    }
+
     /// The memos, held for one read or write.
     fn planned_memos(&self) -> std::sync::MutexGuard<'_, BTreeMap<PrintId, PlannedMemo>> {
         self.planned_memos
@@ -322,9 +348,18 @@ impl Supervisor {
         if let Some(waiting) = memo.waiting {
             let change = &waiting.reached.change;
             if position > change.offset_bytes + crate::gcode_index::PLANNED_CHANGE_REACH_BYTES {
-                return self
-                    .resume_planned_change(print, waiting, job, position)
+                // Claimed before the first await, so that of two reads past the
+                // change at once only one records its resumption.
+                let Some(claimed) = self.claim_waiting(print.id, change.index) else {
+                    return Ok(None);
+                };
+                let resumed = self
+                    .resume_planned_change(print, claimed.clone(), job, position)
                     .await;
+                if resumed.is_err() {
+                    self.unclaim_waiting(print.id, claimed);
+                }
+                return resumed;
             }
             return Ok(None);
         }
