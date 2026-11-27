@@ -1035,3 +1035,27 @@ def test_marks_only_near_the_centre_are_refused_naming_every_uncovered_cell(
     expect.truth(
         not (tmp_path / "calibration.json").exists(), describing="no calibration is written"
     )
+
+
+def test_a_slice_rewritten_between_fits_is_read_again(tmp_path: Path) -> None:
+    """The slices a run parses once are read again when a slice has changed on disk."""
+    marks = _plate_marks(tmp_path)
+    before = fitting.observations(load(marks))
+    expect.equal(
+        [one.segments.tolist() for one in fitting.observations(load(marks))],
+        [one.segments.tolist() for one in before],
+        describing="the outlines read twice from one unchanged slice",
+    )
+    slice_path = tmp_path / "plate.gcode"
+    moved = [
+        re.sub(r"X([0-9.]+)", lambda word: f"X{float(word.group(1)) + 1:g}", line)
+        for line in slice_path.read_text(encoding="utf-8").splitlines()
+    ]
+    slice_path.write_text("\n".join(moved) + "\n; moved 1 mm along X\n", encoding="utf-8")
+    after = fitting.observations(load(marks))
+    shift = after[0].segments - before[0].segments
+    expect.equal(
+        [shift[:, 0].min(), shift[:, 0].max()],
+        [1.0, 1.0],
+        describing="every outline segment's start, read from the rewritten slice",
+    )
