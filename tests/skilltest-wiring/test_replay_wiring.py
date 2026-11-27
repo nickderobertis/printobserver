@@ -430,7 +430,11 @@ def _scenarios() -> Iterator[tuple[str, dict[str, Any], dict[str, Any]]]:
 
 
 def test_a_recorded_position_is_the_job_snapshot_of_its_recorded_event() -> None:
-    """Every `recorded` position, over every scenario, against the history that holds it."""
+    """Every `recorded` position, over every scenario, against the history that holds it.
+
+    A planned change's resumption records the job read it carried on at as its
+    `position`, where every other event keeps its `job` snapshot.
+    """
     checked = 0
     for name, document, scenario in _scenarios():
         if scenario.get("file_position_source") != "recorded":
@@ -442,11 +446,13 @@ def test_a_recorded_position_is_the_job_snapshot_of_its_recorded_event() -> None
             if entry["file"] == scenario["event_image"]
         )
         event = next(event for event in history["events"] if event["id"] == owner)
-        equal(
-            scenario["file_position_bytes"],
-            event["payload"]["job"]["file_position_bytes"],
-            describing=f"{name}/{scenario['id']}",
+        payload = event["payload"]
+        read = (
+            payload["position"]["bytes"]
+            if event["kind"] == "filament_change_planned_resumed"
+            else payload["job"]["file_position_bytes"]
         )
+        equal(scenario["file_position_bytes"], read, describing=f"{name}/{scenario['id']}")
         checked += 1
     truth(checked > 0, describing="a recorded position to check")
 
