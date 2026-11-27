@@ -191,7 +191,7 @@ pub struct Machine {
     /// How it answers what it is asked.
     answering: Arc<Mutex<Answering>>,
     /// How many requests it has been sent that ask it to do something rather
-    /// than to say something: every one that is not a read.
+    /// than to say something: every one whose body names what it asks.
     pub commanded: Arc<AtomicUsize>,
 }
 
@@ -383,7 +383,14 @@ fn answer(
     let mut first = head.lines().next().unwrap_or_default().split_whitespace();
     let method = first.next().unwrap_or_default().to_owned();
     let target = first.next().unwrap_or_default().to_owned();
-    if method != "GET" && method != "HEAD" {
+    // A request asking for something names it in its body: a session's
+    // sign-in, which names nothing, asks the machine to do nothing.
+    if method == "POST"
+        && head
+            .split_once("\r\n\r\n")
+            .and_then(|(_, body)| printobserver_types::serde_json::from_str::<Value>(body).ok())
+            .is_some_and(|asked| !words_in(&asked).is_empty())
+    {
         commanded.fetch_add(1, Ordering::SeqCst);
     }
 

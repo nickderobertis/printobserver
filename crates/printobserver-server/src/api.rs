@@ -866,35 +866,9 @@ async fn recheck_camera(
     if let Some(refused) = scope_refused(&caller, print_id) {
         return refused;
     }
-    let body = match body {
-        Ok(Json(body)) => body,
-        Err(rejected) => return rejected.into_response(),
-    };
-    let Some(fields) = body.as_object() else {
-        return refusal(
-            StatusCode::BAD_REQUEST,
-            "the body is not a document carrying an `actor` and a `reason`",
-        );
-    };
-    let actor = match claimed_actor(fields) {
-        Ok(actor) => actor,
-        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
-    };
-    if let Some(refused) = claim_refused(&caller, &actor) {
-        return refused;
-    }
-    let body: BedClearBody = match printobserver_types::serde_json::from_value(body) {
-        Ok(body) => body,
-        Err(error) => {
-            return refusal(
-                StatusCode::BAD_REQUEST,
-                format!("the body is not an `actor` and a `reason`: {error}"),
-            );
-        }
-    };
-    let reason = match reason_of(body.reason.as_deref()) {
-        Ok(reason) => reason,
-        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    let (actor, reason) = match actor_and_reason(&caller, body) {
+        Ok(asked) => asked,
+        Err(refused) => return *refused,
     };
     let Some(images) = state.check_images.clone() else {
         return refusal(
@@ -958,65 +932,15 @@ async fn recheck_camera(
         "printobserver: print {print_id}: the camera is judged again for {}: {reason}",
         claimed(&actor)
     );
-    // The fresh frame is stored with the first record of its judgement, and
-    // every later record names it.
-    let mut frame = Some((url, image));
-    let mut stored = None;
-    for record in judged.records.clone() {
-        match state
-            .supervisor
-            .record_with_frame(print_id, record, frame.take())
-            .await
-        {
-            Ok(event) => {
-                if stored.is_none() {
-                    stored = event.image;
-                }
-            }
-            Err(error) => return refusal(core_status(&error), error),
-        }
-    }
-    let frame_path = match stored {
-        Some(reference) => match state.images.image(reference.id).await {
-            Ok(printobserver_core::store::ImageLookup::Found { path, .. }) => path,
-            _ => {
-                return refusal(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "the fresh frame was not kept",
-                );
-            }
-        },
-        None => {
-            return refusal(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "the fresh frame was not kept",
-            );
-        }
+    let frame_path = match stored_with_frame(&state, print_id, &judged, (url, image)).await {
+        Ok(path) => path,
+        Err(refused) => return refused,
     };
-    let choosing = Arc::clone(&images);
-    let path = frame_path.clone();
-    let plan = fresh.plan.clone();
-    let paused = fresh.paused;
-    let chosen_judgement = judged.clone();
-    let shown = tokio::task::spawn_blocking(move || {
-        choosing.image_of(
-            print_id,
-            &crate::check_images::Shown {
-                frame: &path,
-                captured_at,
-                made_for: printobserver_core::ImageUse::Look,
-                plan: plan.as_ref(),
-                paused,
-            },
-            Some(&chosen_judgement),
-        )
-    })
-    .await;
-    let shown = match shown {
-        Ok(Ok(shown)) => shown,
-        Ok(Err(error)) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
-        Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
-    };
+    let shown =
+        match image_shown(&images, print_id, &frame_path, captured_at, &fresh, &judged).await {
+            Ok(shown) => shown,
+            Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
+        };
     answer(
         StatusCode::OK,
         &crate::wire::RecheckCameraAnswer {
@@ -1027,6 +951,106 @@ async fn recheck_camera(
             image_fallback: shown.fallback,
         },
     )
+}
+
+/// The actor and the reason one request's body carries, the actor held to the
+/// caller, or the refusal of the request.
+fn actor_and_reason(
+    caller: &Caller,
+    body: Result<Json<Value>, JsonRejection>,
+) -> Result<(Actor, String), Box<Response>> {
+    let refused = |status: StatusCode, said: String| Box::new(refusal(status, said));
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejected) => return Err(Box::new(rejected.into_response())),
+    };
+    let Some(fields) = body.as_object() else {
+        return Err(refused(
+            StatusCode::BAD_REQUEST,
+            "the body is not a document carrying an `actor` and a `reason`".to_owned(),
+        ));
+    };
+    let actor = claimed_actor(fields)
+        .map_err(|rejected| refused(StatusCode::BAD_REQUEST, rejected.to_string()))?;
+    if let Some(claim) = claim_refused(caller, &actor) {
+        return Err(Box::new(claim));
+    }
+    let body: BedClearBody =
+        printobserver_types::serde_json::from_value(body).map_err(|error| {
+            refused(
+                StatusCode::BAD_REQUEST,
+                format!("the body is not an `actor` and a `reason`: {error}"),
+            )
+        })?;
+    let reason = reason_of(body.reason.as_deref())
+        .map_err(|rejected| refused(StatusCode::BAD_REQUEST, rejected.to_string()))?;
+    Ok((actor, reason))
+}
+
+/// The image a check of a print would be shown of a judged fresh frame, made
+/// off the request's own thread.
+async fn image_shown(
+    images: &Arc<crate::check_images::PanelImages>,
+    print_id: PrintId,
+    frame_path: &std::path::Path,
+    captured_at: printobserver_types::Timestamp,
+    fresh: &printobserver_core::FreshView,
+    judged: &crate::alignment::Judged,
+) -> Result<printobserver_core::ShownImage, String> {
+    let choosing = Arc::clone(images);
+    let path = frame_path.to_path_buf();
+    let plan = fresh.plan.clone();
+    let paused = fresh.paused;
+    let judged = judged.clone();
+    tokio::task::spawn_blocking(move || {
+        choosing.image_of(
+            print_id,
+            &crate::check_images::Shown {
+                frame: &path,
+                captured_at,
+                made_for: printobserver_core::ImageUse::Look,
+                plan: plan.as_ref(),
+                paused,
+            },
+            Some(&judged),
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Append a judgement's records to a print's history, the fresh frame stored
+/// with the first and named by every later one, and answer where it was
+/// stored.
+async fn stored_with_frame(
+    state: &ApiState,
+    print_id: PrintId,
+    judged: &crate::alignment::Judged,
+    frame: (String, printobserver_vision_api::FetchedImage),
+) -> Result<std::path::PathBuf, Response> {
+    let mut frame = Some(frame);
+    let mut stored = None;
+    for record in judged.records.clone() {
+        let event = state
+            .supervisor
+            .record_with_frame(print_id, record, frame.take())
+            .await
+            .map_err(|error| refusal(core_status(&error), error))?;
+        if stored.is_none() {
+            stored = event.image;
+        }
+    }
+    let unkept = || {
+        refusal(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "the fresh frame was not kept",
+        )
+    };
+    let reference = stored.ok_or_else(unkept)?;
+    match state.images.image(reference.id).await {
+        Ok(printobserver_core::store::ImageLookup::Found { path, .. }) => Ok(path),
+        _ => Err(unkept()),
+    }
 }
 
 /// A digest as the image store names a frame: lowercase hexadecimal SHA-256.

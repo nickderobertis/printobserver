@@ -100,6 +100,14 @@ fn changed(bytes: &[u8], change: impl FnOnce(&mut image::RgbImage)) -> Vec<u8> {
     out
 }
 
+/// The same picture in other bytes: one pixel changed, as two frames of a
+/// still scene differ.
+fn touched(bytes: &[u8]) -> Vec<u8> {
+    changed(bytes, |frame| {
+        frame.put_pixel(0, 0, image::Rgb([255, 0, 0]));
+    })
+}
+
 /// A frame moved `by` pixels right, its uncovered edge grey: the camera
 /// knocked a little further out of place.
 fn shifted(bytes: &[u8], by: u32) -> Vec<u8> {
@@ -124,7 +132,9 @@ fn painted_over(bytes: &[u8], grey: u8) -> Vec<u8> {
         .map(|landmark| {
             let at = |axis: usize| {
                 let value = landmark["center_px"][axis].as_f64().expect("a centre");
-                u32::try_from(value.round().abs() as i64).expect("a pixel")
+                format!("{value:.0}")
+                    .parse::<u32>()
+                    .expect("a pixel of the frame")
             };
             [at(0), at(1)]
         })
@@ -152,7 +162,7 @@ fn job_at(journey: &Journey, position: u64, paused: bool) {
         600,
     );
     if paused {
-        job.state = "Paused".to_owned();
+        "Paused".clone_into(&mut job.state);
         journey.octoprint.reports("Paused", job);
     } else {
         journey.octoprint.reports("Printing", job);
@@ -325,64 +335,7 @@ async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view
     // what is counted.
     let events = history(server, print_id).await;
     let fetched = camera.exchanges().len();
-    let judged = payloads(&events, "first_layer_alignment_judged");
-    assert_eq!(
-        judged.len(),
-        2,
-        "one judgement for the covered check, none for the paused one, one for the pass, and none after: {judged:#?}"
-    );
-    assert_eq!(judged[0]["verdict"], "inconclusive");
-    assert_eq!(judged[0]["reason"], "covered");
-    assert_eq!(judged[0]["view_correction"], Value::Null);
-    assert_eq!(resolved(&journey, &events, &judged[0]), frames[0]);
-    assert_eq!(judged[1]["verdict"], "passed");
-    assert_eq!(judged[1]["reason"], "clearly_found");
-    assert_eq!(
-        judged[1]["correction_px"],
-        json!(correction_px),
-        "the pass records the correction it put in force"
-    );
-    assert!(judged[1]["match_strength"].as_f64().expect("a strength") >= 15.0);
-    assert_eq!(resolved(&journey, &events, &judged[1]), frames[2]);
-
-    let refits = payloads(&events, "camera_view_refit");
-    assert_eq!(refits.len(), 1, "{refits:#?}");
-    assert_eq!(resolved(&journey, &events, &refits[0]), frames[2]);
-    assert_eq!(refits[0]["view_correction"]["model"], "translation");
-
-    let views = payloads(&events, "camera_view_judged");
-    let outcomes: Vec<&Value> = views.iter().map(|view| &view["outcome"]).collect();
-    assert_eq!(
-        outcomes,
-        [
-            &json!("view_refit_rejected"),
-            &json!("refit"),
-            &json!("refit")
-        ],
-        "one per judged check, none for the paused one: {views:#?}"
-    );
-    for (view, frame) in views.iter().zip([&frames[0], &frames[2], &frames[3]]) {
-        assert_eq!(&resolved(&journey, &events, view), frame);
-    }
-
-    let changes = payloads(&events, "check_image_changed");
-    let kinds: Vec<(Value, Value)> = changes
-        .iter()
-        .map(|change| (change["kind"].clone(), change["fallback"]["code"].clone()))
-        .collect();
-    assert_eq!(
-        kinds,
-        [
-            (json!("whole_frame"), json!("alignment_inconclusive")),
-            (json!("whole_frame"), json!("paused")),
-            (json!("three_panel"), Value::Null),
-        ],
-        "a notice for each change and none for the unchanged last check"
-    );
-    for (change, frame) in changes.iter().zip(&frames) {
-        assert_eq!(&resolved(&journey, &events, change), frame);
-    }
-
+    the_records_name_the_frames_they_read(&journey, &events, &frames, correction_px);
     assert_eq!(
         fetched,
         frames.len(),
@@ -406,6 +359,75 @@ async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view
     started.server.stop().await;
 }
 
+/// Each record of the first journey's checks, naming the stored frame it read:
+/// one alignment judgement for the covered check and one for the pass, one
+/// refit, a view judgement for every judged check, and a change notice for
+/// each change of image.
+fn the_records_name_the_frames_they_read(
+    journey: &Journey,
+    events: &[Value],
+    frames: &[Vec<u8>; 4],
+    correction_px: [f64; 2],
+) {
+    let judged = payloads(events, "first_layer_alignment_judged");
+    assert_eq!(
+        judged.len(),
+        2,
+        "one judgement for the covered check, none for the paused one, one for the pass, and none after: {judged:#?}"
+    );
+    assert_eq!(judged[0]["verdict"], "inconclusive");
+    assert_eq!(judged[0]["reason"], "covered");
+    assert_eq!(judged[0]["view_correction"], Value::Null);
+    assert_eq!(resolved(journey, events, &judged[0]), frames[0]);
+    assert_eq!(judged[1]["verdict"], "passed");
+    assert_eq!(judged[1]["reason"], "clearly_found");
+    assert_eq!(
+        judged[1]["correction_px"],
+        json!(correction_px),
+        "the pass records the correction it put in force"
+    );
+    assert!(judged[1]["match_strength"].as_f64().expect("a strength") >= 15.0);
+    assert_eq!(resolved(journey, events, &judged[1]), frames[2]);
+
+    let refits = payloads(events, "camera_view_refit");
+    assert_eq!(refits.len(), 1, "{refits:#?}");
+    assert_eq!(resolved(journey, events, &refits[0]), frames[2]);
+    assert_eq!(refits[0]["view_correction"]["model"], "translation");
+
+    let views = payloads(events, "camera_view_judged");
+    let outcomes: Vec<&Value> = views.iter().map(|view| &view["outcome"]).collect();
+    assert_eq!(
+        outcomes,
+        [
+            &json!("view_refit_rejected"),
+            &json!("refit"),
+            &json!("refit")
+        ],
+        "one per judged check, none for the paused one: {views:#?}"
+    );
+    for (view, frame) in views.iter().zip([&frames[0], &frames[2], &frames[3]]) {
+        assert_eq!(&resolved(journey, events, view), frame);
+    }
+
+    let changes = payloads(events, "check_image_changed");
+    let kinds: Vec<(Value, Value)> = changes
+        .iter()
+        .map(|change| (change["kind"].clone(), change["fallback"]["code"].clone()))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            (json!("whole_frame"), json!("alignment_inconclusive")),
+            (json!("whole_frame"), json!("paused")),
+            (json!("three_panel"), Value::Null),
+        ],
+        "a notice for each change and none for the unchanged last check"
+    );
+    for (change, frame) in changes.iter().zip(frames) {
+        assert_eq!(&resolved(journey, events, change), frame);
+    }
+}
+
 /// Checks drawn through one correction, then checks whose landmarks are
 /// painted over, each leave exactly one view record naming the very frame it
 /// read — different bytes check to check — with its own outcome and reason,
@@ -417,9 +439,7 @@ async fn every_judgement_is_one_record_naming_its_own_frame() {
         box_frame(FOUND.0),
         box_frame(LATER[0].0),
         later.clone(),
-        changed(&later, |frame| {
-            frame.put_pixel(0, 0, image::Rgb([255, 0, 0]))
-        }),
+        touched(&later),
         painted_over(&later, 120),
         painted_over(&later, 128),
         painted_over(&later, 136),
@@ -522,13 +542,9 @@ async fn a_camera_moved_again_is_refused_until_a_fresh_correction_is_taken() {
     let frames = vec![
         box_frame(FOUND.0),
         moved.clone(),
-        changed(&moved, |frame| {
-            frame.put_pixel(0, 0, image::Rgb([255, 0, 0]))
-        }),
+        touched(&moved),
         refound.clone(),
-        changed(&refound, |frame| {
-            frame.put_pixel(0, 0, image::Rgb([255, 0, 0]))
-        }),
+        touched(&refound),
     ];
     let journey = Journey::new(INSTALLER, &box_slice(), FOUND.1);
     let mut checks = Checks::holding(&journey);

@@ -562,6 +562,14 @@ The operator's word that the bed is clear, recorded once and honoured by every r
 
 Takes `actor` (body), `reason` (body). It answers `BedClearAnswer`: the `bed_clear_asserted` event, with no print, and a `detail` sentence. The one actor admitted is `operator`: the agent's own word, a turn claiming the operator and any claim to the system are refused `403`, and a reason that is absent or blank `400`, each recorded nowhere. The word is read back out of the event log, so it stands across a restart.
 
+### recheck_camera
+
+A print's camera judged again on a fresh frame: its view, and its first-layer alignment, a latched verdict included, taking the correction afresh when the first layer is clearly found. Nothing is sent to the printer.
+
+`POST /v1/prints/{print_id}/camera/recheck` — answers success.
+
+Takes `print_id` (path), `actor` (body), `reason` (body). It answers `RecheckCameraAnswer`: `frame_path`, the fresh frame's absolute path on the server's own host; `alignment`, the print's `PrintAlignment` once judged; `view_correction`, the `ViewCorrection` in force, or `null`; and `image_kind` and `image_fallback`, which image a check would be shown of that frame and why. Each judgement is recorded in the print's history as `first_layer_alignment_judged`, `camera_view_judged` and, when a pass put a correction in force while the landmarks had moved, `camera_view_refit`, each naming the frame by `frame_sha256`. While the printer reports the print paused, only the view is judged. With no calibration configured nothing can be judged: the frame is kept as a look's `camera_look` is, and answered as the whole frame with `no_calibration`. A camera giving no good frame is refused `502`, a reason that is absent or blank `400`, and a claim to an actor the credential is not `403`. A turn handed an image is not allowed it.
+
 ## The clients
 
 One entry per client this repository declares, and one entry per method that
@@ -809,6 +817,11 @@ and returns `RecoveryAnswer`.
 
 `client.bed_clear(reason)` records the operator's word that the bed is clear and
 returns `BedClearAnswer`.
+
+#### recheck_camera
+
+`client.recheck_camera(print_id, reason)` judges the print's camera again on a
+fresh frame and returns `RecheckCameraAnswer`.
 
 #### call
 

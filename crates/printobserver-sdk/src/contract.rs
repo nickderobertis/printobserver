@@ -2841,8 +2841,11 @@ pub struct RecheckCameraAnswer {
     /// The print's first-layer alignment once judged.
     pub alignment: PrintAlignment,
     /// The absolute path of the fresh frame on this server's own filesystem,
-    /// stored with the first record of its judgement.
-    pub frame_path: String,
+    /// stored with the first record of its judgement. This server always
+    /// answers it; a client that finds it names no file on its own host
+    /// answers why in its place, as it does every image path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_path: Option<String>,
     /// Why that image would be the whole frame; null for the three-panel
     /// image.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -113,6 +113,7 @@ job.print_time_left_s: 1200
 job.print_time_s: 900
 job.size_bytes: 4211
 job.state: printing
+last_check_image: null
 print.file_name: FILE
 print.id: PRINT_ID
 print.job_print_time_s: 900
@@ -599,6 +600,9 @@ event.received_at: TIMESTAMP
 event.source: system
 frame.id: ID
 frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_fallback.code: no_calibration
+image_fallback.message: no camera calibration is configured
+image_kind: whole_frame
 image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no camera calibration is configured
 image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 job.completion.out_of_range: false
@@ -645,6 +649,9 @@ event.received_at: TIMESTAMP
 event.source: system
 frame.id: ID
 frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_fallback.code: no_print
+image_fallback.message: no print is named, so there is no planned toolpath to draw on it
+image_kind: whole_frame
 image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no print is named, so there is no planned toolpath to draw on it
 image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 job.completion.out_of_range: false
@@ -1305,6 +1312,26 @@ event.received_at: TIMESTAMP
 event.source: operator
 ```
 
+### recheck_camera
+
+Judge the print's camera again, at once, on a fresh frame, as the operator
+after nudging the camera or clearing what stood in front of it. The view is
+judged against the correction in force and the first-layer alignment again, a
+verdict an earlier frame latched included; nothing is sent to the printer.
+`image_kind` and `image_fallback` say which image a check would be shown of the
+frame and why. A supervision turn handed its event's image is allowed none, as
+it is allowed no look.
+
+```console
+$ printobserver recheck-camera --print-id PRINT_ID --actor operator --reason "the camera was nudged"
+alignment.verdict: unavailable
+frame_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_fallback.code: no_calibration
+image_fallback.message: no camera calibration is configured
+image_kind: whole_frame
+view_correction: null
+```
+
 ## Supervising from outside
 
 You supervise a print from outside when you started it, or were asked to watch
@@ -1379,6 +1406,9 @@ $ printobserver look
 event.kind: camera_look
 frame.id: ID
 frame.sha256: 4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
+image_fallback.code: no_print
+image_fallback.message: no print is named, so there is no planned toolpath to draw on it
+image_kind: whole_frame
 image_note: the whole camera frame, scaled to fit 1280x720 and uncropped, because no print is named, so there is no planned toolpath to draw on it
 image_path: STATE_DIR/images/4f/4fb7391211aa906944b682445355b3475d85aba2de73df3cb2dca29a13957dc4
 ```

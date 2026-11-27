@@ -218,7 +218,26 @@ pub fn a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why() {
         "no check has been shown an image yet: {status}"
     );
 
-    let covered = recheck(&world, &print_id);
+    the_covered_layer_and_then_the_found_one_are_judged(&world, &camera, machine, &print_id);
+    a_moved_camera_hidden_landmarks_and_a_pause_are_each_said(&world, &camera, machine, &print_id);
+    assert_eq!(
+        machine.commanded.load(Ordering::SeqCst),
+        commanded,
+        "a recheck and a look send the machine nothing"
+    );
+    the_judgements_are_recorded_against_their_frames(&world, &print_id);
+}
+
+/// A recheck at 13:14 finds the toolhead over the part; one at 13:44, over a
+/// failure an earlier judgement latched, finds the first layer and corrects
+/// the view; each look after says so.
+fn the_covered_layer_and_then_the_found_one_are_judged(
+    world: &World,
+    camera: &Camera,
+    machine: &crate::machine::Machine,
+    print_id: &str,
+) {
+    let covered = recheck(world, print_id);
     assert_eq!(covered["alignment"]["verdict"], "pending", "{covered}");
     assert_eq!(covered["view_correction"], Value::Null, "{covered}");
     assert_eq!(covered["image_kind"], "whole_frame", "{covered}");
@@ -229,7 +248,7 @@ pub fn a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why() {
     let kept = std::fs::read(covered["frame_path"].as_str().expect("a frame path"))
         .expect("the fresh frame is stored");
     assert_eq!(kept, frame(COVERED.0), "the fresh frame is the camera's");
-    let looked = look(&world, &print_id);
+    let looked = look(world, print_id);
     assert_eq!(looked["image_kind"], "whole_frame", "{looked}");
     assert_eq!(
         looked["image_fallback"]["code"], "alignment_inconclusive",
@@ -249,15 +268,24 @@ pub fn a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why() {
     .expect("a latched failure");
     camera.shows(frame(FOUND.0));
     machine.stands_at.store(FOUND.1, Ordering::SeqCst);
-    let found = recheck(&world, &print_id);
+    let found = recheck(world, print_id);
     assert_eq!(found["alignment"]["verdict"], "passed", "{found}");
     assert_eq!(found["view_correction"]["model"], "translation", "{found}");
     assert_eq!(found["image_kind"], "three_panel", "{found}");
     assert_eq!(found["image_fallback"], Value::Null, "{found}");
-    let looked = look(&world, &print_id);
+    let looked = look(world, print_id);
     assert_eq!(looked["image_kind"], "three_panel", "{looked}");
     assert!(looked.get("image_fallback").is_none(), "{looked}");
+}
 
+/// A camera moved again, landmarks hidden and a paused print are each what a
+/// look says.
+fn a_moved_camera_hidden_landmarks_and_a_pause_are_each_said(
+    world: &World,
+    camera: &Camera,
+    machine: &crate::machine::Machine,
+    print_id: &str,
+) {
     // A frame of the camera where its calibration had it, which this print's
     // correction was not taken against: the camera moved again.
     camera.shows(
@@ -267,42 +295,52 @@ pub fn a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why() {
         .expect("a frame of the camera where it was calibrated"),
     );
     machine.stands_at.store(LATER.1, Ordering::SeqCst);
-    let moved = look(&world, &print_id);
+    let moved = look(world, print_id);
     assert_eq!(
         moved["image_fallback"]["code"], "view_refit_rejected",
         "{moved}"
     );
 
     camera.shows(frame(LATER.0));
-    let refound = recheck(&world, &print_id);
+    let refound = recheck(world, print_id);
     assert_eq!(refound["alignment"]["verdict"], "passed", "{refound}");
     camera.shows(landmarks_hidden(&frame(LATER.0)));
-    let hidden = look(&world, &print_id);
+    let hidden = look(world, print_id);
     assert_eq!(
         hidden["image_fallback"]["code"], "landmarks_not_found",
         "{hidden}"
     );
 
     world.wants(Reports::Paused);
-    let paused = look(&world, &print_id);
+    let paused = look(world, print_id);
     assert_eq!(paused["image_fallback"]["code"], "paused", "{paused}");
     assert_eq!(paused["image_kind"], "whole_frame", "{paused}");
-
+    // A recheck while the printer reports the print paused judges the view and
+    // leaves the first layer alone: its bed stands off the plan's height.
+    let rechecked_paused = recheck(world, print_id);
     assert_eq!(
-        machine.commanded.load(Ordering::SeqCst),
-        commanded,
-        "a recheck and a look send the machine nothing"
+        rechecked_paused["image_fallback"]["code"], "paused",
+        "{rechecked_paused}"
     );
-    let judged = recorded(&world, &print_id, "first_layer_alignment_judged");
+    assert_eq!(
+        rechecked_paused["alignment"]["verdict"], "passed",
+        "the verdict the last recheck left stands: {rechecked_paused}"
+    );
+}
+
+/// Every judgement the journey asked for is in the print's history, naming
+/// the frame it read.
+fn the_judgements_are_recorded_against_their_frames(world: &World, print_id: &str) {
+    let judged = recorded(world, print_id, "first_layer_alignment_judged");
     let verdicts: Vec<&Value> = judged.iter().map(|one| &one["verdict"]).collect();
     assert_eq!(
         verdicts,
         [&json!("inconclusive"), &json!("passed"), &json!("passed")],
-        "{judged:#?}"
+        "none for the recheck while paused: {judged:#?}"
     );
     assert_eq!(judged[0]["frame_sha256"], json!(sha256(&frame(COVERED.0))));
     assert_eq!(judged[1]["frame_sha256"], json!(sha256(&frame(FOUND.0))));
-    let views = recorded(&world, &print_id, "camera_view_judged");
+    let views = recorded(world, print_id, "camera_view_judged");
     assert!(
         views
             .iter()

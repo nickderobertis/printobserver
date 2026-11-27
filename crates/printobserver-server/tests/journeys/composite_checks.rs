@@ -458,8 +458,12 @@ impl Journey {
 
     /// What each run's harness process was handed, in order.
     pub(crate) fn seen(&self) -> Vec<Value> {
-        std::fs::read_to_string(self.root.path().join("seen.json.lines"))
-            .unwrap_or_default()
+        let text =
+            std::fs::read_to_string(self.root.path().join("seen.json.lines")).unwrap_or_default();
+        // A run's line is appended whole, but a read can land part-way through
+        // the append: the last line is set aside until it ends.
+        let finished = text.rfind('\n').map_or("", |end| &text[..end]);
+        finished
             .lines()
             .map(|line| printobserver_types::serde_json::from_str(line).expect("a document"))
             .collect()
@@ -1449,17 +1453,11 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
     assert_eq!(adopted(&started.server).await, print_id);
     alert(&started.server, &detector.url()).await;
     let first = read_handed(&journey.runs(1).await[0]);
+    let (on, fix) = (&calibrated, correction_of(&verdict));
+    let expected = |now: &[u8]| expected_composite(&index, walls, now, None, &url, on, fix);
     assert_eq!(
         first.image,
-        expected_composite(
-            &index,
-            walls,
-            &frames[0],
-            None,
-            &url,
-            &calibrated,
-            correction_of(&verdict),
-        ),
+        expected(&frames[0]),
         "a record that cannot be read back leaves panel 3 empty"
     );
     assert!(first.note.contains("panel 3 empty"), "{}", first.note);
@@ -1474,15 +1472,7 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
     let second = read_handed(&journey.runs(2).await[1]);
     assert_eq!(
         second.image,
-        expected_composite(
-            &index,
-            walls,
-            &frames[1],
-            None,
-            &url,
-            &calibrated,
-            correction_of(&verdict),
-        ),
+        expected(&frames[1]),
         "a previous frame gone from the store leaves panel 3 empty"
     );
     assert!(second.note.contains("panel 3 empty"), "{}", second.note);
@@ -1500,15 +1490,7 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
     let third = read_handed(&journey.runs(3).await[2]);
     assert_eq!(
         third.image,
-        expected_composite(
-            &index,
-            walls,
-            &frames[2],
-            None,
-            &url,
-            &calibrated,
-            correction_of(&verdict),
-        ),
+        expected(&frames[2]),
         "a previous frame that no longer decodes leaves panel 3 empty"
     );
 

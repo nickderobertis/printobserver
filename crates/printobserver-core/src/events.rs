@@ -702,12 +702,12 @@ impl Supervisor {
         paused: bool,
     ) -> CheckShown {
         let event = &arrival.event;
-        let none = CheckShown {
+        let imageless = CheckShown {
             captured_at: arrival.frame_captured_at,
             ..CheckShown::default()
         };
         let Some(reference) = &event.image else {
-            return none;
+            return imageless;
         };
         let plan = self.plan_position(print, job).await;
         if let AlertCameraFrame::Had { image, captured_at } = &arrival.camera_frame {
@@ -753,7 +753,7 @@ impl Supervisor {
             paused,
         )
         .await
-        .map_or(none, |shown| {
+        .map_or(imageless, |shown| {
             let kind = Some(shown.kind());
             let note = match (shown.note, missing) {
                 (Some(note), Some(why)) => Some(format!(

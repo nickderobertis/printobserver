@@ -406,6 +406,45 @@ pub fn compose_at(
     .map_err(WholeFrameReason::Refused)
 }
 
+/// Why a judged frame of a print whose plan places it may not be drawn on, or,
+/// when it may, whether it is drawn through a correction taken while the
+/// landmarks had moved.
+fn refusal_of(judged: &Judged) -> Result<bool, WholeFrameReason> {
+    if let Some(reason) = &judged.rejected {
+        return Err(WholeFrameReason::ViewRefitRejected(reason.clone()));
+    }
+    match &judged.alignment {
+        PrintAlignment::Passed { .. } => {}
+        PrintAlignment::Pending => {
+            return Err(judged.inconclusive.map_or(
+                WholeFrameReason::AlignmentPending,
+                WholeFrameReason::AlignmentInconclusive,
+            ));
+        }
+        PrintAlignment::Unavailable => return Err(WholeFrameReason::AlignmentUnavailable),
+        PrintAlignment::Failed { reason } => {
+            return Err(WholeFrameReason::AlignmentFailed(reason.clone()));
+        }
+    }
+    if let Some(reason) = &judged.mismatch {
+        return Err(WholeFrameReason::FrameMismatch(reason.clone()));
+    }
+    let said = |reason: &Option<String>| reason.clone().unwrap_or_default();
+    match &judged.view {
+        Some((ViewOutcome::LandmarksNotFound, reason)) => {
+            Err(WholeFrameReason::LandmarksNotFound(said(reason)))
+        }
+        Some((ViewOutcome::ViewRefitRejected, reason)) => {
+            Err(WholeFrameReason::ViewRefitRejected(said(reason)))
+        }
+        Some((ViewOutcome::FrameMismatch, reason)) => {
+            Err(WholeFrameReason::FrameMismatch(said(reason)))
+        }
+        Some((ViewOutcome::Refit, _)) => Ok(true),
+        Some((ViewOutcome::Unshifted, _)) | None => Ok(false),
+    }
+}
+
 /// One judged frame whose image is chosen.
 #[derive(Debug, Clone, Copy)]
 pub struct Shown<'a> {
@@ -571,45 +610,9 @@ impl PanelImages {
         if at.index.layer_at(at.file_position_bytes).is_none() {
             return Ok(Err(WholeFrameReason::NoLayer));
         }
-        if let Some(reason) = &judged.rejected {
-            return Ok(Err(WholeFrameReason::ViewRefitRejected(reason.clone())));
-        }
-        match &judged.alignment {
-            PrintAlignment::Passed { .. } => {}
-            PrintAlignment::Pending => {
-                return Ok(Err(judged.inconclusive.map_or(
-                    WholeFrameReason::AlignmentPending,
-                    WholeFrameReason::AlignmentInconclusive,
-                )));
-            }
-            PrintAlignment::Unavailable => {
-                return Ok(Err(WholeFrameReason::AlignmentUnavailable));
-            }
-            PrintAlignment::Failed { reason } => {
-                return Ok(Err(WholeFrameReason::AlignmentFailed(reason.clone())));
-            }
-        }
-        if let Some(reason) = &judged.mismatch {
-            return Ok(Err(WholeFrameReason::FrameMismatch(reason.clone())));
-        }
-        let refit = match &judged.view {
-            Some((ViewOutcome::LandmarksNotFound, reason)) => {
-                return Ok(Err(WholeFrameReason::LandmarksNotFound(
-                    reason.clone().unwrap_or_default(),
-                )));
-            }
-            Some((ViewOutcome::ViewRefitRejected, reason)) => {
-                return Ok(Err(WholeFrameReason::ViewRefitRejected(
-                    reason.clone().unwrap_or_default(),
-                )));
-            }
-            Some((ViewOutcome::FrameMismatch, reason)) => {
-                return Ok(Err(WholeFrameReason::FrameMismatch(
-                    reason.clone().unwrap_or_default(),
-                )));
-            }
-            Some((ViewOutcome::Refit, _)) => true,
-            Some((ViewOutcome::Unshifted, _)) | None => false,
+        let refit = match refusal_of(judged) {
+            Ok(refit) => refit,
+            Err(reason) => return Ok(Err(reason)),
         };
         let current = std::fs::read(shown.frame)
             .map_err(|error| format!("{} is unreadable: {error}", shown.frame.display()))?;

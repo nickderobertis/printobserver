@@ -678,8 +678,7 @@ CALIBRATION_FALLBACKS = (
         r" from where the calibration projects it"
     ),
     re.compile(
-        re.escape("fewer than two of the calibration's landmarks are found in the frame")
-        + r".*"
+        re.escape("fewer than two of the calibration's landmarks are found in the frame") + r".*"
     ),
     re.compile(
         re.escape(

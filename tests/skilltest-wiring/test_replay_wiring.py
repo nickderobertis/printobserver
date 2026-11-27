@@ -2619,19 +2619,27 @@ def test_a_print_with_no_first_layer_frame_is_composed_on_the_alignment_its_case
     equal(calibration_fallbacks(notes), {})
 
 
-def test_deciding_alignment_on_a_frame_far_above_the_first_layer_is_a_fallback_the_suite_fails(
+def test_deciding_alignment_on_a_frame_far_above_the_first_layer_leaves_every_check_inconclusive(
     scratch: Path,
 ) -> None:
-    """The same print with no alignment recorded: decided on its 14 mm frame, it is refused."""
+    """The same print with no alignment recorded: judged on its 14 mm frame, never passed.
+
+    The part standing over its first layer pulls the score off a right projection, so
+    no frame clearly finds the layer: every check is shown the whole frame because the
+    alignment is inconclusive, and judged again on the next frame. That is no fallback
+    for want of a fitting calibration, which is why such a case records the alignment
+    its marks were proven at instead.
+    """
     case = replace(read_case(UNSEEN_FIRST_LAYER), no_first_layer_frame_offset_px=None)
-    fell_back = calibration_fallbacks(
-        _checks_shown(case, _its_first_frame, scratch, "fan-cut-test.gcode")
-    )
-    equal(set(fell_back), {moment.id for moment in case.moments})
-    truth(
-        all("the printed first layer lies" in why for why in fell_back.values()),
-        describing=f"each refused on the offset: {fell_back}",
-    )
+    notes = _checks_shown(case, _its_first_frame, scratch, "fan-cut-test.gcode")
+    equal(calibration_fallbacks(notes), {})
+    for check, note in notes.items():
+        shown = check_image(note)
+        equal(shown["kind"], "whole_frame", describing=f"{check}: {note}")
+        contains(
+            shown["why"] or "",
+            "the print's first-layer alignment is inconclusive on the frame judged last",
+        )
 
 
 def test_a_recorded_alignment_is_refused_on_a_print_that_keeps_its_first_layer_frame(

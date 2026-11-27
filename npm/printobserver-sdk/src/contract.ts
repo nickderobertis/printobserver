@@ -2157,9 +2157,11 @@ export interface RecheckCameraAnswer {
   alignment: PrintAlignment;
   /**
    * The absolute path of the fresh frame on this server's own filesystem,
-   * stored with the first record of its judgement.
+   * stored with the first record of its judgement. This server always
+   * answers it; a client that finds it names no file on its own host
+   * answers why in its place, as it does every image path.
    */
-  frame_path: string;
+  frame_path?: string;
   /**
    * Why that image would be the whole frame; null for the three-panel
    * image.
@@ -8191,7 +8193,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     },
     "frame_path": {
      "paired_with": "",
-     "required": true,
+     "required": false,
      "shape": {
       "scalar": "string"
      }

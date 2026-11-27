@@ -486,6 +486,7 @@ impl Alignments {
     /// Keep the image one check of a print was shown, and answer the change
     /// notice owed for it: on the print's first check image, and whenever its
     /// kind or its fallback's code differs from the last one kept.
+    #[must_use]
     pub fn note_check_image(
         &self,
         print_id: PrintId,
@@ -598,7 +599,7 @@ impl Alignments {
                     state.correction = None;
                     state.inconclusive = None;
                     self.keep_view_state(print_id, &state);
-                    judged.rejected = view.reason.clone();
+                    judged.rejected.clone_from(&view.reason);
                 } else {
                     judged.correction.clone_from(&in_force);
                 }
@@ -716,10 +717,10 @@ impl Alignments {
                 view
             }
             (FirstLayerVerdict::Inconclusive(why), _) => {
-                if judged.alignment != PrintAlignment::Pending {
-                    judged.alignment = PrintAlignment::Pending;
-                    self.decide(print_id, &judged.alignment);
-                }
+                // Written even when it was pending already: a reader of the
+                // verdict file learns a frame was judged.
+                judged.alignment = PrintAlignment::Pending;
+                self.decide(print_id, &judged.alignment);
                 state.correction = None;
                 state.inconclusive = Some(why);
                 self.keep_view_state(print_id, state);
@@ -736,14 +737,13 @@ impl Alignments {
     /// The first layer a frame's judgement scores, when the alignment is due
     /// on it; nothing otherwise.
     fn alignment_due(alignment: &PrintAlignment, judging: &Judging<'_>) -> Option<DueAlignment> {
-        match (judging.alignment, alignment) {
-            (AlignmentJudging::Never, _)
-            | (AlignmentJudging::WhilePending, PrintAlignment::Passed { .. })
-            | (
-                AlignmentJudging::WhilePending,
-                PrintAlignment::Failed { .. } | PrintAlignment::Unavailable,
-            ) => return None,
-            _ => {}
+        let asked = match judging.alignment {
+            AlignmentJudging::Never => false,
+            AlignmentJudging::WhilePending => *alignment == PrintAlignment::Pending,
+            AlignmentJudging::Afresh => true,
+        };
+        if !asked {
+            return None;
         }
         let plan = judging.plan?;
         let index = &plan.index;

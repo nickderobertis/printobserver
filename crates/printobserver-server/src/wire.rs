@@ -166,7 +166,10 @@ pub struct BedClearAnswer {
 #[schemars(crate = "printobserver_types::schemars")]
 pub struct RecheckCameraAnswer {
     /// The absolute path of the fresh frame on this server's own filesystem,
-    /// stored with the first record of its judgement.
+    /// stored with the first record of its judgement. This server always
+    /// answers it; a client that finds it names no file on its own host
+    /// answers why in its place, as it does every image path.
+    #[serde(default)]
     pub frame_path: PathBuf,
     /// The print's first-layer alignment once judged.
     pub alignment: crate::alignment::PrintAlignment,

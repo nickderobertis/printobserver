@@ -384,7 +384,8 @@
       "description": "The print's first-layer alignment once judged."
     },
     "frame_path": {
-      "description": "The absolute path of the fresh frame on this server's own filesystem,\nstored with the first record of its judgement.",
+      "default": "",
+      "description": "The absolute path of the fresh frame on this server's own filesystem,\nstored with the first record of its judgement. This server always\nanswers it; a client that finds it names no file on its own host\nanswers why in its place, as it does every image path.",
       "type": "string"
     },
     "image_fallback": {
@@ -415,7 +416,6 @@
     }
   },
   "required": [
-    "frame_path",
     "alignment",
     "image_kind"
   ],

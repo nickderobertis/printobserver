@@ -2964,8 +2964,10 @@ class RecheckCameraAnswer(TypedDict):
     # The print's first-layer alignment once judged.
     alignment: PrintAlignment
     # The absolute path of the fresh frame on this server's own filesystem,
-    # stored with the first record of its judgement.
-    frame_path: str
+    # stored with the first record of its judgement. This server always
+    # answers it; a client that finds it names no file on its own host
+    # answers why in its place, as it does every image path.
+    frame_path: NotRequired[str]
     # Why that image would be the whole frame; null for the three-panel
     # image.
     image_fallback: NotRequired[ImageFallback | None]
@@ -10285,7 +10287,7 @@ SHAPES: dict[str, object] = json.loads(
     },
     "frame_path": {
      "paired_with": "",
-     "required": true,
+     "required": false,
      "shape": {
       "scalar": "string"
      }

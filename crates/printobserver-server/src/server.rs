@@ -520,14 +520,7 @@ impl Server {
         // credential minted for them.
         let turns = TurnCredentials::new(Some(address));
         supervisor.install_turn_authority(Arc::new(turns.clone()));
-        let check_images = Arc::new(crate::check_images::PanelImages::new(
-            &config.state_dir,
-            Arc::clone(&alignments),
-            config
-                .camera_snapshot_url
-                .as_ref()
-                .map(|url| url.as_str().to_owned()),
-        ));
+        let check_images = panel_images(&config, &alignments);
         supervisor.install_check_images(
             Arc::clone(&check_images) as Arc<dyn printobserver_core::CheckImages>
         );
@@ -609,6 +602,22 @@ impl Server {
             alignments,
         })
     }
+}
+
+/// What makes every check's image and judges every frame of a print, over one
+/// state directory's verdicts and the configured camera's stream.
+fn panel_images(
+    config: &ServerConfig,
+    alignments: &Arc<crate::alignment::Alignments>,
+) -> Arc<crate::check_images::PanelImages> {
+    Arc::new(crate::check_images::PanelImages::new(
+        &config.state_dir,
+        Arc::clone(alignments),
+        config
+            .camera_snapshot_url
+            .as_ref()
+            .map(|url| url.as_str().to_owned()),
+    ))
 }
 
 /// The directories this start keeps per-print state in — each open print's
