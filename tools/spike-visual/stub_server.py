@@ -119,8 +119,8 @@ new_events = [
     event(21, "2026-11-26T19:14:08Z", "camera_view_judged",
           {"frame_sha256": FRAME_1214, "outcome": "refit", "view_correction": VIEW, "reason": None}),
     event(22, "2026-11-26T19:14:08Z", "first_layer_alignment_judged",
-          {"verdict": "passed", "offset_px": 18.4, "correction_px": [-15.0, 30.0],
-           "match_strength": 0.81, "reason": "the first layer was found clearly, 18.4 px from "
+          {"verdict": "passed", "offset_px": 33.5, "correction_px": [-15.0, 30.0],
+           "match_strength": 0.81, "reason": "the first layer was found clearly, 33.5 px from "
            "where the re-fit view projects it, and that offset is corrected from here on",
            "frame_sha256": FRAME_1214, "view_correction": VIEW}),
     event(23, "2026-11-26T19:14:08Z", "check_image_changed",
@@ -130,7 +130,7 @@ new_events = [
 # --- recheck-camera (after only) -----------------------------------------
 recheck = {
     "frame_path": FRESH_PATH,
-    "alignment": {"verdict": "passed", "offset_px": 18.4, "correction_px": [-15.0, 30.0]},
+    "alignment": {"verdict": "passed", "offset_px": 33.5, "correction_px": [-15.0, 30.0]},
     "view_correction": VIEW,
     "image_kind": "three_panel",
     "image_fallback": None,
