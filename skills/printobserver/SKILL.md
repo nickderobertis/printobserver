@@ -21,8 +21,9 @@ Commands: [the command surface](reference/command-surface.md),
 4. **Decide.** By the order below, saying how sure.
 5. **To act, ask for the change, then answer.** Give a reason, and a duration if temporary.
    Asking is acting, taken or refused: never look after it.
-6. **Your answer's disposition records the check,** with what you saw: stop with any pause;
-   watch after a setting or unsure while printing; else continue, false alarms included.
+6. **Your answer's disposition records the check,** with what you saw and any whole frame's
+   reason: stop with any pause; watch after a setting or unsure while printing; else continue,
+   false alarms included.
 
 Name no configuration: the environment names it. Give an actor only where a command's usage asks who.
 
@@ -43,9 +44,9 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
   layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
   check. Panel 1's lines are plan, not plastic. A visible part off its drawn walls, bare sheet
-  inside them, or moved since 3 came loose. An outline the head or gantry covers is a hidden part:
-  judge it next check, never paused for. A whole frame for an inconclusive alignment is no
-  evidence of a defect.
+  inside them, or moved since 3 came loose. An outline or new layers the head or gantry covers, or
+  too thin to see, are hidden: judge them next check, never paused for. A whole frame for an
+  inconclusive alignment is no evidence of a defect.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.
@@ -63,16 +64,15 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 
 ## A planned colour change
 
-Each check, compare new material's colour in panel 2 with the colour the plan expects: panel 1
-draws walls red, panel 2 nothing. At a planned change the printer waits for a person
-(`filament_change_planned_reached`): no check runs, and a pause, resume or setting is refused
-`planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the colour
-expected from its layer and the one before: that colour from there up is expected; carry on.
-Just after it, strands away from the part, at the purge or wipe area or trailing from it, are
-waste, never a pause; one on the part or nozzle, wrapped round either or growing over it, stays a
-defect.
-A colour other than expected, with no planned change at or just under this layer, is a wrong
-spool or a reload: a clear defect, never watched. Pause now, naming the spool and file to check.
+Each check, compare new material's colour in panel 2 with the plan's: panel 1 draws walls red.
+At a planned change the printer waits for a person (`filament_change_planned_reached`): no check
+runs, and asking anything is refused. The check after, `filament_change_planned_resumed`, names
+the colour expected from its layer and the one before: expect it from there up; carry on.
+Just after it, strands off the part, at or trailing from the purge or wipe area, are waste,
+never a pause; one on, round or growing over the part or nozzle stays a defect.
+New layers plainly not the expected colour, with no planned change at or just under them, are a
+wrong spool or reload: a clear defect, never watched; pause now, naming the spool and file to
+check. Older layers' colour is no wrong colour.
 
 ## When the detector has already paused the print
 
