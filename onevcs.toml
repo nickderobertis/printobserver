@@ -2,7 +2,16 @@
 # the publication checkout's base branch and runs it only in idle slot worktrees.
 # The recipe removes superseded Cargo builds older than two days, keeping each
 # unit's newest build and every build modified within the last two days.
-schema_version = 1
+schema_version = 2
+
+# The publication policy this repository's work lands under wherever the host's
+# rules file carries no rule for it; a matching host rule overrides it per field.
+[policy]
+publication = "change-auto"
+approvals = "none"
+
+[policy.checks]
+wait_seconds = 4377 # recorded max 3501 s (run 44619786453, test (windows-aarch64)) + 25% margin
 
 [pool.maintain]
 command = ["just", "pool-maintenance"]
