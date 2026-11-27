@@ -261,8 +261,8 @@ const CAMERA_HOLDS: &str = "the camera does not shift in regular operation and t
 
 /// What a check's note says of the drawing instead when it went through the
 /// print's correction while the landmarks had moved: the camera has shifted,
-/// and the drawing is corrected for it.
-const CAMERA_CORRECTED: &str = "the camera has shifted slightly since it was calibrated, and the drawing is corrected for that shift from this print's own first layer and already accounts for the bed's travel, so ";
+/// and the drawing was checked against the print's own first layer.
+const CAMERA_CORRECTED: &str = "the camera has shifted slightly since it was calibrated, but the drawing goes through a correction taken from this print's own first layer, found where the drawing puts it, and already accounts for the bed's travel, so ";
 
 /// The line saying a check or a look was shown the three-panel image of the
 /// frame captured at `current_at`, beside the frame `previous_at` names: panel

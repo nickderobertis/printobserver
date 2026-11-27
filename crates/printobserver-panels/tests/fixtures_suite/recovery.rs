@@ -11,7 +11,9 @@
 
 use image::{Rgb, RgbImage};
 use printobserver_core::LayerToolpath;
-use printobserver_panels::alignment::{TOOLHEAD_MARGIN_PX, nozzle_from_first_layer_px};
+use printobserver_panels::alignment::{
+    TOOLHEAD_MARGIN_PX, correction_shift, nozzle_from_first_layer_px,
+};
 use printobserver_panels::drift::{HIDDEN_BELOW, VIEW_SEARCH_RADIUS_PX, locate_landmarks_within};
 use printobserver_panels::{
     AlignmentInputs, CameraCalibration, CheckImageInputs, FirstLayerInputs, FirstLayerJudgement,
@@ -191,15 +193,22 @@ fn an_empty_bed_is_not_clearly_found() {
     }
 }
 
-/// The correction a frame's pass takes: the found shift, against the
-/// landmarks found agreeing on it.
-fn correction_on(calibration: &CameraCalibration, file: &str) -> ViewCorrection {
+/// The correction a frame's pass puts in force — its found shift within one
+/// layer of the first layer, no shift from a taller frame — against the
+/// landmarks found agreeing on it, and the shift the search found.
+fn correction_on(calibration: &CameraCalibration, file: &str) -> (ViewCorrection, [f64; 2]) {
     let (judgement, _) = judged(calibration, file, &frame(CASE, file));
     assert_eq!(
         judgement.verdict,
         FirstLayerVerdict::Passed,
         "{file} passes"
     );
+    let found = judgement.found.expect("searched");
+    let index = index(CASE);
+    let print_z = index
+        .layer_at(recorded_position(CASE, file))
+        .and_then(|layer| index.layer_z_mm(layer))
+        .expect("a height");
     let view = judge_view(
         calibration,
         &image::imageops::grayscale(&decoded(CASE, file)),
@@ -210,7 +219,13 @@ fn correction_on(calibration: &CameraCalibration, file: &str) -> ViewCorrection 
         ViewOutcome::ViewRefitRejected,
         "with no correction in force, the shifted landmarks refuse the frame"
     );
-    ViewCorrection::translation(judgement.found.expect("searched").shift_px, view.agreeing())
+    (
+        ViewCorrection::translation(
+            correction_shift(&found, &first_layer(), print_z),
+            view.agreeing(),
+        ),
+        found.shift_px,
+    )
 }
 
 /// Compose one frame through a correction, at its own layer.
@@ -243,12 +258,19 @@ fn compose_through(
 #[test]
 fn a_later_frame_composes_through_the_first_layer_correction() {
     let calibration = calibration();
-    let correction = correction_on(&calibration, "134401-periodic_observation.jpg");
+    let (correction, found) = correction_on(&calibration, "134401-periodic_observation.jpg");
     assert_eq!(correction.model, ViewModel::Translation);
-    let shift = correction.shift_px();
     assert!(
-        (shift[0] - 4.0).hypot(shift[1] + 20.0) <= 3.0,
-        "the correction carries 13:44's shift, not {shift:?}"
+        (found[0] - 4.0).hypot(found[1] + 20.0) <= 3.0,
+        "13:44's search finds its measured shift, not {found:?}"
+    );
+    // 6.6 mm above the first layer, the search scores the box's body, so the
+    // pass corrects by nothing: through that shift the outline floated over
+    // the toolhead, off a healthy part.
+    let [cx, cy] = correction.shift_px();
+    assert!(
+        cx.hypot(cy) < 1e-9,
+        "a pass from a frame this far above its first layer corrects by nothing, not [{cx}, {cy}]"
     );
     for (name, expected) in AGREEING {
         let reference = correction
@@ -317,7 +339,7 @@ fn painted_over(frame: &RgbImage, calibration: &CameraCalibration, names: &[&str
 #[test]
 fn after_a_pass_a_camera_moved_again_is_rejected_and_hidden_landmarks_are_not_found() {
     let calibration = calibration();
-    let correction = correction_on(&calibration, "152603-filament_change_planned_resumed.jpg");
+    let (correction, _) = correction_on(&calibration, "152603-filament_change_planned_resumed.jpg");
     let later = decoded(CASE, "152804-periodic_observation.jpg");
     let moved = judge_view(
         &calibration,

@@ -14,9 +14,12 @@
 //! the plan's height. Only a frame of another size or stream fails, and that
 //! holds for the rest of the print.
 //!
-//! A pass's found shift becomes the print's correction, a translation every
-//! later drawing goes through, kept with the landmarks found agreeing on that
-//! frame as its reference. Every later frame's view is judged against that
+//! A pass puts the print's correction in force, a translation every later
+//! drawing goes through, kept with the landmarks found agreeing on that frame as
+//! its reference. Its translation is the pass's found shift when the frame
+//! stood within one layer of the first layer
+//! ([`printobserver_panels::alignment::correction_shift`]), and none from a
+//! taller frame, where the search scores the part's body. Every later frame's view is judged against that
 //! reference ([`printobserver_panels::judge_found`]); one showing the camera
 //! moved again sets the alignment back to pending, to take a fresh correction
 //! from a later check. Nothing is kept across prints: a sheet sits a few
@@ -669,7 +672,13 @@ impl Alignments {
         let (verdict, correction_px, reason) = match judgement.verdict {
             FirstLayerVerdict::Passed => (
                 crate::judgements::AlignmentJudgedVerdict::Passed,
-                found.map(|found| found.shift_px),
+                found.map(|found| {
+                    printobserver_panels::alignment::correction_shift(
+                        &found,
+                        &first.first_layer,
+                        first.print_z_mm,
+                    )
+                }),
                 "clearly_found".to_owned(),
             ),
             FirstLayerVerdict::Inconclusive(why) => (
@@ -691,11 +700,24 @@ impl Alignments {
         ));
         match (judgement.verdict, found) {
             (FirstLayerVerdict::Passed, Some(found)) => {
-                let correction =
-                    ViewCorrection::translation(found.shift_px, uncorrected.agreeing());
+                let shift = printobserver_panels::alignment::correction_shift(
+                    &found,
+                    &first.first_layer,
+                    first.print_z_mm,
+                );
+                eprintln!(
+                    "printobserver: print {print_id}: the first layer was found shifted [{:.0}, {:.0}] px at Z {:.2}, at a contrast of {:.1}; corrected by [{:.0}, {:.0}] px",
+                    found.shift_px[0],
+                    found.shift_px[1],
+                    first.print_z_mm,
+                    found.match_strength,
+                    shift[0],
+                    shift[1]
+                );
+                let correction = ViewCorrection::translation(shift, uncorrected.agreeing());
                 judged.alignment = PrintAlignment::Passed {
                     offset_px: found.offset_px,
-                    correction_px: found.shift_px,
+                    correction_px: shift,
                 };
                 self.decide(print_id, &judged.alignment);
                 state.correction = Some(correction.clone());

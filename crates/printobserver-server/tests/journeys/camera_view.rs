@@ -25,7 +25,8 @@ use printobserver_types::serde_json::{Value, json};
 
 use crate::camera_host::{Scripted, ScriptedHost};
 use crate::composite_checks::{
-    Camera, FILE, Journey, Started, adopted, block_under, committed, frame, sha256, slice,
+    Camera, FILE, Journey, Started, adopted, block_under, calibration_at, committed,
+    expected_composite, frame, index_of, sha256, slice,
 };
 use crate::lean_checks::handed;
 use crate::world::{OPERATOR, presenting};
@@ -203,6 +204,19 @@ impl<'a> Checks<'a> {
         seen[self.count - 1].clone()
     }
 
+    /// The next check, the job already moved where it is meant to be: the
+    /// check before it is let go, and this one held as it comes.
+    async fn next_moved(&mut self) -> Value {
+        if self.count > 0 {
+            std::fs::remove_file(&self.hold).expect("the hold is removable");
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            std::fs::write(&self.hold, b"").expect("the hold is writable");
+        }
+        self.count += 1;
+        let seen = self.journey.runs(self.count).await;
+        seen[self.count - 1].clone()
+    }
+
     /// Let the last check go.
     fn release(self) {
         let _ = std::fs::remove_file(&self.hold);
@@ -313,7 +327,7 @@ async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view
     assert!(found.get("image_fallback").is_none(), "{found}");
     let note = found["image"].as_str().expect("a note");
     assert!(
-        note.contains("the camera has shifted slightly since it was calibrated, and the drawing is corrected for that shift from this print's own first layer"),
+        note.contains("the camera has shifted slightly since it was calibrated, but the drawing goes through a correction taken from this print's own first layer"),
         "the note says the drawing went through the correction: {note}"
     );
     let PrintAlignment::Passed {
@@ -323,10 +337,13 @@ async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view
     else {
         panic!("the clearly found layer did not pass");
     };
-    assert!(offset_px <= 30.0, "{offset_px}");
     assert!(
-        (correction_px[0] - 4.0).hypot(correction_px[1] + 20.0) <= 3.0,
-        "the correction is 13:44's found shift, not {correction_px:?}"
+        (offset_px - 4.0_f64.hypot(20.0)).abs() <= 3.0,
+        "13:44's layer is found about +4,-20 px off, not {offset_px:.1} px"
+    );
+    assert!(
+        correction_px[0].hypot(correction_px[1]) < 1e-9,
+        "a pass 6.6 mm above its first layer corrects by nothing, not {correction_px:?}"
     );
 
     let later = situation(&checks.next(LATER[1].1, false).await);
@@ -623,4 +640,83 @@ async fn a_camera_moved_again_is_refused_until_a_fresh_correction_is_taken() {
         );
     }
     started.server.stop().await;
+}
+
+/// The recorded jar top whose first layer a frame shows from one layer above
+/// it, and a later frame of it.
+const JAR: &str = "jar-top-wrong-material-first-layer-detach";
+
+/// Its frame one layer above its first, and the position it was taken at.
+const JAR_FIRST_LAYER: (&str, u64) = ("agent-007-obs-182248-p00.3.jpg", 13_018);
+
+/// A frame of it 1.2 mm higher, and its position.
+const JAR_LATER: (&str, u64) = ("agent-009-obs-182450-p03.1.jpg", 143_566);
+
+/// A pass on a frame one layer above the first layer puts its found shift in
+/// force as the print's correction, and a later check is drawn through it:
+/// its image is the three-panel image composed through that translation.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pass_at_the_first_layers_own_height_corrects_every_later_drawing() {
+    let bytes = slice("jar-top-first-layer-detach.gcode");
+    let frames = [frame(JAR, JAR_FIRST_LAYER.0), frame(JAR, JAR_LATER.0)];
+    let journey = Journey::new(INSTALLER, &bytes, JAR_FIRST_LAYER.1);
+    let mut checks = Checks::holding(&journey);
+    let size = i64::try_from(bytes.len()).expect("a size");
+    let at = |position: u64| {
+        journey.octoprint.reports(
+            "Printing",
+            JobScript::printing(
+                FILE,
+                size,
+                i64::try_from(position).expect("a position"),
+                600,
+            ),
+        );
+    };
+    at(JAR_FIRST_LAYER.1);
+    let (started, camera) = started(&journey, &frames).await;
+    let server = &started.server;
+    let print_id = adopted(server).await;
+
+    let first = checks_at(&mut checks, &at, JAR_FIRST_LAYER.1).await;
+    assert_eq!(situation(&first)["image_kind"], "three_panel");
+    let PrintAlignment::Passed { correction_px, .. } = server.print_alignment(print_id) else {
+        panic!("the healthy first layer did not pass");
+    };
+    assert!(
+        correction_px[0].hypot(correction_px[1]) > 1.0,
+        "a pass one layer above the first layer corrects by its found shift, not {correction_px:?}"
+    );
+    let (prompt, _) = handed(&first);
+    let event = block_under(&prompt, "## The event");
+    let captured_at: printobserver_types::Timestamp =
+        printobserver_types::serde_json::from_value(event["payload"]["frame_captured_at"].clone())
+            .expect("the check's frame was captured at a time");
+
+    let later = checks_at(&mut checks, &at, JAR_LATER.1).await;
+    let (_, image) = handed(&later);
+    let spool = tempfile::TempDir::new().expect("a spool directory");
+    let index = index_of(&bytes, &spool.path().join("index.gcode"));
+    let url = camera.url();
+    assert_eq!(
+        image,
+        expected_composite(
+            &index,
+            JAR_LATER.1,
+            &frames[1],
+            Some((&frames[0], captured_at)),
+            &url,
+            &calibration_at(&committed(), &url),
+            Some(correction_px),
+        ),
+        "the later check is drawn through the correction the pass put in force"
+    );
+    checks.release();
+    started.server.stop().await;
+}
+
+/// The next check, its job at `position`, through a mover of the journey's own.
+async fn checks_at(checks: &mut Checks<'_>, at: &impl Fn(u64), position: u64) -> Value {
+    at(position);
+    checks.next_moved().await
 }

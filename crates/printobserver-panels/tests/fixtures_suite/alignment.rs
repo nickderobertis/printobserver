@@ -7,10 +7,10 @@
 //! beside the threshold.
 
 use printobserver_core::LayerToolpath;
+use printobserver_panels::alignment::{CORRECTION_TAKEN_WITHIN_MM, correction_shift};
 use printobserver_panels::{
     AlignmentInputs, AlignmentVerdict, BedPose, CameraCalibration, FirstLayerInputs,
-    FirstLayerVerdict, InconclusiveReason, ViewCorrection, judge_first_layer,
-    verify_first_layer_alignment,
+    FirstLayerVerdict, InconclusiveReason, judge_first_layer, verify_first_layer_alignment,
 };
 
 use crate::support::{calibration, frame, index, recorded_z, snapshot_url, toolpath};
@@ -146,6 +146,7 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
     let calibration = calibration();
     let threshold = calibration.alignment_max_offset_px;
     let mut observed = Vec::new();
+    let mut corrected_by_their_shift = 0;
     for (case, past, empty) in CASES {
         let index = index(case);
         let first = toolpath(
@@ -172,13 +173,17 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
             judgement(&calibration, &frame(case, past), &first, print_z),
             FirstLayerVerdict::Passed
         );
-        let correction = ViewCorrection::translation(healthy.shift_px, Vec::new());
-        let [cx, cy] = correction.shift_px();
+        let shift = correction_shift(&healthy, &first, print_z);
+        let within = print_z - f64::from(first.z_mm) <= CORRECTION_TAKEN_WITHIN_MM + 1e-6;
+        let expected = if within { healthy.shift_px } else { [0.0, 0.0] };
         assert!(
-            (cx - healthy.shift_px[0]).hypot(cy - healthy.shift_px[1]) < 1e-9,
-            "{case}: the correction a pass takes is its found shift, {:?}, not [{cx}, {cy}]",
-            healthy.shift_px
+            (shift[0] - expected[0]).hypot(shift[1] - expected[1]) < 1e-9,
+            "{case}: a pass {:.1} mm above its first layer corrects by {expected:?}, not {shift:?}",
+            print_z - f64::from(first.z_mm)
         );
+        if within {
+            corrected_by_their_shift += 1;
+        }
 
         let bare = verdict(&calibration, &frame(case, empty), &first, print_z);
         observed.push(format!("{case}: empty bed {:.1} px", bare.offset_px));
@@ -215,6 +220,10 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
             "{case}/{past}: a projection moved {moved:.1} px is not clearly found"
         );
     }
+    assert!(
+        corrected_by_their_shift > 0,
+        "no healthy first layer was judged within one layer of itself: {observed:#?}"
+    );
     eprintln!("{observed:#?}");
 }
 

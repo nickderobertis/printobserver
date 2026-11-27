@@ -75,6 +75,33 @@ pub const CLEARLY_FOUND_CONTRAST: f64 = 15.0;
 /// layer — and calling a visible part covered only waits a check longer.
 pub const TOOLHEAD_MARGIN_PX: f64 = 10.0;
 
+/// How far above its first layer a pass may stand for its found shift to be
+/// taken as the print's correction, in millimetres: one layer.
+///
+/// Higher, the first layer lies under the part's own body and the search scores
+/// that body, so its shift is the part's projected height rather than a camera
+/// shift: on the first shifted print a pass at 6.8 mm found -20 px of it, and
+/// drawing through that floated the outline above a healthy part, which the
+/// agent paused for. A pass from a taller frame corrects by nothing, which its
+/// offset — at most the calibration's threshold — bounds.
+pub const CORRECTION_TAKEN_WITHIN_MM: f64 = 0.3;
+
+/// The correction a pass with this search's `found` shift puts in force: the
+/// shift itself when the frame stood within [`CORRECTION_TAKEN_WITHIN_MM`] of
+/// the first layer, and no shift from any taller frame.
+#[must_use]
+pub fn correction_shift(
+    found: &AlignmentVerdict,
+    first_layer: &LayerToolpath,
+    print_z_mm: f64,
+) -> [f64; 2] {
+    if print_z_mm - f64::from(first_layer.z_mm) <= CORRECTION_TAKEN_WITHIN_MM + 1e-6 {
+        found.shift_px
+    } else {
+        [0.0, 0.0]
+    }
+}
+
 /// The largest first layer the toolhead can hide, in bed millimetres: the
 /// longer side of its extent on the bed. A first layer larger than this is
 /// never covered, and is judged on the image score alone.

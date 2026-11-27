@@ -363,9 +363,13 @@ async fn a_print_is_judged_once_its_first_layer_is_down_and_keeps_its_verdict_wh
     else {
         panic!("the healthy first layer did not pass: {verdict:?}");
     };
+    // Judged at Z 0.6, more than one layer above the first, where the search
+    // scores the part's body as much as the layer: the pass corrects by
+    // nothing. `camera_view` drives a pass that corrects.
+    assert!(offset_px > 0.0, "the layer was found {offset_px:.1} px off");
     assert!(
-        (correction_px[0].hypot(correction_px[1]) - offset_px).abs() < 1e-9,
-        "the correction is the found shift, {offset_px:.1} px long: {correction_px:?}"
+        correction_px[0].hypot(correction_px[1]) < 1e-9,
+        "a pass this far above its first layer corrects by nothing, not {correction_px:?}"
     );
     assert!(
         offset_px <= 30.0,

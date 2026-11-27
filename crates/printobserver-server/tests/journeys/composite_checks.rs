@@ -123,7 +123,7 @@ fn committed_1280x720() -> Value {
 
 /// A slice's index, built by the real builder spooling it under `spool`, as
 /// the server spools a print's file.
-fn index_of(bytes: &[u8], spool: &Path) -> GcodeIndex {
+pub(crate) fn index_of(bytes: &[u8], spool: &Path) -> GcodeIndex {
     let mut builder = IndexBuilder::spooling(spool.to_path_buf()).expect("the spool is writable");
     let _ = builder.take(bytes);
     builder.finish()
@@ -212,7 +212,7 @@ pub(crate) fn sha256(bytes: &[u8]) -> String {
 /// the index's own answers: the active object at that position, the layer
 /// there read from the spool, the nearest object layer below when that layer
 /// lays supports alone, and `previous`.
-fn expected_composite(
+pub(crate) fn expected_composite(
     index: &GcodeIndex,
     position: u64,
     current: &[u8],
@@ -605,7 +605,7 @@ async fn aligned(
 
 /// The committed calibration, its stream the camera at `url`, as the server
 /// holds it.
-fn calibration_at(calibration: &Value, url: &str) -> CameraCalibration {
+pub(crate) fn calibration_at(calibration: &Value, url: &str) -> CameraCalibration {
     let mut calibrated = calibration.clone();
     calibrated["camera_snapshot_url"] = Value::String(url.to_owned());
     CameraCalibration::from_json(
