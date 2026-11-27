@@ -104,6 +104,16 @@ impl Waiting {
     }
 }
 
+/// A change one read has taken to record its resumption, and when the
+/// print's last check after a change had begun before it.
+#[derive(Debug)]
+struct Claimed {
+    /// The change the print waited at.
+    waiting: Waiting,
+    /// When the print's last check after a change had begun, if one had.
+    checked_before: Option<Duration>,
+}
+
 /// What this supervisor holds of one print's planned changes.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PlannedMemo {
@@ -198,28 +208,51 @@ impl Supervisor {
     }
 
     /// Take the change a print waits at from its memo, when it is still the
-    /// one numbered `index`: nothing when another read has claimed it first.
-    fn claim_waiting(&self, print_id: PrintId, index: u32) -> Option<Waiting> {
-        let mut memos = self.planned_memos();
-        let memo = memos.get_mut(&print_id)?;
-        if memo
-            .waiting
-            .as_ref()
-            .is_some_and(|waiting| waiting.reached.change.index == index)
-        {
-            memo.waiting.take()
-        } else {
-            None
-        }
+    /// one numbered `index`, and mark the check after it begun, so that no
+    /// scheduled check runs while its resumption is being recorded. Nothing
+    /// when another read has claimed it first; otherwise the change and when
+    /// the print's last check after a change had begun, to put back.
+    fn claim_waiting(&self, print_id: PrintId, index: u32) -> Option<Claimed> {
+        let waiting = {
+            let mut memos = self.planned_memos();
+            let memo = memos.get_mut(&print_id)?;
+            if memo
+                .waiting
+                .as_ref()
+                .is_none_or(|waiting| waiting.reached.change.index != index)
+            {
+                return None;
+            }
+            memo.waiting.take()?
+        };
+        let checked_before = self
+            .checked_after_change
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(print_id, self.clock().elapsed());
+        Some(Claimed {
+            waiting,
+            checked_before,
+        })
     }
 
     /// Put a claimed change back as the one a print waits at, when recording
     /// its resumption failed, so that the next read records it instead.
-    fn unclaim_waiting(&self, print_id: PrintId, waiting: Waiting) {
+    fn unclaim_waiting(&self, print_id: PrintId, claimed: Claimed) {
+        {
+            let mut checked = self
+                .checked_after_change
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            match claimed.checked_before {
+                Some(before) => checked.insert(print_id, before),
+                None => checked.remove(&print_id),
+            };
+        }
         let mut memos = self.planned_memos();
         let memo = memos.entry(print_id).or_default();
         if memo.waiting.is_none() {
-            memo.waiting = Some(waiting);
+            memo.waiting = Some(claimed.waiting);
         }
     }
 
@@ -354,7 +387,7 @@ impl Supervisor {
                     return Ok(None);
                 };
                 let resumed = self
-                    .resume_planned_change(print, claimed.clone(), job, position)
+                    .resume_planned_change(print, claimed.waiting.clone(), job, position)
                     .await;
                 if resumed.is_err() {
                     self.unclaim_waiting(print.id, claimed);

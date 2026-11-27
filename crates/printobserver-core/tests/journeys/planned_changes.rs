@@ -408,12 +408,12 @@ fn a_print_frozen_at_a_planned_change_is_left_alone_until_it_carries_on() {
     world.journal.assert_no_violations();
 }
 
-/// Two reads finding the job carried on past the change at once — the watch's
-/// and the scheduled check's land together on a real server — record its
-/// resumption once and claim one check: the second read, arriving while the
-/// first is still writing it, finds the change already taken.
+/// Reads finding the job carried on past the change while its resumption is
+/// still being written — the watch's and the scheduled check's land together
+/// on a real server — record it once, write no observation and claim no
+/// check of their own: the one check is the resumption's.
 #[test]
-fn two_reads_past_a_change_at_once_record_its_resumption_once() {
+fn reads_past_a_change_at_once_record_its_resumption_once() {
     let (world, _, _) = colour_world();
     let print_id = printing(&world);
     world.printer.extrudes(
@@ -427,24 +427,44 @@ fn two_reads_past_a_change_at_once_record_its_resumption_once() {
         "reaching the change claimed a turn"
     );
     world.clock.advance(120);
+    let observations_before = of_print::<PeriodicObservationPayload>(&world, print_id).len();
 
     printing_at(&world, carried_on_from(0));
     let resumed_kind =
         EventKind::new(FilamentChangePlannedResumedPayload::KIND).expect("the kind is one");
     world.store.holds_appends_of(resumed_kind);
-    let (first, second) = std::thread::scope(|scope| {
+    let (first, watched, observed) = std::thread::scope(|scope| {
         let first = scope.spawn(|| watch(&world));
         world.store.await_a_held_append();
-        let second = watch(&world);
+        let watched = watch(&world);
+        let observed = observe(&world);
         world.store.lets_appends_through();
-        (first.join().expect("the first read ends"), second)
+        (
+            first.join().expect("the first read ends"),
+            watched,
+            observed,
+        )
     });
-    assert!(second.is_empty(), "the second read claimed a check");
-    assert_eq!(first.len(), 1, "the first read claimed no check");
+    assert!(
+        watched.is_empty(),
+        "the watch's second read claimed a check"
+    );
+    assert!(observed.is_empty(), "the scheduled check claimed a check");
+    assert_eq!(
+        of_print::<PeriodicObservationPayload>(&world, print_id).len(),
+        observations_before,
+        "the scheduled check wrote an observation while the resumption was written"
+    );
     let resumed = of_print::<FilamentChangePlannedResumedPayload>(&world, print_id);
     assert_eq!(resumed.len(), 1, "{resumed:?}");
     assert_eq!(resumed[0].1.change, change(0));
+    assert_eq!(first.len(), 1, "the first read claimed no check");
     run(&world, first);
+    let handed = world.agent.turns();
+    assert_eq!(
+        handed.last().map(|turn| turn.event.id),
+        Some(resumed[0].0.id)
+    );
     world.journal.assert_no_violations();
 }
 
