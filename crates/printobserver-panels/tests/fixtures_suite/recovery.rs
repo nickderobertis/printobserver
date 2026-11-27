@@ -373,47 +373,37 @@ fn the_wide_search_scores_no_window_above_one_and_finds_the_agreeing_pair_on_eve
         .iter()
         .map(|landmark| landmark.name.clone())
         .collect();
-    let failures: Vec<String> = std::thread::scope(|scope| {
-        let handles: Vec<_> = FRAMES
+    // One frame after another rather than a thread each: every thread of an
+    // instrumented build counts its coverage in the same counters, and a
+    // thread a frame turned a minute's search into a quarter of an hour of a
+    // whole runner's cores.
+    let mut failures: Vec<String> = Vec::new();
+    for file in FRAMES {
+        let grey = image::imageops::grayscale(&decoded(CASE, file));
+        for (name, located) in names
             .iter()
-            .map(|file| {
-                let calibration = &calibration;
-                let names = &names;
-                scope.spawn(move || {
-                    let grey = image::imageops::grayscale(&decoded(CASE, file));
-                    let mut failures = Vec::new();
-                    for (name, located) in names
-                        .iter()
-                        .zip(locate_landmarks_within(calibration, &grey, 256))
-                    {
-                        if located.score > 1.0 + 1e-6 {
-                            failures.push(format!(
-                                "{file}: {name} scored {} at radius 256",
-                                located.score
-                            ));
-                        }
-                    }
-                    let found = locate_landmarks_within(calibration, &grey, VIEW_SEARCH_RADIUS_PX);
-                    for (name, expected) in AGREEING {
-                        let at = names.iter().position(|held| held == name).expect("named");
-                        let located = found[at];
-                        let off = (located.offset_px[0] - expected[0])
-                            .hypot(located.offset_px[1] - expected[1]);
-                        if located.score < HIDDEN_BELOW || off > 3.0 {
-                            failures.push(format!(
-                                "{file}: {name} found at {:?} scoring {} within {VIEW_SEARCH_RADIUS_PX} px",
-                                located.offset_px, located.score
-                            ));
-                        }
-                    }
-                    failures
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .flat_map(|handle| handle.join().expect("a frame's search"))
-            .collect()
-    });
+            .zip(locate_landmarks_within(&calibration, &grey, 256))
+        {
+            if located.score > 1.0 + 1e-6 {
+                failures.push(format!(
+                    "{file}: {name} scored {} at radius 256",
+                    located.score
+                ));
+            }
+        }
+        let found = locate_landmarks_within(&calibration, &grey, VIEW_SEARCH_RADIUS_PX);
+        for (name, expected) in AGREEING {
+            let at = names.iter().position(|held| held == name).expect("named");
+            let located = found[at];
+            let off =
+                (located.offset_px[0] - expected[0]).hypot(located.offset_px[1] - expected[1]);
+            if located.score < HIDDEN_BELOW || off > 3.0 {
+                failures.push(format!(
+                    "{file}: {name} found at {:?} scoring {} within {VIEW_SEARCH_RADIUS_PX} px",
+                    located.offset_px, located.score
+                ));
+            }
+        }
+    }
     assert!(failures.is_empty(), "{failures:#?}");
 }

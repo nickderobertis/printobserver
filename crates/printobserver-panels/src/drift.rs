@@ -244,19 +244,31 @@ fn locate(frame: &GrayImage, patch: &GrayImage, center: [f64; 2], radius: i64) -
 }
 
 /// One row's products with its weights, summed over eight lanes.
+///
+/// Each eight are summed in one straight run of arithmetic rather than a loop
+/// over the lanes, which keeps the run one block an optimiser vectorises and
+/// coverage instrumentation counts once.
 fn dot(pixels: &[u8], weights: &[f32]) -> f32 {
     let mut lanes = [0.0_f32; 8];
-    let mut pixel_chunks = pixels.chunks_exact(8);
-    let mut weight_chunks = weights.chunks_exact(8);
-    for (pixel, weight) in (&mut pixel_chunks).zip(&mut weight_chunks) {
-        for lane in 0..8 {
-            lanes[lane] += f32::from(pixel[lane]) * weight[lane];
-        }
+    let (pixel_chunks, pixel_rest) = pixels.as_chunks::<8>();
+    let (weight_chunks, weight_rest) = weights.as_chunks::<8>();
+    for ([p0, p1, p2, p3, p4, p5, p6, p7], [w0, w1, w2, w3, w4, w5, w6, w7]) in
+        pixel_chunks.iter().zip(weight_chunks)
+    {
+        lanes = [
+            lanes[0] + f32::from(*p0) * w0,
+            lanes[1] + f32::from(*p1) * w1,
+            lanes[2] + f32::from(*p2) * w2,
+            lanes[3] + f32::from(*p3) * w3,
+            lanes[4] + f32::from(*p4) * w4,
+            lanes[5] + f32::from(*p5) * w5,
+            lanes[6] + f32::from(*p6) * w6,
+            lanes[7] + f32::from(*p7) * w7,
+        ];
     }
-    let rest: f32 = pixel_chunks
-        .remainder()
+    let rest: f32 = pixel_rest
         .iter()
-        .zip(weight_chunks.remainder())
+        .zip(weight_rest)
         .map(|(pixel, weight)| f32::from(*pixel) * weight)
         .sum();
     lanes.iter().sum::<f32>() + rest
