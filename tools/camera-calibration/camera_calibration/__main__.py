@@ -1,12 +1,20 @@
 r"""Fit one printer's camera from marks on printed parts, and write its calibration.
 
     uv run --project tools/camera-calibration python -m camera_calibration \\
-        --marks MARKS.json --snapshot-url URL --calibrated-at YYYY-MM-DD \\
-        --out CALIBRATION.json --verification-image CHECK.jpg
+        --marks MARKS.json --bed-mm 250x220 --snapshot-url URL \\
+        --calibrated-at YYYY-MM-DD --out CALIBRATION.json --verification-image CHECK.jpg
 
 Prints one line naming the fit's RMS reprojection error, its worst mark, how many
-marks and frames it used and the two files written. Exits 2, naming what and why,
-for an argument, marks or frames it cannot use, or a file it cannot write.
+marks and frames it used and the two files written, then one line of the
+whole-bed report: how far the fit and its perturbed refits disagree across the
+bed's surface and 40 mm below it. Exits 2, naming what and why, for an argument,
+marks or frames it cannot use, marks that leave a corner or the centre of the
+bed uncovered, or a file it cannot write.
+
+    uv run --project tools/camera-calibration python -m camera_calibration plate-mass
+
+reports the PLA the committed calibration plate takes, as the
+`calibration-plate-filament-grams` budget's figure.
 """
 
 from __future__ import annotations
@@ -24,6 +32,7 @@ from urllib.parse import urlsplit
 import cv2
 import numpy as np
 
+from camera_calibration import coverage, plate
 from camera_calibration import fit as fitting
 from camera_calibration.gcode import GcodeError
 from camera_calibration.marks import Marks, MarksError, load
@@ -270,10 +279,65 @@ def _positive(text: str) -> float:
     return value
 
 
+def _uncovered(fitted: fitting.Fitted, bed: plate.Bed) -> str | None:
+    """What the matched marks leave uncovered of the bed, said in a sentence, or `None`."""
+    missing = coverage.uncovered(fitted.matched_mm, bed)
+    if not missing:
+        return None
+    cells = ", ".join(missing)
+    return (
+        f"the matched marks reach none of the {cells} cell{'s' * (len(missing) > 1)} of a "
+        f"{coverage.CELLS} x {coverage.CELLS} grid over the {bed.width_mm:g} x {bed.depth_mm:g} mm "
+        f"printable area; a fit needs marks in the bed's four corner cells and its centre "
+        f"cell, as the calibration plate's marks lie"
+    )
+
+
+def _whole_bed(
+    fitted: fitting.Fitted,
+    marks: Marks,
+    size: tuple[int, int],
+    start: Camera | None,
+    bed: plate.Bed,
+) -> str:
+    """The whole-bed report: the fit against the same fit over perturbed marks.
+
+    A refit of a fit made from the grid of starts starts from the grid's start
+    the fit refined. Each start's fit is its own, so that is the refit the
+    whole grid would make whenever the same start still fits the moved marks
+    best, as a mark moved a hundredth of a pixel leaves it; the grid is fitted
+    once per run rather than once per refit.
+    """
+    grid = fitting.GRID if fitted.grid_start is None else (fitted.grid_start,)
+    alternatives = [
+        fitting.fit(coverage.perturbed(marks, seed), size, start, grid).camera
+        for seed in coverage.PERTURBATION_SEEDS
+    ]
+    surface = coverage.disagreement_px(fitted.camera, alternatives, coverage.grid(bed, 0.0))
+    below = coverage.disagreement_px(
+        fitted.camera, alternatives, coverage.grid(bed, -coverage.REPORT_BELOW_MM)
+    )
+    return (
+        f"whole bed, {coverage.REPORT_GRID} x {coverage.REPORT_GRID} grid: the fit and its "
+        f"{len(alternatives)} refits over marks moved {coverage.PERTURBATION_PX:g} px disagree "
+        f"by at most {surface:.2f} px on the bed's surface and {below:.2f} px "
+        f"{coverage.REPORT_BELOW_MM:g} mm below it"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Fit, write the calibration and its verification image, and report the fit."""
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments[:1] == ["plate-mass"]:
+        return plate.mass_main(arguments[1:])
     parser = argparse.ArgumentParser(prog="camera_calibration", description=__doc__.split("\n")[0])
     parser.add_argument("--marks", type=Path, required=True, help="the marks file")
+    parser.add_argument(
+        "--bed-mm",
+        type=plate.bed_mm,
+        required=True,
+        help="the printable area the marks must cover, <W>x<D> in millimetres",
+    )
     parser.add_argument(
         "--snapshot-url", required=True, help="the [camera] snapshot_url the frames were taken from"
     )
@@ -291,7 +355,15 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="an earlier calibration of the same camera, which the fit starts from alone",
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--allow-uncovered",
+        action="store_true",
+        help=(
+            "refit a marks file that leaves a corner or the centre of the bed uncovered, "
+            "naming what it leaves, rather than refusing it"
+        ),
+    )
+    args = parser.parse_args(arguments)
     try:
         address = urlsplit(args.snapshot_url)
         # Reading the port refuses one that is no number or past 65535.
@@ -327,6 +399,10 @@ def main(argv: list[str] | None = None) -> int:
         if differs > CROSS_CHECK_PX:
             msg = f"this tool's projection differs from OpenCV's by {differs} px"
             raise CalibrationError(msg)
+        uncovered = _uncovered(fitted, args.bed_mm)
+        if uncovered is not None and not args.allow_uncovered:
+            msg = f"{args.marks}: {uncovered}; nothing was written"
+            raise CalibrationError(msg)
         written = calibration(
             fitted,
             marks,
@@ -342,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
         # below, which `test_an_output_that_cannot_be_written_after_the_fit_is_refused`
         # drives with a directory standing at each output path.
         args.out.write_text(json.dumps(asdict(written), indent=2) + "\n", encoding="utf-8")
+        whole_bed = _whole_bed(fitted, marks, (width, height), start, args.bed_mm)
     except (MarksError, GcodeError, CalibrationError) as error:
         print(f"camera_calibration: {error}", file=sys.stderr)
         return 2
@@ -356,6 +433,13 @@ def main(argv: list[str] | None = None) -> int:
         f"{fitted.rms_px:.2f} px RMS, worst {fitted.residuals_px.max():.2f} px; "
         f"wrote {args.out} and {args.verification_image}"
     )
+    print(whole_bed)
+    if uncovered is not None:
+        print(
+            f"camera_calibration: --allow-uncovered: {uncovered}; trust this fit only near "
+            f"its marks",
+            file=sys.stderr,
+        )
     return 0
 
 

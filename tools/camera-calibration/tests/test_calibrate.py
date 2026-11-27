@@ -12,6 +12,8 @@ repository commits for tests — the frames under
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -25,10 +27,11 @@ import cv2
 import jsonschema
 import numpy as np
 import pytest
+from camera_calibration import coverage, gcode, plate
 from camera_calibration import fit as fitting
-from camera_calibration import gcode
 from camera_calibration.marks import load
 from camera_calibration.model import Camera
+from onebudgetspec_sdk import list_budgets
 
 TOOL = Path(__file__).resolve().parents[1]
 ROOT = TOOL.parents[1]
@@ -101,6 +104,9 @@ TOLERANCE = {
 }
 PROJECTION_PX = 5.0
 
+BED_MM = "250x220"
+"""The CORE One's printable area, which every run here names."""
+
 
 def _snapshot_url() -> str:
     with SERVICE_CONFIG.open("rb") as handle:
@@ -120,8 +126,19 @@ def _fixture_marks(directory: Path, *, without_edges: bool = False) -> Path:
 
 
 def _run(
-    marks: Path, directory: Path, *extra: str, url: str | None = None
+    marks: Path,
+    directory: Path,
+    *extra: str,
+    url: str | None = None,
+    covered: bool = False,
 ) -> subprocess.CompletedProcess[str]:
+    """One run of the tool over the CORE One's bed.
+
+    The committed marks lie near the bed's centre and leave its corner cells
+    uncovered, so every run over them passes `--allow-uncovered`, the README's
+    opt-out for refitting an existing marks file; `covered` runs without it.
+    """
+    opt_out = () if covered else ("--allow-uncovered",)
     return subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
         [
             sys.executable,
@@ -129,6 +146,9 @@ def _run(
             "camera_calibration",
             "--marks",
             str(marks),
+            "--bed-mm",
+            BED_MM,
+            *opt_out,
             "--snapshot-url",
             url or _snapshot_url(),
             "--calibrated-at",
@@ -162,6 +182,17 @@ def test_the_fit_reproduces_the_committed_calibration(
     directory, run = fitted
     expect.passing(run, describing="the calibration tool over the committed marks")
     expect.contains(run.stdout, "px RMS", describing="the fit's report")
+    surface, below = _whole_bed_figures(run.stdout)
+    expect.truth(
+        min(surface, below) > COMMITTED_WHOLE_BED_PX,
+        describing=f"the committed marks' whole-bed report, {surface} and {below} px, flags them",
+    )
+    expect.contains(
+        run.stderr,
+        "--allow-uncovered: the matched marks reach none of the front-left, front-right, "
+        "back-left, back-right cells",
+        describing="the coverage the committed marks leave, named under the opt-out",
+    )
     written = json.loads((directory / "calibration.json").read_text(encoding="utf-8"))
     committed = json.loads(COMMITTED.read_text(encoding="utf-8"))
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
@@ -314,7 +345,11 @@ def _camera_of(calibration: dict[str, Any]) -> Camera:
 
 def test_the_readme_states_the_bounds_these_tests_hold() -> None:
     """Each bound held above is the one the README states, so neither copy drifts alone."""
-    readme = (TOOL / "README.md").read_text(encoding="utf-8")
+    plate_grams = plate.grams(
+        sum(one.volume_mm3 for one in plate.solids(PLATE.read_text(encoding="ascii")))
+    )
+    # Read as one line of words, so a bound wrapped across lines is still found.
+    readme = " ".join((TOOL / "README.md").read_text(encoding="utf-8").split())
     stated = [
         f"**{RMS_BOUND_PX:g} px**",
         f"**{PROJECTION_PX:g} px**",
@@ -323,6 +358,16 @@ def test_the_readme_states_the_bounds_these_tests_hold() -> None:
         f"**{TOLERANCE['k1']:g}** for `k1`",
         f"**{TOLERANCE['rotation']:g} rad**",
         f"**{TOLERANCE['translation_mm']:g} mm**",
+        f"within **{PLATE_REFIT_PX:g} px** of that calibration",
+        f"one frame at each of five bed heights, {PLATE_HEIGHTS_MM[0]:g} to "
+        f"{PLATE_HEIGHTS_MM[-1]:g} mm",
+        "`--allow-uncovered`",
+        f"Its whole-bed report reads more than {COMMITTED_WHOLE_BED_PX:g} px",
+        f"Its whole-bed report reads under {PLATE_WHOLE_BED_PX:g} px",
+        f"Each corner's arms and each bar are {plate.ARM_MM:g} mm long and "
+        f"{plate.WIDTH_MM:g} mm wide",
+        f"about {plate_grams:.1f} g of PLA",
+        f"plates/{PLATE.name}",
     ]
     for bound in stated:
         expect.contains(readme, bound, describing="the README's statement of the fit's bounds")
@@ -444,12 +489,14 @@ def test_marks_the_fit_cannot_use_are_refused_naming_why(
         ((), "http://", "not an http(s) address"),
         ((), "http://[::1", "not an http(s) address"),
         ((), "http://localhost:99999/frame.jpeg", "not an http(s) address"),
+        (("--bed-mm", "250"), None, "not a <W>x<D> printable area"),
+        (("--bed-mm", "250x-1"), None, "not a <W>x<D> printable area"),
     ],
 )
 def test_arguments_the_tool_cannot_use_are_refused(
     tmp_path: Path, extra: tuple[str, ...], url: str | None, refusal: str
 ) -> None:
-    """An argument that is no date, tolerance or address is refused with exit 2."""
+    """An argument that is no date, tolerance, address or bed is refused with exit 2."""
     run = _run(_fixture_marks(tmp_path), tmp_path, *extra, url=url)
     expect.equal(run.returncode, 2, describing="the exit status")
     expect.contains(run.stderr, refusal, describing="the refusal")
@@ -523,6 +570,8 @@ def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
             "camera_calibration",
             "--marks",
             str(_fixture_marks(tmp_path)),
+            "--bed-mm",
+            BED_MM,
             "--snapshot-url",
             _snapshot_url(),
             "--out",
@@ -555,17 +604,20 @@ def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
 def test_an_output_that_cannot_be_written_after_the_fit_is_refused(tmp_path: Path) -> None:
     """A directory standing at either output path passes the checks before the fit, then fails.
 
-    The two runs are independent, each over its own directory, so they are made
-    at once: each is a whole fit, which is most of this suite's time.
+    Each run is a whole fit, started from the committed calibration: where the
+    fit starts is no part of what is written, and a fit from the grid of starts
+    costs ten times as much. The two runs are independent, each over its own
+    directory, so they are made at once.
     """
     marks = _fixture_marks(tmp_path)
     image_blocked = tmp_path / "image"
     (image_blocked / "verification.jpg").mkdir(parents=True)
     out_blocked = tmp_path / "out"
     (out_blocked / "calibration.json").mkdir(parents=True)
+    start = ("--start", str(COMMITTED))
     with ThreadPoolExecutor(max_workers=2) as runs:
-        image_run = runs.submit(_run, marks, image_blocked)
-        out_run = runs.submit(_run, marks, out_blocked)
+        image_run = runs.submit(_run, marks, image_blocked, *start)
+        out_run = runs.submit(_run, marks, out_blocked, *start)
         image, out = image_run.result(), out_run.result()
     expect.equal(image.returncode, 2, describing="the exit status for an unwritable image")
     expect.contains(image.stderr, "could not be written", describing="the image refusal")
@@ -640,3 +692,566 @@ def test_the_workspace_lock_holds_this_tools_requirements() -> None:
         [str(uv), "lock", "--check"], cwd=ROOT, capture_output=True, text=True, check=False
     )
     expect.passing(run, describing="`uv lock --check` at the workspace root")
+
+
+PLATE = TOOL / "plates" / "calibration-plate-250x220.stl"
+TELEMETRY = TOOL / "telemetry" / "plate.json"
+"""Where the plate's test records the generated mesh, for the filament budget to read."""
+PLATE_MASS_BOUND_G = next(
+    one.threshold
+    for one in list_budgets(paths=[TOOL / "budgets.yaml"]).budgets
+    if one.id == "calibration-plate-filament-grams"
+)
+"""The `calibration-plate-filament-grams` budget's target, as `budgets.yaml` registers it."""
+
+PLATE_HEIGHTS_MM = (0.0, 10.0, 20.0, 30.0, 40.0)
+"""The bed lowered to five heights spanning 40 mm, one frame at each, as the README asks."""
+
+PLATE_REFIT_PX = 10.0
+"""How far a refit of plate marks may project any point of the bed from the camera they were
+projected through: the README's statement of what a plate fit is held to."""
+
+PLATE_LAYER_MM = 0.2
+
+PLATE_WHOLE_BED_PX = 1.0
+"""What a plate fit's whole-bed report reads under, as the README states."""
+
+COMMITTED_WHOLE_BED_PX = 100.0
+"""What the committed marks' whole-bed report reads over, as the README states."""
+
+
+def _generate_plate(directory: Path, bed: str = BED_MM) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+        [
+            sys.executable,
+            "-m",
+            "camera_calibration.plate",
+            "--bed-mm",
+            bed,
+            "--out",
+            str(directory / "plate.stl"),
+        ],
+        cwd=TOOL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _pieces(stl: str) -> list[np.ndarray]:
+    """Each connected piece of an ASCII STL, as its triangles (N, 3, 3), read here alone."""
+    corners = [
+        tuple(float(word) for word in line.split()[1:])
+        for line in stl.splitlines()
+        if line.split()[:1] == ["vertex"]
+    ]
+    triangles = [corners[at : at + 3] for at in range(0, len(corners), 3)]
+    label: dict[tuple[float, ...], int] = {}
+    pieces: list[set[int]] = []
+    for number, triangle in enumerate(triangles):
+        touching = {label[vertex] for vertex in triangle if vertex in label}
+        merged = set().union(*(pieces[one] for one in touching), {number})
+        pieces.append(merged)
+        for one in merged:
+            for vertex in triangles[one]:
+                label[vertex] = len(pieces) - 1
+    final = {label[triangle[0]] for triangle in triangles}
+    return [np.array([triangles[one] for one in sorted(pieces[at])]) for at in sorted(final)]
+
+
+def _volume_mm3(piece: np.ndarray) -> float:
+    return float(np.einsum("ij,ij->i", piece[:, 0], np.cross(piece[:, 1], piece[:, 2])).sum() / 6)
+
+
+@pytest.mark.parametrize(("width", "depth"), [(250.0, 220.0), (180.0, 320.0)])
+def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(
+    tmp_path: Path, width: float, depth: float
+) -> None:
+    """The generated plate is nine closed single-layer marks reaching the whole printable area.
+
+    The CORE One's bed and one of other proportions: the marks lie apart, and
+    together they are centred on the bed, as a slicer centring the plate leaves them.
+    """
+    run = _generate_plate(tmp_path, f"{width:g}x{depth:g}")
+    expect.passing(run, describing=f"the plate generator for a {width:g} x {depth:g} mm bed")
+    expect.contains(run.stdout, "9 marks", describing="the generator's report")
+    pieces = _pieces((tmp_path / "plate.stl").read_text(encoding="ascii"))
+    expect.equal(len(pieces), 9, describing="the plate's marks")
+    boxes = []
+    for piece in pieces:
+        heights = sorted({round(float(z), 6) for z in piece[..., 2].ravel()})
+        expect.equal(heights, [0.0, PLATE_LAYER_MM], describing="a mark's one layer")
+        edges: dict[tuple[tuple[float, ...], tuple[float, ...]], int] = {}
+        for triangle in piece:
+            for a, b in ((0, 1), (1, 2), (2, 0)):
+                one, other = tuple(triangle[a]), tuple(triangle[b])
+                edges[(one, other)] = edges.get((one, other), 0) + 1
+        closed = all(edges.get((b, a)) == count == 1 for (a, b), count in edges.items())
+        expect.truth(closed, describing="every edge of a mark is shared by one facing triangle")
+        expect.truth(_volume_mm3(piece) > 0, describing="a mark's faces point outward")
+        low, high = piece[..., :2].reshape(-1, 2).min(0), piece[..., :2].reshape(-1, 2).max(0)
+        expect.truth(
+            (low >= 0).all() and high[0] <= width and high[1] <= depth,
+            describing=f"a mark from {low} to {high} lies on the printable area",
+        )
+        boxes.append((low, high))
+
+    def reached_by(
+        box: tuple[np.ndarray, np.ndarray], x: float, y: float, within: float = 0.0
+    ) -> bool:
+        low, high = box
+        return low[0] - within <= x <= high[0] + within and low[1] - within <= y <= high[1] + within
+
+    def reached(x: float, y: float, within: float) -> bool:
+        return any(reached_by(box, x, y, within) for box in boxes)
+
+    places = {
+        "front-left corner": (0, 0),
+        "front-right corner": (width, 0),
+        "back-left corner": (0, depth),
+        "back-right corner": (width, depth),
+        "front edge's midpoint": (width / 2, 0),
+        "back edge's midpoint": (width / 2, depth),
+        "left edge's midpoint": (0, depth / 2),
+        "right edge's midpoint": (width, depth / 2),
+    }
+    for name, (x, y) in places.items():
+        expect.truth(reached(x, y, 10.0), describing=f"a mark within 10 mm of the {name}")
+    expect.truth(reached(width / 2, depth / 2, 0.0), describing="a mark over the centre")
+    # The cross's long arm points to the bed's back, so a frame turned front to
+    # back is told from one the right way round: 40 mm across, 60 mm deep.
+    low, high = next(box for box in boxes if reached_by(box, width / 2, depth / 2))
+    expect.equal(
+        [round(float(one), 6) for one in (high - low)],
+        [40.0, 60.0],
+        describing="the centre cross's width and depth",
+    )
+    expect.equal(
+        [round(depth / 2 - float(low[1]), 6), round(float(high[1]) - depth / 2, 6)],
+        [20.0, 40.0],
+        describing="the cross's front arm and its longer back arm, from the bed's centre",
+    )
+    for at, (low, high) in enumerate(boxes):
+        for other_low, other_high in boxes[at + 1 :]:
+            apart = (high < other_low).any() or (other_high < low).any()
+            expect.truth(apart, describing=f"the mark from {low} to {high} lies apart")
+    lowest = np.min([low for low, _ in boxes], axis=0)
+    highest = np.max([high for _, high in boxes], axis=0)
+    expect.truth(
+        np.allclose((lowest + highest) / 2, [width / 2, depth / 2]),
+        describing=f"the marks, from {lowest} to {highest}, are centred on the bed",
+    )
+    grams = sum(_volume_mm3(piece) for piece in pieces) / 1000 * 1.24
+    expect.truth(grams <= PLATE_MASS_BOUND_G, describing=f"the plate takes {grams:.2f} g of PLA")
+
+
+def test_the_committed_plate_is_what_the_generator_writes(tmp_path: Path) -> None:
+    """The committed 250 x 220 mm plate is byte for byte the generator's output.
+
+    The generated mesh's volume, mark count and each mark's volume are then
+    recorded to `TELEMETRY`, which the `calibration-plate-filament-grams`
+    budget reads.
+    """
+    expect.passing(_generate_plate(tmp_path), describing="the plate generator")
+    generated = (tmp_path / "plate.stl").read_bytes()
+    expect.equal(
+        generated == PLATE.read_bytes(),
+        True,
+        describing=f"{PLATE.name} as the generator writes it",
+    )
+    pieces = plate.solids(generated.decode("ascii"))
+    TELEMETRY.parent.mkdir(parents=True, exist_ok=True)
+    TELEMETRY.write_text(plate.telemetry(pieces) + "\n", encoding="utf-8")
+    recorded = json.loads(TELEMETRY.read_text(encoding="utf-8"))
+    expect.equal(recorded["mark_count"], 9, describing="the recorded mark count")
+    volumes = [_volume_mm3(piece) for piece in _pieces(generated.decode("ascii"))]
+    expect.truth(
+        abs(recorded["mesh_volume_mm3"] - sum(volumes)) < 1e-6,
+        describing=f"the recorded {recorded['mesh_volume_mm3']} mm3 is the mesh's {sum(volumes)}",
+    )
+    expect.equal(
+        sorted(round(one["volume_mm3"], 6) for one in recorded["marks"]),
+        sorted(round(one, 6) for one in volumes),
+        describing="each recorded mark's volume",
+    )
+
+
+@pytest.mark.parametrize(
+    ("bed", "refusal"),
+    [("100x220", "too small for the plate"), ("250by220", "not a <W>x<D> printable area")],
+)
+def test_a_bed_the_plate_cannot_be_laid_on_is_refused(
+    tmp_path: Path, bed: str, refusal: str
+) -> None:
+    """A bed too small for the marks, or no bed at all, is refused with exit 2 and no file."""
+    run = _generate_plate(tmp_path, bed)
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, refusal, describing="the refusal")
+    expect.truth(not (tmp_path / "plate.stl").exists(), describing="no plate is written")
+
+
+def test_plate_mass_reports_the_committed_plates_pla(tmp_path: Path) -> None:
+    """`plate-mass` reports the committed plate's PLA where onebudgetspec reads a result."""
+    result = tmp_path / "result.json"
+    run = subprocess.run(
+        [sys.executable, "-m", "camera_calibration", "plate-mass"],
+        cwd=TOOL,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
+    )
+    expect.passing(run, describing="plate-mass")
+    reported = json.loads(result.read_text(encoding="utf-8"))
+    pieces = _pieces(PLATE.read_text(encoding="ascii"))
+    grams = sum(_volume_mm3(piece) for piece in pieces) / 1000 * 1.24
+    expect.truth(
+        abs(reported["value"] - grams) < 1e-9,
+        describing=f"the reported {reported['value']} g is the mesh's {grams} g",
+    )
+    expect.contains(reported["detail"], "9 marks", describing="the reported detail")
+    # Every facet's three vertices in the reverse order: the same mesh turned inside out.
+    committed = PLATE.read_text(encoding="ascii").splitlines()
+    lines, at = [], 0
+    while at < len(committed):
+        step = 3 if "vertex" in committed[at] else 1
+        lines += committed[at : at + step][::-1]
+        at += step
+    triangle = "  vertex 0 0 0\n  vertex 1 0 0\n  vertex 0 1 0\n"
+    for name, text, refusal in (
+        ("short.stl", "solid x\n  vertex 1 2\nendsolid x\n", "no three numbers"),
+        ("nan.stl", "solid x\n" + triangle.replace("1 0 0", "nan 0 0") + "endsolid x\n", "finite"),
+        ("empty.stl", "solid x\nendsolid x\n", "carries 0 vertices"),
+        ("open.stl", f"solid x\n{triangle}endsolid x\n", "is not closed"),
+        ("inward.stl", "\n".join(lines) + "\n", "its faces point inward"),
+        ("absent.stl", None, "absent.stl"),
+    ):
+        broken = tmp_path / name
+        if text is not None:
+            broken.write_text(text, encoding="ascii")
+        run = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+            [sys.executable, "-m", "camera_calibration", "plate-mass", "--stl", str(broken)],
+            cwd=TOOL,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        expect.equal(run.returncode, 2, describing=f"the exit status for {name}")
+        expect.contains(run.stderr, refusal, describing=f"the refusal of {name}")
+
+
+def test_plate_mass_reports_a_recorded_plates_pla(tmp_path: Path) -> None:
+    """`plate-mass --telemetry` reports the PLA of the record the plate's test writes.
+
+    The record is made here from the committed plate, in the shape that test
+    writes, so this does not hang on which test ran first; a record whose
+    figures disagree, or that is no record, is refused with exit 2.
+    """
+    record = tmp_path / "plate.json"
+    record.write_text(plate.telemetry(plate.solids(PLATE.read_text(encoding="ascii"))))
+    result = tmp_path / "result.json"
+    run = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+        [sys.executable, "-m", "camera_calibration", "plate-mass", "--telemetry", str(record)],
+        cwd=TOOL,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
+    )
+    expect.passing(run, describing="plate-mass over a recorded plate")
+    reported = json.loads(result.read_text(encoding="utf-8"))
+    grams = sum(_volume_mm3(piece) for piece in _pieces(PLATE.read_text(encoding="ascii")))
+    grams = grams / 1000 * 1.24
+    expect.truth(
+        abs(reported["value"] - grams) < 1e-9,
+        describing=f"the reported {reported['value']} g is the mesh's {grams} g",
+    )
+    expect.contains(reported["detail"], "9 marks; mark at (25, 25) mm", describing="the detail")
+    short = json.loads(record.read_text(encoding="utf-8"))
+    short["mark_count"] = 8
+    negative = json.loads(record.read_text(encoding="utf-8"))
+    negative["mesh_volume_mm3"] = -negative["mesh_volume_mm3"]
+    for one in negative["marks"]:
+        one["volume_mm3"] = -one["volume_mm3"]
+    boolean = json.loads(record.read_text(encoding="utf-8"))
+    boolean["marks"][0]["volume_mm3"] = True
+    lettered = json.loads(record.read_text(encoding="utf-8"))
+    lettered["marks"][0]["centre_mm"] = "12"
+    nothing = {"mesh_volume_mm3": 0, "mark_count": 0, "marks": []}
+    for name, text, refusal in (
+        ("short.json", json.dumps(short), "names 8 marks"),
+        ("counted.json", json.dumps({**short, "mark_count": 9.0}), "it needs a mark_count"),
+        ("negative.json", json.dumps(negative), "a mark of no volume"),
+        ("empty.json", json.dumps(nothing), "carries no mark"),
+        ("boolean.json", json.dumps(boolean), "is no volume_mm3 number"),
+        ("lettered.json", json.dumps(lettered), "centre_mm [x, y] pair"),
+        ("infinite.json", json.dumps({**short, "mesh_volume_mm3": "inf"}), "not a finite number"),
+        ("unbounded.json", '{"mesh_volume_mm3": Infinity, "mark_count": 0, "marks": []}', "finite"),
+        ("bare.json", "{}", "no plate telemetry record"),
+        ("unparsed.json", "{", "no plate telemetry record"),
+        ("overflowing.json", json.dumps({**short, "mesh_volume_mm3": 10**400}), "finite number"),
+        ("absent.json", None, "absent.json"),
+    ):
+        broken = tmp_path / name
+        if text is not None:
+            broken.write_text(text, encoding="utf-8")
+        run = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+            [sys.executable, "-m", "camera_calibration", "plate-mass", "--telemetry", str(broken)],
+            cwd=TOOL,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        expect.equal(run.returncode, 2, describing=f"the exit status for {name}")
+        expect.contains(run.stderr, refusal, describing=f"the refusal of {name}")
+
+
+def test_a_plate_path_that_cannot_be_written_is_refused(tmp_path: Path) -> None:
+    """A plate written over a directory is refused with exit 2, naming the path."""
+    (tmp_path / "plate.stl").mkdir()
+    run = _generate_plate(tmp_path)
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(run.stderr, str(tmp_path / "plate.stl"), describing="the refusal")
+
+
+def _plate_marks(
+    directory: Path, keep: Callable[[str], bool] = lambda _: True, *, seed: int | None = None
+) -> Path:
+    """Marks on the plate's first-layer outlines, projected through the committed calibration.
+
+    One frame at each of `PLATE_HEIGHTS_MM`, a mark at the middle of every edge
+    of every kept mark that projects into the frame. The slice is the plate's
+    first layer planned as its outlines alone. With `seed`, every pixel is moved
+    by a normal draw of `coverage.PERTURBATION_PX`, as the README states the
+    whole-bed report's refits are, drawn here in file order.
+    """
+    camera = _camera_of(json.loads(COMMITTED.read_text(encoding="utf-8")))
+    committed = json.loads(MARKS.read_text(encoding="utf-8"))
+    image = FRAMES / committed["frames"][0]["case"] / committed["frames"][0]["file"]
+    slice_lines = [";LAYER_CHANGE", f";Z:{PLATE_LAYER_MM}", "G90", "M83"]
+    kept = [mark for mark in plate.marks(plate.Bed(250.0, 220.0)) if keep(mark.name)]
+    for mark in plate.marks(plate.Bed(250.0, 220.0)):
+        ring = [*mark.outline, mark.outline[0]]
+        slice_lines += [";TYPE:External perimeter", f"G1 X{ring[0][0]} Y{ring[0][1]}"]
+        slice_lines += [f"G1 X{x} Y{y} E0.05" for x, y in ring[1:]]
+    slice_path = directory / "plate.gcode"
+    slice_path.write_text("\n".join(slice_lines) + "\n", encoding="utf-8")
+    generator = np.random.default_rng(seed) if seed is not None else None
+    frames = []
+    for height in PLATE_HEIGHTS_MM:
+        middles = [
+            ((x0 + x1) / 2, (y0 + y1) / 2, PLATE_LAYER_MM - height)
+            for mark in kept
+            for (x0, y0), (x1, y1) in zip(
+                mark.outline, mark.outline[1:] + mark.outline[:1], strict=True
+            )
+        ]
+        px = camera.project(np.array(middles))
+        px = px[(px[:, 0] >= 0) & (px[:, 0] < 1920) & (px[:, 1] >= 0) & (px[:, 1] < 1080)]
+        if generator is not None:
+            px = px + generator.normal(0.0, coverage.PERTURBATION_PX, px.shape)
+        frames.append(
+            {
+                "case": "calibration-plate",
+                "file": f"lowered-{height:g}mm.jpg",
+                "frame": str(image),
+                "gcode": str(slice_path),
+                "zc_mm": height,
+                "curves": [{"what": "first", "z": PLATE_LAYER_MM, "px": px.tolist()}],
+            }
+        )
+    path = directory / ("plate-marks.json" if seed is None else f"plate-marks-{seed}.json")
+    path.write_text(
+        json.dumps({"frames": frames, "landmarks": committed["landmarks"]}), encoding="utf-8"
+    )
+    return path
+
+
+def _bed_grid(z: float) -> np.ndarray:
+    """An 11 x 11 grid over the 250 x 220 mm bed at world height `z`, built here alone."""
+    return np.array([[x, y, z] for x in np.linspace(0, 250, 11) for y in np.linspace(0, 220, 11)])
+
+
+def test_plate_marks_refit_the_camera_across_the_whole_bed(tmp_path: Path) -> None:
+    """Plate marks projected through the committed camera refit it, from no start, bed-wide."""
+    run = _run(_plate_marks(tmp_path), tmp_path, covered=True)
+    expect.passing(run, describing="the calibration tool over plate marks")
+    fitted = _camera_of(json.loads((tmp_path / "calibration.json").read_text(encoding="utf-8")))
+    truth = _camera_of(json.loads(COMMITTED.read_text(encoding="utf-8")))
+    apart = np.linalg.norm(fitted.project(_bed_grid(0.0)) - truth.project(_bed_grid(0.0)), axis=1)
+    worst = float(apart.max())
+    expect.truth(
+        worst <= PLATE_REFIT_PX,
+        describing=f"a point of the bed projects {worst:.2f} px from the committed camera",
+    )
+    surface, below = _whole_bed_figures(run.stdout)
+    expect.truth(
+        max(surface, below) < PLATE_WHOLE_BED_PX,
+        describing=f"the plate fit's whole-bed report, {surface} and {below} px, holds bed-wide",
+    )
+
+
+def _whole_bed_figures(stdout: str) -> tuple[float, float]:
+    found = re.search(
+        r"at most ([0-9.]+) px on the bed's surface and ([0-9.]+) px 40 mm below it", stdout
+    )
+    if found is None:
+        message = f"the fit printed no whole-bed report: {stdout!r}"
+        raise AssertionError(message)
+    return float(found.group(1)), float(found.group(2))
+
+
+def test_the_whole_bed_report_is_the_fits_largest_disagreement_with_its_refits(
+    tmp_path: Path,
+) -> None:
+    """Each printed figure is the largest grid disagreement between the fit and its refits.
+
+    The refits are made here from marks perturbed here, each fitted as the
+    tool fits, from the same start, and compared over a grid built here.
+    """
+    marks = _plate_marks(tmp_path)
+    run = _run(marks, tmp_path, "--start", str(COMMITTED), covered=True)
+    expect.passing(run, describing="the calibration tool over plate marks")
+    surface, below = _whole_bed_figures(run.stdout)
+    fitted = _camera_of(json.loads((tmp_path / "calibration.json").read_text(encoding="utf-8")))
+    start = _camera_of(json.loads(COMMITTED.read_text(encoding="utf-8")))
+    refits = [
+        fitting.fit(load(_plate_marks(tmp_path, seed=seed)), (1920, 1080), start).camera
+        for seed in coverage.PERTURBATION_SEEDS
+    ]
+    for printed, z in ((surface, 0.0), (below, -40.0)):
+        points = _bed_grid(z)
+        largest = max(
+            float(np.linalg.norm(refit.project(points) - fitted.project(points), axis=1).max())
+            for refit in refits
+        )
+        expect.truth(
+            abs(printed - largest) <= 0.005,
+            describing=f"the printed {printed} px at z = {z} is the largest, {largest} px",
+        )
+
+
+def test_a_fit_from_the_start_its_grid_chose_is_the_grids_fit(tmp_path: Path) -> None:
+    """A fit over a grid's chosen start alone is the fit over the whole grid, number for number.
+
+    The whole-bed report's refits of a fit made from the grid start from the
+    start that fit refined, which is the refit the whole grid makes whenever that
+    start still fits best. Two of the grid's starts, one the camera's side and
+    one rolled a half turn from it, stand for the twelve here.
+    """
+    marks = load(_plate_marks(tmp_path, lambda name: "corner" in name, seed=1))
+    grid = (fitting.GRID[0], fitting.GRID[2])
+    whole = fitting.fit(marks, (1920, 1080), None, grid)
+    chosen = whole.grid_start
+    if chosen is None or chosen not in grid:
+        message = f"a fit from the grid {grid} names {chosen} as the start it refined"
+        raise AssertionError(message)
+    alone = fitting.fit(marks, (1920, 1080), None, (chosen,))
+    expect.equal(
+        alone.camera.vector().tolist(),
+        whole.camera.vector().tolist(),
+        describing="the camera fitted from the chosen start alone",
+    )
+    expect.equal(alone.grid_start, chosen, describing="the start it names")
+
+
+def test_a_refit_that_sees_the_bed_behind_it_disagrees_without_bound() -> None:
+    """A grid point an alternative camera sees behind it is an infinite disagreement.
+
+    Driven on the report's own measure rather than through a fit: no marks a
+    person can make refit to a camera behind the bed, so no run reaches this
+    path, and the report must still say such a camera holds nowhere on it.
+    """
+    camera = _camera_of(json.loads(COMMITTED.read_text(encoding="utf-8")))
+    behind = camera.vector()
+    behind[10] -= 1e5
+    points = _bed_grid(0.0)
+    bed = plate.Bed(250.0, 220.0)
+    expect.equal(
+        coverage.disagreement_px(camera, [camera], coverage.grid(bed, 0.0)),
+        0.0,
+        describing="the fit against itself",
+    )
+    expect.equal(
+        coverage.disagreement_px(camera, [camera, Camera.of_vector(behind)], points),
+        float("inf"),
+        describing="the fit against a camera seeing the whole bed behind it",
+    )
+
+
+@pytest.mark.parametrize(
+    ("omitted", "bed", "uncovered"),
+    [
+        ("front-left corner", BED_MM, "front-left cell"),
+        ("front-right corner", BED_MM, "front-right cell"),
+        ("back-left corner", BED_MM, "back-left cell"),
+        ("back-right corner", BED_MM, "back-right cell"),
+        ("centre", BED_MM, "centre cell"),
+        # Every mark kept, but a bed named shallower than the plate: the back
+        # half of the plate lies off the area named, in no cell of it, and the
+        # centre cell, 33 to 67 mm deep, holds no mark.
+        (None, "250x100", "centre cell"),
+    ],
+)
+def test_plate_marks_missing_a_required_cell_are_refused_naming_it(
+    tmp_path: Path, omitted: str | None, bed: str, uncovered: str
+) -> None:
+    """Plate marks meeting every minimum but one required cell are refused, naming that cell."""
+    marks = _plate_marks(tmp_path, lambda name: name != omitted)
+    run = _run(marks, tmp_path, "--start", str(COMMITTED), "--bed-mm", bed, covered=True)
+    expect.equal(run.returncode, 2, describing="the exit status")
+    expect.contains(
+        run.stderr, f"reach none of the {uncovered} of a 3 x 3 grid", describing="the refusal"
+    )
+    expect.truth(
+        not (tmp_path / "calibration.json").exists(), describing="no calibration is written"
+    )
+
+
+def test_marks_only_near_the_centre_are_refused_naming_every_uncovered_cell(
+    tmp_path: Path,
+) -> None:
+    """Marks only near the centre are refused naming all four corner cells.
+
+    That is the plate's centre mark alone, and the committed marks, which lie
+    near the bed's centre, when no opt-out is passed.
+    """
+    corners = "front-left, front-right, back-left, back-right cells"
+    centre_only = _run(
+        _plate_marks(tmp_path, lambda name: name == "centre"),
+        tmp_path,
+        "--start",
+        str(COMMITTED),
+        covered=True,
+    )
+    committed = _run(_fixture_marks(tmp_path), tmp_path, "--start", str(COMMITTED), covered=True)
+    for run in (centre_only, committed):
+        expect.equal(run.returncode, 2, describing="the exit status")
+        expect.contains(run.stderr, f"reach none of the {corners}", describing="the refusal")
+    expect.truth(
+        not (tmp_path / "calibration.json").exists(), describing="no calibration is written"
+    )
+
+
+def test_a_slice_rewritten_between_fits_is_read_again(tmp_path: Path) -> None:
+    """The slices a run parses once are read again when a slice has changed on disk."""
+    marks = _plate_marks(tmp_path)
+    before = fitting.observations(load(marks))
+    expect.equal(
+        [one.segments.tolist() for one in fitting.observations(load(marks))],
+        [one.segments.tolist() for one in before],
+        describing="the outlines read twice from one unchanged slice",
+    )
+    slice_path = tmp_path / "plate.gcode"
+    moved = [
+        re.sub(r"X([0-9.]+)", lambda word: f"X{float(word.group(1)) + 1:g}", line)
+        for line in slice_path.read_text(encoding="utf-8").splitlines()
+    ]
+    slice_path.write_text("\n".join(moved) + "\n; moved 1 mm along X\n", encoding="utf-8")
+    after = fitting.observations(load(marks))
+    shift = after[0].segments - before[0].segments
+    expect.equal(
+        [shift[:, 0].min(), shift[:, 0].max()],
+        [1.0, 1.0],
+        describing="every outline segment's start, read from the rewritten slice",
+    )

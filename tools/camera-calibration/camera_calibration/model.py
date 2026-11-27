@@ -82,20 +82,6 @@ def cross_check(camera: Camera, points: np.ndarray) -> float:
     return float(np.abs(theirs.reshape(-1, 2) - ours[seen]).max())
 
 
-def point_to_segments(points: np.ndarray, segments: np.ndarray) -> np.ndarray:
-    """The distance from each point (N, 2) to the nearest of segments (M, 4)."""
-    a, b = segments[:, :2], segments[:, 2:]
-    ab = b - a
-    length = (ab * ab).sum(1)
-    length[length == 0] = 1e-9
-    ap = points[:, None, :] - a[None]
-    t = np.clip((ap * ab[None]).sum(2) / length[None], 0, 1)
-    nearest = a[None] + t[..., None] * ab[None]
-    distance = np.linalg.norm(points[:, None, :] - nearest, axis=2)
-    distance[np.isnan(distance)] = 1e6
-    return distance.min(1)
-
-
 def camera_position(camera: Camera) -> np.ndarray:
     """Where the camera is, in the bed frame."""
     return -rodrigues(camera.rvec).T @ camera.tvec
