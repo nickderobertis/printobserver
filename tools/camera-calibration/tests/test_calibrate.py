@@ -942,12 +942,22 @@ def test_plate_mass_reports_a_recorded_plates_pla(tmp_path: Path) -> None:
     negative["mesh_volume_mm3"] = -negative["mesh_volume_mm3"]
     for one in negative["marks"]:
         one["volume_mm3"] = -one["volume_mm3"]
+    boolean = json.loads(record.read_text(encoding="utf-8"))
+    boolean["marks"][0]["volume_mm3"] = True
+    lettered = json.loads(record.read_text(encoding="utf-8"))
+    lettered["marks"][0]["centre_mm"] = "12"
+    nothing = {"mesh_volume_mm3": 0, "mark_count": 0, "marks": []}
     for name, text, refusal in (
         ("short.json", json.dumps(short), "names 8 marks"),
-        ("counted.json", json.dumps({**short, "mark_count": 9.0}), "no whole number"),
+        ("counted.json", json.dumps({**short, "mark_count": 9.0}), "it needs a mark_count"),
         ("negative.json", json.dumps(negative), "a mark of no volume"),
-        ("infinite.json", json.dumps({**short, "mesh_volume_mm3": "inf"}), "not finite"),
+        ("empty.json", json.dumps(nothing), "carries no mark"),
+        ("boolean.json", json.dumps(boolean), "is no volume_mm3 number"),
+        ("lettered.json", json.dumps(lettered), "centre_mm [x, y] pair"),
+        ("infinite.json", json.dumps({**short, "mesh_volume_mm3": "inf"}), "not a finite number"),
+        ("unbounded.json", '{"mesh_volume_mm3": Infinity, "mark_count": 0, "marks": []}', "finite"),
         ("bare.json", "{}", "no plate telemetry record"),
+        ("unparsed.json", "{", "no plate telemetry record"),
         ("absent.json", None, "absent.json"),
     ):
         broken = tmp_path / name

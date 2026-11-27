@@ -358,43 +358,57 @@ def telemetry(pieces: list[Solid]) -> str:
     )
 
 
+def _json_number(value: object) -> float | None:
+    """A JSON number as a float, or `None` for anything else, a boolean included."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
 def _recorded(text: str) -> list[Solid]:
     """The marks a `telemetry` record names, each with its volume and centre.
 
     Raises:
-        PlateError: If the text is no such record, a figure of it is not finite, a mark
-            encloses no volume, or its figures disagree.
+        PlateError: If the text is no such record: a field missing or of the
+            wrong JSON type, no mark, a figure that is not finite, a volume that
+            is not positive, or figures that disagree.
     """
     try:
         record = json.loads(text)
-        volume = float(record["mesh_volume_mm3"])
-        count = record["mark_count"]
-        pieces = [
-            Solid(
-                0,
-                float(one["volume_mm3"]),
-                (float(one["centre_mm"][0]), float(one["centre_mm"][1])),
-            )
-            for one in record["marks"]
-        ]
-    except (ValueError, TypeError, KeyError, IndexError) as error:
-        msg = f"no plate telemetry record: {error!r}"
+    except ValueError as error:
+        msg = f"no plate telemetry record: {error}"
         raise PlateError(msg) from error
-    if type(count) is not int:
-        msg = f"the record's mark_count {count!r} is no whole number"
+    marks = record.get("marks") if isinstance(record, dict) else None
+    count = record.get("mark_count") if isinstance(record, dict) else None
+    volume = _json_number(record.get("mesh_volume_mm3")) if isinstance(record, dict) else None
+    if not isinstance(marks, list) or isinstance(count, bool) or not isinstance(count, int):
+        msg = "no plate telemetry record: it needs a mark_count, a marks list and a mesh_volume_mm3"
         raise PlateError(msg)
-    figures = [volume, *(one for piece in pieces for one in (piece.volume_mm3, *piece.centre_mm))]
-    if not all(math.isfinite(one) for one in figures) or not all(
-        piece.volume_mm3 > 0 for piece in pieces
-    ):
-        msg = "the record carries a volume or a centre that is not finite, or a mark of no volume"
+    pieces = []
+    for one in marks:
+        centre = one.get("centre_mm") if isinstance(one, dict) else None
+        mark_volume = _json_number(one.get("volume_mm3")) if isinstance(one, dict) else None
+        x, y = (None, None)
+        if isinstance(centre, list) and len(centre) == len(("x", "y")):
+            x, y = _json_number(centre[0]), _json_number(centre[1])
+        if mark_volume is None or x is None or y is None:
+            msg = f"the record's mark {one!r} is no volume_mm3 number and centre_mm [x, y] pair"
+            raise PlateError(msg)
+        pieces.append(Solid(0, mark_volume, (x, y)))
+    figures = [one for piece in pieces for one in (piece.volume_mm3, *piece.centre_mm)]
+    if volume is None or not all(math.isfinite(one) for one in (volume, *figures)):
+        msg = (
+            "the record carries a mesh_volume_mm3 or a figure of a mark that is not a finite number"
+        )
         raise PlateError(msg)
-    if count != len(pieces) or not math.isclose(
-        volume, sum(piece.volume_mm3 for piece in pieces), rel_tol=1e-9
-    ):
+    if not pieces or not all(piece.volume_mm3 > 0 for piece in pieces):
+        msg = "the record carries no mark, or a mark of no volume"
+        raise PlateError(msg)
+    total = sum(piece.volume_mm3 for piece in pieces)
+    if count != len(pieces) or not math.isclose(volume, total, rel_tol=1e-9):
         msg = (
             f"the record names {count} marks and {volume} mm3, and lists {len(pieces)} marks "
-            f"of {sum(piece.volume_mm3 for piece in pieces)} mm3"
+            f"of {total} mm3"
         )
         raise PlateError(msg)
     return pieces
