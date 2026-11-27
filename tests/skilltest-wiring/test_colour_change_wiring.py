@@ -182,8 +182,23 @@ REAL_SCENARIOS = (
 #: The plain copy of that print's G-code the core crate's index tests read.
 REAL_GCODE = REPO / "crates/printobserver-core/tests/fixtures/real-prints/two-colour-box.gcode"
 HISTORY = ["printobserver", "history", "--print-id", "{print}", "--limit", "1000", "--json"]
+
+
+def event_kind(payload: str) -> str:
+    """The event kind a payload is recorded under, as its generated schema names it."""
+    schema = REPO / "schemas/printobserver-core" / f"{payload}Payload.json"
+    kind: str = json.loads(schema.read_text(encoding="utf-8"))["x-event-kind"]
+    return kind
+
+
+REACHED = event_kind("FilamentChangePlannedReached")
+RESUMED = event_kind("FilamentChangePlannedResumed")
+OBSERVED = event_kind("PeriodicObservation")
 #: What a turn leaves in the history: none may fall inside a wait.
-TURN_KINDS = {"agent_assessment", "action_requested", "action_executed", "action_rejected"}
+TURN_KINDS = {
+    event_kind(payload)
+    for payload in ("AgentAssessment", "ActionRequested", "ActionExecuted", "ActionRejected")
+}
 
 
 def real_replay(turns: list[ScriptedRun], scratch: Path) -> tuple[Case, Scripted]:
@@ -214,11 +229,11 @@ def test_the_real_two_colour_print_is_quiet_through_each_wait_and_carries_on(
     equal(
         [point.event_kind for point in done.replayed.points],
         [
-            "periodic_observation",
-            "filament_change_planned_resumed",
-            "periodic_observation",
-            "filament_change_planned_resumed",
-            "periodic_observation",
+            OBSERVED,
+            RESUMED,
+            OBSERVED,
+            RESUMED,
+            OBSERVED,
         ],
         describing="what each decision point was the check of",
     )
@@ -237,12 +252,18 @@ def test_the_real_two_colour_print_is_quiet_through_each_wait_and_carries_on(
         reached = next(
             at
             for at, event in enumerate(events)
-            if event["kind"] == "filament_change_planned_reached"
-            and event["payload"]["change"]["offset_bytes"] == offset
+            if event["kind"] == REACHED and event["payload"]["change"]["offset_bytes"] == offset
         )
-        resumed = kinds.index("filament_change_planned_resumed", reached)
+        resumed = kinds.index(RESUMED, reached)
         written = set(kinds[reached:resumed]) & TURN_KINDS
         equal(written, set(), describing=f"what a turn wrote in the wait at byte {offset}")
+        began, ended = events[reached]["received_at"], events[resumed]["received_at"]
+        ran = [
+            turn["started_at"]
+            for turn in done.replayed.ledger["turns"]
+            if began < turn["started_at"] < ended
+        ]
+        equal(ran, [], describing=f"the turns the port started in the wait at byte {offset}")
     truth(done.replayed.passed, describing=f"every point: {done.replayed.failures()}")
 
 

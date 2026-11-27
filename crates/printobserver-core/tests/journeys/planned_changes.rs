@@ -535,6 +535,73 @@ fn a_resumption_the_store_refused_is_recorded_by_the_next_read() {
     world.journal.assert_no_violations();
 }
 
+/// A later change's resumption the store refused puts back the schedule the
+/// earlier change's check set: the next scheduled check stays an interval
+/// after that check, and the next read records the later resumption once.
+#[test]
+fn a_later_refused_resumption_keeps_the_earlier_checks_schedule() {
+    let (world, _, _) = colour_world();
+    let print_id = printing(&world);
+    world.printer.extrudes(
+        FILE,
+        line_offset("M600", 0),
+        vec![on_tool(0, fed_before(0))],
+    );
+    printing_at(&world, past_change(0));
+    assert!(watch(&world).is_empty(), "reaching a change claimed a turn");
+    world.clock.advance(120);
+    printing_at(&world, carried_on_from(0));
+    let first_checked = world.clock.elapsed();
+    let check = watch(&world);
+    assert_eq!(check.len(), 1, "carrying on claimed no check");
+    run(&world, check);
+
+    world.clock.advance(20);
+    world.printer.extrudes(
+        FILE,
+        line_offset("M600", 1),
+        vec![on_tool(0, fed_before(1))],
+    );
+    printing_at(&world, past_change(1));
+    assert!(watch(&world).is_empty(), "reaching a change claimed a turn");
+    world.clock.advance(20);
+    printing_at(&world, carried_on_from(1));
+    world.store.fails(
+        StoreMethod::AppendEvent,
+        StoreError::Io {
+            detail: "the disk is full".to_owned(),
+        },
+    );
+    let refused = block_on(world.core.watch_printer(&NoHead));
+    world.store.heals();
+    assert!(
+        refused
+            .as_ref()
+            .map_or(true, |watched| watched.turns.is_empty()),
+        "a refused resumption claimed a check"
+    );
+    let since_first = world.clock.elapsed().saturating_sub(first_checked);
+    assert_eq!(
+        world.core.until_next_observation(),
+        world
+            .config
+            .observation_interval
+            .saturating_sub(since_first),
+        "the refused resumption moved the schedule the first change's check set"
+    );
+
+    let check = watch(&world);
+    assert_eq!(check.len(), 1, "the next read claimed no check");
+    let resumed = of_print::<FilamentChangePlannedResumedPayload>(&world, print_id);
+    let changes: Vec<_> = resumed
+        .iter()
+        .map(|(_, payload)| payload.change.index)
+        .collect();
+    assert_eq!(changes, vec![0, 1]);
+    run(&world, check);
+    world.journal.assert_no_violations();
+}
+
 /// Forty minutes of a printer waiting at a change, read by the watch and the
 /// scheduled observation every two: `Obico` notifies at 0 and 10 minutes, and
 /// the firmware's idle timeout turns the nozzle off at 30. Nothing is claimed.
