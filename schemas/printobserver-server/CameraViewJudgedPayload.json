@@ -144,7 +144,7 @@
       "description": "What it found."
     },
     "reason": {
-      "description": "Why the frame may not be drawn on, for the three refusals; null\notherwise.",
+      "description": "Why the frame may not be drawn on: for the three refusals, and for a\nrefit view, whose camera has moved since its calibration; null for an\nunshifted one.",
       "type": [
         "string",
         "null"

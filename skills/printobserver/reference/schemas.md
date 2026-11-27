@@ -9713,7 +9713,7 @@ Declared by `printobserver-server`.
       "description": "What it found."
     },
     "reason": {
-      "description": "Why the frame may not be drawn on, for the three refusals; null\notherwise.",
+      "description": "Why the frame may not be drawn on: for the three refusals, and for a\nrefit view, whose camera has moved since its calibration; null for an\nunshifted one.",
       "type": [
         "string",
         "null"
@@ -10348,6 +10348,11 @@ Declared by `printobserver-server`.
         {
           "const": "view_refit_rejected",
           "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
           "type": "string"
         },
         {
@@ -14692,6 +14697,11 @@ Declared by `printobserver-supervisor-api`.
           "type": "string"
         },
         {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
           "const": "frame_mismatch",
           "description": "The frame is not the calibration's size or stream.",
           "type": "string"
@@ -15844,6 +15854,11 @@ Declared by `printobserver-server`.
         {
           "const": "view_refit_rejected",
           "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
           "type": "string"
         },
         {
@@ -31461,6 +31476,11 @@ Declared by `printobserver-server`.
           "type": "string"
         },
         {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
           "const": "frame_mismatch",
           "description": "The frame is not the calibration's size or stream.",
           "type": "string"
@@ -46497,6 +46517,11 @@ Declared by `printobserver-server`.
           "type": "string"
         },
         {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
           "const": "frame_mismatch",
           "description": "The frame is not the calibration's size or stream.",
           "type": "string"
@@ -47568,6 +47593,11 @@ Declared by `printobserver-supervisor-api`.
           "type": "string"
         },
         {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
           "const": "frame_mismatch",
           "description": "The frame is not the calibration's size or stream.",
           "type": "string"
@@ -47921,6 +47951,11 @@ Declared by `printobserver-supervisor-api`.
         {
           "const": "view_refit_rejected",
           "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
           "type": "string"
         },
         {
@@ -48856,6 +48891,11 @@ Declared by `printobserver-supervisor-api`.
     {
       "const": "view_refit_rejected",
       "description": "The camera moved since the drawing's correction was taken.",
+      "type": "string"
+    },
+    {
+      "const": "calibration_stale",
+      "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
       "type": "string"
     },
     {

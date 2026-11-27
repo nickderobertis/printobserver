@@ -1117,17 +1117,24 @@ fn body_of<P: EventPayload>(payload: &P) -> Option<EventBody> {
     EventBody::of(payload).ok()
 }
 
-/// The record of one view judgement.
+/// The record of one view judgement, its reason the fallback it leads to: a
+/// refit view, its landmarks moved from the calibration, is drawn on no more
+/// than a refused one.
 fn view_record(
     frame_sha256: &str,
     view: &ViewJudgement,
     view_correction: Option<ViewCorrection>,
 ) -> Option<EventBody> {
+    let reason = if view.outcome == ViewOutcome::Refit {
+        Some(crate::check_images::CALIBRATION_STALE.to_owned())
+    } else {
+        view.reason.clone()
+    };
     body_of(&crate::judgements::CameraViewJudgedPayload {
         frame_sha256: frame_sha256.to_owned(),
         outcome: view.outcome,
         view_correction,
-        reason: view.reason.clone(),
+        reason,
     })
 }
 

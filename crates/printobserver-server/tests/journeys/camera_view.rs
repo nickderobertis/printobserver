@@ -1,8 +1,9 @@
 //! A print's camera judged on its own checks' frames: a covered first layer
-//! retried rather than failed, a clearly found one correcting the view, a
-//! paused check left unjudged, every judgement recorded against the stored
-//! frame it read, and a camera that moves again refused until a fresh
-//! correction is taken.
+//! retried rather than failed, a clearly found one passing, a paused check
+//! left unjudged, a camera moved since its calibration shown the plain frame
+//! for it, every judgement recorded against the stored frame it read, a camera
+//! that moves again refused until a fresh correction is taken, and a pass at
+//! the first layer's own height correcting the drawing of an unmoved camera.
 //!
 //! The server is the real composition over the scripted `OctoPrint` and a
 //! scripted camera, as the composite-check journeys run it, configured with
@@ -291,13 +292,14 @@ async fn started(journey: &Journey, frames: &[Vec<u8>]) -> (Started, ScriptedHos
 
 /// A covered first layer is inconclusive and judged again on the next check's
 /// own frame; a check while the printer reports the print paused is not judged
-/// and is shown the whole frame for it; the clearly found layer passes, its
-/// shift recorded as the print's correction, and the check is shown the
-/// three-panel image drawn through it, its note saying so. Every record names
+/// and is shown the whole frame for it; the clearly found layer passes, but
+/// the landmarks show the camera has moved since its calibration, so every
+/// check is shown the plain frame saying so rather than an outline drawn off
+/// the part. Every record names
 /// the stored frame it read, a change notice is written only when the image
 /// changes, and the camera is asked for nothing beyond the checks' own frames.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view() {
+async fn a_covered_first_layer_is_judged_again_and_a_moved_camera_is_never_drawn_on() {
     let frames = [
         box_frame(COVERED.0),
         box_frame(PAUSED.0),
@@ -322,13 +324,14 @@ async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view
     let paused = situation(&checks.next(PAUSED.1, true).await);
     assert_eq!(paused["image_fallback"]["code"], "paused", "{paused}");
 
+    // The layer is clearly found and the alignment passes, but the
+    // landmarks show the camera has moved since its calibration: nothing is
+    // drawn on its frames, and the check says why.
     let found = situation(&checks.next(FOUND.1, false).await);
-    assert_eq!(found["image_kind"], "three_panel", "{found}");
-    assert!(found.get("image_fallback").is_none(), "{found}");
-    let note = found["image"].as_str().expect("a note");
-    assert!(
-        note.contains("the camera has shifted slightly since it was calibrated, but the drawing goes through a correction taken from this print's own first layer, found 20 px from where the drawing puts it"),
-        "the note says the drawing went through the correction: {note}"
+    assert_eq!(found["image_kind"], "whole_frame", "{found}");
+    assert_eq!(
+        found["image_fallback"]["code"], "calibration_stale",
+        "{found}"
     );
     let PrintAlignment::Passed {
         offset_px,
@@ -347,7 +350,10 @@ async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view
     );
 
     let later = situation(&checks.next(LATER[1].1, false).await);
-    assert_eq!(later["image_kind"], "three_panel", "{later}");
+    assert_eq!(
+        later["image_fallback"]["code"], "calibration_stale",
+        "{later}"
+    );
     // Read while the last check is still held, so no check after it adds to
     // what is counted.
     let events = history(server, print_id).await;
@@ -368,10 +374,13 @@ async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view
         .await
         .expect("JSON");
     assert_eq!(
-        status["last_check_image"]["kind"], "three_panel",
+        status["last_check_image"]["kind"], "whole_frame",
         "{status}"
     );
-    assert_eq!(status["last_check_image"]["fallback"], Value::Null);
+    assert_eq!(
+        status["last_check_image"]["fallback"]["code"], "calibration_stale",
+        "{status}"
+    );
     checks.release();
     started.server.stop().await;
 }
@@ -436,7 +445,7 @@ fn the_records_name_the_frames_they_read(
         [
             (json!("whole_frame"), json!("alignment_inconclusive")),
             (json!("whole_frame"), json!("paused")),
-            (json!("three_panel"), Value::Null),
+            (json!("whole_frame"), json!("calibration_stale")),
         ],
         "a notice for each change and none for the unchanged last check"
     );
@@ -478,12 +487,12 @@ async fn every_judgement_is_one_record_naming_its_own_frame() {
 
     for (index, situation) in situations.iter().enumerate() {
         let expected = if index < 4 {
-            json!("three_panel")
+            "calibration_stale"
         } else {
-            json!("whole_frame")
+            "landmarks_not_found"
         };
         assert_eq!(
-            situation["image_kind"], expected,
+            situation["image_fallback"]["code"], expected,
             "check {index}: {situation}"
         );
     }
@@ -511,7 +520,10 @@ async fn every_judgement_is_one_record_naming_its_own_frame() {
         named.insert(view["frame_sha256"].as_str().expect("a sha").to_owned());
         if index < 4 {
             assert_eq!(view["outcome"], "refit", "check {index}: {view}");
-            assert_eq!(view["reason"], Value::Null);
+            assert_eq!(
+                view["reason"],
+                json!(printobserver_server::CALIBRATION_STALE)
+            );
         } else {
             assert_eq!(
                 view["outcome"], "landmarks_not_found",
@@ -538,7 +550,7 @@ async fn every_judgement_is_one_record_naming_its_own_frame() {
     assert_eq!(
         kinds,
         [
-            (json!("three_panel"), Value::Null),
+            (json!("whole_frame"), json!("calibration_stale")),
             (json!("whole_frame"), json!("landmarks_not_found")),
         ],
         "one notice per transition, none for a repeat"
@@ -551,7 +563,8 @@ async fn every_judgement_is_one_record_naming_its_own_frame() {
 /// the alignment goes back to pending; the next frame, covered, is judged
 /// again and stays pending; the clearly found one after it installs a fresh
 /// correction and landmark reference, recorded as a new refit naming that
-/// frame, and the checks after it are shown the three-panel image again.
+/// frame, the checks after it shown the plain frame for the stale calibration
+/// as before the camera moved again.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_camera_moved_again_is_refused_until_a_fresh_correction_is_taken() {
     let moved = shifted(&box_frame(LATER[0].0), 8);
@@ -570,7 +583,10 @@ async fn a_camera_moved_again_is_refused_until_a_fresh_correction_is_taken() {
     let print_id = adopted(server).await;
 
     let first = situation(&checks.next(FOUND.1, false).await);
-    assert_eq!(first["image_kind"], "three_panel", "{first}");
+    assert_eq!(
+        first["image_fallback"]["code"], "calibration_stale",
+        "{first}"
+    );
     let rejected = situation(&checks.next(LATER[0].1, false).await);
     assert_eq!(
         rejected["image_fallback"]["code"], "view_refit_rejected",
@@ -587,9 +603,15 @@ async fn a_camera_moved_again_is_refused_until_a_fresh_correction_is_taken() {
         "{covered}"
     );
     let refound_at = situation(&checks.next(LATER[1].1, false).await);
-    assert_eq!(refound_at["image_kind"], "three_panel", "{refound_at}");
+    assert_eq!(
+        refound_at["image_fallback"]["code"], "calibration_stale",
+        "{refound_at}"
+    );
     let after = situation(&checks.next(LATER[1].1, false).await);
-    assert_eq!(after["image_kind"], "three_panel", "{after}");
+    assert_eq!(
+        after["image_fallback"]["code"], "calibration_stale",
+        "{after}"
+    );
     let events = history(server, print_id).await;
     checks.release();
 

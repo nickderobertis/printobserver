@@ -58,6 +58,10 @@ pub enum WholeFrameReasonCode {
     LandmarksNotFound,
     /// The camera moved since the drawing's correction was taken.
     ViewRefitRejected,
+    /// The landmarks show the camera has moved since its calibration, so the
+    /// plan cannot be drawn reliably on its frames: the camera wants
+    /// recalibrating.
+    CalibrationStale,
     /// The frame is not the calibration's size or stream.
     FrameMismatch,
     /// The printer reports the print paused, its bed moved off the plan's
@@ -123,6 +127,7 @@ impl Sample for WholeFrameReasonCode {
             Self::AlignmentFailed,
             Self::LandmarksNotFound,
             Self::ViewRefitRejected,
+            Self::CalibrationStale,
             Self::FrameMismatch,
             Self::Paused,
             Self::Refused,

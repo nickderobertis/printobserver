@@ -187,8 +187,8 @@ fn sha256(bytes: &[u8]) -> String {
 /// stores — a latched failure included — records each judgement against that
 /// frame and answers the stated fields, while the machine is sent nothing;
 /// and each `look` says, in its own fields, which image it was shown and why:
-/// an inconclusive alignment, the three-panel image once a correction is in
-/// force, a camera moved again, landmarks hidden, and a paused print.
+/// an inconclusive alignment, a calibration the camera has moved from, a camera
+/// moved again, landmarks hidden, and a paused print.
 pub fn a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why() {
     let camera = Camera::showing(frame(COVERED.0));
     let held = tempfile::TempDir::new().expect("a directory for the calibration");
@@ -271,11 +271,18 @@ fn the_covered_layer_and_then_the_found_one_are_judged(
     let found = recheck(world, print_id);
     assert_eq!(found["alignment"]["verdict"], "passed", "{found}");
     assert_eq!(found["view_correction"]["model"], "translation", "{found}");
-    assert_eq!(found["image_kind"], "three_panel", "{found}");
-    assert_eq!(found["image_fallback"], Value::Null, "{found}");
+    // The layer passes, but the landmarks show the camera has moved since its
+    // calibration: nothing is drawn on its frames, and the answer says why.
+    assert_eq!(found["image_kind"], "whole_frame", "{found}");
+    assert_eq!(
+        found["image_fallback"]["code"], "calibration_stale",
+        "{found}"
+    );
     let looked = look(world, print_id);
-    assert_eq!(looked["image_kind"], "three_panel", "{looked}");
-    assert!(looked.get("image_fallback").is_none(), "{looked}");
+    assert_eq!(
+        looked["image_fallback"]["code"], "calibration_stale",
+        "{looked}"
+    );
 }
 
 /// A camera moved again, landmarks hidden and a paused print are each what a

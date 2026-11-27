@@ -76,8 +76,9 @@ pub struct CameraViewJudgedPayload {
     pub outcome: ViewOutcome,
     /// The correction in force when the frame was judged; null when none was.
     pub view_correction: Option<ViewCorrection>,
-    /// Why the frame may not be drawn on, for the three refusals; null
-    /// otherwise.
+    /// Why the frame may not be drawn on: for the three refusals, and for a
+    /// refit view, whose camera has moved since its calibration; null for an
+    /// unshifted one.
     pub reason: Option<String>,
 }
 

@@ -82,13 +82,13 @@
       "how_judged": "every one of these scenarios never accepts a pause or a failure acknowledged as stop"
     },
     {
-      "what": "the three-panel image once the first layer is clearly found, although the camera has shifted since its calibration: the landmarks moved, but agree with the frame the pass was taken on",
+      "what": "no pause once the first layer is clearly found on a camera that has moved since its calibration: each later check is handed the whole frame, saying the calibration is stale, rather than an outline drawn off the part",
       "scenarios": [
         "white-judged-expected-once-visible",
         "quiet-through-the-black-wait-and-on-at-its-resume",
         "black-judged-expected-once-visible"
       ],
-      "how_judged": "the live suite fails any of these checks handed the whole frame for want of a calibration fitting its frames, a landmark not found or a camera that moved again"
+      "how_judged": "each of these checks is handed the whole frame for calibration_stale, and asks for no pause, no adjustment and no failure acknowledged as stop"
     }
   ],
   "not_a_decision_point": "At 13:14:36, at layer 12 (Z 2.4), the agent of the live print paused it: the head hid the part, and that release's first-layer alignment had refused the calibration's projection, so every check was handed the whole frame. A person resumed at 13:35:31. The scenario at 13:14:08 stands for the check before that pause as the latest code shows it: the first layer is judged on the check's own frame, the toolhead covers the part, so the alignment is inconclusive and judged again later, and the agent should carry on. The ten checks taken while the print was paused, 13:16 to 13:34, are none of this case's decision points.",

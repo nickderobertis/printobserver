@@ -480,6 +480,7 @@ fn the_image_vocabulary_round_trips_and_spells_its_codes_in_snake_case() {
             "alignment_failed",
             "landmarks_not_found",
             "view_refit_rejected",
+            "calibration_stale",
             "frame_mismatch",
             "paused",
             "refused",

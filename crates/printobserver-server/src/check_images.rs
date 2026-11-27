@@ -156,6 +156,10 @@ pub enum WholeFrameReason {
     LandmarksNotFound(String),
     /// The camera moved since the print's correction was taken.
     ViewRefitRejected(String),
+    /// The landmarks show the camera has moved since its calibration, so the
+    /// plan cannot be drawn reliably on its frames, whatever correction a pass
+    /// took: a translation cannot repair a camera that has turned.
+    CalibrationStale,
     /// The frame is not the calibration's size or stream.
     FrameMismatch(String),
     /// The printer reports the print paused, its bed moved off the plan's
@@ -190,6 +194,7 @@ impl WholeFrameReason {
             Self::FrameMismatch(_) | Self::Refused(ComposeError::FrameMismatch { .. }) => {
                 WholeFrameReasonCode::FrameMismatch
             }
+            Self::CalibrationStale => WholeFrameReasonCode::CalibrationStale,
             Self::Paused => WholeFrameReasonCode::Paused,
             Self::Refused(_) => WholeFrameReasonCode::Refused,
         }
@@ -238,6 +243,7 @@ impl core::fmt::Display for WholeFrameReason {
             Self::LandmarksNotFound(reason) | Self::ViewRefitRejected(reason) | Self::FrameMismatch(reason) => {
                 formatter.write_str(reason)
             }
+            Self::CalibrationStale => formatter.write_str(CALIBRATION_STALE),
             Self::Paused => formatter.write_str(
                 "the printer reports the print paused, so its bed may stand off the plan's height and nothing is drawn",
             ),
@@ -245,6 +251,10 @@ impl core::fmt::Display for WholeFrameReason {
         }
     }
 }
+
+/// Why a check of a camera that has moved since its calibration is shown the
+/// whole frame.
+pub const CALIBRATION_STALE: &str = "the camera has moved since its calibration, so the outline cannot be drawn reliably; recalibrate this camera";
 
 /// The line saying a check was shown the whole frame, and why.
 #[must_use]
@@ -265,10 +275,8 @@ const CAMERA_HOLDS: &str = "the camera does not shift in regular operation and t
 /// or one whose earlier frame is gone from the store.
 ///
 /// A check's names which frame each panel is and when each was captured, and
-/// says what the skill says: the camera does not shift — or, `corrected`, that
-/// it shifted, that the drawing went through the print's correction for it,
-/// and how far from the drawing the print's first layer was found — and the
-/// drawing follows the bed, so a part off it has moved unless there is strong evidence
+/// says what the skill says: the camera does not shift and the drawing follows
+/// the bed, so a part off it has moved unless there is strong evidence
 /// otherwise, and no later frame undoes it. A turn handed a check's image decides on it, with no look to
 /// stall on, so this is what it decides from. A look's says only what each
 /// panel is.
@@ -277,28 +285,7 @@ pub fn composite_note(
     made_for: ImageUse,
     current_at: Timestamp,
     previous_at: Option<Timestamp>,
-    corrected: Option<f64>,
 ) -> String {
-    // A drawing through a correction taken while the landmarks had moved is
-    // only as close to the part as the print's own first layer was found to
-    // it, and says so: on a small part under a shifted camera, an agent held
-    // to the walls alone read a part a few millimetres off them as moved.
-    let (holds, beyond) = corrected.map_or_else(
-        || (CAMERA_HOLDS.to_owned(), String::new()),
-        |offset_px| {
-            (
-                format!(
-                    "the camera has shifted slightly since it was calibrated, but the drawing goes through a correction taken from this print's own first layer, found {offset_px:.0} px from where the drawing puts it, so the drawing may stand that far off the part; it already accounts for the bed's travel, so "
-                ),
-                format!(" more than {offset_px:.0} px"),
-            )
-        },
-    );
-    let hidden = if corrected.is_some() {
-        "; where the head hides the part's top, its lower walls below the drawing are no sign it has not risen"
-    } else {
-        ""
-    };
     let (current, previous, moved) = match (made_for, previous_at) {
         (ImageUse::Look, at) => (
             "this layer's planned toolpath drawn on the frame".to_owned(),
@@ -315,7 +302,7 @@ pub fn composite_note(
             ),
             "panel 3 empty, no earlier check's frame being at hand".to_owned(),
             format!(
-                "; {holds}a part{beyond} off its drawn walls in panel 1 has moved unless there is strong evidence otherwise, and no later frame undoes that{hidden}"
+                "; {CAMERA_HOLDS}a part off its drawn walls in panel 1 has moved unless there is strong evidence otherwise, and no later frame undoes that"
             ),
         ),
         (ImageUse::Check, Some(at)) => (
@@ -324,7 +311,7 @@ pub fn composite_note(
             ),
             format!("panel 3 the previous check's frame, captured {at}"),
             format!(
-                "; {holds}a part{beyond} off its drawn walls in panel 1, or moved since panel 3, has moved unless there is strong evidence otherwise, and no later frame undoes that{hidden}"
+                "; {CAMERA_HOLDS}a part off its drawn walls in panel 1, or moved since panel 3, has moved unless there is strong evidence otherwise, and no later frame undoes that"
             ),
         ),
     };
@@ -417,10 +404,13 @@ pub fn compose_at(
     .map_err(WholeFrameReason::Refused)
 }
 
-/// Why a judged frame of a print whose plan places it may not be drawn on, or,
-/// when it may, whether it is drawn through a correction taken while the
-/// landmarks had moved.
-fn refusal_of(judged: &Judged) -> Result<bool, WholeFrameReason> {
+/// Why a judged frame of a print whose plan places it may not be drawn on.
+///
+/// A frame whose landmarks have moved from the calibration is drawn on not at
+/// all, though they agree with the correction in force: on the first shifted
+/// print the projection stood 1 to 31 px off the part, growing with height and
+/// toward the back, which no translation removes.
+fn refusal_of(judged: &Judged) -> Result<(), WholeFrameReason> {
     if let Some(reason) = &judged.rejected {
         return Err(WholeFrameReason::ViewRefitRejected(reason.clone()));
     }
@@ -451,8 +441,8 @@ fn refusal_of(judged: &Judged) -> Result<bool, WholeFrameReason> {
         Some((ViewOutcome::FrameMismatch, reason)) => {
             Err(WholeFrameReason::FrameMismatch(said(reason)))
         }
-        Some((ViewOutcome::Refit, _)) => Ok(true),
-        Some((ViewOutcome::Unshifted, _)) | None => Ok(false),
+        Some((ViewOutcome::Refit, _)) => Err(WholeFrameReason::CalibrationStale),
+        Some((ViewOutcome::Unshifted, _)) | None => Ok(()),
     }
 }
 
@@ -621,10 +611,9 @@ impl PanelImages {
         if at.index.layer_at(at.file_position_bytes).is_none() {
             return Ok(Err(WholeFrameReason::NoLayer));
         }
-        let refit = match refusal_of(judged) {
-            Ok(refit) => refit,
-            Err(reason) => return Ok(Err(reason)),
-        };
+        if let Err(reason) = refusal_of(judged) {
+            return Ok(Err(reason));
+        }
         let current = std::fs::read(shown.frame)
             .map_err(|error| format!("{} is unreadable: {error}", shown.frame.display()))?;
         // A previous frame gone from the store, or one that no longer decodes,
@@ -657,15 +646,10 @@ impl PanelImages {
         };
         let destination = self.composite_destination(shown.frame, previous);
         write_image(&self.whole.directory, &destination, &composed.jpeg)?;
-        let corrected = match (&judged.alignment, refit) {
-            (PrintAlignment::Passed { offset_px, .. }, true) => Some(*offset_px),
-            _ => None,
-        };
         let mut note = composite_note(
             shown.made_for,
             shown.captured_at,
             earlier.as_ref().map(|(_, at)| *at),
-            corrected,
         );
         if shown.made_for == ImageUse::Check
             && let Some(clause) = self.growth_clause(print_id, plan, &current, url, calibration)

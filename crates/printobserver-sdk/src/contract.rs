@@ -661,8 +661,9 @@ pub struct CameraViewJudgedPayload {
     pub frame_sha256: String,
     /// What it found.
     pub outcome: ViewOutcome,
-    /// Why the frame may not be drawn on, for the three refusals; null
-    /// otherwise.
+    /// Why the frame may not be drawn on: for the three refusals, and for a
+    /// refit view, whose camera has moved since its calibration; null for an
+    /// unshifted one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     /// The correction in force when the frame was judged; null when none was.
@@ -4347,6 +4348,11 @@ pub enum WholeFrameReasonCode {
     /// The camera moved since the drawing's correction was taken.
     #[serde(rename = "view_refit_rejected")]
     ViewRefitRejected,
+    /// The landmarks show the camera has moved since its calibration, so the
+    /// plan cannot be drawn reliably on its frames: the camera wants
+    /// recalibrating.
+    #[serde(rename = "calibration_stale")]
+    CalibrationStale,
     /// The frame is not the calibration's size or stream.
     #[serde(rename = "frame_mismatch")]
     FrameMismatch,

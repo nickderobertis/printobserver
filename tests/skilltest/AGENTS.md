@@ -48,7 +48,8 @@ The rules the real-print suite is held to, and why.
   any case's check shown the whole frame because no calibration is configured, its
   frames are not the calibration's size, the print's alignment refused it, or its
   landmarks are not found or show the camera moved again; no case is exempt. A
-  covered part's inconclusive alignment is not among them.
+  covered part's inconclusive alignment is not among them, nor a stale calibration
+  a case keeps on purpose (`calibration_stale`).
 - **The camera is rechecked as the job passes its first layer.** The live watch
   of the release a case was recorded under decided alignment on the frame it
   took as the first layer went down; the server now judges it on its checks'

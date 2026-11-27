@@ -542,8 +542,9 @@ export interface CameraViewJudgedPayload {
   /** What it found. */
   outcome: ViewOutcome;
   /**
-   * Why the frame may not be drawn on, for the three refusals; null
-   * otherwise.
+   * Why the frame may not be drawn on: for the three refusals, and for a
+   * refit view, whose camera has moved since its calibration; null for an
+   * unshifted one.
    */
   reason?: string | null;
   /** The correction in force when the frame was judged; null when none was. */
@@ -3088,6 +3089,7 @@ export type WholeFrameReasonCode =
   | "alignment_failed"
   | "landmarks_not_found"
   | "view_refit_rejected"
+  | "calibration_stale"
   | "frame_mismatch"
   | "paused"
   | "refused";
@@ -11226,6 +11228,7 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "alignment_failed",
    "landmarks_not_found",
    "view_refit_rejected",
+   "calibration_stale",
    "frame_mismatch",
    "paused",
    "refused"

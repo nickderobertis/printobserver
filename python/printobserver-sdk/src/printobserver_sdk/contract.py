@@ -659,8 +659,9 @@ class CameraViewJudgedPayload(TypedDict):
     frame_sha256: str
     # What it found.
     outcome: ViewOutcome
-    # Why the frame may not be drawn on, for the three refusals; null
-    # otherwise.
+    # Why the frame may not be drawn on: for the three refusals, and for a
+    # refit view, whose camera has moved since its calibration; null for an
+    # unshifted one.
     reason: NotRequired[str | None]
     # The correction in force when the frame was judged; null when none was.
     view_correction: NotRequired[ViewCorrection | None]
@@ -4927,6 +4928,7 @@ WholeFrameReasonCode: TypeAlias = Literal[
     "alignment_failed",
     "landmarks_not_found",
     "view_refit_rejected",
+    "calibration_stale",
     "frame_mismatch",
     "paused",
     "refused",
@@ -13320,6 +13322,7 @@ SHAPES: dict[str, object] = json.loads(
    "alignment_failed",
    "landmarks_not_found",
    "view_refit_rejected",
+   "calibration_stale",
    "frame_mismatch",
    "paused",
    "refused"

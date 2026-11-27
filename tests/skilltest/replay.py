@@ -665,7 +665,9 @@ NO_CALIBRATION = "no camera calibration is configured"
 #: projection, or its landmarks are not found or show the camera moved again: the
 #: server's own wording, of its own reason and of the alignment's, the view's and the
 #: composer's refusals. A covered part's inconclusive alignment is not among them: the
-#: toolhead over a small part legitimately leaves it to a later check.
+#: toolhead over a small part legitimately leaves it to a later check. Nor is a stale
+#: calibration, which a case keeps on purpose to prove a camera that has moved is
+#: shown the whole frame rather than an outline drawn off its part.
 CALIBRATION_FALLBACKS = (
     re.compile(re.escape(NO_CALIBRATION)),
     re.compile(
