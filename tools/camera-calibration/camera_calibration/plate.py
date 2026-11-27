@@ -381,19 +381,24 @@ def _recorded(text: str) -> list[Solid]:
     except ValueError as error:
         msg = f"no plate telemetry record: {error}"
         raise PlateError(msg) from error
-    marks = record.get("marks") if isinstance(record, dict) else None
-    count = record.get("mark_count") if isinstance(record, dict) else None
-    volume = _json_number(record.get("mesh_volume_mm3")) if isinstance(record, dict) else None
-    if not isinstance(marks, list) or isinstance(count, bool) or not isinstance(count, int):
-        msg = "no plate telemetry record: it needs a mark_count, a marks list and a mesh_volume_mm3"
-        raise PlateError(msg)
+    match record:
+        case {"marks": list() as marks, "mark_count": int() as count} if not isinstance(
+            count, bool
+        ):
+            volume = _json_number(record.get("mesh_volume_mm3"))
+        case _:
+            msg = (
+                "no plate telemetry record: it needs a mark_count, a marks list and a "
+                "mesh_volume_mm3"
+            )
+            raise PlateError(msg)
     pieces = []
     for one in marks:
-        centre = one.get("centre_mm") if isinstance(one, dict) else None
-        mark_volume = _json_number(one.get("volume_mm3")) if isinstance(one, dict) else None
-        x, y = (None, None)
-        if isinstance(centre, list) and len(centre) == len(("x", "y")):
-            x, y = _json_number(centre[0]), _json_number(centre[1])
+        match one:
+            case {"volume_mm3": recorded, "centre_mm": [at_x, at_y]}:
+                mark_volume, x, y = (_json_number(each) for each in (recorded, at_x, at_y))
+            case _:
+                mark_volume, x, y = None, None, None
         if mark_volume is None or x is None or y is None:
             msg = f"the record's mark {one!r} is no volume_mm3 number and centre_mm [x, y] pair"
             raise PlateError(msg)
