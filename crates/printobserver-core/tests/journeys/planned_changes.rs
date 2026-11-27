@@ -32,7 +32,9 @@ use printobserver_printer_api::{BoxFuture, PrinterError, PrinterState};
 use printobserver_types::{EventKind, EventPayload, EventRecord, PrintId};
 use printobserver_vision_api::NormalizedAlert;
 
-use crate::fakes::{PrinterMethod, printer_snapshot};
+use printobserver_core::store::StoreError;
+
+use crate::fakes::{PrinterMethod, StoreMethod, printer_snapshot};
 use crate::shelf::{
     FILE, SIZE, assert_close, every_of, facts, finishes, grams, load, loaded_spool, on_tool,
     register, request_start, running_at, spool_world, start, start_action,
@@ -464,6 +466,71 @@ fn reads_past_a_change_at_once_record_its_resumption_once() {
     assert_eq!(
         handed.last().map(|turn| turn.event.id),
         Some(resumed[0].0.id)
+    );
+    world.journal.assert_no_violations();
+}
+
+/// A resumption the store could not record leaves the print waiting at its
+/// change, with no check after it begun: the scheduled check stays held, and
+/// the next read once the store heals records the resumption once and claims
+/// its check.
+#[test]
+fn a_resumption_the_store_refused_is_recorded_by_the_next_read() {
+    let (world, _, _) = colour_world();
+    let print_id = printing(&world);
+    world.printer.extrudes(
+        FILE,
+        line_offset("M600", 0),
+        vec![on_tool(0, fed_before(0))],
+    );
+    printing_at(&world, past_change(0));
+    assert!(
+        watch(&world).is_empty(),
+        "reaching the change claimed a turn"
+    );
+    world.clock.advance(120);
+    let observations_before = of_print::<PeriodicObservationPayload>(&world, print_id).len();
+
+    printing_at(&world, carried_on_from(0));
+    world.store.fails(
+        StoreMethod::AppendEvent,
+        StoreError::Io {
+            detail: "the disk is full".to_owned(),
+        },
+    );
+    let refused = block_on(world.core.watch_printer(&NoHead));
+    world.store.heals();
+    assert!(
+        refused
+            .as_ref()
+            .map_or(true, |watched| watched.turns.is_empty()),
+        "a refused resumption claimed a check"
+    );
+    assert!(
+        of_print::<FilamentChangePlannedResumedPayload>(&world, print_id).is_empty(),
+        "a refused resumption was recorded"
+    );
+    assert_eq!(
+        block_on(world.core.planned_change_waiting(print_id))
+            .expect("the history is read")
+            .map(|waiting| waiting.reached.change),
+        Some(change(0)),
+        "the print no longer waits at the change its resumption was refused at"
+    );
+
+    let check = watch(&world);
+    assert_eq!(check.len(), 1, "the next read claimed no check");
+    let resumed = of_print::<FilamentChangePlannedResumedPayload>(&world, print_id);
+    assert_eq!(resumed.len(), 1, "{resumed:?}");
+    assert_eq!(resumed[0].1.change, change(0));
+    run(&world, check);
+    assert!(
+        observe(&world).is_empty(),
+        "a check ran inside the interval"
+    );
+    assert_eq!(
+        of_print::<PeriodicObservationPayload>(&world, print_id).len(),
+        observations_before
     );
     world.journal.assert_no_violations();
 }
