@@ -1116,6 +1116,30 @@ def test_the_whole_bed_report_is_the_fits_largest_disagreement_with_its_refits(
         )
 
 
+def test_a_fit_from_the_start_its_grid_chose_is_the_grids_fit(tmp_path: Path) -> None:
+    """A fit over a grid's chosen start alone is the fit over the whole grid, number for number.
+
+    The whole-bed report's refits of a fit made from the grid start from the
+    start that fit refined, which is the refit the whole grid makes whenever that
+    start still fits best. Two of the grid's starts, one the camera's side and
+    one rolled a half turn from it, stand for the twelve here.
+    """
+    marks = load(_plate_marks(tmp_path, lambda name: "corner" in name, seed=1))
+    grid = (fitting.GRID[0], fitting.GRID[2])
+    whole = fitting.fit(marks, (1920, 1080), None, grid)
+    chosen = whole.grid_start
+    if chosen is None or chosen not in grid:
+        message = f"a fit from the grid {grid} names {chosen} as the start it refined"
+        raise AssertionError(message)
+    alone = fitting.fit(marks, (1920, 1080), None, (chosen,))
+    expect.equal(
+        alone.camera.vector().tolist(),
+        whole.camera.vector().tolist(),
+        describing="the camera fitted from the chosen start alone",
+    )
+    expect.equal(alone.grid_start, chosen, describing="the start it names")
+
+
 def test_a_refit_that_sees_the_bed_behind_it_disagrees_without_bound() -> None:
     """A grid point an alternative camera sees behind it is an infinite disagreement.
 

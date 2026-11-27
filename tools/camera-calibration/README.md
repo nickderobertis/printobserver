@@ -89,8 +89,9 @@ sliced G-code, not from the STL.
    ```
 
    The tool refits the same marks three times, each time with every mark moved
-   by a seeded fraction of a pixel. It reports the furthest any refit projects
-   a point of an 11 x 11 grid across the bed from where the fit does, on the
+   by a seeded fraction of a pixel, from the start the fit refined: the best of
+   its fixed grid of starts, or `--start`. It reports the furthest any refit
+   projects a point of an 11 x 11 grid across the bed from where the fit does, on the
    bed's surface and with the bed lowered 40 mm. Marks that fix the camera give
    a figure of a pixel or less. A figure of tens of pixels means the marks
    leave equally good cameras that disagree away from them, and a part printed

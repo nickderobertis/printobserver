@@ -297,9 +297,17 @@ def _whole_bed(
     start: Camera | None,
     bed: plate.Bed,
 ) -> str:
-    """The whole-bed report: the fit against the same fit over perturbed marks."""
+    """The whole-bed report: the fit against the same fit over perturbed marks.
+
+    A refit of a fit made from the grid of starts starts from the grid's start
+    the fit refined. Each start's fit is its own, so that is the refit the
+    whole grid would make whenever the same start still fits the moved marks
+    best, as a mark moved a hundredth of a pixel leaves it; the grid is fitted
+    once per run rather than once per refit.
+    """
+    grid = fitting.GRID if fitted.grid_start is None else (fitted.grid_start,)
     alternatives = [
-        fitting.fit(coverage.perturbed(marks, seed), size, start).camera
+        fitting.fit(coverage.perturbed(marks, seed), size, start, grid).camera
         for seed in coverage.PERTURBATION_SEEDS
     ]
     surface = coverage.disagreement_px(fitted.camera, alternatives, coverage.grid(bed, 0.0))

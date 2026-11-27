@@ -10,8 +10,9 @@ away from them. So a fit is held to two things beyond its residuals:
 - **the whole-bed report**: over an 11 x 11 grid across the bed's surface, and
   the same grid 40 mm below it, the largest pixel distance between where the fit
   projects a point and where any of its perturbed refits does. Each refit runs
-  the same fit over the marks moved by a fixed, seeded fraction of a pixel, so
-  equally good minima the marks cannot tell apart show up as a large figure.
+  the same fit over the marks moved by a fixed, seeded fraction of a pixel, from
+  the start the fit itself refined, so equally good minima the marks cannot
+  tell apart show up as a large figure.
 """
 
 from __future__ import annotations

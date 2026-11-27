@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from scipy.optimize import least_squares
 
 from camera_calibration import gcode
 from camera_calibration.marks import Marks
@@ -72,6 +71,8 @@ class Fitted:
     frames: tuple[int, ...]
     matched_mm: np.ndarray
     """Where on the bed (N, 2) each mark's outline lies nearest it, under the fitted camera."""
+    grid_start: tuple[float, float] | None
+    """The start of `GRID` whose fit was refined, or `None` for a fit refining a given start."""
 
     @property
     def rms_px(self) -> float:
@@ -229,6 +230,11 @@ def _solve(
     size: tuple[int, int],
     evaluations: int,
 ) -> Camera:
+    # Imported where a fit solves rather than with this module: SciPy's
+    # optimiser takes most of a second to load, and a run refusing its
+    # arguments or its marks before any fit should not wait for it.
+    from scipy.optimize import least_squares
+
     pairs = Pairs.of(observed, outlines)
 
     def residuals(x: np.ndarray) -> np.ndarray:
@@ -295,10 +301,22 @@ def near_segments(camera: Camera, one: Observation) -> np.ndarray:
     return kept if len(kept) >= 3 else one.segments
 
 
-def fit(marks: Marks, image_size: tuple[int, int], start: Camera | None = None) -> Fitted:
-    """Fit the camera to every mark, refining `start` alone when one is given."""
+def fit(
+    marks: Marks,
+    image_size: tuple[int, int],
+    start: Camera | None = None,
+    grid: tuple[tuple[float, float], ...] = GRID,
+) -> Fitted:
+    """Fit the camera to every mark, refining `start` alone when one is given.
+
+    With no `start`, the fit starts from each of `grid`'s starts, `GRID` unless
+    a caller names fewer, and refines the best.
+    """
     observed = observations(marks)
-    best = start if start is not None else _best_start(observed, image_size)
+    if start is not None:
+        best, chosen = start, None
+    else:
+        best, chosen = _best_start(observed, image_size, grid)
     near = [near_segments(best, one) for one in observed]
     refined = _solve(best, observed, near, image_size, FINE_EVALUATIONS)
     near = [near_segments(refined, one) for one in observed]
@@ -308,6 +326,7 @@ def fit(marks: Marks, image_size: tuple[int, int], start: Camera | None = None) 
         residuals_px(final, observed, near),
         tuple(one.frame for one in observed),
         matched_points(final, observed, near),
+        chosen,
     )
 
 
@@ -317,8 +336,12 @@ def _pool() -> ProcessPoolExecutor:
     return ProcessPoolExecutor(max_workers=min(len(GRID), os.process_cpu_count() or 1))
 
 
-def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Camera:
-    """The best of the fixed grid of starts, each fitted against thinned outlines."""
+def _best_start(
+    observed: list[Observation],
+    image_size: tuple[int, int],
+    grid: tuple[tuple[float, float], ...],
+) -> tuple[Camera, tuple[float, float]]:
+    """The best of the grid's starts, each fitted against thinned outlines, and which it was."""
     points = np.vstack([one.segments[:, :3] for one in observed])
     target = points.mean(axis=0)
     thinned: dict[int, np.ndarray] = {}
@@ -328,7 +351,7 @@ def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Cam
     # at each quarter turn of roll.
     starts = [
         _looking_at(target + np.array([dx, -150.0, 150.0]), target, roll, 1000.0, image_size)
-        for dx, roll in GRID
+        for dx, roll in grid
     ]
     # Each start is fitted on its own, so they run side by side, one process
     # each: this grid is most of a fit's time. Each start's result is the one
@@ -348,5 +371,8 @@ def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Cam
             itertools.repeat(COARSE_EVALUATIONS),
         )
     )
-    above = [camera for camera in fitted if camera_position(camera)[2] > target[2]] or fitted
-    return min(above, key=lambda camera: float(np.sum(residuals_px(camera, observed, coarse) ** 2)))
+    above = [
+        at for at, camera in enumerate(fitted) if camera_position(camera)[2] > target[2]
+    ] or list(range(len(fitted)))
+    best = min(above, key=lambda at: float(np.sum(residuals_px(fitted[at], observed, coarse) ** 2)))
+    return fitted[best], grid[best]
