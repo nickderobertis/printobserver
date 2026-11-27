@@ -44,8 +44,8 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
   layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
   check. Panel 1's lines are plan, not plastic. A visible part off its drawn walls, bare sheet
   inside them, or moved since 3 came loose. An outline the head or gantry covers is a hidden part:
-  carry on and judge it next check, never pausing for it. The whole frame given for an
-  inconclusive alignment is no evidence of a defect.
+  judge it next check, never paused for. A whole frame for an inconclusive alignment is no
+  evidence of a defect.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.
@@ -56,9 +56,10 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
   edge plainly sits higher against the sheet's marks now than then. Lines are drawn at this layer's
   height, on the top edge of a part printing to plan and clear of one that stopped below it; a part
   this layer draws is not finished. Risen less than the rise, likely, unsure or unclear is not
-  printing: a clear defect, never watched. A part off the bed, a first layer not sticking, or one
-  off its own place, left empty, has moved: pause now on the image in hand; no later frame undoes
-  it. The facts' X and Y are the bed's, placing nothing in a frame.
+  printing: a clear defect, never watched; where a whole frame's line bounds it, past 5 mm. A part
+  off the bed, a first layer not sticking, or one off its own place, left empty, has moved: pause
+  now on the image in hand; no later frame undoes it. The facts' X and Y are the bed's, placing
+  nothing in a frame.
 
 ## A planned colour change
 
@@ -68,8 +69,8 @@ draws walls red, panel 2 nothing. At a planned change the printer waits for a pe
 `planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the colour
 expected from its layer and the one before: that colour from there up is expected; carry on.
 Just after it, strands away from the part, at the purge or wipe area or trailing from it, are
-purge waste, never a pause; one on the part or nozzle, wrapped round either or growing over the
-part, stays a defect.
+waste, never a pause; one on the part or nozzle, wrapped round either or growing over it, stays a
+defect.
 A colour other than expected, with no planned change at or just under this layer, is a wrong
 spool or a reload: a clear defect, never watched. Pause now, naming the spool and file to check.
 

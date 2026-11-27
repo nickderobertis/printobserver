@@ -256,11 +256,30 @@ impl core::fmt::Display for WholeFrameReason {
 /// whole frame.
 pub const CALIBRATION_STALE: &str = "the camera has moved since its calibration, so the outline cannot be drawn reliably; recalibrate this camera";
 
+/// How far the plan may rise, in millimetres, past a frame a check is compared
+/// against before a part not plainly higher on a whole frame shown for the
+/// camera's own sake is grounds to pause. On the two-colour print's stale
+/// camera, the box's rise of 1.8 and 4.0 mm was read by eye as none, and the
+/// healthy print paused; a part that stops growing for longer than this still
+/// is.
+pub const UNSEEN_RISE_BOUND_MM: f64 = 5.0;
+
 /// The line saying a check was shown the whole frame, and why.
+///
+/// A whole frame shown because the camera moved since its calibration, or
+/// because the first layer was not clearly found, carries the bound
+/// [`UNSEEN_RISE_BOUND_MM`] on judging a rise by eye; every other whole frame
+/// keeps the skill's own rule.
 #[must_use]
 pub fn whole_frame_note(reason: &WholeFrameReason) -> String {
+    let bound = match reason {
+        WholeFrameReason::CalibrationStale | WholeFrameReason::AlignmentInconclusive(_) => format!(
+            "; on this frame a part that is not plainly higher is no grounds to pause on its own until the plan's rise since the frame it is compared against exceeds {UNSEEN_RISE_BOUND_MM:.0} mm"
+        ),
+        _ => String::new(),
+    };
     format!(
-        "{WHOLE_FRAME_NOTE}, scaled to fit {WHOLE_FRAME_WIDTH}x{WHOLE_FRAME_HEIGHT} and uncropped, because {reason}"
+        "{WHOLE_FRAME_NOTE}, scaled to fit {WHOLE_FRAME_WIDTH}x{WHOLE_FRAME_HEIGHT} and uncropped, because {reason}{bound}"
     )
 }
 

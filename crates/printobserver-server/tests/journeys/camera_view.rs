@@ -230,6 +230,17 @@ fn situation(seen: &Value) -> Value {
     block_under(&prompt, "## The situation when this turn began")
 }
 
+/// What a whole frame's image line says of a rise judged by eye on it, where
+/// the frame is shown for the camera's own sake rather than the print's.
+const UNSEEN_RISE_BOUND: &str = "; on this frame a part that is not plainly higher is no grounds to pause on its own until the plan's rise since the frame it is compared against exceeds 5 mm";
+
+/// Whether a check's image line bounds the rise judged by eye on its frame.
+fn bounds_the_unseen_rise(situation: &Value) -> bool {
+    situation["image"]
+        .as_str()
+        .is_some_and(|note| note.ends_with(UNSEEN_RISE_BOUND))
+}
+
 /// Every event of a print's history, oldest first.
 async fn history(server: &Running, print_id: PrintId) -> Vec<Value> {
     let body: Value = presenting(OPERATOR)
@@ -319,10 +330,15 @@ async fn a_covered_first_layer_is_judged_again_and_a_moved_camera_is_never_drawn
         first["image_fallback"]["code"], "alignment_inconclusive",
         "{first}"
     );
+    assert!(bounds_the_unseen_rise(&first), "{first}");
     assert_eq!(server.print_alignment(print_id), PrintAlignment::Pending);
 
     let paused = situation(&checks.next(PAUSED.1, true).await);
     assert_eq!(paused["image_fallback"]["code"], "paused", "{paused}");
+    assert!(
+        !bounds_the_unseen_rise(&paused),
+        "a paused check's whole frame keeps the skill's own rule: {paused}"
+    );
 
     // The layer is clearly found and the alignment passes, but the
     // landmarks show the camera has moved since its calibration: nothing is
@@ -333,6 +349,7 @@ async fn a_covered_first_layer_is_judged_again_and_a_moved_camera_is_never_drawn
         found["image_fallback"]["code"], "calibration_stale",
         "{found}"
     );
+    assert!(bounds_the_unseen_rise(&found), "{found}");
     let PrintAlignment::Passed {
         offset_px,
         correction_px,
@@ -494,6 +511,11 @@ async fn every_judgement_is_one_record_naming_its_own_frame() {
         assert_eq!(
             situation["image_fallback"]["code"], expected,
             "check {index}: {situation}"
+        );
+        assert_eq!(
+            bounds_the_unseen_rise(situation),
+            index < 4,
+            "check {index}: only a stale camera's whole frame bounds the rise: {situation}"
         );
     }
     for situation in &situations[4..] {
