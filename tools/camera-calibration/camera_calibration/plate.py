@@ -362,7 +362,10 @@ def _json_number(value: object) -> float | None:
     """A JSON number as a float, or `None` for anything else, a boolean included."""
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    return float(value)
+    try:
+        return float(value)
+    except OverflowError:  # an integer of more digits than any float holds
+        return None
 
 
 def _recorded(text: str) -> list[Solid]:

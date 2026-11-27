@@ -781,11 +781,14 @@ def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(
         )
         boxes.append((low, high))
 
+    def reached_by(
+        box: tuple[np.ndarray, np.ndarray], x: float, y: float, within: float = 0.0
+    ) -> bool:
+        low, high = box
+        return low[0] - within <= x <= high[0] + within and low[1] - within <= y <= high[1] + within
+
     def reached(x: float, y: float, within: float) -> bool:
-        return any(
-            low[0] - within <= x <= high[0] + within and low[1] - within <= y <= high[1] + within
-            for low, high in boxes
-        )
+        return any(reached_by(box, x, y, within) for box in boxes)
 
     places = {
         "front-left corner": (0, 0),
@@ -800,6 +803,19 @@ def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(
     for name, (x, y) in places.items():
         expect.truth(reached(x, y, 10.0), describing=f"a mark within 10 mm of the {name}")
     expect.truth(reached(width / 2, depth / 2, 0.0), describing="a mark over the centre")
+    # The cross's long arm points to the bed's back, so a frame turned front to
+    # back is told from one the right way round: 40 mm across, 60 mm deep.
+    low, high = next(box for box in boxes if reached_by(box, width / 2, depth / 2))
+    expect.equal(
+        [round(float(one), 6) for one in (high - low)],
+        [40.0, 60.0],
+        describing="the centre cross's width and depth",
+    )
+    expect.equal(
+        [round(depth / 2 - float(low[1]), 6), round(float(high[1]) - depth / 2, 6)],
+        [20.0, 40.0],
+        describing="the cross's front arm and its longer back arm, from the bed's centre",
+    )
     for at, (low, high) in enumerate(boxes):
         for other_low, other_high in boxes[at + 1 :]:
             apart = (high < other_low).any() or (other_high < low).any()
@@ -958,6 +974,7 @@ def test_plate_mass_reports_a_recorded_plates_pla(tmp_path: Path) -> None:
         ("unbounded.json", '{"mesh_volume_mm3": Infinity, "mark_count": 0, "marks": []}', "finite"),
         ("bare.json", "{}", "no plate telemetry record"),
         ("unparsed.json", "{", "no plate telemetry record"),
+        ("overflowing.json", json.dumps({**short, "mesh_volume_mm3": 10**400}), "finite number"),
         ("absent.json", None, "absent.json"),
     ):
         broken = tmp_path / name
