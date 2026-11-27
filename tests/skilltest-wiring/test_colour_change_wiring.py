@@ -245,8 +245,12 @@ def test_the_real_two_colour_print_is_quiet_through_each_wait_and_carries_on(
     for turn, colour in ((2, "#FFFFFF"), (4, "#000000")):
         slicer = facts_of(done.turns[turn]["prompt"])["slicer"]
         equal(slicer.get("expected_color"), colour, describing=f"the colour at check {turn}")
-    events = json.loads(done.turns[4]["ran"][0]["out"])["events"]
-    events.sort(key=lambda event: event["received_at"])
+    # The order is the store's: each id is a UUID version 7 minted on the server's real
+    # clock as the event is written, while `received_at` is the replay's clock, which
+    # stands back at each change's wait and so cannot order a turn against the wait.
+    events = sorted(
+        json.loads(done.turns[4]["ran"][0]["out"])["events"], key=lambda event: event["id"]
+    )
     kinds = [event["kind"] for event in events]
     for offset in (35454, 57998):
         reached = next(
@@ -255,15 +259,8 @@ def test_the_real_two_colour_print_is_quiet_through_each_wait_and_carries_on(
             if event["kind"] == REACHED and event["payload"]["change"]["offset_bytes"] == offset
         )
         resumed = kinds.index(RESUMED, reached)
-        written = set(kinds[reached:resumed]) & TURN_KINDS
-        equal(written, set(), describing=f"what a turn wrote in the wait at byte {offset}")
-        began, ended = events[reached]["received_at"], events[resumed]["received_at"]
-        ran = [
-            turn["started_at"]
-            for turn in done.replayed.ledger["turns"]
-            if began < turn["started_at"] < ended
-        ]
-        equal(ran, [], describing=f"the turns the port started in the wait at byte {offset}")
+        written = set(kinds[reached:resumed]) & (TURN_KINDS | {OBSERVED})
+        equal(written, set(), describing=f"what a turn began from or wrote in the wait at {offset}")
     truth(done.replayed.passed, describing=f"every point: {done.replayed.failures()}")
 
 
