@@ -914,15 +914,15 @@ def test_plate_mass_reports_the_committed_plates_pla(tmp_path: Path) -> None:
         broken = tmp_path / name
         if text is not None:
             broken.write_text(text, encoding="ascii")
-        refused = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+        run = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
             [sys.executable, "-m", "camera_calibration", "plate-mass", "--stl", str(broken)],
             cwd=TOOL,
             capture_output=True,
             text=True,
             check=False,
         )
-        expect.equal(refused.returncode, 2, describing=f"the exit status for {name}")
-        expect.contains(refused.stderr, refusal, describing=f"the refusal of {name}")
+        expect.equal(run.returncode, 2, describing=f"the exit status for {name}")
+        expect.contains(run.stderr, refusal, describing=f"the refusal of {name}")
 
 
 def test_plate_mass_reports_a_recorded_plates_pla(tmp_path: Path) -> None:
@@ -980,15 +980,15 @@ def test_plate_mass_reports_a_recorded_plates_pla(tmp_path: Path) -> None:
         broken = tmp_path / name
         if text is not None:
             broken.write_text(text, encoding="utf-8")
-        refused = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+        run = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
             [sys.executable, "-m", "camera_calibration", "plate-mass", "--telemetry", str(broken)],
             cwd=TOOL,
             capture_output=True,
             text=True,
             check=False,
         )
-        expect.equal(refused.returncode, 2, describing=f"the exit status for {name}")
-        expect.contains(refused.stderr, refusal, describing=f"the refusal of {name}")
+        expect.equal(run.returncode, 2, describing=f"the exit status for {name}")
+        expect.contains(run.stderr, refusal, describing=f"the refusal of {name}")
 
 
 def test_a_plate_path_that_cannot_be_written_is_refused(tmp_path: Path) -> None:

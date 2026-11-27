@@ -4942,12 +4942,6 @@ site = "run = subprocess.run("
 reason = "As the other `subprocess.run` of this file: this interpreter running this tool, with an argument list and no shell, in a suite kept apart from `repo-checks` so its changes do not select it."
 
 [[suppression]]
-rule = "S603"
-file = "tools/camera-calibration/tests/test_calibrate.py"
-site = "refused = subprocess.run("
-reason = "As the other `subprocess.run` of this file: this interpreter running this tool's `plate-mass` over a broken STL, with an argument list and no shell, in a suite kept apart from `repo-checks` so its changes do not select it."
-
-[[suppression]]
 rule = "N801"
 file = "tools/camera-calibration/tests/test_calibrate.py"
 site = "class expect:"
