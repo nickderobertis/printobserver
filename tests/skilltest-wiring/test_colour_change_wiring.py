@@ -1,4 +1,4 @@
-"""The two colour-change cases, replayed through the real server with the mock harness.
+"""The colour-change cases, replayed through the real server with the mock harness.
 
 `bubbler-colour-change-planned` plants a colour change at Z 50 and shows the walls
 red from there; `bubbler-colour-change-off-plan` plants the same change, and shows
@@ -12,6 +12,11 @@ Neither case commits its printed G-code: it is the bubbler print's slice with th
 case's `fault.diff` applied. No case's LFS bytes are read here, so the slice is the
 plain copy the server crate's indexing journey serves, held first to be the slice
 the diff names by the sha256 its pointer carries.
+
+`two-colour-planned-change` is a real print with two planned changes, each loaded
+with the planned colour. Its case carries no `replay` until a calibration fits its
+camera, so its scenarios are named here, and its G-code is the core crate's plain
+copy, held to the sha256 the case's pointer carries.
 """
 
 from __future__ import annotations
@@ -23,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import replay as replay_module
-from cases import CASES, REPO, Case, read_case
+from cases import CASES, REPO, Case, read_case, replayed_case_names
 from mock_turn import ScriptedRun
 from repo_checks.checks_real_prints import apply_planted, planted_gcode
 from repo_checks.expect import contains, equal, truth
@@ -162,3 +167,87 @@ def test_the_replays_reach_is_the_servers() -> None:
             int(declared["bytes"]),
             describing="the replay's reach",
         )
+
+
+#: The real two-colour print, whose case waits for a calibration before the live
+#: suite replays it, and so lists its scenarios here rather than in a `replay`.
+REAL = "two-colour-planned-change"
+REAL_SCENARIOS = (
+    "carry-on-before-the-first-change",
+    "quiet-through-the-white-wait-and-on-at-its-resume",
+    "white-judged-expected-once-visible",
+    "quiet-through-the-black-wait-and-on-at-its-resume",
+    "black-judged-expected-once-visible",
+)
+#: The plain copy of that print's G-code the core crate's index tests read.
+REAL_GCODE = REPO / "crates/printobserver-core/tests/fixtures/real-prints/two-colour-box.gcode"
+HISTORY = ["printobserver", "history", "--print-id", "{print}", "--limit", "1000", "--json"]
+#: What a turn leaves in the history: none may fall inside a wait.
+TURN_KINDS = {"agent_assessment", "action_requested", "action_executed", "action_rejected"}
+
+
+def real_replay(turns: list[ScriptedRun], scratch: Path) -> tuple[Case, Scripted]:
+    """The real two-colour print's every scenario, replayed from its plain G-code.
+
+    The plain copy is held first to be the bytes the case's LFS pointer names.
+    """
+    case = read_case(REAL, replay=REAL_SCENARIOS)
+    plain = REAL_GCODE.read_bytes()
+    named = POINTER_OID.search(case.gcode.read_bytes())
+    held = case.gcode.read_bytes()
+    oid = named["oid"].decode() if named else hashlib.sha256(held).hexdigest()
+    equal(hashlib.sha256(plain).hexdigest(), oid, describing="the plain copy as the case's G-code")
+    return case, mock_replay(case, turns, scratch, gcode=plain)
+
+
+def test_the_real_two_colour_print_is_quiet_through_each_wait_and_carries_on(
+    tmp_path: Path,
+) -> None:
+    """Each wait runs no turn, and each check after a change names the colour planned.
+
+    The last check reads the server's own history, in which nothing a turn writes
+    falls between a change reached and its resumption.
+    """
+    quiet_reading: ScriptedRun = {"commands": [HISTORY]}
+    _, done = real_replay([QUIET, QUIET, QUIET, QUIET, quiet_reading], tmp_path)
+    truth(REAL not in replayed_case_names(), describing="the case to carry no live replay yet")
+    equal(
+        [point.event_kind for point in done.replayed.points],
+        [
+            "periodic_observation",
+            "filament_change_planned_resumed",
+            "periodic_observation",
+            "filament_change_planned_resumed",
+            "periodic_observation",
+        ],
+        describing="what each decision point was the check of",
+    )
+    equal(len(done.replayed.ledger["turns"]), 5, describing="one turn per check, none in a wait")
+    for turn, colour, named in ((1, "#FFFFFF", "layer 20"), (3, "#000000", "layer 40")):
+        prompt = done.turns[turn]["prompt"]
+        contains(situation_of(prompt)["noticed"], named, describing=f"check {turn}'s situation")
+        equal(facts_of(prompt)["slicer"].get("expected_color"), colour, describing=f"check {turn}")
+    for turn, colour in ((2, "#FFFFFF"), (4, "#000000")):
+        slicer = facts_of(done.turns[turn]["prompt"])["slicer"]
+        equal(slicer.get("expected_color"), colour, describing=f"the colour at check {turn}")
+    events = json.loads(done.turns[4]["ran"][0]["out"])["events"]
+    events.sort(key=lambda event: event["received_at"])
+    kinds = [event["kind"] for event in events]
+    for offset in (35454, 57998):
+        reached = next(
+            at
+            for at, event in enumerate(events)
+            if event["kind"] == "filament_change_planned_reached"
+            and event["payload"]["change"]["offset_bytes"] == offset
+        )
+        resumed = kinds.index("filament_change_planned_resumed", reached)
+        written = set(kinds[reached:resumed]) & TURN_KINDS
+        equal(written, set(), describing=f"what a turn wrote in the wait at byte {offset}")
+    truth(done.replayed.passed, describing=f"every point: {done.replayed.failures()}")
+
+
+def test_a_pause_at_the_real_prints_planned_change_fails_it(tmp_path: Path) -> None:
+    """Pausing as the print carries on from a planned change is what its scenario refuses."""
+    _, done = real_replay([QUIET, PAUSING], tmp_path)
+    contains(done.replayed.points[1].why_not or "", "pause", describing="the failed point")
+    truth(not done.replayed.passed, describing="the replay to fail")
