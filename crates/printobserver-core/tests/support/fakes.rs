@@ -1917,6 +1917,8 @@ pub struct FakeSupervisor {
     stalls: Mutex<bool>,
     /// What runs as each turn has done its work and is about to answer.
     before_answering: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    /// What runs each time a scheduled check waits out this port's idle work.
+    on_idle_work_ended: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
     /// What somebody else asks for through core while each turn runs, after
     /// the turn's own action.
     meanwhile: Mutex<Option<PrintAction>>,
@@ -1943,6 +1945,7 @@ impl FakeSupervisor {
             unissued: Mutex::new(Vec::new()),
             stalls: Mutex::new(false),
             before_answering: Mutex::new(None),
+            on_idle_work_ended: Mutex::new(None),
             meanwhile: Mutex::new(None),
         }
     }
@@ -1952,6 +1955,13 @@ impl FakeSupervisor {
     /// its answer.
     pub fn before_answering(&self, hook: impl Fn() + Send + Sync + 'static) {
         *self.before_answering.lock().expect("the harness holds") = Some(Box::new(hook));
+    }
+
+    /// Run `hook` each time a scheduled check waits out this port's idle work,
+    /// before the wait answers: what changes the world between that wait and
+    /// the check's claim on the print.
+    pub fn on_idle_work_ended(&self, hook: impl Fn() + Send + Sync + 'static) {
+        *self.on_idle_work_ended.lock().expect("the harness holds") = Some(Box::new(hook));
     }
 
     /// Never return from a turn once it has been issued its credential, so
@@ -2114,6 +2124,22 @@ impl FakeSupervisor {
 }
 
 impl SupervisorPort for FakeSupervisor {
+    fn idle_work_ended(
+        &self,
+        print_id: PrintId,
+    ) -> printobserver_supervisor_api::BoxFuture<'_, Result<(), SupervisorError>> {
+        let _ = print_id;
+        if let Some(hook) = self
+            .on_idle_work_ended
+            .lock()
+            .expect("the harness holds")
+            .as_ref()
+        {
+            hook();
+        }
+        Box::pin(core::future::ready(Ok(())))
+    }
+
     fn run_turn(
         &self,
         request: TurnRequest,

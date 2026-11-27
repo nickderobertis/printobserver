@@ -24,7 +24,7 @@
 //! # No pile-up
 //!
 //! An observation claims a print's turn only when nothing holds it
-//! ([`Inboxes::claim_if_idle`](crate::Inboxes::claim_if_idle)). A print whose
+//! ([`Inboxes::claim_if_idle_since`](crate::Inboxes::claim_if_idle_since)). A print whose
 //! turn is running — on an alert, or on the last observation — is being
 //! watched already, and is given no observation to queue behind it; so at most
 //! one observation per print is ever outstanding, and every turn the agent is
@@ -39,7 +39,9 @@
 //! check alone waits for it to end, bounded by the compaction's own timeout,
 //! because it is the turn that continues that session on the port's own
 //! cadence: cancelling it would leave the session as large as it was and the
-//! next gap no longer.
+//! next gap no longer. A turn of the print that ends after that wait may start
+//! idle work of its own, which the wait never saw; so a check that one ended
+//! under claims nothing, and the next round's wait sees that work.
 //!
 //! # The detector's record is read first
 //!
@@ -148,6 +150,10 @@ impl Supervisor {
         // idle compaction of that session end rather than cancel it, and reads
         // the printer once it has.
         // A wait that could not be taken leaves the check to run at once.
+        // A turn ending after the wait may start idle work it never saw, so
+        // the claim below is refused when one has, leaving the check to the
+        // next round, whose wait sees that work.
+        let ended = self.inboxes().turns_ended(print.id);
         let _ = self.agent().idle_work_ended(print.id).await;
         let printer = self.read_snapshot().await;
         if printer
@@ -174,7 +180,7 @@ impl Supervisor {
         {
             return Ok(None);
         }
-        if !self.inboxes().claim_if_idle(print.id) {
+        if !self.inboxes().claim_if_idle_since(print.id, ended) {
             return Ok(None);
         }
         match self

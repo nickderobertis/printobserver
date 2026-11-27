@@ -62,21 +62,45 @@ struct Inbox {
     pending: Vec<Arrival>,
 }
 
+/// Every print's inbox, and how many of its turns have ended.
+#[derive(Debug, Default)]
+struct State {
+    /// One inbox per print that has a turn running.
+    inboxes: BTreeMap<PrintId, Inbox>,
+    /// How many times each print's turn has been released, ever.
+    ended: BTreeMap<PrintId, u64>,
+}
+
+impl State {
+    /// Count one release of the print's turn.
+    fn ended_one(&mut self, print_id: PrintId) {
+        let ended = self.ended.entry(print_id).or_default();
+        *ended = ended.wrapping_add(1);
+    }
+}
+
 /// Every print's inbox, and the signal an arrival raises.
 #[derive(Debug, Default)]
 pub struct Inboxes {
-    /// One inbox per print that has a turn running.
-    state: Mutex<BTreeMap<PrintId, Inbox>>,
+    /// Every inbox, and how many turns each print has ended.
+    state: Mutex<State>,
     /// Raised whenever something is handed to a running turn.
     arrived: Condvar,
 }
 
 impl Inboxes {
     /// Every inbox, held.
-    fn held(&self) -> MutexGuard<'_, BTreeMap<PrintId, Inbox>> {
+    fn held(&self) -> MutexGuard<'_, State> {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// How many times the print's turn has been released so far: what
+    /// [`Inboxes::claim_if_idle_since`] is handed, read before the caller
+    /// waits on anything a turn's end may start.
+    pub fn turns_ended(&self, print_id: PrintId) -> u64 {
+        self.held().ended.get(&print_id).copied().unwrap_or(0)
     }
 
     /// Claim the print's turn for this arrival, or hand it to the turn already
@@ -86,7 +110,7 @@ impl Inboxes {
     /// it, and `false` when the arrival was handed to a turn already running.
     pub fn claim_or_hand_over(&self, print_id: PrintId, arrival: Arrival) -> bool {
         let mut state = self.held();
-        let inbox = state.entry(print_id).or_default();
+        let inbox = state.inboxes.entry(print_id).or_default();
         if inbox.busy {
             inbox.pending.push(arrival);
             drop(state);
@@ -106,7 +130,27 @@ impl Inboxes {
     /// would only pile up beside what that turn is already looking at.
     pub fn claim_if_idle(&self, print_id: PrintId) -> bool {
         let mut state = self.held();
-        let inbox = state.entry(print_id).or_default();
+        let inbox = state.inboxes.entry(print_id).or_default();
+        if inbox.busy {
+            return false;
+        }
+        inbox.busy = true;
+        true
+    }
+
+    /// [`Inboxes::claim_if_idle`], refused too when a turn of the print has
+    /// ended since [`Inboxes::turns_ended`] answered `seen`.
+    ///
+    /// What the periodic observation claims with: it waits for the port's idle
+    /// work before it claims, and a turn that ended after that wait may have
+    /// started idle work the wait never saw, which the observation's own turn
+    /// would then cancel. Refused, it is the next round's, which waits for it.
+    pub fn claim_if_idle_since(&self, print_id: PrintId, seen: u64) -> bool {
+        let mut state = self.held();
+        if state.ended.get(&print_id).copied().unwrap_or(0) != seen {
+            return false;
+        }
+        let inbox = state.inboxes.entry(print_id).or_default();
         if inbox.busy {
             return false;
         }
@@ -119,11 +163,12 @@ impl Inboxes {
     pub fn next_or_release(&self, print_id: PrintId) -> Option<Vec<Arrival>> {
         let mut state = self.held();
         let taken = state
+            .inboxes
             .get_mut(&print_id)
             .map(|inbox| core::mem::take(&mut inbox.pending))
             .filter(|left| !left.is_empty());
-        if taken.is_none() {
-            state.remove(&print_id);
+        if taken.is_none() && state.inboxes.remove(&print_id).is_some() {
+            state.ended_one(print_id);
         }
         taken
     }
@@ -139,7 +184,7 @@ impl Inboxes {
             return;
         }
         let mut state = self.held();
-        if let Some(inbox) = state.get_mut(&print_id) {
+        if let Some(inbox) = state.inboxes.get_mut(&print_id) {
             let since = core::mem::replace(&mut inbox.pending, taken);
             inbox.pending.extend(since);
             drop(state);
@@ -151,7 +196,10 @@ impl Inboxes {
     ///
     /// For a print that has ended: nothing waiting for it can be acted on.
     pub fn release(&self, print_id: PrintId) {
-        self.held().remove(&print_id);
+        let mut state = self.held();
+        if state.inboxes.remove(&print_id).is_some() {
+            state.ended_one(print_id);
+        }
     }
 
     /// Wait up to `wait` for anything to be handed to the print's running
@@ -165,7 +213,7 @@ impl Inboxes {
         let deadline = Instant::now() + wait;
         let mut state = self.held();
         loop {
-            if let Some(inbox) = state.get_mut(&print_id)
+            if let Some(inbox) = state.inboxes.get_mut(&print_id)
                 && !inbox.pending.is_empty()
             {
                 return core::mem::take(&mut inbox.pending);
@@ -269,6 +317,28 @@ mod tests {
         assert!(!inboxes.claim_if_idle(print));
         assert!(!inboxes.claim_or_hand_over(print, arrival()));
         assert_eq!(inboxes.wait_and_take(print, Duration::ZERO).len(), 1);
+    }
+
+    /// A claim since a count is refused once a turn of the print has ended
+    /// after it, whether the turn released or was released, and taken again
+    /// from a fresh count; another print's turn ending moves nothing.
+    #[test]
+    fn a_claim_since_a_count_is_refused_once_a_turn_ended_after_it() {
+        let inboxes = Inboxes::default();
+        let print = PrintId::new();
+        let other = PrintId::new();
+        let seen = inboxes.turns_ended(print);
+        assert!(inboxes.claim_or_hand_over(print, arrival()));
+        assert!(!inboxes.claim_if_idle_since(print, seen));
+        assert_eq!(inboxes.next_or_release(print), None);
+        assert!(!inboxes.claim_if_idle_since(print, seen));
+        let seen = inboxes.turns_ended(print);
+        assert!(inboxes.claim_or_hand_over(other, arrival()));
+        inboxes.release(other);
+        assert!(inboxes.claim_if_idle_since(print, seen));
+        inboxes.release(print);
+        assert!(!inboxes.claim_if_idle_since(print, seen));
+        assert_eq!(inboxes.turns_ended(print), seen + 1);
     }
 
     /// What a look took and could not deliver goes back ahead of what arrived
