@@ -2,6 +2,7 @@
 
   cards.py card <image> <note> <out.png>   the image an agent got, with its note under it
   cards.py pad <a.png> <b.png>             pad both to one size, in place
+  cards.py stack <top.png> <bottom.png> <out.png>   one above the other
 """
 
 import sys
@@ -44,7 +45,18 @@ def pad(first, second):
         canvas.save(path)
 
 
-if sys.argv[1] == "card":
+def stack(top, bottom, out):
+    images = [Image.open(path).convert("RGB") for path in (top, bottom)]
+    canvas = Image.new("RGB", (max(i.width for i in images), sum(i.height for i in images)),
+                       images[0].getpixel((1, 1)))
+    canvas.paste(images[0], (0, 0))
+    canvas.paste(images[1], (0, images[0].height))
+    canvas.save(out)
+
+
+if sys.argv[1] == "stack":
+    stack(*sys.argv[2:5])
+elif sys.argv[1] == "card":
     card(*sys.argv[2:5])
 else:
     pad(*sys.argv[2:4])

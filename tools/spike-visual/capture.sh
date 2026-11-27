@@ -62,5 +62,9 @@ for mode in before after; do
   fi
   kill "$stub"; wait "$stub" 2>/dev/null || true; stub=""
 done
-for name in look-text look-json status history; do pillow pad "$out/$name-before.png" "$out/$name-after.png"; done
+for mode in before after; do
+  pillow stack "$out/look-text-$mode.png" "$out/look-json-$mode.png" "$out/look-$mode.png"
+  rm "$out/look-text-$mode.png" "$out/look-json-$mode.png"
+done
+for name in look status history; do pillow pad "$out/$name-before.png" "$out/$name-after.png"; done
 ls "$out"
