@@ -1,0 +1,388 @@
+{
+  "case": "two-colour-planned-change",
+  "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), smooth PEI sheet",
+  "printed_on": "2026-11-26, 13:07 to 15:29",
+  "times": "local, UTC-6",
+  "part": "a 20 x 20 x 12 mm open-topped box with 10% infill, made for this print, in PLA: black to Z 4, white from Z 4 to Z 8, and black again from Z 8 to the top",
+  "verdict": "healthy: the print carried on in each colour its G-code plans, and the part came off black, white and black",
+  "fault": {
+    "kind": "none: two colour changes the G-code plans",
+    "how": "PrusaSlicer 2.9.6 sliced the box with two planned colour changes: to #FFFFFF at layer 20 (Z 4) and back to #000000 at layer 40 (Z 8), each a `;COLOR_CHANGE` line, an `M600` and a prime, and the filament named black (`; filament_colour = #000000`). At each change a person loaded the spool the plan named: white at the first, black at the second. No change was loaded with a wrong colour, so this case has no wrong-colour decision point; the derived case bubbler-colour-change-off-plan covers that",
+    "planned_changes": [
+      {
+        "index": 0,
+        "layer": 20,
+        "z_mm": 4.0,
+        "offset_bytes": 35454,
+        "colour": "#FFFFFF",
+        "loaded": "#FFFFFF",
+        "reached": "13:37:28",
+        "resumed": "13:42:00",
+        "waited_s": 270
+      },
+      {
+        "index": 1,
+        "layer": 40,
+        "z_mm": 8.0,
+        "offset_bytes": 57998,
+        "colour": "#000000",
+        "loaded": "#000000",
+        "reached": "13:45:00",
+        "resumed": "15:26:03",
+        "waited_s": 6062
+      }
+    ]
+  },
+  "what_it_looks_like": "a small box at the centre of the sheet, often hidden under the print head: black low walls, then white walls with an open cross-hatched infill, then black layers capping the white band",
+  "fixable_by_the_agent": false,
+  "expected_agent_action": {
+    "during_each_wait": "nothing: the server suspends supervision while the printer waits at a planned change, so no turn runs, nothing is found and nothing is asked of the printer",
+    "after_each_change": "carry on; the new colour is the one planned, from the layer planned, and a head hiding the part at the resume is no reason to stop",
+    "never": [
+      "pause",
+      "cancel",
+      "resume",
+      "any adjustment",
+      "a failure acknowledged as stop"
+    ]
+  },
+  "decision_points": [
+    {
+      "what": "quiet through each wait: no turn, no finding and no action between a change reached and its resumption",
+      "scenarios": [
+        "quiet-through-the-white-wait-and-on-at-its-resume",
+        "quiet-through-the-black-wait-and-on-at-its-resume"
+      ],
+      "how_judged": "the server's history holds no agent turn, assessment or request between each filament_change_planned_reached and its filament_change_planned_resumed, and the check at each resumption asks for nothing in its scenario's never list"
+    },
+    {
+      "what": "each change's new colour judged expected, at the first check after its resume in which the part is visible",
+      "scenarios": [
+        "white-judged-expected-once-visible",
+        "black-judged-expected-once-visible"
+      ],
+      "how_judged": "the check asks for no pause, no adjustment and no failure acknowledged as stop"
+    },
+    {
+      "what": "no pause and no finding raised for either planned change",
+      "scenarios": [
+        "quiet-through-the-white-wait-and-on-at-its-resume",
+        "white-judged-expected-once-visible",
+        "quiet-through-the-black-wait-and-on-at-its-resume",
+        "black-judged-expected-once-visible"
+      ],
+      "how_judged": "every one of these scenarios never accepts a pause or a failure acknowledged as stop"
+    }
+  ],
+  "not_a_decision_point": "At 13:14:36, at layer 12 (Z 2.4), the agent paused the print: the head hid the part, and the server's first-layer alignment had refused the calibration's projection, 59.7 px from the printed first layer against a 30 px limit, because the camera had moved since the calibration was fitted. It called its own pause a false alarm two minutes later, and a person resumed at 13:35:31. That pause came from the camera's alignment, not from a colour change, and this case asserts nothing about it either way: no scenario stands before 13:36:18.",
+  "replay_waits_for": "a camera calibration fitted to the camera's position on this print. The live replay fails any print whose checks fall back to the whole camera frame for want of a fitting calibration, and every committed calibration under ../cameras/ was fitted before the camera moved: the server refused its projection on this print's first layer at 59.7 px from the printed layer, against the 30 px limit, so every check on this print was handed the whole frame. A calibration cannot be fitted from this print alone, because tools/camera-calibration needs frames over at least 20 mm of height and this part is 12 mm tall. So assertions carries no `replay` yet: its scenarios are written down, the deterministic replay-wiring tier drives them, and the live suite gains this case once a calibration for the camera's current position names it.",
+  "detector": "Obico watched the whole print and raised nothing: its highest smoothed score was 0.16, and printobserver recorded no Obico event. No Obico notification of either M600 reached printobserver either; both changes were caught by the job's file position.",
+  "agent_turn": "Every check here was a turn of one continued Claude Code conversation, handed the whole camera frame scaled to 1280x720. None ran a command. At 13:42:14, after the first change, it answered continue and said the head still hid the part, so it could not check the new colour, though the material at the nozzle looked light. At 13:44:17, at layer 34, it saw the box's white walls and judged white the colour expected there. No turn ran during either wait. At 15:26:21, after the second change, it answered continue: only about 0.6 mm of black had gone down, partly hidden by the head, and the long wait had left no visible damage. At 15:28:25, at layer 54, it said new black layers sat on top of the white band, as the plan expects.",
+  "frames": [
+    {
+      "file": "agent-133618-obs-l14.jpg",
+      "time": "2026-11-26 13:36:18",
+      "progress_pct": 25.2,
+      "label": "layer 14, Z 2.8, black: the print head stands over the centre of the sheet and hides the small black box under it, a minute after a person resumed the print; the sheet otherwise clear but for thin purge strands at the back; healthy"
+    },
+    {
+      "file": "agent-134200-resumed-white-l24.jpg",
+      "time": "2026-11-26 13:42:00",
+      "progress_pct": 34.1,
+      "label": "layer 24, Z 4.8, four layers into the planned white: the server's check as the print carries on from the change to #FFFFFF; the head stands over the part and hides it, so its new colour cannot be seen; healthy"
+    },
+    {
+      "file": "agent-134401-obs-white-l34.jpg",
+      "time": "2026-11-26 13:44:01",
+      "progress_pct": 44.7,
+      "label": "layer 34, Z 6.8: the box in view beside the head, its walls white with open cross-hatched infill, in its place at the sheet's centre; the first check after the change to white in which the part is visible; healthy, in the planned colour"
+    },
+    {
+      "file": "agent-152603-resumed-black-l43.jpg",
+      "time": "2026-11-26 15:26:03",
+      "progress_pct": 53.5,
+      "label": "layer 43, Z 8.6, three layers into the planned black after a 101-minute wait: the server's check as the print carries on from the change to #000000; the white band shows under the head, which hides the thin new black on top; a tangle of white purge strands at the back right of the sheet, away from the part; healthy"
+    },
+    {
+      "file": "agent-152804-obs-black-l54.jpg",
+      "time": "2026-11-26 15:28:04",
+      "progress_pct": 63.9,
+      "label": "layer 54, Z 10.8: dark layers now cap the box's white band, the black of the second change, with the nozzle working on the top; the purge-strand tangle at the back right unchanged; the first check after the change to black in which its colour is visible; healthy, in the planned colour"
+    }
+  ],
+  "agent_images": [
+    {
+      "file": "agent-133618-obs-l14.jpg",
+      "event_id": "01a2195b-d63a-7cb0-bd1a-9409be8a7d84"
+    },
+    {
+      "file": "agent-134200-resumed-white-l24.jpg",
+      "event_id": "01a21961-0d5e-7102-8ca4-9a0229c843f3"
+    },
+    {
+      "file": "agent-134401-obs-white-l34.jpg",
+      "event_id": "01a21962-e578-7c53-a754-379f32ac96ea"
+    },
+    {
+      "file": "agent-152603-resumed-black-l43.jpg",
+      "event_id": "01a219c0-4f07-7d81-a565-cf0d0a7a7cfa"
+    },
+    {
+      "file": "agent-152804-obs-black-l54.jpg",
+      "event_id": "01a219c2-26e8-7542-ab19-c059c2b98f42"
+    }
+  ],
+  "frame_sampling": "5 of the 19 pictures the print's history records: the check before the first change, each change's resumption check and each first check after it in which the part is visible. The others, the first layers and the agent's 13:14 pause among them, are none of this case's decision points.",
+  "sources": {
+    "gcode": "two-colour-box.gcode: PrusaSlicer 2.9.6's slice as OctoPrint held and printed it, byte for byte. Obico's OctoPrint plugin rewrote the upload, dropping its blank lines and writing `M117 OBICO_LAYER_INDICATOR` at each layer, some lines with CRLF endings; the history's positions are this file's bytes. the core crate's real-print test fixtures hold a plain copy under the same name",
+    "history": "printobserver-history.json: every event printobserver v0.16.0 recorded for the print, with the operator's local paths and tool names in the start request replaced by neutral words",
+    "agent_turn": "agent-turn.json: the turns of the five checks this case's scenarios stand for, reduced from Claude Code's transcript and scrubbed",
+    "build": "every turn ran printobserver v0.16.0, its skill and its turn prompt",
+    "service_config": "../service-config.toml"
+  },
+  "obico_scores": "obico-predictions.json: every row Obico scored for this print, 659 of them",
+  "assertions": {
+    "scenarios": [
+      {
+        "id": "carry-on-before-the-first-change",
+        "at": "2026-11-26T13:36:18",
+        "file_position_bytes": 29304,
+        "file_position_source": "recorded",
+        "summary": "A periodic observation at layer 14 in the black, a minute before the printer reaches its first planned colour change, with the head hiding the part; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-133618-obs-l14.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "quiet-through-the-white-wait-and-on-at-its-resume",
+        "at": "2026-11-26T13:42:00",
+        "file_position_bytes": 39662,
+        "file_position_source": "recorded",
+        "summary": "The printer waited 270 s at the planned change to white with no turn, no finding and no action, and the server's check as it carries on finds the head hiding the part; the agent should carry on, pausing and finding nothing.",
+        "trigger": "planned_change_resumed",
+        "event_image": "agent-134200-resumed-white-l24.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "white-judged-expected-once-visible",
+        "at": "2026-11-26T13:44:01",
+        "file_position_bytes": 51973,
+        "file_position_source": "recorded",
+        "summary": "The first check after the change to white in which the part is visible shows its walls white, the colour planned from layer 20; the agent should judge it expected and carry on.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-134401-obs-white-l34.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "quiet-through-the-black-wait-and-on-at-its-resume",
+        "at": "2026-11-26T15:26:03",
+        "file_position_bytes": 62152,
+        "file_position_source": "recorded",
+        "summary": "The printer waited 101 minutes at the planned change back to black with no turn, no finding and no action, and the server's check as it carries on finds the thin new black hidden by the head; the agent should carry on, pausing and finding nothing.",
+        "trigger": "planned_change_resumed",
+        "event_image": "agent-152603-resumed-black-l43.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "black-judged-expected-once-visible",
+        "at": "2026-11-26T15:28:04",
+        "file_position_bytes": 74248,
+        "file_position_source": "recorded",
+        "summary": "The first check after the change to black in which its colour is visible shows black layers capping the white band, the colour planned from layer 40; the agent should judge it expected and carry on.",
+        "trigger": "periodic_observation",
+        "event_image": "agent-152804-obs-black-l54.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
