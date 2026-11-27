@@ -59,7 +59,8 @@ pub use alignment::{
 pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, SPOOL_RECENT_EVENTS, router};
 pub use check_images::{
     CALIBRATION_STALE, CHECK_IMAGES_DIRECTORY, COMPOSITE_NOTE, PanelImages, PlanAt, Shown,
-    WHOLE_FRAME_NOTE, WholeFrameReason, WholeFrames, compose_at, composite_note, whole_frame_note,
+    UNSEEN_RISE_BOUND_MM, WHOLE_FRAME_NOTE, WholeFrameReason, WholeFrames, compose_at,
+    composite_note, whole_frame_note,
 };
 pub use config::{
     ASSETS_DIRECTORY, ApiCredential, ApiSection, ConfigError, ConfigField, ConfigFile,

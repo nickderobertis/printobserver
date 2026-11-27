@@ -241,6 +241,36 @@ fn bounds_the_unseen_rise(situation: &Value) -> bool {
         .is_some_and(|note| note.ends_with(UNSEEN_RISE_BOUND))
 }
 
+/// The skill's Position rule states the bound the image line carries, as the
+/// server's own figure: the two are what one turn reads side by side.
+#[test]
+fn the_skill_states_the_servers_unseen_rise_bound() {
+    let skill = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../skills/printobserver/SKILL.md"),
+    )
+    .expect("the skill is readable");
+    let stated = format!(
+        "where a whole frame's line bounds it, past {:.0} mm",
+        printobserver_server::UNSEEN_RISE_BOUND_MM
+    );
+    assert!(
+        skill
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .contains(&stated),
+        "the skill's Position rule does not say `{stated}`"
+    );
+    assert!(
+        UNSEEN_RISE_BOUND.ends_with(&format!(
+            "exceeds {:.0} mm",
+            printobserver_server::UNSEEN_RISE_BOUND_MM
+        )),
+        "the image line this journey expects names another bound"
+    );
+}
+
 /// Every event of a print's history, oldest first.
 async fn history(server: &Running, print_id: PrintId) -> Vec<Value> {
     let body: Value = presenting(OPERATOR)
