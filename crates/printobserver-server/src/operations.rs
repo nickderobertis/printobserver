@@ -919,7 +919,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 39] = [
+pub const OPERATIONS: [Operation; 40] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -1182,6 +1182,27 @@ pub const OPERATIONS: [Operation; 39] = [
         printer_wide: None,
         mints_print: false,
     },
+    // SPIKE MOCK (throwaway): the planned `recheck_camera`, declared only so the
+    // command-line surface folds a `recheck-camera` command out of it.
+    Operation {
+        name: "recheck_camera",
+        method: Method::Post,
+        path: "/prints/{print_id}/camera/recheck",
+        effect: Effect::Write,
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[
+            Declared {
+                shape: Some("Actor"),
+                ..Declared::once("actor", true, ValueKind::Structured)
+            },
+            Declared::once("reason", true, ValueKind::Text),
+        ],
+        image_path_field: Some("frame_path"),
+        printer_wide: None,
+        mints_print: false,
+    },
 ];
 
 /// The operator's word that the bed is clear, recorded beside the recovery
@@ -1201,7 +1222,7 @@ pub const RECOVERY_STATUS: &str = "recover_status";
 /// print's history — or the printer's, for a look at the printer — as every
 /// read of the camera is kept, and asks nothing of the machine either; a
 /// filament check records nothing at all.
-pub const BESIDE_THE_ACTIONS: [&str; 15] = [
+pub const BESIDE_THE_ACTIONS: [&str; 16] = [
     "prints",
     "status",
     "context",
@@ -1217,6 +1238,7 @@ pub const BESIDE_THE_ACTIONS: [&str; 15] = [
     "printer_history",
     "preflight",
     BED_CLEAR,
+    "recheck_camera",
 ];
 
 /// The look at the printer with no print named, which `look` is asked as when

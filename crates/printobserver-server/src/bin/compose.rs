@@ -34,11 +34,17 @@ struct Asked {
     position: u64,
     /// Where the image is written.
     out: PathBuf,
+    /// SPIKE MOCK: the previous check's frame, and the two capture times.
+    previous: Option<(PathBuf, Timestamp)>,
+    /// SPIKE MOCK: when this check's frame was captured.
+    at: Option<Timestamp>,
 }
 
 /// The five options, each once and none empty.
 fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
     let (mut config, mut gcode, mut frame, mut position, mut out) = (None, None, None, None, None);
+    let (mut previous, mut previous_at, mut at): (Option<String>, Option<String>, Option<String>) =
+        (None, None, None);
     while let Some(flag) = arguments.next() {
         let slot = match flag.as_str() {
             "--config" => &mut config,
@@ -46,6 +52,9 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
             "--frame" => &mut frame,
             "--position" => &mut position,
             "--out" => &mut out,
+            "--previous" => &mut previous,
+            "--previous-at" => &mut previous_at,
+            "--at" => &mut at,
             other => return Err(format!("`{other}` is no option of this composer")),
         };
         let value = arguments
@@ -69,6 +78,13 @@ fn asked(mut arguments: impl Iterator<Item = String>) -> Result<Asked, String> {
             .parse()
             .map_err(|_| format!("--position {position} is no count of bytes"))?,
         out: PathBuf::from(out.ok_or("--out is required")?),
+        previous: previous.map(|path| {
+            (
+                PathBuf::from(path),
+                previous_at.expect("--previous-at").parse().expect("a timestamp"),
+            )
+        }),
+        at: at.map(|at| at.parse().expect("a timestamp")),
     })
 }
 
@@ -93,14 +109,18 @@ fn composed(asked: &Asked) -> Result<String, String> {
         .map_err(|error| format!("{} cannot be written: {error}", spool.display()))?;
     let _ = builder.take(&gcode);
     let index = builder.finish();
-    let captured_at = Timestamp::now();
+    let captured_at = asked.at.unwrap_or_else(Timestamp::now);
+    let earlier = match &asked.previous {
+        Some((path, at)) => Some((read(path)?, *at)),
+        None => None,
+    };
     let image = compose_at(
         PlanAt {
             index: &index,
             file_position_bytes: asked.position,
         },
         (&frame, captured_at),
-        None,
+        earlier.as_ref().map(|(bytes, at)| (bytes.as_slice(), *at)),
         url.as_str(),
         calibration,
     );
@@ -112,7 +132,7 @@ fn composed(asked: &Asked) -> Result<String, String> {
         "width": image.width,
         "height": image.height,
         "bytes": image.jpeg.len(),
-        "note": composite_note(ImageUse::Check, captured_at, None),
+        "note": composite_note(ImageUse::Check, captured_at, earlier.as_ref().map(|(_, at)| *at)),
     })
     .to_string())
 }
