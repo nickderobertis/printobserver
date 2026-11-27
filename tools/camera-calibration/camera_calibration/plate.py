@@ -18,13 +18,12 @@ centres an imported model leaves every mark where this module put it.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
-
-from onebudgetspec_sdk import report
 
 INSET_MM = 5.0
 """How far each mark's outer edge sits inside the printable area's edge, so a
@@ -324,25 +323,80 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def telemetry(pieces: list[Solid]) -> str:
+    """The record of a plate's mesh the budget reads: its volume, marks and each one's volume."""
+    return json.dumps(
+        {
+            "mesh_volume_mm3": sum(piece.volume_mm3 for piece in pieces),
+            "mark_count": len(pieces),
+            "marks": [
+                {"centre_mm": list(piece.centre_mm), "volume_mm3": piece.volume_mm3}
+                for piece in pieces
+            ],
+        },
+        indent=2,
+    )
+
+
+def _recorded(text: str) -> list[Solid]:
+    """The marks a `telemetry` record names, each with its volume and centre.
+
+    Raises:
+        PlateError: If the text is no such record, or its figures disagree.
+    """
+    try:
+        record = json.loads(text)
+        volume = float(record["mesh_volume_mm3"])
+        count = record["mark_count"]
+        pieces = [
+            Solid(
+                0,
+                float(one["volume_mm3"]),
+                (float(one["centre_mm"][0]), float(one["centre_mm"][1])),
+            )
+            for one in record["marks"]
+        ]
+    except (ValueError, TypeError, KeyError, IndexError) as error:
+        msg = f"no plate telemetry record: {error!r}"
+        raise PlateError(msg) from error
+    if count != len(pieces) or not math.isclose(
+        volume, sum(piece.volume_mm3 for piece in pieces), rel_tol=1e-9
+    ):
+        msg = (
+            f"the record names {count} marks and {volume} mm3, and lists {len(pieces)} marks "
+            f"of {sum(piece.volume_mm3 for piece in pieces)} mm3"
+        )
+        raise PlateError(msg)
+    return pieces
+
+
 def mass_main(argv: list[str]) -> int:
     """Report the PLA a plate takes, as the `calibration-plate-filament-grams` budget's figure.
 
     The figure is the mesh's volume times PLA's density, in grams; the detail
-    names the volume, the marks and each mark's volume. Under `onebudgetspec
-    check` it is written where that check reads it; elsewhere it is printed.
+    names the volume, the marks and each mark's volume. It is read from a
+    plate's STL, or from the `telemetry` record the plate-generation test
+    writes, which is what the budget reads. Under `onebudgetspec check` it is
+    written where that check reads it; elsewhere it is printed.
     """
     parser = argparse.ArgumentParser(
         prog="camera_calibration plate-mass",
         description="Report the PLA a calibration plate takes.",
     )
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "--stl", type=Path, default=COMMITTED, help="the plate (default: the committed plate)"
     )
+    source.add_argument(
+        "--telemetry", type=Path, help="a record of a plate's mesh, as the plate's test writes it"
+    )
     args = parser.parse_args(argv)
+    path = args.telemetry or args.stl
     try:
-        pieces = solids(args.stl.read_text(encoding="ascii"))
+        text = path.read_text(encoding="utf-8" if args.telemetry else "ascii")
+        pieces = _recorded(text) if args.telemetry else solids(text)
     except (OSError, UnicodeDecodeError, PlateError) as error:
-        print(f"camera_calibration plate-mass: {args.stl}: {error}", file=sys.stderr)
+        print(f"camera_calibration plate-mass: {path}: {error}", file=sys.stderr)
         return 2
     volume = sum(piece.volume_mm3 for piece in pieces)
     each = "; ".join(
@@ -350,8 +404,11 @@ def mass_main(argv: list[str]) -> int:
         for piece in pieces
     )
     detail = f"mesh volume {volume:.2f} mm3; {len(pieces)} marks; {each}"
+    # Imported here alone: every other run of this tool reports no budget.
+    from onebudgetspec_sdk import report
+
     report(grams(volume), detail)
-    print(f"{args.stl}: {grams(volume):.3f} g of PLA; {detail}")
+    print(f"{path}: {grams(volume):.3f} g of PLA; {detail}")
     return 0
 
 

@@ -40,6 +40,7 @@ dist/
 
 # The figures the real-print LFS fixture test records for its budgets to read.
 /tests/real-prints-lfs/telemetry/
+/tools/camera-calibration/telemetry/
 
 # The metadata uv builds for the calibration tool, a workspace member whose
 # version is dynamic because release automation owns every version field.

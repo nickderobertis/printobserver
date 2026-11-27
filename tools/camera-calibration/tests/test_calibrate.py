@@ -682,6 +682,8 @@ def test_the_workspace_lock_holds_this_tools_requirements() -> None:
 # The calibration plate, and the coverage and whole-bed report it is printed for.
 
 PLATE = TOOL / "plates" / "calibration-plate-250x220.stl"
+TELEMETRY = TOOL / "telemetry" / "plate.json"
+"""Where the plate's test records the generated mesh, for the filament budget to read."""
 PLATE_MASS_BOUND_G = next(
     one.threshold
     for one in list_budgets(paths=[TOOL / "budgets.yaml"]).budgets
@@ -799,12 +801,33 @@ def test_the_plate_marks_every_corner_edge_and_the_centre_in_one_layer(tmp_path:
 
 
 def test_the_committed_plate_is_what_the_generator_writes(tmp_path: Path) -> None:
-    """The committed 250 x 220 mm plate is byte for byte the generator's output."""
+    """The committed 250 x 220 mm plate is byte for byte the generator's output.
+
+    The generated mesh's volume, mark count and each mark's volume are then
+    recorded to `TELEMETRY`, which the `calibration-plate-filament-grams`
+    budget reads.
+    """
     expect.passing(_generate_plate(tmp_path), describing="the plate generator")
+    generated = (tmp_path / "plate.stl").read_bytes()
     expect.equal(
-        (tmp_path / "plate.stl").read_bytes() == PLATE.read_bytes(),
+        generated == PLATE.read_bytes(),
         True,
         describing=f"{PLATE.name} as the generator writes it",
+    )
+    pieces = plate.solids(generated.decode("ascii"))
+    TELEMETRY.parent.mkdir(parents=True, exist_ok=True)
+    TELEMETRY.write_text(plate.telemetry(pieces) + "\n", encoding="utf-8")
+    recorded = json.loads(TELEMETRY.read_text(encoding="utf-8"))
+    expect.equal(recorded["mark_count"], 9, describing="the recorded mark count")
+    volumes = [_volume_mm3(piece) for piece in _pieces(generated.decode("ascii"))]
+    expect.truth(
+        abs(recorded["mesh_volume_mm3"] - sum(volumes)) < 1e-6,
+        describing=f"the recorded {recorded['mesh_volume_mm3']} mm3 is the mesh's {sum(volumes)}",
+    )
+    expect.equal(
+        sorted(round(one["volume_mm3"], 6) for one in recorded["marks"]),
+        sorted(round(one, 6) for one in volumes),
+        describing="each recorded mark's volume",
     )
 
 
@@ -852,6 +875,54 @@ def test_plate_mass_reports_the_committed_plates_pla(tmp_path: Path) -> None:
             broken.write_text(text, encoding="ascii")
         refused = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
             [sys.executable, "-m", "camera_calibration", "plate-mass", "--stl", str(broken)],
+            cwd=TOOL,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        expect.equal(refused.returncode, 2, describing=f"the exit status for {name}")
+        expect.contains(refused.stderr, refusal, describing=f"the refusal of {name}")
+
+
+def test_plate_mass_reports_a_recorded_plates_pla(tmp_path: Path) -> None:
+    """`plate-mass --telemetry` reports the PLA of the record the plate's test writes.
+
+    The record is made here from the committed plate, in the shape that test
+    writes, so this does not hang on which test ran first; a record whose
+    figures disagree, or that is no record, is refused with exit 2.
+    """
+    record = tmp_path / "plate.json"
+    record.write_text(plate.telemetry(plate.solids(PLATE.read_text(encoding="ascii"))))
+    result = tmp_path / "result.json"
+    run = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+        [sys.executable, "-m", "camera_calibration", "plate-mass", "--telemetry", str(record)],
+        cwd=TOOL,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "ONEBUDGETSPEC_RESULT": str(result)},
+    )
+    expect.passing(run, describing="plate-mass over a recorded plate")
+    reported = json.loads(result.read_text(encoding="utf-8"))
+    grams = sum(_volume_mm3(piece) for piece in _pieces(PLATE.read_text(encoding="ascii")))
+    grams = grams / 1000 * 1.24
+    expect.truth(
+        abs(reported["value"] - grams) < 1e-9,
+        describing=f"the reported {reported['value']} g is the mesh's {grams} g",
+    )
+    expect.contains(reported["detail"], "9 marks; mark at (25, 25) mm", describing="the detail")
+    short = json.loads(record.read_text(encoding="utf-8"))
+    short["mark_count"] = 8
+    for name, text, refusal in (
+        ("short.json", json.dumps(short), "names 8 marks"),
+        ("bare.json", "{}", "no plate telemetry record"),
+        ("absent.json", None, "absent.json"),
+    ):
+        broken = tmp_path / name
+        if text is not None:
+            broken.write_text(text, encoding="utf-8")
+        refused = subprocess.run(  # noqa: S603 - this interpreter, running this tool, with no shell
+            [sys.executable, "-m", "camera_calibration", "plate-mass", "--telemetry", str(broken)],
             cwd=TOOL,
             capture_output=True,
             text=True,
