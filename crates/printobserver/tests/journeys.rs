@@ -214,6 +214,15 @@ fn a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why() {
     rechecking::a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why();
 }
 
+/// `printobserver recheck-camera` against a supervisor with no camera is
+/// refused naming the setting to add, and sends the machine nothing.
+///
+/// A world of its own, configured with no camera at all.
+#[test]
+fn a_recheck_with_no_camera_configured_is_refused_naming_the_setting() {
+    rechecking::a_recheck_with_no_camera_configured_is_refused_naming_the_setting();
+}
+
 /// A first start names no print and is made under one this program mints, and
 /// a start naming something that is no print is refused saying what to pass.
 ///

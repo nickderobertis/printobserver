@@ -788,7 +788,7 @@ Reached at `POST /v1/prints/{print_id}/camera/recheck`.
 
 **Output.** `frame_path`, the absolute path on the server's own host where the fresh frame was stored; `alignment`, the print's first-layer alignment once judged; `view_correction`, the correction in force once judged, or `null`; and `image_kind` and `image_fallback`, which image a check of the print would be shown of that frame and why. With no calibration configured nothing can be judged: the frame is kept as a look's is, and answered as the whole frame for that reason.
 
-**Failures.** `image-elsewhere` when the frame's path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, and when the camera gives no good frame. `unreachable` when nothing answers at the configured address.
+**Failures.** `image-elsewhere` when the frame's path names no file on the host this command ran on: the rest of the answer is printed and the path is replaced by a line saying why. `usage` when the reason is empty, before any request is made. `refused` for an `--actor` the credential is not, when no camera is configured, and when the camera gives no good frame. `unreachable` when nothing answers at the configured address.
 
 ### watch
 

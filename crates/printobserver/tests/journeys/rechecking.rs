@@ -362,3 +362,67 @@ fn the_judgements_are_recorded_against_their_frames(world: &World, print_id: &st
         "{views:#?}"
     );
 }
+
+/// `printobserver recheck-camera` against a supervisor configured with no
+/// camera is refused in the supervisor's own words, naming the setting to add:
+/// it exits `refused`, the supervisor answers `503` with no record because
+/// nothing was decided, no judgement is recorded, and the machine is sent
+/// nothing.
+pub fn a_recheck_with_no_camera_configured_is_refused_naming_the_setting() {
+    let world = World::configured(TWO_COLOUR_BOX, &committed_skill(), None, |document| {
+        document
+            .as_object_mut()
+            .expect("the configuration is a table")
+            .remove("camera");
+    });
+    let Printer::StoodIn(machine) = &world.printer else {
+        panic!("the {TWO_COLOUR_BOX} world is not a stood-in machine");
+    };
+    world.wants(Reports::Printing);
+    let print_id = world.print_id();
+    let commanded = machine.commanded.load(Ordering::SeqCst);
+
+    let ran = running::command(
+        &world,
+        &[
+            "recheck-camera",
+            "--print-id",
+            &print_id,
+            "--actor",
+            "operator",
+            "--reason",
+            REASON,
+            "--json",
+        ],
+    );
+    assert_eq!(
+        ran.code,
+        Some(7),
+        "a recheck with no camera exits `refused`: {}",
+        ran.said()
+    );
+    let answered: Value = printobserver_types::serde_json::from_str(&ran.out)
+        .unwrap_or_else(|error| panic!("the refusal is a document ({error}): {}", ran.said()));
+    assert_eq!(
+        answered,
+        json!({
+            "error": "no camera is configured to judge: set the server's `[camera] snapshot_url`"
+        }),
+        "the refusal is the supervisor's own, carrying no record"
+    );
+    assert!(
+        ran.err.contains("the supervisor answered 503"),
+        "the refusal says the status it came under: {}",
+        ran.said()
+    );
+    assert!(
+        recorded(&world, &print_id, "camera_view_judged").is_empty()
+            && recorded(&world, &print_id, "first_layer_alignment_judged").is_empty(),
+        "nothing was judged"
+    );
+    assert_eq!(
+        machine.commanded.load(Ordering::SeqCst),
+        commanded,
+        "a refused recheck sends the machine nothing"
+    );
+}

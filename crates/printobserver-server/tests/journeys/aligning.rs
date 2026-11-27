@@ -706,7 +706,8 @@ async fn another_stream_fails_an_off_frame_layer_is_inconclusive_and_a_bad_fetch
     flaky.world.printer.at_byte(past);
     let print_id = adopted(&flaky.world).await;
     let (status, answer) = recheck(&flaky.world, print_id).await;
-    assert_eq!(status, reqwest::StatusCode::BAD_GATEWAY, "{answer}");
+    assert_eq!(status, reqwest::StatusCode::SERVICE_UNAVAILABLE, "{answer}");
+    assert_eq!(answer["error"], "the camera gave no good frame to judge");
     assert!(judgements(&flaky.world, print_id).await.is_empty());
     let verdict = decided(&flaky.world, print_id).await;
     assert!(

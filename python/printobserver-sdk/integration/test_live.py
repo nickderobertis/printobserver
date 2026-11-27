@@ -27,7 +27,7 @@ from typing import cast
 
 import pytest
 from live import PATIENCE_SECONDS, Proxy, same
-from printobserver_sdk import Client, RejectedError
+from printobserver_sdk import Client, RefusedError, RejectedError
 from printobserver_sdk.contract import JobManifest
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
@@ -245,24 +245,36 @@ def step_printer_look(client: Client, world: Supervisor, proxy: Proxy) -> None:
 
 
 def step_recheck_camera(client: Client, world: Supervisor, proxy: Proxy) -> None:
-    """`recheck_camera`, answered by a real supervisor."""
+    """`recheck_camera`, declined by a real supervisor for want of what it needs."""
     ready(client, world.print_id, "")
 
-    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
-    answered = client.recheck_camera(world.print_id, REASON)
-
-    seen = proxy.last()
-    equal(seen.method, "POST", describing="`recheck_camera`")
-    equal(seen.target, f"/v1/prints/{world.print_id}/camera/recheck", describing="`recheck_camera`")
-    equal(seen.status, 200, describing="`recheck_camera`")
-    sent = json.loads(seen.body)
-    equal(sent["actor"], "operator", describing="who `recheck_camera` acted as")
-    equal(
-        sent["reason"],
-        REASON,
-        describing="the `reason` `recheck_camera` sent",
-    )
-    same("recheck_camera", answered, seen.answer)
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recheck_camera(world.print_id, REASON)
+    except RefusedError as declined:
+        equal(declined.status, 503, describing="`recheck_camera`")
+        equal(
+            declined.detail,
+            "no camera is configured to judge: set the server's `[camera] snapshot_url`",
+            describing="`recheck_camera` declined",
+        )
+        seen = proxy.last()
+        equal(seen.method, "POST", describing="`recheck_camera`")
+        equal(
+            seen.target,
+            f"/v1/prints/{world.print_id}/camera/recheck",
+            describing="`recheck_camera`",
+        )
+        equal(seen.status, 503, describing="`recheck_camera`")
+        sent = json.loads(seen.body)
+        equal(sent["actor"], "operator", describing="who `recheck_camera` acted as")
+        equal(
+            sent["reason"],
+            REASON,
+            describing="the `reason` `recheck_camera` sent",
+        )
+    else:
+        truth(False, describing="`recheck_camera` to be declined")
 
 
 def step_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:

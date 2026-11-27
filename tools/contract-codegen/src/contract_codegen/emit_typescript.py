@@ -47,7 +47,7 @@ from contract_codegen.naming import (
     typescript_member,
     typescript_property,
 )
-from contract_codegen.walk import ABSENT, EventStep, LiveStep
+from contract_codegen.walk import ABSENT, DECLINED_STATUS, EventStep, LiveStep
 
 #: What each scalar of the contracts is in TypeScript.
 SCALARS = {
@@ -731,6 +731,32 @@ def _live_refused_step(step: LiveStep, call: str, spelled: str) -> list[str]:
     ]
 
 
+def _live_declined_step(step: LiveStep, call: str, spelled: str) -> list[str]:
+    """One step of the real walk the server declines in its own error shape."""
+    said = json.dumps(step.declined)
+    return [
+        f"/** `{step.name}`, declined by a real supervisor for want of what it needs. */",
+        f"async function step{pascal(step.name)}(client: Client, proxy: Recording) {{",
+        f'  await ready(client, world.print_id, "{step.state}");',
+        "",
+        f"  const declined = await client.{spelled}({call}).catch((raised: unknown) => raised);",
+        "",
+        "  expect(declined).toBeInstanceOf(Refused);",
+        "  if (!(declined instanceof Refused)) {",
+        f'    throw new Error("`{step.name}`: the refusal arrived in no words of the server");',
+        "  }",
+        f"  expect(declined.status).toBe({DECLINED_STATUS});",
+        f"  expect(declined.detail).toBe({said});",
+        "  const seen = proxy.last();",
+        f'  expect(seen.method).toBe("{step.method}");',
+        f"  expect(seen.target).toBe({_live_target(step)});",
+        f"  expect(seen.status).toBe({DECLINED_STATUS});",
+        *_live_body(step),
+        "}",
+        "",
+    ]
+
+
 def emit_live(contract: Contract) -> str:
     """The whole generated walk of the Node client, against a real supervisor."""
     from contract_codegen.walk import REASON, plan_live, rejected_live
@@ -773,7 +799,7 @@ def emit_live(contract: Contract) -> str:
         'import { join } from "node:path";',
         'import { Client } from "../src/client.ts";',
         'import type { JobManifest } from "../src/contract.ts";',
-        'import { Rejected } from "../src/surface.ts";',
+        'import { Refused, Rejected } from "../src/surface.ts";',
         'import { Recording, ready, same } from "./live.ts";',
         'import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";',
         "",
@@ -820,6 +846,9 @@ def emit_live(contract: Contract) -> str:
         spelled = method_name(step.name, "typescript")
         if step.refused:
             lines += _live_refused_step(step, call, spelled)
+            continue
+        if step.declined:
+            lines += _live_declined_step(step, call, spelled)
             continue
         lines += [
             f"/** `{step.name}`, answered by a real supervisor. */",

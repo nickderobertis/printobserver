@@ -217,6 +217,22 @@ class Ordered(NamedTuple):
     #: The rejection the policy answers it with from that state, or empty for
     #: an operation that is carried out there.
     refused: str = ""
+    #: The words the server itself declines it with, in its own error shape
+    #: under `DECLINED_STATUS`, or empty for an operation it carries out. This
+    #: is what the walk's world answers rather than what any world would: it
+    #: is used only where that world lacks what the operation needs.
+    declined: str = ""
+
+
+#: The status a server declines an operation under when what the operation
+#: needs is not there to use: answered in the server's own error shape, with
+#: no record, because nothing was decided.
+DECLINED_STATUS = 503
+
+#: What the walk's world declines a recheck of the camera with: it configures
+#: no camera, so there is no frame to judge. The fetched-frame path is proven
+#: against a scripted camera by the command's own journeys.
+NO_CAMERA = "no camera is configured to judge: set the server's `[camera] snapshot_url`"
 
 
 #: The order the walk against a **real** supervisor drives the operations in,
@@ -246,8 +262,9 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     # the frame is the printer's, taken whatever the machine is doing.
     Ordered("printer_look", ""),
     # The print's camera judged again on a fresh frame, at once: it asks nothing
-    # of the machine, so it is answered from wherever the machine is.
-    Ordered("recheck_camera", ""),
+    # of the machine, so it is answered from wherever the machine is. The world
+    # configures no camera, so the server declines it for want of one.
+    Ordered("recheck_camera", "", declined=NO_CAMERA),
     # The bring-up left a print running, so the walk sets it down and starts
     # one — which is also the only order in which both are answered.
     Ordered("cancel", "printing"),
@@ -404,6 +421,9 @@ class LiveStep:
     #: The rejection the policy answers it with, or empty when it is carried
     #: out.
     refused: str = ""
+    #: The words the server declines it with under `DECLINED_STATUS`, or empty
+    #: when it is carried out.
+    declined: str = ""
 
     @property
     def name(self) -> str:
@@ -443,7 +463,7 @@ def plan_live(contract: Contract) -> tuple[LiveStep, ...]:
         raise ValueError(msg)
 
     steps: list[LiveStep] = []
-    for name, state, refused in LIVE_ORDER:
+    for name, state, refused, declined in LIVE_ORDER:
         operation = served[name]
         supplied: list[tuple[Parameter, str]] = []
         for parameter in operation.supplied():
@@ -459,7 +479,13 @@ def plan_live(contract: Contract) -> tuple[LiveStep, ...]:
                 raise ValueError(msg)
             supplied.append((parameter, given))
         steps.append(
-            LiveStep(operation=operation, state=state, arguments=tuple(supplied), refused=refused)
+            LiveStep(
+                operation=operation,
+                state=state,
+                arguments=tuple(supplied),
+                refused=refused,
+                declined=declined,
+            )
         )
     return tuple(steps)
 

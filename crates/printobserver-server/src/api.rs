@@ -855,8 +855,11 @@ async fn bed_clear(
 /// print paused its bed stands off the plan's height, so only the view is
 /// judged. With no calibration or no camera stream configured there is
 /// nothing to judge a frame against: the fresh frame is kept as a look's is,
-/// and answered as the whole frame for that reason. A camera that gives no
-/// good frame is refused `502`.
+/// and answered as the whole frame for that reason. A server that judges no
+/// frames, one with no camera configured, and a camera that gives no good
+/// frame are each refused `503`, in this server's own error shape: `409` and
+/// `502` are the policy's and the machine's answers to a decision, each
+/// carrying its record, and nothing was decided here.
 async fn recheck_camera(
     State(state): State<ApiState>,
     Extension(caller): Extension<Caller>,
@@ -872,10 +875,16 @@ async fn recheck_camera(
     };
     let Some(images) = state.check_images.clone() else {
         return refusal(
-            StatusCode::CONFLICT,
+            StatusCode::SERVICE_UNAVAILABLE,
             "nothing judges this server's camera frames",
         );
     };
+    if state.supervisor.config().camera_snapshot_url.is_none() {
+        return refusal(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "no camera is configured to judge: set the server's `[camera] snapshot_url`",
+        );
+    }
     let supervisor = Arc::clone(&state.supervisor);
     let fresh = tokio::task::spawn_blocking(move || {
         printobserver_core::block_on(supervisor.fresh_view(print_id))
@@ -888,7 +897,7 @@ async fn recheck_camera(
     };
     let Some((url, image)) = fresh.frame.clone() else {
         return refusal(
-            StatusCode::BAD_GATEWAY,
+            StatusCode::SERVICE_UNAVAILABLE,
             "the camera gave no good frame to judge",
         );
     };
@@ -926,7 +935,7 @@ async fn recheck_camera(
         Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
     };
     if let Some(detail) = &judged.unreadable {
-        return refusal(StatusCode::BAD_GATEWAY, detail);
+        return refusal(StatusCode::SERVICE_UNAVAILABLE, detail);
     }
     eprintln!(
         "printobserver: print {print_id}: the camera is judged again for {}: {reason}",

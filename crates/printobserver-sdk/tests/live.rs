@@ -291,14 +291,24 @@ fn step_printer_look(client: &Client, world: &supervisor::Supervisor, proxy: &li
     live::same("printer_look", &answered, &seen.answer);
 }
 
-/// `recheck_camera`, answered by a real supervisor.
+/// `recheck_camera`, declined by a real supervisor for want of what it needs.
 fn step_recheck_camera(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
     ready(client, &world.print_id, "");
 
-    let answered = client
+    let declined = client
         .recheck_camera(&world.print_id, REASON)
-        .expect("`recheck_camera` is answered by a real supervisor");
+        .expect_err("`recheck_camera` is declined by this world's supervisor");
 
+    let ClientError::Refused { status, detail } = declined else {
+        panic!(
+            "`recheck_camera`: the refusal did not arrive in the server's own words: {declined:?}"
+        );
+    };
+    assert_eq!(status, 503, "`recheck_camera`");
+    assert_eq!(
+        detail, "no camera is configured to judge: set the server's `[camera] snapshot_url`",
+        "`recheck_camera`"
+    );
     let seen = proxy.last();
     assert_eq!(seen.method, "POST", "`recheck_camera`");
     assert_eq!(
@@ -309,7 +319,14 @@ fn step_recheck_camera(client: &Client, world: &supervisor::Supervisor, proxy: &
         ),
         "`recheck_camera`"
     );
-    assert_eq!(seen.status, 200, "`recheck_camera`");
+    assert_eq!(seen.status, 503, "`recheck_camera`");
+    let answered: serde_json::Value =
+        serde_json::from_str(&seen.answer).expect("the supervisor answered a document");
+    assert_eq!(
+        answered["error"],
+        "no camera is configured to judge: set the server's `[camera] snapshot_url`",
+        "`recheck_camera`"
+    );
     let sent: serde_json::Value =
         serde_json::from_str(&seen.body).expect("the supervisor received a document");
     assert_eq!(
@@ -322,7 +339,6 @@ fn step_recheck_camera(client: &Client, world: &supervisor::Supervisor, proxy: &
         serde_json::to_value(REASON).expect("a value renders"),
         "`recheck_camera` sent another `reason`"
     );
-    live::same("recheck_camera", &answered, &seen.answer);
 }
 
 /// `cancel`, answered by a real supervisor.

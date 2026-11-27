@@ -46,7 +46,7 @@ from contract_codegen.naming import (
     pascal,
     python_identifier,
 )
-from contract_codegen.walk import ABSENT, EventStep, LiveStep
+from contract_codegen.walk import ABSENT, DECLINED_STATUS, EventStep, LiveStep
 
 #: What each scalar of the contracts is in Python.
 SCALARS = {"string": "str", "number": "float", "integer": "int", "boolean": "bool", "null": "None"}
@@ -933,6 +933,32 @@ def _live_refused_step(step: LiveStep, call: str, spelled: str) -> list[str]:
     ]
 
 
+def _live_declined_step(step: LiveStep, call: str, spelled: str) -> list[str]:
+    """One step of the real walk the server declines in its own error shape."""
+    said = json.dumps(step.declined)
+    return [
+        f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> None:",
+        f'    """`{step.name}`, declined by a real supervisor for want of what it needs."""',
+        f'    ready(client, world.print_id, "{step.state}")',
+        "",
+        "    try:",
+        f"        {ASYNC_DIRECTIVE}",
+        f"        client.{spelled}({call})",
+        "    except RefusedError as declined:",
+        f'        equal(declined.status, {DECLINED_STATUS}, describing="`{step.name}`")',
+        f'        equal(declined.detail, {said}, describing="`{step.name}` declined")',
+        "        seen = proxy.last()",
+        f'        equal(seen.method, "{step.method}", describing="`{step.name}`")',
+        f'        equal(seen.target, {_live_target(step)}, describing="`{step.name}`")',
+        f'        equal(seen.status, {DECLINED_STATUS}, describing="`{step.name}`")',
+        *(f"    {line}" for line in _live_body(step)),
+        "    else:",
+        f'        truth(False, describing="`{step.name}` to be declined")',
+        "",
+        "",
+    ]
+
+
 def emit_live(contract: Contract) -> str:
     """The whole generated walk of the Python client, against a real supervisor."""
     from contract_codegen.walk import REASON, plan_live, rejected_live
@@ -970,7 +996,7 @@ def emit_live(contract: Contract) -> str:
         "",
         "import pytest",
         "from live import PATIENCE_SECONDS, Proxy, same",
-        "from printobserver_sdk import Client, RejectedError",
+        "from printobserver_sdk import Client, RefusedError, RejectedError",
         "from printobserver_sdk.contract import JobManifest",
         "# llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.",
         "from repo_checks.expect import equal, truth",
@@ -1040,6 +1066,9 @@ def emit_live(contract: Contract) -> str:
         spelled = method_name(step.name, "python")
         if step.refused:
             lines += _live_refused_step(step, call, spelled)
+            continue
+        if step.declined:
+            lines += _live_declined_step(step, call, spelled)
             continue
         lines += [
             f"def step_{step.name}(client: Client, world: Supervisor, proxy: Proxy) -> "
