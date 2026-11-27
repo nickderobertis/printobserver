@@ -30,7 +30,13 @@
         "{workspaceRoot}/crates/printobserver-panels/tests/fixtures/frames/**/*",
         "{workspaceRoot}/crates/printobserver-core/tests/fixtures/real-prints/**/*",
         "{workspaceRoot}/crates/printobserver-server/tests/fixtures/real-prints/**/*"
-      ]
+      ],
+      "outputs": ["{projectRoot}/telemetry"]
+    },
+    "budgets": {
+      "command": "bunx onebudgetspec check tools/camera-calibration/budgets.yaml",
+      "dependsOn": ["test"],
+      "cache": false
     }
   }
 }

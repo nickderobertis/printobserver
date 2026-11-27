@@ -16,16 +16,18 @@ the whole outline near each mark.
 
 from __future__ import annotations
 
+import functools
 import itertools
+import os
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from scipy.optimize import least_squares
 
 from camera_calibration import gcode
 from camera_calibration.marks import Marks
-from camera_calibration.model import Camera, camera_position, point_to_segments, rodrigues
+from camera_calibration.model import Camera, camera_position, rodrigues
 
 COARSE_SEGMENTS = 300
 """The most segments of an outline the starting fits compare a mark with."""
@@ -42,6 +44,9 @@ near the bed's middle barely see the lens's distortion, so `k1` alone trades
 against the focal lengths and the pose along a valley the marks cannot tell
 apart; this keeps it at the least distortion the marks ask for, so the edges of
 the bed, where few parts are marked, are not left to that trade."""
+
+GRID = tuple(itertools.product((-150.0, 0.0, 150.0), (0.0, 90.0, 180.0, 270.0)))
+"""The fixed grid of starts: each sideways offset (mm) of the camera, at each roll (deg)."""
 
 NEAR_PX = 80.0
 """How far from a mark, under the starting fit, an outline segment is still
@@ -64,6 +69,10 @@ class Fitted:
     camera: Camera
     residuals_px: np.ndarray
     frames: tuple[int, ...]
+    matched_mm: np.ndarray
+    """Where on the bed (N, 2) each mark's outline lies nearest it, under the fitted camera."""
+    grid_start: tuple[float, float] | None
+    """The start of `GRID` whose fit was refined, or `None` for a fit refining a given start."""
 
     @property
     def rms_px(self) -> float:
@@ -71,12 +80,33 @@ class Fitted:
         return float(np.sqrt(np.mean(self.residuals_px**2)))
 
 
+@functools.cache
+def _layers(path: Path, stamp: tuple[int, int]) -> list[gcode.Layer]:
+    del stamp  # it keys the cache alone: a slice rewritten since is parsed again
+    return gcode.parse(path)
+
+
+def _parsed(path: Path) -> list[gcode.Layer]:
+    """A slice's layers, parsed once for every fit a run makes of the same slice.
+
+    The fit, the verification image and each of the whole-bed report's refits
+    read the same slices; parsing one is most of a fit started near its camera.
+    """
+    try:
+        status = path.stat()
+    except OSError:
+        return gcode.parse(path)  # which says what of the path it could not read
+    return _layers(path, (status.st_mtime_ns, status.st_size))
+
+
 def observations(marks: Marks) -> list[Observation]:
     """Every marked pixel with its outline, lowered by its frame's bed height."""
     parsed: dict[Path, list[gcode.Layer]] = {}
     found = []
     for number, frame in enumerate(marks.frames):
-        layers = parsed.setdefault(frame.gcode, gcode.parse(frame.gcode))
+        if frame.gcode not in parsed:
+            parsed[frame.gcode] = _parsed(frame.gcode)
+        layers = parsed[frame.gcode]
         for curve in frame.curves:
             if not curve.px:
                 continue
@@ -87,22 +117,100 @@ def observations(marks: Marks) -> list[Observation]:
     return found
 
 
+@dataclass(frozen=True)
+class Pairs:
+    """Every mark beside every segment of its outline, laid out to be measured in one pass.
+
+    A fit measures the same marks against the same outlines hundreds of times,
+    so the layout is built once: each distinct outline's segments stacked, and
+    for each mark in turn the rows of its outline's segments.
+    """
+
+    points: np.ndarray
+    """Each distinct end of a segment (Q, 3) in the bed frame."""
+    start: np.ndarray
+    """Each pair's segment's start, a row of `points`."""
+    end: np.ndarray
+    """Each pair's segment's end, a row of `points`."""
+    px: np.ndarray
+    """Each pair's mark (2, P), in pixels: every pair's column, then every pair's row."""
+    first: np.ndarray
+    """Where each mark's run of pairs begins."""
+
+    @classmethod
+    def of(cls, observed: list[Observation], outlines: list[np.ndarray]) -> Pairs:
+        """The layout of each mark against its own outline, `outlines[i]` being mark i's."""
+        rows: dict[int, np.ndarray] = {}
+        stacked: list[np.ndarray] = []
+        count = 0
+        for world in outlines:
+            if id(world) not in rows:
+                rows[id(world)] = np.arange(count, count + len(world))
+                stacked.append(world)
+                count += len(world)
+        # Neighbouring marks' outlines share segments, and an outline's
+        # segments share their ends: each distinct point is projected once.
+        world, row = np.unique(np.vstack(stacked), axis=0, return_inverse=True)
+        points, end = np.unique(
+            np.vstack([world[:, :3], world[:, 3:]]), axis=0, return_inverse=True
+        )
+        end = end.reshape(-1)
+        segment = row.reshape(-1)[np.concatenate([rows[id(one)] for one in outlines])]
+        lengths = np.array([len(one) for one in outlines])
+        return cls(
+            points,
+            end[: len(world)][segment],
+            end[len(world) :][segment],
+            np.repeat(
+                np.array([one.px for one in observed]).reshape(-1, 2), lengths, axis=0
+            ).T.copy(),
+            np.concatenate([[0], np.cumsum(lengths)[:-1]]),
+        )
+
+    def residuals(self, camera: Camera) -> np.ndarray:
+        """Each mark's pixel distance from the nearest of its outline segments under `camera`.
+
+        A segment either end of which `camera` sees behind it is 1e6 px away.
+        """
+        # Column by column, which numpy runs faster than along a two-wide axis.
+        u, v = self.px[0], self.px[1]
+        x, y = camera.project(self.points).T
+        ax, ay = x[self.start], y[self.start]
+        abx, aby = x[self.end] - ax, y[self.end] - ay
+        length = abx * abx + aby * aby
+        length[length == 0] = 1e-9
+        t = np.clip(((u - ax) * abx + (v - ay) * aby) / length, 0, 1)
+        dx, dy = u - (ax + t * abx), v - (ay + t * aby)
+        distance = np.sqrt(dx * dx + dy * dy)
+        distance[np.isnan(distance)] = 1e6
+        return np.minimum.reduceat(distance, self.first)
+
+
 def residuals_px(
     camera: Camera, observed: list[Observation], outlines: list[np.ndarray]
 ) -> np.ndarray:
-    """Each mark's pixel distance from the nearest of its outline segments.
+    """Each mark's pixel distance from the nearest of its outline segments."""
+    return Pairs.of(observed, outlines).residuals(camera)
 
-    Marks sharing one outline are measured against it in one pass.
+
+def matched_points(
+    camera: Camera, observed: list[Observation], outlines: list[np.ndarray]
+) -> np.ndarray:
+    """Where on the bed (N, 2) each mark lies: the point of its outline nearest it under `camera`.
+
+    The nearest point is found in the image and carried back to the bed along
+    its segment, which is straight in the bed and nearly so in the image.
     """
-    groups: dict[int, list[int]] = {}
-    for index, world in enumerate(outlines):
-        groups.setdefault(id(world), []).append(index)
-    out = np.empty(len(observed))
-    for members in groups.values():
-        world = outlines[members[0]]
-        projected = np.hstack([camera.project(world[:, :3]), camera.project(world[:, 3:])])
-        points = np.array([observed[index].px for index in members])
-        out[members] = point_to_segments(points, projected)
+    out = np.empty((len(observed), 2))
+    for index, (one, world) in enumerate(zip(observed, outlines, strict=True)):
+        a, b = camera.project(world[:, :3]), camera.project(world[:, 3:])
+        ab = b - a
+        length = (ab * ab).sum(1)
+        length[length == 0] = 1e-9
+        t = np.clip(((one.px - a) * ab).sum(1) / length, 0, 1)
+        distance = np.linalg.norm(a + t[:, None] * ab - one.px, axis=1)
+        nearest = int(np.argmin(np.nan_to_num(distance, nan=np.inf)))
+        out[index] = world[nearest, :2] + t[nearest] * (world[nearest, 3:5] - world[nearest, :2])
     return out
 
 
@@ -122,8 +230,15 @@ def _solve(
     size: tuple[int, int],
     evaluations: int,
 ) -> Camera:
+    # Imported where a fit solves rather than with this module: SciPy's
+    # optimiser takes most of a second to load, and a run refusing its
+    # arguments or its marks before any fit should not wait for it.
+    from scipy.optimize import least_squares
+
+    pairs = Pairs.of(observed, outlines)
+
     def residuals(x: np.ndarray) -> np.ndarray:
-        marks = np.minimum(residuals_px(Camera.of_vector(x), observed, outlines), 1e3)
+        marks = np.minimum(pairs.residuals(Camera.of_vector(x)), 1e3)
         return np.append(marks, K1_PRIOR_PX * x[4])
 
     lower, upper = _bounds(size)
@@ -186,19 +301,47 @@ def near_segments(camera: Camera, one: Observation) -> np.ndarray:
     return kept if len(kept) >= 3 else one.segments
 
 
-def fit(marks: Marks, image_size: tuple[int, int], start: Camera | None = None) -> Fitted:
-    """Fit the camera to every mark, refining `start` alone when one is given."""
+def fit(
+    marks: Marks,
+    image_size: tuple[int, int],
+    start: Camera | None = None,
+    grid: tuple[tuple[float, float], ...] = GRID,
+) -> Fitted:
+    """Fit the camera to every mark, refining `start` alone when one is given.
+
+    With no `start`, the fit starts from each of `grid`'s starts, `GRID` unless
+    a caller names fewer, and refines the best.
+    """
     observed = observations(marks)
-    best = start if start is not None else _best_start(observed, image_size)
+    if start is not None:
+        best, chosen = start, None
+    else:
+        best, chosen = _best_start(observed, image_size, grid)
     near = [near_segments(best, one) for one in observed]
     refined = _solve(best, observed, near, image_size, FINE_EVALUATIONS)
     near = [near_segments(refined, one) for one in observed]
     final = _solve(refined, observed, near, image_size, FINE_EVALUATIONS)
-    return Fitted(final, residuals_px(final, observed, near), tuple(one.frame for one in observed))
+    return Fitted(
+        final,
+        residuals_px(final, observed, near),
+        tuple(one.frame for one in observed),
+        matched_points(final, observed, near),
+        chosen,
+    )
 
 
-def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Camera:
-    """The best of the fixed grid of starts, each fitted against thinned outlines."""
+@functools.cache
+def _pool() -> ProcessPoolExecutor:
+    """The processes the grid of starts runs in, started once and kept for every fit a run makes."""
+    return ProcessPoolExecutor(max_workers=min(len(GRID), os.process_cpu_count() or 1))
+
+
+def _best_start(
+    observed: list[Observation],
+    image_size: tuple[int, int],
+    grid: tuple[tuple[float, float], ...],
+) -> tuple[Camera, tuple[float, float]]:
+    """The best of the grid's starts, each fitted against thinned outlines, and which it was."""
     points = np.vstack([one.segments[:, :3] for one in observed])
     target = points.mean(axis=0)
     thinned: dict[int, np.ndarray] = {}
@@ -208,8 +351,28 @@ def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Cam
     # at each quarter turn of roll.
     starts = [
         _looking_at(target + np.array([dx, -150.0, 150.0]), target, roll, 1000.0, image_size)
-        for dx, roll in itertools.product((-150.0, 0.0, 150.0), (0.0, 90.0, 180.0, 270.0))
+        for dx, roll in grid
     ]
-    fitted = [_solve(start, observed, coarse, image_size, COARSE_EVALUATIONS) for start in starts]
-    above = [camera for camera in fitted if camera_position(camera)[2] > target[2]] or fitted
-    return min(above, key=lambda camera: float(np.sum(residuals_px(camera, observed, coarse) ** 2)))
+    # Each start is fitted on its own, so they run side by side, one process
+    # each: this grid is most of a fit's time. Each start's result is the one
+    # it would reach alone, so the same marks still fit the same camera. The
+    # starts are sent only the thinned outlines they are fitted against.
+    thin = [
+        Observation(one.frame, one.px, outline)
+        for one, outline in zip(observed, coarse, strict=True)
+    ]
+    fitted = list(
+        _pool().map(
+            _solve,
+            starts,
+            itertools.repeat(thin),
+            itertools.repeat(coarse),
+            itertools.repeat(image_size),
+            itertools.repeat(COARSE_EVALUATIONS),
+        )
+    )
+    above = [
+        at for at, camera in enumerate(fitted) if camera_position(camera)[2] > target[2]
+    ] or list(range(len(fitted)))
+    best = min(above, key=lambda at: float(np.sum(residuals_px(fitted[at], observed, coarse) ** 2)))
+    return fitted[best], grid[best]
