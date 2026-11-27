@@ -67,6 +67,9 @@ draws walls red, panel 2 nothing. At a planned change the printer waits for a pe
 (`filament_change_planned_reached`): no check runs, and a pause, resume or setting is refused
 `planned_change_waiting`. The check after, `filament_change_planned_resumed`, names the colour
 expected from its layer and the one before: that colour from there up is expected; carry on.
+Just after it, strands away from the part, at the purge or wipe area or trailing from it, are
+purge waste, never a pause; one on the part or nozzle, wrapped round either or growing over the
+part, stays a defect.
 A colour other than expected, with no planned change at or just under this layer, is a wrong
 spool or a reload: a clear defect, never watched. Pause now, naming the spool and file to check.
 
