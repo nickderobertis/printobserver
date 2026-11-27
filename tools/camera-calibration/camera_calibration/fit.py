@@ -125,12 +125,12 @@ class Pairs:
     for each mark in turn the rows of its outline's segments.
     """
 
-    starts: np.ndarray
-    """Each distinct segment's start (S, 3) in the bed frame."""
-    ends: np.ndarray
-    """Each distinct segment's end (S, 3)."""
-    segment: np.ndarray
-    """Each pair's segment, a row of `starts` and `ends`."""
+    points: np.ndarray
+    """Each distinct end of a segment (Q, 3) in the bed frame."""
+    start: np.ndarray
+    """Each pair's segment's start, a row of `points`."""
+    end: np.ndarray
+    """Each pair's segment's end, a row of `points`."""
     px: np.ndarray
     """Each pair's mark (2, P), in pixels: every pair's column, then every pair's row."""
     first: np.ndarray
@@ -147,14 +147,19 @@ class Pairs:
                 rows[id(world)] = np.arange(count, count + len(world))
                 stacked.append(world)
                 count += len(world)
-        # Neighbouring marks' outlines share segments: each is projected once.
+        # Neighbouring marks' outlines share segments, and an outline's
+        # segments share their ends: each distinct point is projected once.
         world, row = np.unique(np.vstack(stacked), axis=0, return_inverse=True)
-        each = [rows[id(one)] for one in outlines]
-        lengths = np.array([len(one) for one in each])
+        points, end = np.unique(
+            np.vstack([world[:, :3], world[:, 3:]]), axis=0, return_inverse=True
+        )
+        end = end.reshape(-1)
+        segment = row.reshape(-1)[np.concatenate([rows[id(one)] for one in outlines])]
+        lengths = np.array([len(one) for one in outlines])
         return cls(
-            world[:, :3],
-            world[:, 3:],
-            row.reshape(-1)[np.concatenate(each)],
+            points,
+            end[: len(world)][segment],
+            end[len(world) :][segment],
             np.repeat(
                 np.array([one.px for one in observed]).reshape(-1, 2), lengths, axis=0
             ).T.copy(),
@@ -168,9 +173,9 @@ class Pairs:
         """
         # Column by column, which numpy runs faster than along a two-wide axis.
         u, v = self.px[0], self.px[1]
-        starts, ends = camera.project(self.starts), camera.project(self.ends)
-        ax, ay = starts[self.segment, 0], starts[self.segment, 1]
-        abx, aby = ends[self.segment, 0] - ax, ends[self.segment, 1] - ay
+        x, y = camera.project(self.points).T
+        ax, ay = x[self.start], y[self.start]
+        abx, aby = x[self.end] - ax, y[self.end] - ay
         length = abx * abx + aby * aby
         length[length == 0] = 1e-9
         t = np.clip(((u - ax) * abx + (v - ay) * aby) / length, 0, 1)
@@ -309,7 +314,7 @@ def fit(marks: Marks, image_size: tuple[int, int], start: Camera | None = None) 
 @functools.cache
 def _pool() -> ProcessPoolExecutor:
     """The processes the grid of starts runs in, started once and kept for every fit a run makes."""
-    return ProcessPoolExecutor(max_workers=min(len(GRID), os.cpu_count() or 1))
+    return ProcessPoolExecutor(max_workers=min(len(GRID), os.process_cpu_count() or 1))
 
 
 def _best_start(observed: list[Observation], image_size: tuple[int, int]) -> Camera:

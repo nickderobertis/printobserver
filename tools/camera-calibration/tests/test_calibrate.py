@@ -589,17 +589,20 @@ def test_an_output_it_cannot_write_is_refused(tmp_path: Path) -> None:
 def test_an_output_that_cannot_be_written_after_the_fit_is_refused(tmp_path: Path) -> None:
     """A directory standing at either output path passes the checks before the fit, then fails.
 
-    The two runs are independent, each over its own directory, so they are made
-    at once: each is a whole fit, which is most of this suite's time.
+    Each run is a whole fit, started from the committed calibration: where the
+    fit starts is no part of what is written, and a fit from the grid of starts
+    costs ten times as much. The two runs are independent, each over its own
+    directory, so they are made at once.
     """
     marks = _fixture_marks(tmp_path)
     image_blocked = tmp_path / "image"
     (image_blocked / "verification.jpg").mkdir(parents=True)
     out_blocked = tmp_path / "out"
     (out_blocked / "calibration.json").mkdir(parents=True)
+    start = ("--start", str(COMMITTED))
     with ThreadPoolExecutor(max_workers=2) as runs:
-        image_run = runs.submit(_run, marks, image_blocked)
-        out_run = runs.submit(_run, marks, out_blocked)
+        image_run = runs.submit(_run, marks, image_blocked, *start)
+        out_run = runs.submit(_run, marks, out_blocked, *start)
         image, out = image_run.result(), out_run.result()
     expect.equal(image.returncode, 2, describing="the exit status for an unwritable image")
     expect.contains(image.stderr, "could not be written", describing="the image refusal")
