@@ -683,6 +683,7 @@ fn residuals(model: Model, from: &[[f64; 2]], to: &[[f64; 2]]) -> Value {
         })
         .collect();
     let mut left_out = Vec::new();
+    let trained_on = from.len() - 1;
     for i in 0..from.len() {
         let (f, t): (Vec<_>, Vec<_>) = from
             .iter()
@@ -696,8 +697,22 @@ fn residuals(model: Model, from: &[[f64; 2]], to: &[[f64; 2]]) -> Value {
             left_out.push((r[0] - to[i][0]).hypot(r[1] - to[i][1]));
         }
     }
+    // A fit left with fewer points than its model needs predicts nothing: it
+    // is reported as underdetermined, never given a number.
+    let status = if left_out.len() == from.len() {
+        "computed".to_owned()
+    } else {
+        format!(
+            "underdetermined: each leave-one-out fit has {trained_on} training points and a {} needs {}",
+            model.name(),
+            model.least_points()
+        )
+    };
     json!({
         "fitted": true,
+        "points": from.len(),
+        "landmark_each_px": errors.iter().map(|e| round(*e, 1)).collect::<Vec<_>>(),
+        "leave_one_out_status": status,
         "landmark_rms_px": round(rms(&errors), 2),
         "landmark_max_px": round(errors.iter().copied().fold(0.0, f64::max), 2),
         "leave_one_out_rms_px": (left_out.len() == from.len()).then(|| round(rms(&left_out), 2)),
@@ -1321,6 +1336,22 @@ fn main() {
             (maps, fits)
         };
         let (_, fits_all_found) = fits_of(&all_found);
+        let all_four: Vec<usize> = (0..widest.len()).collect();
+        let (maps_all_four, fits_all_four) = fits_of(&all_four);
+        // Each candidate's standing in the four-landmark fit.
+        for (k, entry) in per_landmark.iter_mut().enumerate() {
+            entry["reliability"] = if agreeing.len() >= 2 && agreeing.contains(&k) {
+                "reliable: agrees with another found landmark within 25 px".into()
+            } else if widest[k].score < HIDDEN_BELOW {
+                format!(
+                    "unreliable: best score {:.2} is below {HIDDEN_BELOW}",
+                    widest[k].score
+                )
+                .into()
+            } else {
+                "unreliable: found, but its offset disagrees with the agreeing landmarks by more than 25 px".into()
+            };
+        }
         let (maps, fits) = fits_of(&agreeing);
 
         // The layer the frame shows and the print height its check recorded.
@@ -1352,6 +1383,13 @@ fn main() {
             );
         }
         let wide = align(&blurred[i], &samples(&identity), WIDE_SEARCH_PX);
+        let mut corrected_all_four = serde_json::Map::new();
+        for (model, map) in &maps_all_four {
+            corrected_all_four.insert(
+                model.name().to_owned(),
+                align(&blurred[i], &samples(map), SEARCH_PX).map_or(Value::Null, |f| f.json()),
+            );
+        }
         let mut corrected = serde_json::Map::new();
         for (model, map) in &maps {
             corrected.insert(
@@ -1421,12 +1459,14 @@ fn main() {
             "fit_landmarks": agreeing.iter().map(|k| names[*k]).collect::<Vec<_>>(),
             "fits": fits,
             "fits_all_found": fits_all_found,
+            "fits_all_four": fits_all_four,
             "alignment": {
                 "crate_verdict_offset_px": production.map(|p| round(p.offset_px, 1)),
                 "uncorrected": uncorrected.map_or(Value::Null, |f| f.json()),
                 "uncorrected_wide_160px": wide.map_or(Value::Null, |f| f.json()),
                 "clearest_bed_z": z_search.map_or(Value::Null, |(z, f)| json!({"print_z_mm": z, "found": f.json()})),
                 "corrected": corrected,
+                "corrected_all_four": corrected_all_four,
             },
         }));
     }
@@ -1511,6 +1551,52 @@ fn print_tables(out: &Value) {
         );
     }
     println!(
+        "\n## fits on all four best candidates: landmark rms / leave-one-out rms (px), und = underdetermined; per-landmark residuals; move at the first layer's centre"
+    );
+    for frame in out["frames"].as_array().into_iter().flatten() {
+        let marks: Vec<String> = frame["landmarks"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|l| {
+                let r = l["reliability"].as_str().unwrap_or("?");
+                (if r.starts_with("reliable") { "R" } else { "u" }).to_owned()
+            })
+            .collect();
+        let cells: Vec<String> = Model::ALL
+            .iter()
+            .map(|m| {
+                let e = &frame["fits_all_four"][m.name()];
+                let loo = if e["leave_one_out_status"].as_str() == Some("computed") {
+                    s(&e["leave_one_out_rms_px"])
+                } else {
+                    "und".to_owned()
+                };
+                let each: Vec<String> = e["landmark_each_px"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(f)
+                    .collect();
+                format!(
+                    "{} {}/{} ({}) [{},{}]",
+                    &m.name()[..3],
+                    s(&e["landmark_rms_px"]),
+                    loo,
+                    each.join(","),
+                    f(&e["moves_first_layer_centre_px"][0]),
+                    f(&e["moves_first_layer_centre_px"][1])
+                )
+            })
+            .collect();
+        println!(
+            "{} {} | {}",
+            frame["local_time"].as_str().unwrap_or("?"),
+            marks.join(""),
+            cells.join(" | ")
+        );
+    }
+    println!(
         "\n## alignment: offset px (shift) c=peak contrast d=effect size m=peak/median s=peak/second"
     );
     let cell = |a: &Value| {
@@ -1533,6 +1619,13 @@ fn print_tables(out: &Value) {
         let corrected: Vec<String> = Model::ALL
             .iter()
             .map(|m| format!("{} {}", &m.name()[..3], cell(&a["corrected"][m.name()])))
+            .chain(Model::ALL.iter().map(|m| {
+                format!(
+                    "four-{} {}",
+                    &m.name()[..3],
+                    cell(&a["corrected_all_four"][m.name()])
+                )
+            }))
             .collect();
         println!(
             "{} z{} past{} | none {} | wide {} | clearest z{} {} | {}",
