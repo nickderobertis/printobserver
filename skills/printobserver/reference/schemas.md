@@ -16612,6 +16612,11 @@ Declared by `printobserver-core`.
           "type": "string"
         },
         {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
           "const": "frame_mismatch",
           "description": "The frame is not the calibration's size or stream.",
           "type": "string"
