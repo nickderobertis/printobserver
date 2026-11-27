@@ -185,6 +185,40 @@
       },
       "type": "object"
     },
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
+    },
     "Intervention": {
       "additionalProperties": false,
       "description": "One adjustment made for a bounded time.\n\n`prior_value` is read from the printer snapshot taken before the change, and\nis absent when the printer reported none — in which case expiry restores\nnothing and the outcome says so rather than guessing a default.",
@@ -440,6 +474,36 @@
       },
       "required": [
         "state"
+      ],
+      "type": "object"
+    },
+    "LastCheckImage": {
+      "additionalProperties": false,
+      "description": "The image a print's last check was shown, and when its frame was captured.",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the check's frame was captured."
+        },
+        "fallback": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageFallback"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it was the whole frame; null for the three-panel image."
+        },
+        "kind": {
+          "$ref": "#/$defs/ImageKind",
+          "description": "Which image the check was shown."
+        }
+      },
+      "required": [
+        "at",
+        "kind"
       ],
       "type": "object"
     },
@@ -950,6 +1014,91 @@
         "length_mm"
       ],
       "type": "object"
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -976,6 +1125,17 @@
         }
       ],
       "description": "The job, when a snapshot could be taken."
+    },
+    "last_check_image": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LastCheckImage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The image the print's last check was shown, when its frame was\ncaptured and why it was the whole frame; null before its first check."
     },
     "planned_changes": {
       "anyOf": [

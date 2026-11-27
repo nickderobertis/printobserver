@@ -152,7 +152,7 @@ so only the assessments and requests in `printobserver-history.json` are here;
 and the plate prints of 2026-10-07 to 2026-10-10 that finished without a fault,
 each of whose bed frames is in `bed-and-sheet-check`.
 
-## The two-colour print, and the replay it waits for
+## The two-colour print, and the camera that had shifted
 
 `two-colour-planned-change` is a real print of 2026-11-26: PrusaSlicer 2.9.6's
 slice of a 20 mm box with two planned colour changes, black to white at Z 4 and
@@ -160,27 +160,30 @@ back to black at Z 8, supervised by printobserver v0.16.0. A person loaded the
 planned colour at both changes, so it has no wrong-colour decision point; the
 derived `bubbler-colour-change-off-plan` covers that.
 
-- Its five `agent-*` pictures are 5 of the 19 its history records: the check
-  before the first change, each change's resumption check, and the first check
-  after each in which the part is visible.
-- `agent-turn.json` holds those five turns. Each was handed the whole frame,
-  ran no command and answered from the picture.
+- Its six `agent-*` pictures are 6 of the 19 its history records: the check at
+  13:14 with the head over the part, the check before the first change, each
+  change's resumption check, and the first check after each in which the part
+  is visible.
+- `agent-turn.json` holds the five turns of the recorded release's checks after
+  the 13:14 pause. Each was handed the whole frame, ran no command and answered
+  from the picture.
 - Its G-code is the file OctoPrint printed, byte for byte. Obico's plugin had
   dropped the slice's blank lines and written an `M117` at each layer, so the
   history's positions are this file's bytes and not the slicer's own.
 - The operator's local paths and tool names in its history's start request were
   replaced with neutral words.
 
-**Its `assertions` carry no `replay` yet. It waits for a calibration fitted to
-the camera's current position.** The camera had moved since every calibration
-under `cameras/` was fitted. On this print the server refused the projection
-with the printed first layer 59.7 px away, against the 30 px limit, so every
-check was handed the whole frame. The live suite fails any case whose checks
-fall back like that. A calibration cannot be fitted from this print alone,
-because `tools/camera-calibration` needs frames over at least 20 mm of height
-and the box is 12 mm tall. Until a calibration from a taller print names this
-case, `tests/skilltest-wiring` drives its scenarios through the real server
-with the mock harness.
+**It is replayed with `cameras/core-one-2026-09-27.json`, deliberately the
+calibration the print ran with, fitted before the camera shifted.** Its two
+agreeing landmarks sit about 59 and 79 px from where that calibration has them,
+while the part moved about 15 px. The server judges the first layer on each
+check's own frame: at 13:14, 13:36 and 13:42 the toolhead covers the part, so
+the alignment is inconclusive and those checks are handed the whole frame for
+it; at 13:44 the layer is clearly found, and its shift becomes the print's
+correction, so every later check is shown the three-panel image drawn through
+it. Before that release, the server refused this print's projection at 59.7 px
+and handed every check the whole frame, and its agent paused a healthy print
+because the head hid the part.
 
 Every text file under this directory is kept byte for byte, so
 `tests/real-prints/.gitattributes` turns line-ending conversion off here.

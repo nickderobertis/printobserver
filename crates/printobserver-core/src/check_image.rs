@@ -16,7 +16,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use printobserver_printer_api::JobSnapshot;
-use printobserver_types::{EventRecord, ImageRef, PrintId, Timestamp};
+use printobserver_supervisor_api::{ImageFallback, ImageKind};
+use printobserver_types::{EventBody, EventRecord, ImageRef, PrintId, Timestamp};
 
 use crate::gcode_index::GcodeIndex;
 use crate::records::PrintRecord;
@@ -49,6 +50,16 @@ pub struct CheckImageRequest<'a> {
     pub print_id: Option<PrintId>,
     /// Where the stored frame is.
     pub frame: &'a Path,
+    /// The stored frame's SHA-256, as the image store names it: what a record
+    /// of a judgement made on it names.
+    pub frame_sha256: &'a str,
+    /// Whether the frame is the configured camera's own rather than a
+    /// detector's picture: only the camera's own frames are judged against its
+    /// calibration.
+    pub own_camera: bool,
+    /// Whether the printer reported the print paused as the check began, its
+    /// bed moved off the plan's height.
+    pub paused: bool,
     /// When the frame was captured.
     pub captured_at: Timestamp,
     /// What the image is for.
@@ -59,7 +70,7 @@ pub struct CheckImageRequest<'a> {
 }
 
 /// A check's image, and the line saying what it is.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ShownImage {
     /// The image's path.
     pub path: PathBuf,
@@ -69,6 +80,36 @@ pub struct ShownImage {
     /// Whether it is the three-panel image, drawn from the print's plan,
     /// rather than a frame as the camera took it or scaled whole.
     pub composite: bool,
+    /// Why it is the whole frame, when it is and what made it gave a reason.
+    pub fallback: Option<ImageFallback>,
+    /// What was judged of the frame making the image, each to be appended to
+    /// the request's print's history in this order. Each names the stored
+    /// frame it was made on.
+    pub records: Vec<EventBody>,
+}
+
+impl ShownImage {
+    /// An image that is a frame as it is, with nothing judged of it.
+    #[must_use]
+    pub const fn plain(path: PathBuf, note: Option<String>) -> Self {
+        Self {
+            path,
+            note,
+            composite: false,
+            fallback: None,
+            records: Vec::new(),
+        }
+    }
+
+    /// Which image it is.
+    #[must_use]
+    pub const fn kind(&self) -> ImageKind {
+        if self.composite {
+            ImageKind::ThreePanel
+        } else {
+            ImageKind::WholeFrame
+        }
+    }
 }
 
 /// What makes a check's image of one stored frame.
@@ -91,11 +132,7 @@ pub trait CheckImages: Send + Sync {
     /// As [`check_image`](Self::check_image)'s.
     fn shown_image(&self, request: &CheckImageRequest<'_>) -> Result<ShownImage, String> {
         self.check_image(request.print_id, request.frame)
-            .map(|path| ShownImage {
-                path,
-                note: None,
-                composite: false,
-            })
+            .map(|path| ShownImage::plain(path, None))
     }
 
     /// Whether a check of `print_id` would be shown the three-panel image of a
@@ -128,7 +165,54 @@ pub(crate) fn captured_at_of(event: &EventRecord, known: Option<Timestamp>) -> T
         .unwrap_or(event.received_at)
 }
 
+/// What re-judging a print's camera needs, read now.
+#[derive(Debug, Clone)]
+pub struct FreshView {
+    /// A good frame from the configured camera, not yet stored, and the URL
+    /// it came from; none when no camera is configured or none came.
+    pub frame: Option<(String, printobserver_vision_api::FetchedImage)>,
+    /// Where the print stands in its own G-code, when it is open and its job
+    /// is its own file.
+    pub plan: Option<PlanPosition>,
+    /// Whether the printer reports the print paused.
+    pub paused: bool,
+}
+
 impl Supervisor {
+    /// Read what re-judging one print's camera needs, now: a fresh frame,
+    /// where the print stands in its plan, and whether it is paused. Nothing
+    /// is written and nothing is asked of the printer but two reads.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::NoSuchPrint`](crate::CoreError::NoSuchPrint) when nothing
+    /// is held under that identifier, and the store's own error when the print
+    /// could not be read.
+    pub async fn fresh_view(&self, print_id: PrintId) -> Result<FreshView, crate::CoreError> {
+        let print = self
+            .stores()
+            .prints
+            .print(print_id)
+            .await?
+            .ok_or(crate::CoreError::NoSuchPrint { print_id })?;
+        let job = self.read_job().await.ok();
+        let paused = self
+            .read_snapshot()
+            .await
+            .is_ok_and(|taken| taken.connection == printobserver_types::PrinterState::Paused);
+        let plan = if print.ended_at.is_none() {
+            self.plan_position(&print, job.as_ref()).await
+        } else {
+            None
+        };
+        let frame = self.fetch_camera_image(print_id).await;
+        Ok(FreshView {
+            frame,
+            plan,
+            paused,
+        })
+    }
+
     /// Install what makes every check's image. The first installation stands;
     /// answers whether this one did.
     pub fn install_check_images(&self, images: std::sync::Arc<dyn CheckImages>) -> bool {
@@ -158,6 +242,10 @@ impl Supervisor {
     /// what it is: the stored frame itself when nothing that makes one is
     /// installed, or when what is installed could not make it, which is a
     /// check shown more than it needs rather than a check shown nothing.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each is one fact of the request the installed images are asked"
+    )]
     pub(crate) async fn shown_image_of(
         &self,
         image: &ImageRef,
@@ -165,32 +253,45 @@ impl Supervisor {
         captured_at: Timestamp,
         made_for: ImageUse,
         plan: Option<PlanPosition>,
+        own_camera: bool,
+        paused: bool,
     ) -> Option<ShownImage> {
         let stored = self.image_path(image).await?;
         let Some(images) = self.check_images.get() else {
-            return Some(ShownImage {
-                path: stored,
-                note: None,
-                composite: false,
-            });
+            return Some(ShownImage::plain(stored, None));
         };
         let request = CheckImageRequest {
             print_id,
             frame: &stored,
+            frame_sha256: &image.sha256,
             captured_at,
             made_for,
             plan,
+            own_camera,
+            paused,
         };
-        Some(
-            images
-                .shown_image(&request)
-                .unwrap_or_else(|error| ShownImage {
-                    note: Some(format!(
-                        "the frame as the camera took it, because its check image could not be made: {error}"
-                    )),
-                    path: stored.clone(),
-                    composite: false,
+        let mut shown = images.shown_image(&request).unwrap_or_else(|error| {
+            let message = format!("its check image could not be made: {error}");
+            ShownImage {
+                note: Some(format!(
+                    "the frame as the camera took it, because {message}"
+                )),
+                fallback: Some(ImageFallback {
+                    code: printobserver_supervisor_api::WholeFrameReasonCode::Refused,
+                    message,
                 }),
-        )
+                ..ShownImage::plain(stored.clone(), None)
+            }
+        });
+        // What was judged of the frame is the print's record, each naming the
+        // stored frame it was made on. A record the store refuses is said on
+        // the log and costs the check nothing: the image is shown either way.
+        for body in std::mem::take(&mut shown.records) {
+            let kind = body.kind.clone();
+            if let Err(error) = self.write_body_with_frame(print_id, body, None).await {
+                eprintln!("printobserver: a {kind} record could not be written: {error}");
+            }
+        }
+        Some(shown)
     }
 }

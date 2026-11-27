@@ -91,6 +91,8 @@ mod looking;
 mod materializing;
 #[path = "journeys/pairing.rs"]
 mod pairing;
+#[path = "journeys/rechecking.rs"]
+mod rechecking;
 #[path = "journeys/redaction.rs"]
 mod redaction;
 #[path = "journeys/running.rs"]
@@ -199,6 +201,17 @@ fn the_operators_word_that_the_bed_is_clear_is_honoured_until_a_print_starts() {
     let world = World::open(world::STOOD_IN);
 
     bed_clearing::the_operators_word_is_honoured_until_a_print_starts(&world);
+}
+
+/// `printobserver recheck-camera` judges a print's camera again on a fresh
+/// frame and sends the machine nothing, and every look says which image it
+/// was shown and why.
+///
+/// A world of its own, whose machine runs a recorded print's slice under that
+/// print's own stale calibration.
+#[test]
+fn a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why() {
+    rechecking::a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why();
 }
 
 /// A first start names no print and is made under one this program mints, and

@@ -1,0 +1,424 @@
+{
+  "$defs": {
+    "AlignmentFailure": {
+      "description": "Why a print's alignment failed.",
+      "oneOf": [
+        {
+          "description": "The printed first layer lies further from its projection than the\ncalibration allows. No longer written: a frame that does not clearly\nfind the layer is inconclusive, and a verdict file an earlier release\nleft holding this is read as pending.",
+          "properties": {
+            "failure": {
+              "const": "offset",
+              "type": "string"
+            },
+            "offset_px": {
+              "description": "How far, in calibration pixels.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "failure",
+            "offset_px"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The camera's frames are not the calibration's resolution.",
+          "properties": {
+            "expected": {
+              "description": "The calibration's, `[width, height]`.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "failure": {
+              "const": "resolution",
+              "type": "string"
+            },
+            "got": {
+              "description": "The frame's.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "required": [
+            "failure",
+            "expected",
+            "got"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The camera configured is not the stream the calibration was fitted on.",
+          "properties": {
+            "failure": {
+              "const": "stream",
+              "type": "string"
+            }
+          },
+          "required": [
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
+    },
+    "PrintAlignment": {
+      "description": "One print's first-layer alignment verdict, as it is kept under the state\ndirectory — which the real-print suite's record reads.",
+      "oneOf": [
+        {
+          "description": "Nothing can be checked: no calibration is configured, or the print's\nG-code lays no object.",
+          "properties": {
+            "verdict": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The first object layer is not down yet, or no frame of it has been\njudged.",
+          "properties": {
+            "verdict": {
+              "const": "pending",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The projected first layer lands on the printed one.",
+          "properties": {
+            "correction_px": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "The first-layer correction applied to every later drawing of the\nprint, `[dx, dy]` calibration pixels: the shift the layer was found\nat. `[0, 0]` in a verdict an earlier release wrote.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "offset_px": {
+              "description": "How far it lies from it, in calibration pixels.",
+              "format": "double",
+              "type": "number"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "offset_px"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "It does not, or the frames cannot be judged against the calibration.",
+          "properties": {
+            "reason": {
+              "$ref": "#/$defs/AlignmentFailure",
+              "description": "Why."
+            },
+            "verdict": {
+              "const": "failed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewCorrection": {
+      "additionalProperties": false,
+      "description": "How a print's drawings map the calibrated view onto the current frame.",
+      "properties": {
+        "landmarks": {
+          "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+          "items": {
+            "$ref": "#/$defs/ReferenceLandmark"
+          },
+          "type": "array"
+        },
+        "matrix": {
+          "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ViewModel",
+          "description": "The model `matrix` is of."
+        },
+        "residual_px": {
+          "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "matrix",
+        "landmarks",
+        "residual_px"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What judging a print's camera again on a fresh frame answers.",
+  "properties": {
+    "alignment": {
+      "$ref": "#/$defs/PrintAlignment",
+      "description": "The print's first-layer alignment once judged."
+    },
+    "frame_path": {
+      "description": "The absolute path of the fresh frame on this server's own filesystem,\nstored with the first record of its judgement.",
+      "type": "string"
+    },
+    "image_fallback": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageFallback"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Why that image would be the whole frame; null for the three-panel\nimage."
+    },
+    "image_kind": {
+      "$ref": "#/$defs/ImageKind",
+      "description": "Which image a check of the print would be shown of this frame."
+    },
+    "view_correction": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ViewCorrection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The correction in force once judged; null when none is."
+    }
+  },
+  "required": [
+    "frame_path",
+    "alignment",
+    "image_kind"
+  ],
+  "title": "RecheckCameraAnswer",
+  "type": "object"
+}

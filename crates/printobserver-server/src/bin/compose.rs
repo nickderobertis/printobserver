@@ -103,6 +103,7 @@ fn composed(asked: &Asked) -> Result<String, String> {
         None,
         url.as_str(),
         calibration,
+        None,
     );
     let _ = std::fs::remove_file(&spool);
     let image = image.map_err(|reason| format!("no check image: {reason}"))?;
@@ -112,7 +113,7 @@ fn composed(asked: &Asked) -> Result<String, String> {
         "width": image.width,
         "height": image.height,
         "bytes": image.jpeg.len(),
-        "note": composite_note(ImageUse::Check, captured_at, None),
+        "note": composite_note(ImageUse::Check, captured_at, None, false),
     })
     .to_string())
 }

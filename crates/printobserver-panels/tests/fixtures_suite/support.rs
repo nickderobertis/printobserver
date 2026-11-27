@@ -69,6 +69,11 @@ pub fn recorded_position(case: &str, file: &str) -> u64 {
         .unwrap_or_else(|| panic!("{case}/{file} records a file position"))
 }
 
+/// The file position a frame was recorded at, when the manifest records one.
+pub fn recorded_position_if_any(case: &str, file: &str) -> Option<u64> {
+    manifest_entry(case, file)["file_position_bytes"].as_u64()
+}
+
 /// One frame's entry in the fixtures' manifest.
 fn manifest_entry(case: &str, file: &str) -> Value {
     let manifest: Value = serde_json::from_slice(

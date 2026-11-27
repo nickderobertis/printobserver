@@ -303,11 +303,39 @@ pub fn the_effect_is_confirmed_by_reading_it_back(
             assert_eq!(at(&said, "z_home.x"), "100.0", "{said:#?}");
         }
         "bed-clear" => the_word_was_recorded(world, one, &said),
+        "recheck-camera" => the_fresh_frame_was_kept(world, &said),
         recovering if recovering.starts_with("recover-") => {
             the_recovery_was_carried_out(one, &said);
         }
         _ => the_action_was_carried_out(world, one, &said),
     }
+}
+
+/// A recheck of the camera kept the frame this world's camera gave, at the
+/// path it answers. This world configures no calibration, so nothing could be
+/// judged of it and it is answered as the whole frame, saying so.
+fn the_fresh_frame_was_kept(world: &World, said: &BTreeMap<String, String>) {
+    let bytes = std::fs::read(at(said, "frame_path")).expect("the frame's path opens");
+    assert_eq!(
+        bytes,
+        crate::world::FRAME_BYTES,
+        "the frame's path holds other bytes"
+    );
+    assert_eq!(at(said, "image_kind"), "whole_frame", "{said:#?}");
+    assert_eq!(
+        at(said, "image_fallback.code"),
+        "no_calibration",
+        "{said:#?}"
+    );
+    assert_eq!(at(said, "alignment.verdict"), "unavailable", "{said:#?}");
+    assert!(
+        world
+            .camera
+            .received()
+            .iter()
+            .any(|head| head.starts_with(&format!("GET {} ", crate::world::FRAME_PATH))),
+        "the frame was not fetched from this world's camera"
+    );
 }
 
 /// The operator's word that the bed is clear was recorded with the caller's

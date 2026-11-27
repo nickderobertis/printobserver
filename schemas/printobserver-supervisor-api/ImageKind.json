@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Which image a check or a look was shown.",
+  "oneOf": [
+    {
+      "const": "three_panel",
+      "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+      "type": "string"
+    },
+    {
+      "const": "whole_frame",
+      "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+      "type": "string"
+    }
+  ],
+  "title": "ImageKind"
+}

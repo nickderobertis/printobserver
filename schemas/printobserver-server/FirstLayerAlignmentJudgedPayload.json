@@ -1,0 +1,189 @@
+{
+  "$defs": {
+    "AlignmentJudgedVerdict": {
+      "description": "What one judgement of a print's first layer came to.",
+      "oneOf": [
+        {
+          "const": "passed",
+          "description": "The first layer is clearly found, and its offset is the print's\ncorrection from now on.",
+          "type": "string"
+        },
+        {
+          "const": "inconclusive",
+          "description": "The frame could not tell; a later check's frame is judged again.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The camera's frames cannot be judged against the calibration, which\nholds for the rest of the print.",
+          "type": "string"
+        }
+      ]
+    },
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewCorrection": {
+      "additionalProperties": false,
+      "description": "How a print's drawings map the calibrated view onto the current frame.",
+      "properties": {
+        "landmarks": {
+          "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+          "items": {
+            "$ref": "#/$defs/ReferenceLandmark"
+          },
+          "type": "array"
+        },
+        "matrix": {
+          "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ViewModel",
+          "description": "The model `matrix` is of."
+        },
+        "residual_px": {
+          "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "matrix",
+        "landmarks",
+        "residual_px"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One judgement of a print's first-layer alignment, on one frame.",
+  "properties": {
+    "correction_px": {
+      "description": "The correction the pass put in force, `[dx, dy]` pixels; null unless it\npassed.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "frame_sha256": {
+      "description": "The stored frame it was judged on.",
+      "type": "string"
+    },
+    "match_strength": {
+      "description": "The peak smoothed contrast the layer was found at, in grey levels; null\nwhen it was not searched for.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "offset_px": {
+      "description": "How far the printed first layer was found from its uncorrected\nprojection, in calibration pixels; null when it was not searched for.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "reason": {
+      "description": "`clearly_found` for a pass, `covered` or `not_clearly_found` for an\ninconclusive judgement, and the failure's own sentence for a failure.",
+      "type": "string"
+    },
+    "verdict": {
+      "$ref": "#/$defs/AlignmentJudgedVerdict",
+      "description": "What it came to."
+    },
+    "view_correction": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ViewCorrection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The correction in force when the frame was judged; null before the\nprint's first pass."
+    }
+  },
+  "required": [
+    "verdict",
+    "reason",
+    "frame_sha256"
+  ],
+  "title": "FirstLayerAlignmentJudgedPayload",
+  "type": "object",
+  "x-event-kind": "first_layer_alignment_judged"
+}

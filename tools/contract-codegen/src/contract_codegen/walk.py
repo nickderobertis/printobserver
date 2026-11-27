@@ -245,6 +245,9 @@ LIVE_ORDER: tuple[Ordered, ...] = (
     # A look at the printer with no print named, at once for the same reason:
     # the frame is the printer's, taken whatever the machine is doing.
     Ordered("printer_look", ""),
+    # The print's camera judged again on a fresh frame, at once: it asks nothing
+    # of the machine, so it is answered from wherever the machine is.
+    Ordered("recheck_camera", ""),
     # The bring-up left a print running, so the walk sets it down and starts
     # one — which is also the only order in which both are answered.
     Ordered("cancel", "printing"),

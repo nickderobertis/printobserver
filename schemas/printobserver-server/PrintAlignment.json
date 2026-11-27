@@ -4,7 +4,7 @@
       "description": "Why a print's alignment failed.",
       "oneOf": [
         {
-          "description": "The printed first layer lies further from its projection than the\ncalibration allows.",
+          "description": "The printed first layer lies further from its projection than the\ncalibration allows. No longer written: a frame that does not clearly\nfind the layer is inconclusive, and a verdict file an earlier release\nleft holding this is read as pending.",
           "properties": {
             "failure": {
               "const": "offset",
@@ -107,6 +107,20 @@
     {
       "description": "The projected first layer lands on the printed one.",
       "properties": {
+        "correction_px": {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "description": "The first-layer correction applied to every later drawing of the\nprint, `[dx, dy]` calibration pixels: the shift the layer was found\nat. `[0, 0]` in a verdict an earlier release wrote.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
         "offset_px": {
           "description": "How far it lies from it, in calibration pixels.",
           "format": "double",

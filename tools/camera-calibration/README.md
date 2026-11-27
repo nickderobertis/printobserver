@@ -34,7 +34,11 @@ millimetres apart between prints.
 4. **Write the marks file** (shape below), and name chassis landmarks: fixed
    features that never move with the bed or the gantry, with texture — screws,
    brackets, labels. At least two must be visible in every frame for the
-   service's drift check to rule; four is better.
+   service's drift check to rule; four, spread around the bed rather than on
+   one side of it, is better. The tool writes each landmark's
+   `search_radius_px` as 96; the service searches every landmark at 96 px
+   whatever a file records, so a calibration written at the old 48 needs no
+   refit for it.
 5. **Run the fit**:
 
    ```console
@@ -62,11 +66,15 @@ millimetres apart between prints.
 6. **Put it in place**: name the file in the service configuration's
    `[camera] calibration` and restart the service, which refuses an invalid
    file at start.
-7. **Re-run the whole procedure whenever the camera moves** — knocked, remounted
-   or re-aimed. The service's drift check refuses to draw from a calibration
-   whose landmarks have moved, and each print's first-layer alignment check
-   refuses one whose projection misses the printed first layer, but neither
-   repairs it.
+7. **Re-run the whole procedure whenever the camera moves far** — knocked,
+   remounted or re-aimed. A small shift is recovered on its own: once a print's
+   first layer is clearly found on a check's frame, its offset becomes that
+   print's correction, and later frames are drawn through it while their
+   landmarks agree with the frame it was taken on. A first layer more than
+   `alignment_max_offset_px` from its projection is never clearly found, and a
+   camera whose landmarks move again mid-print is refused until a fresh
+   correction is taken, so neither repairs a calibration the camera has left
+   behind.
 
 ## The marks file
 
@@ -119,7 +127,7 @@ reached by moving the marks 1e-6 px projects within 10 px of the committed file
 on the bed's surface and within 13 px 40 mm below it. One reached by moving
 them 0.01 px differs by up to 75 px at the bed's edges. A part printed far from
 the marked parts' region may be drawn that far off its place, and the
-first-layer alignment check is what refuses such a print.
+first-layer alignment check is what refuses to draw such a print.
 
 `alignment_max_offset_px` is written as **30**: on the four verified cases a
 healthy first layer scored at most 23 px and every empty bed or a projection

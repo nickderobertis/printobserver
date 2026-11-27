@@ -173,7 +173,22 @@ def test_the_fit_reproduces_the_committed_calibration(
         expect.equal(file["camera_snapshot_url"], _snapshot_url(), describing="the stream")
         expect.equal(file["alignment_max_offset_px"], 30, describing="the alignment threshold")
         expect.equal(file["intrinsics"]["k"][1:], [0.0, 0.0, 0.0], describing="k2-k4")
-    expect.equal(written["landmarks"], committed["landmarks"], describing="the landmarks")
+    # The committed file was written when the tool's radius was 48 px, and keeps
+    # its bytes: the server searches every landmark at its own 96 px whatever a
+    # file records, so the radius is the one field a refit now writes otherwise.
+    for landmark in written["landmarks"]:
+        expect.equal(landmark["search_radius_px"], 96, describing=f"{landmark['name']}'s radius")
+    for landmark in committed["landmarks"]:
+        expect.equal(landmark["search_radius_px"], 48, describing=f"{landmark['name']}'s radius")
+
+    def without_radius(landmarks: list[dict[str, object]]) -> list[dict[str, object]]:
+        return [{k: v for k, v in one.items() if k != "search_radius_px"} for one in landmarks]
+
+    expect.equal(
+        without_radius(written["landmarks"]),
+        without_radius(committed["landmarks"]),
+        describing="the landmarks",
+    )
     expect.equal(written["fit"]["frames"], committed["fit"]["frames"], describing="the frames")
     rms = written["fit"]["rms_reprojection_px"]
     expect.truth(rms <= RMS_BOUND_PX, describing=f"the fit's RMS {rms} px is within the bound")

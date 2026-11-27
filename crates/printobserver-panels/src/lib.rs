@@ -41,6 +41,7 @@ pub use compose::{CheckImage, CheckImageInputs, compose_check_image, is_drawn};
 pub use error::{ComposeError, FrameField};
 pub use growth::{Growth, GrowthInputs, measure_growth};
 pub use view::{
-    ReferenceLandmark, ViewCorrection, ViewJudgement, ViewModel, ViewOutcome, judge_view,
+    FoundLandmark, ReferenceLandmark, ViewCorrection, ViewJudgement, ViewModel, ViewOutcome,
+    found_landmarks, judge_found, judge_view, landmarks_in_frame,
 };
 pub use whole_frame::{WHOLE_FRAME_HEIGHT, WHOLE_FRAME_WIDTH, WholeFrame, whole_frame};

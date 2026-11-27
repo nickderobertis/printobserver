@@ -336,6 +336,7 @@ async fn what_a_running_server_says_about_itself_carries_no_secret() {
         )),
         turns: printobserver_server::TurnCredentials::new(None),
         stored: printobserver_server::Stored::channel().0,
+        check_images: None,
     };
     let rendered = format!(
         "{state:?} {:?} {:?}",

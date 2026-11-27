@@ -43,6 +43,7 @@ pub mod check_images;
 pub mod config;
 pub mod events;
 pub mod ingress;
+pub mod judgements;
 pub mod observation;
 pub mod operations;
 pub mod reconcile;
@@ -51,10 +52,13 @@ pub mod turns;
 pub mod watch;
 pub mod wire;
 
-pub use alignment::{AlignmentFailure, Alignments, CheckedFrame, PreviousCheck, PrintAlignment};
+pub use alignment::{
+    AlignmentFailure, AlignmentJudging, Alignments, CheckedFrame, Judged, Judging, LastCheckImage,
+    PreviousCheck, PrintAlignment,
+};
 pub use api::{Admission, ApiState, BODY_BOUND, Caller, DRAIN_BOUND, SPOOL_RECENT_EVENTS, router};
 pub use check_images::{
-    CHECK_IMAGES_DIRECTORY, COMPOSITE_NOTE, PanelImages, PlanAt, WHOLE_FRAME_NOTE,
+    CHECK_IMAGES_DIRECTORY, COMPOSITE_NOTE, PanelImages, PlanAt, Shown, WHOLE_FRAME_NOTE,
     WholeFrameReason, WholeFrames, compose_at, composite_note, whole_frame_note,
 };
 pub use config::{
@@ -66,11 +70,16 @@ pub use config::{
 };
 pub use events::{DEFAULT_EVENTS_LIMIT, MAX_EVENTS_LIMIT, MAX_EVENTS_WAIT_S, Stored};
 pub use ingress::{IngressState, QUEUE_DEPTH, TOKEN_HEADER, TOKEN_PARAM};
+pub use judgements::{
+    AlignmentJudgedVerdict, CameraViewJudgedPayload, CameraViewRefitPayload,
+    CheckImageChangedPayload, FirstLayerAlignmentJudgedPayload,
+};
 pub use operations::{
     Answer, BED_CLEAR, BESIDE_THE_ACTIONS, COMMAND_TAG, CONTEXT_IMAGE_PATH_FIELD, Declared, Effect,
     IMAGE_PATH_FIELD, INGRESS_PATH, Located, MEDIA_TYPE, Method, OPERATIONS, Operation,
-    PRINTER_LOOK, Parameter, RECOVERY_STATUS, RecoveryActionKind, SpoolCommandKind, VERSION_PREFIX,
-    ValueKind, command_for, operation, printer_wide_of,
+    PRINTER_LOOK, Parameter, RECHECK_CAMERA, RECHECK_FRAME_PATH_FIELD, RECOVERY_STATUS,
+    RecoveryActionKind, SpoolCommandKind, VERSION_PREFIX, ValueKind, command_for, operation,
+    printer_wide_of,
 };
 /// The longest wait one look takes, which a refusal's advice is held to.
 pub use printobserver_core::MAX_LOOK_WAIT_S;
@@ -92,7 +101,8 @@ pub use turns::{GENERATED_TURN_CREDENTIAL_BYTES, TurnBinding, TurnCredentials};
 pub use wire::{
     ActionAnswer, ActionBody, BedClearAnswer, BedClearBody, BodyRefusal, ContextAnswer,
     ErrorAnswer, EventsAnswer, HistoryAnswer, ImageAnswer, IngressAnswer, LookAnswer,
-    ManifestAnswer, ManifestBody, PreflightAnswer, PrintEnded, PrintsAnswer, RecoveryAnswer,
-    RecoveryStatusAnswer, SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer, StatusAnswer,
-    TimelineAnswer, at_a_glance, claimed_actor, reason_of, recovery_of, spool_command_of,
+    ManifestAnswer, ManifestBody, PreflightAnswer, PrintEnded, PrintsAnswer, RecheckCameraAnswer,
+    RecoveryAnswer, RecoveryStatusAnswer, SpoolAnswer, SpoolCommandAnswer, SpoolsAnswer,
+    StatusAnswer, TimelineAnswer, at_a_glance, claimed_actor, reason_of, recovery_of,
+    spool_command_of,
 };

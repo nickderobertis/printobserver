@@ -217,3 +217,76 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
     }
     eprintln!("{observed:#?}");
 }
+
+/// Each verified healthy first layer is larger than the toolhead can hide, so
+/// it is judged on the image score alone and passes as it always did, with the
+/// plan's nozzle where it was — though that nozzle lies within the coverage
+/// margin of the layer's projected hull, which on the small box would call it
+/// covered.
+#[test]
+fn a_first_layer_larger_than_the_toolhead_hides_is_judged_on_the_image_score() {
+    use printobserver_panels::alignment::{
+        TOOLHEAD_HIDES_MM, TOOLHEAD_MARGIN_PX, first_layer_span_mm, nozzle_from_first_layer_px,
+    };
+    let calibration = calibration();
+    let box_index = index("two-colour-planned-change");
+    let box_first = toolpath(
+        "two-colour-planned-change",
+        box_index.first_object_layer().expect("a first layer").0,
+    );
+    let box_span = first_layer_span_mm(&box_first);
+    assert!(
+        box_span <= TOOLHEAD_HIDES_MM,
+        "the box's first layer spans {box_span:.1} mm, which the toolhead can hide"
+    );
+    let mut observed = Vec::new();
+    let mut within_the_margin = 0;
+    for (case, past, _) in CASES {
+        let index = index(case);
+        let (layer, ends) = index.first_object_layer().expect("a first object layer");
+        let first = toolpath(case, layer);
+        let span = first_layer_span_mm(&first);
+        assert!(
+            span > TOOLHEAD_HIDES_MM,
+            "{case}: its first layer spans {span:.1} mm"
+        );
+        let print_z = recorded_z(case, past);
+        // Where the plan had the nozzle as the frame was taken, or, for a
+        // frame recording no position, as the first layer ended.
+        let position = crate::support::recorded_position_if_any(case, past).unwrap_or(ends + 1);
+        let nozzle = index
+            .planned_head_at(position)
+            .expect("the spool reads back");
+        let jpeg = frame(case, past);
+        let url = snapshot_url();
+        let inputs = FirstLayerInputs {
+            alignment: AlignmentInputs {
+                frame_jpeg: &jpeg,
+                camera_snapshot_url: &url,
+                first_layer: &first,
+                print_z_mm: print_z,
+                calibration: &calibration,
+            },
+            nozzle_xy_mm: nozzle,
+        };
+        let distance = nozzle_from_first_layer_px(&inputs).expect("both project");
+        if distance <= TOOLHEAD_MARGIN_PX {
+            within_the_margin += 1;
+        }
+        let judged = judge_first_layer(&inputs).expect("the check rules on a calibrated frame");
+        observed.push(format!(
+            "{case}: {span:.1} mm, nozzle {distance:.1} px from the layer, {:?}",
+            judged.verdict
+        ));
+        assert_eq!(
+            judged.verdict,
+            FirstLayerVerdict::Passed,
+            "{case}/{past}: {observed:#?}"
+        );
+    }
+    assert!(
+        within_the_margin > 0,
+        "no healthy first layer had its nozzle within the margin, so none shows the gate: {observed:#?}"
+    );
+    eprintln!("{observed:#?}");
+}

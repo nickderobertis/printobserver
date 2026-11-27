@@ -1,5 +1,8 @@
-//! Each print's first-layer alignment, as the running service decides it on
-//! its own and the checks read it through [`Running::print_alignment`].
+//! Each print's first-layer alignment, as the running service judges it on a
+//! frame — here the operator's recheck of the camera, which judges a fresh
+//! frame at once — and the checks read it through
+//! [`Running::print_alignment`]. A scheduled check's own frame is judged the
+//! same way, which `camera_view` drives.
 //!
 //! The service is the real composition over the recording printer, which
 //! serves a recorded case's own slice (a plain copy from
@@ -227,20 +230,56 @@ async fn adopted(world: &World) -> PrintId {
     }
 }
 
-/// Wait until a print's verdict is no longer pending, and answer it.
+/// Judge a print's camera again as the operator, and answer the status and
+/// the answer.
+async fn recheck(world: &World, print_id: PrintId) -> (reqwest::StatusCode, Value) {
+    let response = world
+        .client
+        .post(format!(
+            "{}/prints/{print_id}/camera/recheck",
+            world.server.base_url()
+        ))
+        .json(&serde_json::json!({ "actor": "operator", "reason": "the camera was nudged" }))
+        .send()
+        .await
+        .expect("the server answers");
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+/// Judge a print's camera again, and answer the verdict the recheck left.
 async fn decided(world: &World, print_id: PrintId) -> PrintAlignment {
-    let deadline = std::time::Instant::now() + PATIENCE;
-    loop {
-        let verdict = world.server.print_alignment(print_id);
-        if verdict != PrintAlignment::Pending {
-            return verdict;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "no verdict was ever decided"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    let (status, answer) = recheck(world, print_id).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+    let verdict = world.server.print_alignment(print_id);
+    assert_eq!(
+        serde_json::to_value(&verdict).expect("a verdict renders"),
+        answer["alignment"],
+        "the recheck answers the verdict it left"
+    );
+    verdict
+}
+
+/// The first-layer judgements a print's history records, oldest first.
+async fn judgements(world: &World, print_id: PrintId) -> Vec<Value> {
+    let mut events: Vec<printobserver_types::EventRecord> = world
+        .stores
+        .events
+        .history(printobserver_core::store::HistoryQuery {
+            print_id,
+            kinds: Vec::new(),
+            since: None,
+            until: None,
+            limit: Some(1000),
+        })
+        .await
+        .expect("the history reads");
+    events.sort_by_key(|event| event.id);
+    events
+        .iter()
+        .filter(|event| event.kind().as_str() == "first_layer_alignment_judged")
+        .map(|event| event.body.payload.clone())
+        .collect()
 }
 
 /// Wait until a condition holds.
@@ -264,12 +303,13 @@ fn kept(world: &World, print_id: PrintId) -> (PathBuf, PathBuf) {
     )
 }
 
-/// A print reads `Pending` until its first object layer is down, then
-/// `Passed` with its offset; the verdict and the spool stand through a
-/// restart while it is open, and are gone once it closes — and a spool or
-/// verdict left for a closed print is swept at the next start.
+/// A print reads `Pending` until its first object layer is down — an earlier
+/// release's failure on its offset among it — then `Passed` with its offset and
+/// its correction; the verdict and the spool stand through a restart while it
+/// is open, and are gone once it closes — and a spool or verdict left for a
+/// closed print is swept at the next start.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_print_is_checked_once_its_first_layer_is_down_and_keeps_its_verdict_while_open() {
+async fn a_print_is_judged_once_its_first_layer_is_down_and_keeps_its_verdict_while_open() {
     let bytes = slice("jar-top-petg.gcode");
     let index = index_of(&bytes);
     let (_, first_ends) = index.first_object_layer().expect("a first object layer");
@@ -286,12 +326,26 @@ async fn a_print_is_checked_once_its_first_layer_is_down_and_keeps_its_verdict_w
     printer.at_byte(i64::try_from(first_ends).expect("a position") - 50);
     let print_id = adopted(&journey.world).await;
     let (verdict_file, spool) = kept(&journey.world, print_id);
+    assert_eq!(
+        decided(&journey.world, print_id).await,
+        PrintAlignment::Pending,
+        "a print whose first layer is not down is pending, whatever its frame shows"
+    );
     until("the spool is written", || spool.exists()).await;
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(
+        judgements(&journey.world, print_id).await.is_empty(),
+        "nothing is judged of a first layer that is not down"
+    );
+
+    std::fs::write(
+        &verdict_file,
+        br#"{"verdict":"failed","reason":{"failure":"offset","offset_px":59.7}}"#,
+    )
+    .expect("an earlier release's verdict");
     assert_eq!(
         journey.world.server.print_alignment(print_id),
         PrintAlignment::Pending,
-        "a print whose first layer is not down is pending"
+        "an earlier release's failure on its offset is judged again"
     );
 
     std::fs::write(&verdict_file, b"not a verdict").expect("a verdict file is corrupted");
@@ -302,9 +356,17 @@ async fn a_print_is_checked_once_its_first_layer_is_down_and_keeps_its_verdict_w
     );
     printer.at_byte(position_at(&index, bytes.len(), 0.6));
     let verdict = decided(&journey.world, print_id).await;
-    let PrintAlignment::Passed { offset_px } = verdict else {
+    let PrintAlignment::Passed {
+        offset_px,
+        correction_px,
+    } = verdict
+    else {
         panic!("the healthy first layer did not pass: {verdict:?}");
     };
+    assert!(
+        (correction_px[0].hypot(correction_px[1]) - offset_px).abs() < 1e-9,
+        "the correction is the found shift, {offset_px:.1} px long: {correction_px:?}"
+    );
     assert!(
         offset_px <= 30.0,
         "offset {offset_px:.1} px against a threshold of 30 px"
@@ -323,7 +385,10 @@ async fn a_print_is_checked_once_its_first_layer_is_down_and_keeps_its_verdict_w
     let world = Box::pin(world.restart()).await;
     assert_eq!(
         world.server.print_alignment(print_id),
-        PrintAlignment::Passed { offset_px },
+        PrintAlignment::Passed {
+            offset_px,
+            correction_px
+        },
         "the verdict stands through a restart while the print is open"
     );
     assert!(
@@ -368,16 +433,21 @@ async fn a_sweep_leaves_an_open_prints_record_part_way_through_its_write() {
     .await;
     let print_id = adopted(&journey.world).await;
     let state = journey.world.root.path().join("state");
-    let writing: Vec<PathBuf> = ["alignment", "previous-check", "checked-frames"]
-        .iter()
-        .map(|directory| {
-            let directory = state.join(directory);
-            std::fs::create_dir_all(&directory).expect("the record directory");
-            let part = directory.join(format!("{print_id}.json.part"));
-            std::fs::write(&part, b"{").expect("a record part-way through its write");
-            part
-        })
-        .collect();
+    let writing: Vec<PathBuf> = [
+        "alignment",
+        "previous-check",
+        "checked-frames",
+        "camera-view",
+    ]
+    .iter()
+    .map(|directory| {
+        let directory = state.join(directory);
+        std::fs::create_dir_all(&directory).expect("the record directory");
+        let part = directory.join(format!("{print_id}.json.part"));
+        std::fs::write(&part, b"{").expect("a record part-way through its write");
+        part
+    })
+    .collect();
     let closed = state
         .join("previous-check")
         .join(format!("{}.json", printobserver_types::PrintId::new()));
@@ -401,11 +471,13 @@ async fn a_sweep_leaves_an_open_prints_record_part_way_through_its_write() {
     }
 }
 
-/// A calibration whose projection is off by 49 px fails with its offset; a
-/// camera of another resolution fails naming it; and with no calibration, or
-/// a slice laying no object, a print is unavailable.
+/// A calibration whose projection is off by 49 px is inconclusive, not
+/// clearly found, and stays pending to be judged again; a camera of another
+/// resolution fails naming it, and stays failed through a restart; and with no
+/// calibration, or a slice laying no object, a print is unavailable.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_wrong_projection_or_resolution_fails_and_nothing_to_check_is_unavailable() {
+async fn a_wrong_projection_is_inconclusive_a_wrong_resolution_fails_and_nothing_to_check_is_unavailable()
+ {
     let bytes = slice("jar-top-petg.gcode");
     let index = index_of(&bytes);
     let past = position_at(&index, bytes.len(), 0.6);
@@ -417,29 +489,19 @@ async fn a_wrong_projection_or_resolution_fails_and_nothing_to_check_is_unavaila
     let moved = start(&bytes, petg.clone(), Some(moved_calibration)).await;
     moved.world.printer.at_byte(past);
     let print_id = adopted(&moved.world).await;
-    match decided(&moved.world, print_id).await {
-        PrintAlignment::Failed {
-            reason: AlignmentFailure::Offset { offset_px },
-        } => assert!(
-            offset_px > 30.0,
-            "offset {offset_px:.1} px against a threshold of 30 px"
-        ),
-        other => panic!("a projection moved 49 px did not fail on its offset: {other:?}"),
-    }
-    let failed = moved.world.server.print_alignment(print_id);
-    let Aligning {
-        world,
-        camera: _camera,
-        _calibration,
-    } = moved;
-    let world = Box::pin(world.restart()).await;
-    tokio::time::sleep(Duration::from_secs(2)).await;
     assert_eq!(
-        world.server.print_alignment(print_id),
-        failed,
-        "a failed print stays failed: it is checked once"
+        decided(&moved.world, print_id).await,
+        PrintAlignment::Pending
     );
-    drop(world);
+    let judged = judgements(&moved.world, print_id).await;
+    assert_eq!(judged.len(), 1, "{judged:#?}");
+    assert_eq!(judged[0]["verdict"], "inconclusive");
+    assert_eq!(judged[0]["reason"], "not_clearly_found");
+    assert!(
+        judged[0]["offset_px"].as_f64().expect("an offset") > 30.0,
+        "{judged:#?}"
+    );
+    drop(moved);
 
     let fan = slice("fan-cut-test.gcode");
     let small = start(
@@ -457,16 +519,32 @@ async fn a_wrong_projection_or_resolution_fails_and_nothing_to_check_is_unavaila
         .printer
         .at_byte(position_at(&fan_index, fan.len(), 1.0));
     let print_id = adopted(&small.world).await;
+    let failed = PrintAlignment::Failed {
+        reason: AlignmentFailure::Resolution {
+            expected: [1920, 1080],
+            got: [1280, 720],
+        },
+    };
+    assert_eq!(decided(&small.world, print_id).await, failed);
+    let judged = judgements(&small.world, print_id).await;
+    assert_eq!(judged[0]["verdict"], "failed");
     assert_eq!(
-        decided(&small.world, print_id).await,
-        PrintAlignment::Failed {
-            reason: AlignmentFailure::Resolution {
-                expected: [1920, 1080],
-                got: [1280, 720],
-            }
-        }
+        judged[0]["reason"],
+        "the camera's frames are 1280x720 and the calibration's 1920x1080"
     );
-    drop(small);
+    let Aligning {
+        world,
+        camera: _camera,
+        _calibration,
+    } = small;
+    let world = Box::pin(world.restart()).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(
+        world.server.print_alignment(print_id),
+        failed,
+        "a failed print stays failed"
+    );
+    drop(world);
 
     let uncalibrated = start(&bytes, petg.clone(), None).await;
     uncalibrated.world.printer.at_byte(past);
@@ -475,6 +553,17 @@ async fn a_wrong_projection_or_resolution_fails_and_nothing_to_check_is_unavaila
         uncalibrated.world.server.print_alignment(print_id),
         PrintAlignment::Unavailable
     );
+    let (status, answer) = recheck(&uncalibrated.world, print_id).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{answer}");
+    assert_eq!(
+        answer["image_fallback"]["code"], "no_calibration",
+        "with no calibration there is nothing to judge a frame against: {answer}"
+    );
+    assert!(
+        std::path::Path::new(answer["frame_path"].as_str().expect("a path")).is_file(),
+        "the fresh frame is kept all the same: {answer}"
+    );
+    assert!(judgements(&uncalibrated.world, print_id).await.is_empty());
     drop(uncalibrated);
 
     let unlabelled = b";LAYER_CHANGE\n;Z:0.2\nG90\nM83\nG1 X10 Y10\nG1 X60 Y10 E2\nG1 X60 Y60 E2\n;LAYER_CHANGE\n;Z:0.4\nG1 X10 Y60 E2\n";
@@ -556,11 +645,11 @@ fn other_stream(mut calibration: Value, _: &[u8]) -> Value {
 }
 
 /// A camera that is not the calibration's stream fails naming the stream; a
-/// first layer projecting nowhere in the frame fails at the furthest offset
-/// the check looks; and a refused fetch and an undecodable frame are tried
-/// again at the next read, which then passes.
+/// first layer projecting nowhere in the frame is not clearly found and stays
+/// pending; and a fetch that gives no good frame judges nothing, which a later
+/// recheck then does.
 #[tokio::test(flavor = "multi_thread")]
-async fn another_stream_or_an_off_frame_layer_fails_and_a_bad_fetch_is_retried() {
+async fn another_stream_fails_an_off_frame_layer_is_inconclusive_and_a_bad_fetch_judges_nothing() {
     let bytes = slice("jar-top-petg.gcode");
     let index = index_of(&bytes);
     let past = position_at(&index, bytes.len(), 0.6);
@@ -595,22 +684,16 @@ async fn another_stream_or_an_off_frame_layer_fails_and_a_bad_fetch_is_retried()
         .printer
         .at_byte(i64::try_from(behind.len()).expect("a size") - 2);
     let print_id = adopted(&off.world).await;
-    assert_eq!(
-        decided(&off.world, print_id).await,
-        PrintAlignment::Failed {
-            reason: AlignmentFailure::Offset { offset_px: 60.0 }
-        }
-    );
+    assert_eq!(decided(&off.world, print_id).await, PrintAlignment::Pending);
+    let judged = judgements(&off.world, print_id).await;
+    assert_eq!(judged[0]["reason"], "not_clearly_found", "{judged:#?}");
+    assert_eq!(judged[0]["offset_px"], Value::Null, "nothing was searched");
     drop(off);
 
     let flaky = start(
         &bytes,
         vec![
             Scripted::refusing("404 Not Found", "no frame yet"),
-            Scripted::frame(b"not a jpeg".to_vec()),
-            Scripted::frame(b"not a jpeg".to_vec()),
-            Scripted::frame(b"not a jpeg".to_vec()),
-            Scripted::frame(b"not a jpeg".to_vec()),
             Scripted::frame(good),
         ],
         Some(as_committed),
@@ -618,13 +701,13 @@ async fn another_stream_or_an_off_frame_layer_fails_and_a_bad_fetch_is_retried()
     .await;
     flaky.world.printer.at_byte(past);
     let print_id = adopted(&flaky.world).await;
+    let (status, answer) = recheck(&flaky.world, print_id).await;
+    assert_eq!(status, reqwest::StatusCode::BAD_GATEWAY, "{answer}");
+    assert!(judgements(&flaky.world, print_id).await.is_empty());
     let verdict = decided(&flaky.world, print_id).await;
     assert!(
         matches!(verdict, PrintAlignment::Passed { .. }),
-        "the check passed once a good frame came: {verdict:?}"
+        "the recheck passed once a good frame came: {verdict:?}"
     );
-    assert!(
-        flaky.camera.exchanges().len() >= 3,
-        "the refused and undecodable fetches were each followed by another"
-    );
+    assert_eq!(flaky.camera.exchanges().len(), 2);
 }

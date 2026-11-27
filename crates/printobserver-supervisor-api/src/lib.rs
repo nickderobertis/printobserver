@@ -3,7 +3,8 @@
 //! Owns: the port the supervising agent is reached through — the trait for
 //! running one supervision turn and for closing a session, the two shapes those
 //! methods carry, that port's own error type, the assessment vocabulary a turn
-//! answers with ([`assessment`]), the session a turn opens or continues
+//! answers with ([`assessment`]), which image a check was shown and why
+//! ([`image`]), the session a turn opens or continues
 //! ([`session`]), the credential each run of a turn is issued ([`access`]),
 //! and the two event kinds a session's opening and closing are written down
 //! under.
@@ -26,6 +27,7 @@
 
 pub mod access;
 pub mod assessment;
+pub mod image;
 pub mod session;
 
 use core::future::Future;
@@ -40,6 +42,7 @@ use printobserver_types::{EventPayload, EventRecord, PrintId, PrinterState, Time
 
 pub use access::{CREDENTIAL_ENV, SERVER_ENV, TurnAccess, TurnPass, TurnSession};
 pub use assessment::{AgentAssessment, Confidence, Disposition};
+pub use image::{ImageFallback, ImageKind, WholeFrameReasonCode};
 pub use session::{SessionPhase, SupervisionSession};
 
 /// A future this port's methods answer with, in the one shape a trait object
@@ -122,6 +125,13 @@ pub struct TurnSituation {
     /// nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// Which image is attached to the prompt; absent when none is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_kind: Option<ImageKind>,
+    /// Why the attached image is the whole frame; absent for the three-panel
+    /// image, when no image is attached, or when what made it gave no reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_fallback: Option<ImageFallback>,
 }
 
 impl Sample for TurnSituation {
@@ -142,6 +152,8 @@ impl Sample for TurnSituation {
                  a close-up of the part being printed, and the previous check's frame"
                     .to_owned(),
             ),
+            image_kind: Some(ImageKind::WholeFrame),
+            image_fallback: Some(ImageFallback::sample_full()),
         }
     }
 

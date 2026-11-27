@@ -608,7 +608,10 @@ fn reasonless_body(operation: &Operation, reason: Option<&str>) -> Value {
         (Some(kind), _, _) => asked(kind).accepted,
         (None, Some(kind), _) => crate::world::spool_body(kind),
         (None, None, Some(kind)) => crate::world::recovery_body(kind),
-        (None, None, None) if operation.name == printobserver_server::BED_CLEAR => {
+        (None, None, None)
+            if operation.name == printobserver_server::BED_CLEAR
+                || operation.name == printobserver_server::RECHECK_CAMERA =>
+        {
             json!({ "actor": "operator", "reason": "the bed is clear" })
         }
         (None, None, None) => crate::world::manifest_write(&wider_than_the_envelope()),
@@ -709,6 +712,7 @@ fn every_operation_beside_the_vocabulary_is_driven_somewhere() {
     covered.push("events");
     covered.extend(crate::spooling::DRIVEN_THERE);
     covered.extend(crate::bed_clear::DRIVEN_THERE);
+    covered.extend(crate::camera_view::DRIVEN_THERE);
     covered.sort_unstable();
     let mut declared: Vec<&str> = printobserver_server::BESIDE_THE_ACTIONS.to_vec();
     declared.sort_unstable();

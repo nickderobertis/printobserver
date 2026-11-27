@@ -1,0 +1,610 @@
+//! A print's camera judged on its own checks' frames: a covered first layer
+//! retried rather than failed, a clearly found one correcting the view, a
+//! paused check left unjudged, every judgement recorded against the stored
+//! frame it read, and a camera that moves again refused until a fresh
+//! correction is taken.
+//!
+//! The server is the real composition over the scripted `OctoPrint` and a
+//! scripted camera, as the composite-check journeys run it, configured with
+//! the stale `core-one-2026-09-27.json` the 2026-11-26 two-colour print ran
+//! with. The frames are that print's own, as plain copies in
+//! `printobserver-panels`' fixtures; its slice is the core's plain copy, with
+//! its two `M600` lines made comments of the same length so that no planned
+//! change interposes a check of its own and every byte offset stays the
+//! print's. Each check is held open while the journey moves the job on and
+//! the camera answers the next frame, so every check reads exactly the frame
+//! and position the journey means.
+
+use core::time::Duration;
+use std::path::PathBuf;
+
+use printobserver_octoprint::standin::JobScript;
+use printobserver_server::{PrintAlignment, Running};
+use printobserver_types::PrintId;
+use printobserver_types::serde_json::{Value, json};
+
+use crate::camera_host::{Scripted, ScriptedHost};
+use crate::composite_checks::{
+    Camera, FILE, Journey, Started, adopted, block_under, committed, frame, sha256, slice,
+};
+use crate::lean_checks::handed;
+use crate::world::{OPERATOR, presenting};
+
+/// The operation beside the action vocabulary these journeys and `aligning`'s
+/// drive: the operator's recheck of a print's camera.
+pub const DRIVEN_THERE: [&str; 1] = [printobserver_server::RECHECK_CAMERA];
+
+/// The installer whose template the journeys run.
+const INSTALLER: &str = "scripts/install.sh";
+
+/// The recorded print the frames are of.
+const CASE: &str = "two-colour-planned-change";
+
+/// The seconds between two checks: long enough that a check released is
+/// held again before the next one starts.
+const INTERVAL_S: i64 = 2;
+
+/// The covered first layer: the toolhead over the part at 13:14.
+const COVERED: (&str, u64) = ("131408-periodic_observation.jpg", 24_738);
+
+/// A check while the print was paused, its bed lowered.
+const PAUSED: (&str, u64) = ("131609-periodic_observation.jpg", 27_748);
+
+/// The first layer clearly found at 13:44, at a shift of about +4,-20 px.
+const FOUND: (&str, u64) = ("134401-periodic_observation.jpg", 51_973);
+
+/// The later frames, each a different picture of the part.
+const LATER: [(&str, u64); 2] = [
+    ("152603-filament_change_planned_resumed.jpg", 62_152),
+    ("152804-periodic_observation.jpg", 74_248),
+];
+
+/// A position past the second colour change with the nozzle over the part's
+/// front-left corner, where the toolhead covers it whatever the frame.
+const COVERED_LATER: u64 = 62_653;
+
+/// The two landmarks found agreeing on every frame of the print.
+const AGREEING: [&str; 2] = ["frame-screws-right-front", "frame-label-right"];
+
+/// The print's slice with its colour changes made comments.
+fn box_slice() -> Vec<u8> {
+    let bytes = slice("two-colour-box.gcode");
+    let text = bytes
+        .split(|byte| *byte == b'\n')
+        .map(|line| {
+            if line == b"M600" {
+                b";600".to_vec()
+            } else {
+                line.to_vec()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(&b'\n');
+    assert_eq!(text.len(), bytes.len(), "every offset stays the print's");
+    text
+}
+
+/// One of the print's frames.
+fn box_frame(file: &str) -> Vec<u8> {
+    frame(CASE, file)
+}
+
+/// A frame decoded, changed and encoded again.
+fn changed(bytes: &[u8], change: impl FnOnce(&mut image::RgbImage)) -> Vec<u8> {
+    let mut decoded = image::load_from_memory(bytes).expect("a frame").to_rgb8();
+    change(&mut decoded);
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 92)
+        .encode_image(&decoded)
+        .expect("a frame encodes");
+    out
+}
+
+/// A frame moved `by` pixels right, its uncovered edge grey: the camera
+/// knocked a little further out of place.
+fn shifted(bytes: &[u8], by: u32) -> Vec<u8> {
+    changed(bytes, |frame| {
+        let mut moved =
+            image::RgbImage::from_pixel(frame.width(), frame.height(), image::Rgb([90, 90, 90]));
+        image::imageops::replace(&mut moved, frame, i64::from(by), 0);
+        *frame = moved;
+    })
+}
+
+/// A frame with the agreeing landmarks' regions painted `grey`, each one's
+/// patch and the whole search around it, as something standing in front of
+/// them would hide them.
+fn painted_over(bytes: &[u8], grey: u8) -> Vec<u8> {
+    let calibration = committed();
+    let centres: Vec<[u32; 2]> = calibration["landmarks"]
+        .as_array()
+        .expect("landmarks")
+        .iter()
+        .filter(|landmark| AGREEING.contains(&landmark["name"].as_str().unwrap_or_default()))
+        .map(|landmark| {
+            let at = |axis: usize| {
+                let value = landmark["center_px"][axis].as_f64().expect("a centre");
+                u32::try_from(value.round().abs() as i64).expect("a pixel")
+            };
+            [at(0), at(1)]
+        })
+        .collect();
+    assert_eq!(centres.len(), 2);
+    changed(bytes, |frame| {
+        let reach = 240;
+        for [u, v] in centres {
+            for y in v.saturating_sub(reach)..(v + reach).min(frame.height()) {
+                for x in u.saturating_sub(reach)..(u + reach).min(frame.width()) {
+                    frame.put_pixel(x, y, image::Rgb([grey, grey, grey]));
+                }
+            }
+        }
+    })
+}
+
+/// The job printing at `position`, or paused there.
+fn job_at(journey: &Journey, position: u64, paused: bool) {
+    let size = i64::try_from(box_slice().len()).expect("a size");
+    let mut job = JobScript::printing(
+        FILE,
+        size,
+        i64::try_from(position).expect("a position"),
+        600,
+    );
+    if paused {
+        job.state = "Paused".to_owned();
+        journey.octoprint.reports("Paused", job);
+    } else {
+        journey.octoprint.reports("Printing", job);
+    }
+}
+
+/// A journey's checks, each held open until the journey lets it go.
+struct Checks<'a> {
+    journey: &'a Journey,
+    hold: PathBuf,
+    count: usize,
+}
+
+impl<'a> Checks<'a> {
+    /// Hold the first check when it comes.
+    fn holding(journey: &'a Journey) -> Self {
+        let hold = journey.root.path().join("hold");
+        std::fs::write(&hold, b"").expect("the hold is writable");
+        Self {
+            journey,
+            hold,
+            count: 0,
+        }
+    }
+
+    /// The next check, its job at `position` — printing, or paused — and
+    /// what its harness was handed. The check before it is let go once the
+    /// job has moved, and this one is held as it comes.
+    async fn next(&mut self, position: u64, paused: bool) -> Value {
+        job_at(self.journey, position, paused);
+        if self.count > 0 {
+            std::fs::remove_file(&self.hold).expect("the hold is removable");
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            std::fs::write(&self.hold, b"").expect("the hold is writable");
+        }
+        self.count += 1;
+        let seen = self.journey.runs(self.count).await;
+        seen[self.count - 1].clone()
+    }
+
+    /// Let the last check go.
+    fn release(self) {
+        let _ = std::fs::remove_file(&self.hold);
+    }
+}
+
+/// The situation a check's prompt carried.
+fn situation(seen: &Value) -> Value {
+    let (prompt, _) = handed(seen);
+    block_under(&prompt, "## The situation when this turn began")
+}
+
+/// Every event of a print's history, oldest first.
+async fn history(server: &Running, print_id: PrintId) -> Vec<Value> {
+    let body: Value = presenting(OPERATOR)
+        .get(format!(
+            "{}/prints/{print_id}/history?limit=1000",
+            server.base_url()
+        ))
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("JSON");
+    let mut events = body["events"].as_array().expect("events").clone();
+    events.sort_by_key(|event| event["id"].as_str().unwrap_or_default().to_owned());
+    events
+}
+
+/// The payloads of one kind, oldest first.
+fn payloads(events: &[Value], kind: &str) -> Vec<Value> {
+    events
+        .iter()
+        .filter(|event| event["kind"] == kind)
+        .map(|event| event["payload"].clone())
+        .collect()
+}
+
+/// The bytes a record's `frame_sha256` resolves to through the image store,
+/// once it is held to name a frame stored with one of the print's events.
+fn resolved(journey: &Journey, events: &[Value], payload: &Value) -> Vec<u8> {
+    let sha = payload["frame_sha256"].as_str().expect("a frame named");
+    assert!(
+        events.iter().any(|event| event["image"]["sha256"] == sha),
+        "{sha} is stored with none of the print's events"
+    );
+    std::fs::read(
+        journey
+            .root
+            .path()
+            .join("state")
+            .join("images")
+            .join(&sha[..2])
+            .join(sha),
+    )
+    .unwrap_or_else(|error| panic!("{sha} resolves to no stored frame: {error}"))
+}
+
+/// The server over a journey's state, its camera answering `frames` in turn
+/// and calibrated by the stale committed calibration.
+async fn started(journey: &Journey, frames: &[Vec<u8>]) -> (Started, ScriptedHost) {
+    let host = ScriptedHost::answering(frames.iter().cloned().map(Scripted::frame).collect()).await;
+    let camera = Camera {
+        host,
+        calibration: Some(committed()),
+        snapshot: true,
+    };
+    let started = journey.start(&camera, INTERVAL_S, &json!([])).await;
+    (started, camera.host)
+}
+
+/// A covered first layer is inconclusive and judged again on the next check's
+/// own frame; a check while the printer reports the print paused is not judged
+/// and is shown the whole frame for it; the clearly found layer passes, its
+/// shift recorded as the print's correction, and the check is shown the
+/// three-panel image drawn through it, its note saying so. Every record names
+/// the stored frame it read, a change notice is written only when the image
+/// changes, and the camera is asked for nothing beyond the checks' own frames.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_covered_first_layer_is_judged_again_and_a_clear_one_corrects_the_view() {
+    let frames = [
+        box_frame(COVERED.0),
+        box_frame(PAUSED.0),
+        box_frame(FOUND.0),
+        box_frame(LATER[1].0),
+    ];
+    let journey = Journey::new(INSTALLER, &box_slice(), COVERED.1);
+    let mut checks = Checks::holding(&journey);
+    job_at(&journey, COVERED.1, false);
+    let (started, camera) = started(&journey, &frames).await;
+    let server = &started.server;
+    let print_id = adopted(server).await;
+
+    let first = situation(&checks.next(COVERED.1, false).await);
+    assert_eq!(first["image_kind"], "whole_frame", "{first}");
+    assert_eq!(
+        first["image_fallback"]["code"], "alignment_inconclusive",
+        "{first}"
+    );
+    assert_eq!(server.print_alignment(print_id), PrintAlignment::Pending);
+
+    let paused = situation(&checks.next(PAUSED.1, true).await);
+    assert_eq!(paused["image_fallback"]["code"], "paused", "{paused}");
+
+    let found = situation(&checks.next(FOUND.1, false).await);
+    assert_eq!(found["image_kind"], "three_panel", "{found}");
+    assert!(found.get("image_fallback").is_none(), "{found}");
+    let note = found["image"].as_str().expect("a note");
+    assert!(
+        note.contains("the camera has shifted slightly since it was calibrated, and the drawing is corrected for that shift from this print's own first layer"),
+        "the note says the drawing went through the correction: {note}"
+    );
+    let PrintAlignment::Passed {
+        offset_px,
+        correction_px,
+    } = server.print_alignment(print_id)
+    else {
+        panic!("the clearly found layer did not pass");
+    };
+    assert!(offset_px <= 30.0, "{offset_px}");
+    assert!(
+        (correction_px[0] - 4.0).hypot(correction_px[1] + 20.0) <= 3.0,
+        "the correction is 13:44's found shift, not {correction_px:?}"
+    );
+
+    let later = situation(&checks.next(LATER[1].1, false).await);
+    assert_eq!(later["image_kind"], "three_panel", "{later}");
+    // Read while the last check is still held, so no check after it adds to
+    // what is counted.
+    let events = history(server, print_id).await;
+    let fetched = camera.exchanges().len();
+    let judged = payloads(&events, "first_layer_alignment_judged");
+    assert_eq!(
+        judged.len(),
+        2,
+        "one judgement for the covered check, none for the paused one, one for the pass, and none after: {judged:#?}"
+    );
+    assert_eq!(judged[0]["verdict"], "inconclusive");
+    assert_eq!(judged[0]["reason"], "covered");
+    assert_eq!(judged[0]["view_correction"], Value::Null);
+    assert_eq!(resolved(&journey, &events, &judged[0]), frames[0]);
+    assert_eq!(judged[1]["verdict"], "passed");
+    assert_eq!(judged[1]["reason"], "clearly_found");
+    assert_eq!(
+        judged[1]["correction_px"],
+        json!(correction_px),
+        "the pass records the correction it put in force"
+    );
+    assert!(judged[1]["match_strength"].as_f64().expect("a strength") >= 15.0);
+    assert_eq!(resolved(&journey, &events, &judged[1]), frames[2]);
+
+    let refits = payloads(&events, "camera_view_refit");
+    assert_eq!(refits.len(), 1, "{refits:#?}");
+    assert_eq!(resolved(&journey, &events, &refits[0]), frames[2]);
+    assert_eq!(refits[0]["view_correction"]["model"], "translation");
+
+    let views = payloads(&events, "camera_view_judged");
+    let outcomes: Vec<&Value> = views.iter().map(|view| &view["outcome"]).collect();
+    assert_eq!(
+        outcomes,
+        [
+            &json!("view_refit_rejected"),
+            &json!("refit"),
+            &json!("refit")
+        ],
+        "one per judged check, none for the paused one: {views:#?}"
+    );
+    for (view, frame) in views.iter().zip([&frames[0], &frames[2], &frames[3]]) {
+        assert_eq!(&resolved(&journey, &events, view), frame);
+    }
+
+    let changes = payloads(&events, "check_image_changed");
+    let kinds: Vec<(Value, Value)> = changes
+        .iter()
+        .map(|change| (change["kind"].clone(), change["fallback"]["code"].clone()))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            (json!("whole_frame"), json!("alignment_inconclusive")),
+            (json!("whole_frame"), json!("paused")),
+            (json!("three_panel"), Value::Null),
+        ],
+        "a notice for each change and none for the unchanged last check"
+    );
+    for (change, frame) in changes.iter().zip(&frames) {
+        assert_eq!(&resolved(&journey, &events, change), frame);
+    }
+
+    assert_eq!(
+        fetched,
+        frames.len(),
+        "the camera was asked for each check's own frame and nothing else"
+    );
+
+    let status: Value = presenting(OPERATOR)
+        .get(format!("{}/prints/{print_id}/status", server.base_url()))
+        .send()
+        .await
+        .expect("the server answers")
+        .json()
+        .await
+        .expect("JSON");
+    assert_eq!(
+        status["last_check_image"]["kind"], "three_panel",
+        "{status}"
+    );
+    assert_eq!(status["last_check_image"]["fallback"], Value::Null);
+    checks.release();
+    started.server.stop().await;
+}
+
+/// Checks drawn through one correction, then checks whose landmarks are
+/// painted over, each leave exactly one view record naming the very frame it
+/// read — different bytes check to check — with its own outcome and reason,
+/// and a change notice is written only at each transition.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_judgement_is_one_record_naming_its_own_frame() {
+    let later = box_frame(LATER[1].0);
+    let frames = vec![
+        box_frame(FOUND.0),
+        box_frame(LATER[0].0),
+        later.clone(),
+        changed(&later, |frame| {
+            frame.put_pixel(0, 0, image::Rgb([255, 0, 0]))
+        }),
+        painted_over(&later, 120),
+        painted_over(&later, 128),
+        painted_over(&later, 136),
+    ];
+    let positions = [
+        FOUND.1, LATER[0].1, LATER[1].1, LATER[1].1, LATER[1].1, LATER[1].1, LATER[1].1,
+    ];
+    let journey = Journey::new(INSTALLER, &box_slice(), FOUND.1);
+    let mut checks = Checks::holding(&journey);
+    let (started, _camera) = started(&journey, &frames).await;
+    let server = &started.server;
+    let print_id = adopted(server).await;
+    let mut situations = Vec::new();
+    for position in positions {
+        situations.push(situation(&checks.next(position, false).await));
+    }
+    let events = history(server, print_id).await;
+    checks.release();
+
+    for (index, situation) in situations.iter().enumerate() {
+        let expected = if index < 4 {
+            json!("three_panel")
+        } else {
+            json!("whole_frame")
+        };
+        assert_eq!(
+            situation["image_kind"], expected,
+            "check {index}: {situation}"
+        );
+    }
+    for situation in &situations[4..] {
+        assert_eq!(
+            situation["image_fallback"]["code"], "landmarks_not_found",
+            "{situation}"
+        );
+    }
+
+    let views = payloads(&events, "camera_view_judged");
+    assert_eq!(
+        views.len(),
+        frames.len(),
+        "one record per check: {views:#?}"
+    );
+    let mut named = std::collections::BTreeSet::new();
+    for (index, (view, frame)) in views.iter().zip(&frames).enumerate() {
+        assert_eq!(
+            &resolved(&journey, &events, view),
+            frame,
+            "check {index}'s record names the frame it read"
+        );
+        assert_eq!(view["frame_sha256"], json!(sha256(frame)));
+        named.insert(view["frame_sha256"].as_str().expect("a sha").to_owned());
+        if index < 4 {
+            assert_eq!(view["outcome"], "refit", "check {index}: {view}");
+            assert_eq!(view["reason"], Value::Null);
+        } else {
+            assert_eq!(
+                view["outcome"], "landmarks_not_found",
+                "check {index}: {view}"
+            );
+            assert!(
+                view["reason"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty())
+            );
+        }
+    }
+    assert_eq!(
+        named.len(),
+        frames.len(),
+        "each check read a frame of its own"
+    );
+    assert_eq!(payloads(&events, "camera_view_refit").len(), 1);
+    let changes = payloads(&events, "check_image_changed");
+    let kinds: Vec<(Value, Value)> = changes
+        .iter()
+        .map(|change| (change["kind"].clone(), change["fallback"]["code"].clone()))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            (json!("three_panel"), Value::Null),
+            (json!("whole_frame"), json!("landmarks_not_found")),
+        ],
+        "one notice per transition, none for a repeat"
+    );
+    assert_eq!(resolved(&journey, &events, &changes[1]), frames[4]);
+    started.server.stop().await;
+}
+
+/// A camera that moves again after the correction was taken is refused, and
+/// the alignment goes back to pending; the next frame, covered, is judged
+/// again and stays pending; the clearly found one after it installs a fresh
+/// correction and landmark reference, recorded as a new refit naming that
+/// frame, and the checks after it are shown the three-panel image again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_camera_moved_again_is_refused_until_a_fresh_correction_is_taken() {
+    let moved = shifted(&box_frame(LATER[0].0), 8);
+    let refound = shifted(&box_frame(LATER[1].0), 8);
+    let frames = vec![
+        box_frame(FOUND.0),
+        moved.clone(),
+        changed(&moved, |frame| {
+            frame.put_pixel(0, 0, image::Rgb([255, 0, 0]))
+        }),
+        refound.clone(),
+        changed(&refound, |frame| {
+            frame.put_pixel(0, 0, image::Rgb([255, 0, 0]))
+        }),
+    ];
+    let journey = Journey::new(INSTALLER, &box_slice(), FOUND.1);
+    let mut checks = Checks::holding(&journey);
+    let (started, _camera) = started(&journey, &frames).await;
+    let server = &started.server;
+    let print_id = adopted(server).await;
+
+    let first = situation(&checks.next(FOUND.1, false).await);
+    assert_eq!(first["image_kind"], "three_panel", "{first}");
+    let rejected = situation(&checks.next(LATER[0].1, false).await);
+    assert_eq!(
+        rejected["image_fallback"]["code"], "view_refit_rejected",
+        "{rejected}"
+    );
+    assert_eq!(
+        server.print_alignment(print_id),
+        PrintAlignment::Pending,
+        "the alignment goes back to pending to take a fresh correction"
+    );
+    let covered = situation(&checks.next(COVERED_LATER, false).await);
+    assert_eq!(
+        covered["image_fallback"]["code"], "alignment_inconclusive",
+        "{covered}"
+    );
+    let refound_at = situation(&checks.next(LATER[1].1, false).await);
+    assert_eq!(refound_at["image_kind"], "three_panel", "{refound_at}");
+    let after = situation(&checks.next(LATER[1].1, false).await);
+    assert_eq!(after["image_kind"], "three_panel", "{after}");
+    let events = history(server, print_id).await;
+    checks.release();
+
+    let views = payloads(&events, "camera_view_judged");
+    let outcomes: Vec<&Value> = views.iter().map(|view| &view["outcome"]).collect();
+    assert_eq!(
+        outcomes,
+        [
+            &json!("refit"),
+            &json!("view_refit_rejected"),
+            &json!("view_refit_rejected"),
+            &json!("refit"),
+            &json!("refit"),
+        ],
+        "{views:#?}"
+    );
+    let judged = payloads(&events, "first_layer_alignment_judged");
+    let verdicts: Vec<(Value, Value)> = judged
+        .iter()
+        .map(|judged| (judged["verdict"].clone(), judged["reason"].clone()))
+        .collect();
+    assert_eq!(
+        verdicts,
+        [
+            (json!("passed"), json!("clearly_found")),
+            (json!("inconclusive"), json!("covered")),
+            (json!("passed"), json!("clearly_found")),
+        ],
+        "no judgement on the refused frame itself: {judged:#?}"
+    );
+    let refits = payloads(&events, "camera_view_refit");
+    assert_eq!(refits.len(), 2, "{refits:#?}");
+    assert_eq!(resolved(&journey, &events, &refits[1]), frames[3]);
+    let reference = |refit: &Value, name: &str| -> f64 {
+        refit["view_correction"]["landmarks"]
+            .as_array()
+            .expect("a reference")
+            .iter()
+            .find(|landmark| landmark["name"] == name)
+            .and_then(|landmark| landmark["offset_px"][0].as_f64())
+            .unwrap_or_else(|| panic!("{name} is in the reference: {refit}"))
+    };
+    for name in AGREEING {
+        let moved_by = reference(&refits[1], name) - reference(&refits[0], name);
+        assert!(
+            (moved_by - 8.0).abs() <= 2.0,
+            "the fresh reference has {name} where the moved camera put it: {moved_by:.1} px further"
+        );
+    }
+    started.server.stop().await;
+}

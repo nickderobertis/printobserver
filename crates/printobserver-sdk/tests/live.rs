@@ -291,6 +291,40 @@ fn step_printer_look(client: &Client, world: &supervisor::Supervisor, proxy: &li
     live::same("printer_look", &answered, &seen.answer);
 }
 
+/// `recheck_camera`, answered by a real supervisor.
+fn step_recheck_camera(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let answered = client
+        .recheck_camera(&world.print_id, REASON)
+        .expect("`recheck_camera` is answered by a real supervisor");
+
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recheck_camera`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/prints/{print_id}/camera/recheck",
+            print_id = world.print_id
+        ),
+        "`recheck_camera`"
+    );
+    assert_eq!(seen.status, 200, "`recheck_camera`");
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recheck_camera`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recheck_camera` sent another `reason`"
+    );
+    live::same("recheck_camera", &answered, &seen.answer);
+}
+
 /// `cancel`, answered by a real supervisor.
 fn step_cancel(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
     ready(client, &world.print_id, "printing");
@@ -1936,6 +1970,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_events(&client, &world, &proxy);
     step_look(&client, &world, &proxy);
     step_printer_look(&client, &world, &proxy);
+    step_recheck_camera(&client, &world, &proxy);
     step_cancel(&client, &world, &proxy);
     step_recover_status(&client, &world, &proxy);
     step_bed_clear(&client, &world, &proxy);
@@ -1967,7 +2002,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_retire_spool(&client, &world, &proxy);
     step_prints(&client, &world, &proxy);
 
-    assert!(proxy.calls() >= 39, "every call went through the proxy");
+    assert!(proxy.calls() >= 40, "every call went through the proxy");
     standing.stop();
 }
 

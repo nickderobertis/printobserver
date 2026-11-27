@@ -155,11 +155,7 @@ impl CheckImages for RecordingImages {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(Asked::CheckImage);
-        Ok(ShownImage {
-            path: request.frame.to_path_buf(),
-            note: None,
-            composite: false,
-        })
+        Ok(ShownImage::plain(request.frame.to_path_buf(), None))
     }
 
     fn restart_growth(&self, print_id: PrintId) {

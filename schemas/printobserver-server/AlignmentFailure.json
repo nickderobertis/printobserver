@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a print's alignment failed.",
+  "oneOf": [
+    {
+      "description": "The printed first layer lies further from its projection than the\ncalibration allows. No longer written: a frame that does not clearly\nfind the layer is inconclusive, and a verdict file an earlier release\nleft holding this is read as pending.",
+      "properties": {
+        "failure": {
+          "const": "offset",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far, in calibration pixels.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "failure",
+        "offset_px"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "The camera's frames are not the calibration's resolution.",
+      "properties": {
+        "expected": {
+          "description": "The calibration's, `[width, height]`.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "failure": {
+          "const": "resolution",
+          "type": "string"
+        },
+        "got": {
+          "description": "The frame's.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "failure",
+        "expected",
+        "got"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "The camera configured is not the stream the calibration was fitted on.",
+      "properties": {
+        "failure": {
+          "const": "stream",
+          "type": "string"
+        }
+      },
+      "required": [
+        "failure"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "AlignmentFailure"
+}

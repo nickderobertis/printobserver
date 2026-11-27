@@ -244,6 +244,27 @@ def step_printer_look(client: Client, world: Supervisor, proxy: Proxy) -> None:
     same("printer_look", answered, seen.answer)
 
 
+def step_recheck_camera(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recheck_camera`, answered by a real supervisor."""
+    ready(client, world.print_id, "")
+
+    # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+    answered = client.recheck_camera(world.print_id, REASON)
+
+    seen = proxy.last()
+    equal(seen.method, "POST", describing="`recheck_camera`")
+    equal(seen.target, f"/v1/prints/{world.print_id}/camera/recheck", describing="`recheck_camera`")
+    equal(seen.status, 200, describing="`recheck_camera`")
+    sent = json.loads(seen.body)
+    equal(sent["actor"], "operator", describing="who `recheck_camera` acted as")
+    equal(
+        sent["reason"],
+        REASON,
+        describing="the `reason` `recheck_camera` sent",
+    )
+    same("recheck_camera", answered, seen.answer)
+
+
 def step_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
     """`cancel`, answered by a real supervisor."""
     ready(client, world.print_id, "printing")
@@ -1118,6 +1139,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_events(client, world, proxy)
         step_look(client, world, proxy)
         step_printer_look(client, world, proxy)
+        step_recheck_camera(client, world, proxy)
         step_cancel(client, world, proxy)
         step_recover_status(client, world, proxy)
         step_bed_clear(client, world, proxy)
@@ -1150,7 +1172,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 39,
+            proxy.calls() >= 40,
             describing="every call to have gone through the proxy",
         )
 

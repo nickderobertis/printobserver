@@ -42,8 +42,10 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
   layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
-  check. Panel 1's lines are plan, not plastic. A part off its drawn walls, bare sheet inside
-  them, or moved since 3 came loose.
+  check. Panel 1's lines are plan, not plastic. A visible part off its drawn walls, bare sheet
+  inside them, or moved since 3 came loose. An outline the head or gantry covers is a hidden part:
+  carry on and judge it next check, never pausing for it. The whole frame given for an
+  inconclusive alignment is no evidence of a defect.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.

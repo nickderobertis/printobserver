@@ -23,11 +23,14 @@
 //! frame is judged again.
 //!
 //! The toolhead itself is high-contrast and scores as a found layer, so
-//! coverage is not an image score. A frame is covered when the nozzle's planned
-//! position, projected at the nozzle's plane, lies within [`TOOLHEAD_MARGIN_PX`]
-//! of the first layer's hull projected where the bed has carried it at the
-//! frame's print height. As the part grows, the bed carries the first layer
-//! down and away from the head in the camera's view.
+//! coverage is not an image score. A frame is covered when the first layer is
+//! small enough for the toolhead to hide ([`TOOLHEAD_HIDES_MM`]) and the
+//! nozzle's planned position, projected at the nozzle's plane, lies within
+//! [`TOOLHEAD_MARGIN_PX`] of the first layer's hull projected where the bed has
+//! carried it at the frame's print height. As a small part grows, the bed
+//! carries its first layer down and away from the head in the camera's view; a
+//! large part's hull keeps the nozzle inside it at any height, while the head
+//! hides only a little of it.
 
 use image::GrayImage;
 use printobserver_core::LayerToolpath;
@@ -71,6 +74,15 @@ pub const CLEARLY_FOUND_CONTRAST: f64 = 15.0;
 /// covered part visible is the dangerous direction — a toolhead scored as the
 /// layer — and calling a visible part covered only waits a check longer.
 pub const TOOLHEAD_MARGIN_PX: f64 = 10.0;
+
+/// The largest first layer the toolhead can hide, in bed millimetres: the
+/// longer side of its extent on the bed. A first layer larger than this is
+/// never covered, and is judged on the image score alone.
+///
+/// The 20 mm box the margin was measured on spans 18.9 mm; the smallest other
+/// verified first layer, a jar top's, spans 82.5 mm, which the toolhead's hot
+/// end and duct cannot hide as they hide the box.
+pub const TOOLHEAD_HIDES_MM: f64 = 50.0;
 
 /// What the alignment check is given.
 #[derive(Debug, Clone, Copy)]
@@ -209,9 +221,26 @@ pub fn nozzle_from_first_layer_px(inputs: &FirstLayerInputs<'_>) -> Option<f64> 
     (hull.len() >= 3).then(|| signed_distance(nozzle, &hull))
 }
 
-/// Whether the toolhead covers the part on the frame.
+/// The longer side of a first layer's extent on the bed, in millimetres.
+#[must_use]
+pub fn first_layer_span_mm(first_layer: &LayerToolpath) -> f64 {
+    let mut bounds: Option<[f64; 4]> = None;
+    for segment in &first_layer.segments {
+        for [x, y] in [segment.from_mm, segment.to_mm] {
+            let (x, y) = (f64::from(x), f64::from(y));
+            bounds = Some(bounds.map_or([x, y, x, y], |[x0, y0, x1, y1]| {
+                [x0.min(x), y0.min(y), x1.max(x), y1.max(y)]
+            }));
+        }
+    }
+    bounds.map_or(0.0, |[x0, y0, x1, y1]| (x1 - x0).max(y1 - y0))
+}
+
+/// Whether the toolhead covers the part on the frame: a first layer small
+/// enough to hide, with the projected nozzle near it.
 fn covered(inputs: &FirstLayerInputs<'_>) -> bool {
-    nozzle_from_first_layer_px(inputs).is_some_and(|distance| distance <= TOOLHEAD_MARGIN_PX)
+    first_layer_span_mm(inputs.alignment.first_layer) <= TOOLHEAD_HIDES_MM
+        && nozzle_from_first_layer_px(inputs).is_some_and(|distance| distance <= TOOLHEAD_MARGIN_PX)
 }
 
 /// Find how far the printed first layer lies from where the calibration puts

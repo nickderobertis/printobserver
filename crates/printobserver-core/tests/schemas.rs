@@ -465,6 +465,8 @@ fn a_look_carries_exactly_the_stated_fields() {
             field("detector_paused", "boolean", true),
             field("event", "EventRecord", true),
             field("frame", "ImageRef", false),
+            field("image_fallback", "ImageFallback", false),
+            field("image_kind", "ImageKind", false),
             field("image_note", "string", false),
             field("image_path", "string", false),
             field("job", "JobSnapshot", false),

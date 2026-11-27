@@ -107,6 +107,7 @@ export const OPERATION_NAMES = [
   "recover_home_xy",
   "recover_home_z",
   "bed_clear",
+  "recheck_camera",
 ] as const;
 
 /** What an operator's acknowledgement of a failure event asks for next. */
@@ -399,6 +400,15 @@ export interface AgentStopUnactedPayload {
   summary: string;
 }
 
+/** Why a print's alignment failed. */
+export type AlignmentFailure =
+  | { failure: "offset"; offset_px: number }
+  | { failure: "resolution"; expected: Array<number>; got: Array<number> }
+  | { failure: "stream" };
+
+/** What one judgement of a print's first layer came to. */
+export type AlignmentJudgedVerdict = "passed" | "inconclusive" | "failed";
+
 /**
  * Who may say the bed is clear: the operator, and no other actor.
  *
@@ -522,6 +532,36 @@ export interface CameraRetryPayload {
   status: number;
 }
 
+/**
+ * One judgement of a print's camera view, on one frame: one for every
+ * judgement, whatever it found and whether or not it repeats the last.
+ */
+export interface CameraViewJudgedPayload {
+  /** The stored frame it was judged on. */
+  frame_sha256: string;
+  /** What it found. */
+  outcome: ViewOutcome;
+  /**
+   * Why the frame may not be drawn on, for the three refusals; null
+   * otherwise.
+   */
+  reason?: string | null;
+  /** The correction in force when the frame was judged; null when none was. */
+  view_correction?: ViewCorrection | null;
+}
+
+/**
+ * A first-layer pass put a correction in force while the landmarks had moved
+ * from the calibration: the print's first, or one taken again after the
+ * camera moved again.
+ */
+export interface CameraViewRefitPayload {
+  /** The stored frame the correction was taken on. */
+  frame_sha256: string;
+  /** The correction now in force. */
+  view_correction: ViewCorrection;
+}
+
 /** The durable identity of one debit, so that a replay can never debit twice. */
 export type ChargeKey =
   | { key: "print"; print_id: PrintId; segment: number; tool: number }
@@ -573,6 +613,20 @@ export interface ChargedFilament {
   remaining_before_g: number;
   /** The spool charged. */
   spool_id: SpoolId;
+}
+
+/**
+ * The image a print's checks are shown changed: its first check's image, and
+ * every check whose image kind or fallback code differs from the last one
+ * recorded.
+ */
+export interface CheckImageChangedPayload {
+  /** Why it was the whole frame; null for the three-panel image. */
+  fallback?: ImageFallback | null;
+  /** The stored frame the check's image was made of. */
+  frame_sha256: string;
+  /** Which image the check was shown. */
+  kind: ImageKind;
 }
 
 /** One mark a spool command cleared, and the spool it was cleared from. */
@@ -897,6 +951,39 @@ export interface FileTallyRebaselinedPayload {
   origin: string;
 }
 
+/** One judgement of a print's first-layer alignment, on one frame. */
+export interface FirstLayerAlignmentJudgedPayload {
+  /**
+   * The correction the pass put in force, `[dx, dy]` pixels; null unless it
+   * passed.
+   */
+  correction_px?: Array<number> | null;
+  /** The stored frame it was judged on. */
+  frame_sha256: string;
+  /**
+   * The peak smoothed contrast the layer was found at, in grey levels; null
+   * when it was not searched for.
+   */
+  match_strength?: number | null;
+  /**
+   * How far the printed first layer was found from its uncorrected
+   * projection, in calibration pixels; null when it was not searched for.
+   */
+  offset_px?: number | null;
+  /**
+   * `clearly_found` for a pass, `covered` or `not_clearly_found` for an
+   * inconclusive judgement, and the failure's own sentence for a failure.
+   */
+  reason: string;
+  /** What it came to. */
+  verdict: AlignmentJudgedVerdict;
+  /**
+   * The correction in force when the frame was judged; null before the
+   * print's first pass.
+   */
+  view_correction?: ViewCorrection | null;
+}
+
 /**
  * The XY rectangle every extruding move of a file lies inside, in
  * millimetres.
@@ -976,8 +1063,19 @@ export interface ImageAnswer {
   record: ImageRecord;
 }
 
+/** Why a check or a look was shown the whole frame. */
+export interface ImageFallback {
+  /** The reason, as a code. */
+  code: WholeFrameReasonCode;
+  /** The reason, in the sentence the image's note gives it in. */
+  message: string;
+}
+
 /** A lowercase hyphenated version 7 UUID identifying one image. */
 export type ImageId = string;
+
+/** Which image a check or a look was shown. */
+export type ImageKind = "three_panel" | "whole_frame";
 
 /**
  * One image, stored beside the event it arrived with.
@@ -1160,6 +1258,16 @@ export interface JobSnapshot {
   state: PrinterState;
 }
 
+/** The image a print's last check was shown, and when its frame was captured. */
+export interface LastCheckImage {
+  /** When the check's frame was captured. */
+  at: Timestamp;
+  /** Why it was the whole frame; null for the three-panel image. */
+  fallback?: ImageFallback | null;
+  /** Which image the check was shown. */
+  kind: ImageKind;
+}
+
 /**
  * What the last print laid down, read from its own G-code up to the last
  * file position recorded for it.
@@ -1210,6 +1318,13 @@ export interface Look {
    * gave none — which the history records as a port failure.
    */
   frame?: ImageRef | null;
+  /**
+   * Why the image at `image_path` is the whole frame; absent for the
+   * three-panel image, with no image, or when what made it gave no reason.
+   */
+  image_fallback?: ImageFallback | null;
+  /** Which image is at `image_path`; absent with no image. */
+  image_kind?: ImageKind | null;
   /**
    * What the image at `image_path` is, and why it is that one, in one line;
    * absent with no image, or when what made it says nothing.
@@ -1808,6 +1923,16 @@ export type PrintAction =
     }
   | { action: "close_print"; actor: Actor; outcome: PrintOutcome; reason: string };
 
+/**
+ * One print's first-layer alignment verdict, as it is kept under the state
+ * directory — which the real-print suite's record reads.
+ */
+export type PrintAlignment =
+  | { verdict: "unavailable" }
+  | { verdict: "pending" }
+  | { verdict: "passed"; correction_px?: Array<number>; offset_px: number }
+  | { verdict: "failed"; reason: AlignmentFailure };
+
 /** One print's end, as its `print_ended` event stored it. */
 export interface PrintEnded {
   /** The `print_ended` event. */
@@ -2026,6 +2151,26 @@ export type RawBytes = string;
 /** What became of the prints a file's new tally generation counts. */
 export type RebaselineDisposition = "accounted" | "unverified";
 
+/** What judging a print's camera again on a fresh frame answers. */
+export interface RecheckCameraAnswer {
+  /** The print's first-layer alignment once judged. */
+  alignment: PrintAlignment;
+  /**
+   * The absolute path of the fresh frame on this server's own filesystem,
+   * stored with the first record of its judgement.
+   */
+  frame_path: string;
+  /**
+   * Why that image would be the whole frame; null for the three-panel
+   * image.
+   */
+  image_fallback?: ImageFallback | null;
+  /** Which image a check of the print would be shown of this frame. */
+  image_kind: ImageKind;
+  /** The correction in force once judged; null when none is. */
+  view_correction?: ViewCorrection | null;
+}
+
 /**
  * The whole recovery vocabulary, and there is no other.
  *
@@ -2208,6 +2353,19 @@ export interface RecoveryTemperatures {
   bed: BedTemperature | null;
   /** Each tool. */
   tools: Array<ToolTemperature>;
+}
+
+/**
+ * One landmark of a correction's reference: where it was found on the frame
+ * the correction was taken on.
+ */
+export interface ReferenceLandmark {
+  /** The calibration's name for it. */
+  name: string;
+  /** How far from its calibrated place it was found, `[dx, dy]` pixels. */
+  offset_px: Array<number>;
+  /** The correlation it was found at. */
+  score: number;
 }
 
 /**
@@ -2728,6 +2886,11 @@ export interface StatusAnswer {
   /** The job, when a snapshot could be taken. */
   job?: JobSnapshot | null;
   /**
+   * The image the print's last check was shown, when its frame was
+   * captured and why it was the whole frame; null before its first check.
+   */
+  last_check_image?: LastCheckImage | null;
+  /**
    * The changes the print's G-code plans, the one the printer waits at and
    * the colour expected where its job stands; absent when the file plans
    * none or could not be read.
@@ -2870,6 +3033,63 @@ export type UnverifiedReason =
   | { reason: "filament_change_unconfirmed_position"; print_id: PrintId }
   | { reason: "tally_reset"; file_name: string; origin: string };
 
+/** How a print's drawings map the calibrated view onto the current frame. */
+export interface ViewCorrection {
+  /**
+   * The landmarks found agreeing on the frame the correction was taken on,
+   * which later frames are compared against.
+   */
+  landmarks: Array<ReferenceLandmark>;
+  /**
+   * Maps a pixel of the calibrated view to the current frame, in
+   * homogeneous coordinates, row by row.
+   */
+  matrix: Array<Array<number>>;
+  /** The model `matrix` is of. */
+  model: ViewModel;
+  /**
+   * The RMS distance between those landmarks' offsets and the correction's
+   * shift, in pixels: how far the landmarks disagree with the part.
+   */
+  residual_px: number;
+}
+
+/**
+ * The model a `ViewCorrection` maps pixels by. Only `Self::Translation`
+ * is ever written.
+ */
+export type ViewModel = "translation" | "similarity" | "affine" | "homography";
+
+/** What one judgement of the view found. */
+export type ViewOutcome =
+  | "unshifted"
+  | "refit"
+  | "landmarks_not_found"
+  | "view_refit_rejected"
+  | "frame_mismatch";
+
+/**
+ * Why a check or a look was shown the whole frame: one code per reason the
+ * server gives one.
+ */
+export type WholeFrameReasonCode =
+  | "no_print"
+  | "no_calibration"
+  | "no_stream"
+  | "no_position"
+  | "no_object"
+  | "no_layer"
+  | "toolpath_unread"
+  | "alignment_pending"
+  | "alignment_inconclusive"
+  | "alignment_unavailable"
+  | "alignment_failed"
+  | "landmarks_not_found"
+  | "view_refit_rejected"
+  | "frame_mismatch"
+  | "paused"
+  | "refused";
+
 /** Where the machine homes Z, and whether doing so sweeps the bed. */
 export interface ZHome {
   /** Whether homing Z brings a gantry down over the whole bed. */
@@ -2898,13 +3118,17 @@ export interface EventPayloads {
   camera_degraded: CameraDegradedPayload;
   camera_look: CameraLookPayload;
   camera_retry: CameraRetryPayload;
+  camera_view_judged: CameraViewJudgedPayload;
+  camera_view_refit: CameraViewRefitPayload;
   charge_pended: ChargePendedPayload;
+  check_image_changed: CheckImageChangedPayload;
   detector_health_changed: DetectorHealthChangedPayload;
   filament_change_planned_reached: FilamentChangePlannedReachedPayload;
   filament_change_planned_resumed: FilamentChangePlannedResumedPayload;
   filament_change_signalled: FilamentChangeSignalledPayload;
   filament_consumed: FilamentConsumedPayload;
   file_tally_rebaselined: FileTallyRebaselinedPayload;
+  first_layer_alignment_judged: FirstLayerAlignmentJudgedPayload;
   gcode_indexed: GcodeIndexedPayload;
   intervention_expired: InterventionExpiredPayload;
   malformed_external_event: MalformedExternalEventPayload;
@@ -2947,13 +3171,17 @@ export const EVENT_KINDS = [
   "camera_degraded",
   "camera_look",
   "camera_retry",
+  "camera_view_judged",
+  "camera_view_refit",
   "charge_pended",
+  "check_image_changed",
   "detector_health_changed",
   "filament_change_planned_reached",
   "filament_change_planned_resumed",
   "filament_change_signalled",
   "filament_consumed",
   "file_tally_rebaselined",
+  "first_layer_alignment_judged",
   "gcode_indexed",
   "intervention_expired",
   "malformed_external_event",
@@ -3633,6 +3861,64 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "AlignmentFailure": {
+  "union": {
+   "tag_field": "failure",
+   "variants": {
+    "offset": {
+     "fields": {
+      "offset_px": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "resolution": {
+     "fields": {
+      "expected": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "integer"
+        },
+        "non_empty": true
+       }
+      },
+      "got": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "integer"
+        },
+        "non_empty": true
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "stream": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "AlignmentJudgedVerdict": {
+  "enum": [
+   "passed",
+   "inconclusive",
+   "failed"
+  ]
+ },
  "BedClearActor": {
   "enum": [
    "operator"
@@ -3814,6 +4100,68 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "CameraViewJudgedPayload": {
+  "struct": {
+   "fields": {
+    "frame_sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ViewOutcome"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "view_correction": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ViewCorrection"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraViewRefitPayload": {
+  "struct": {
+   "fields": {
+    "frame_sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "view_correction": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ViewCorrection"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "ChargeKey": {
   "union": {
    "tag_field": "key",
@@ -3955,6 +4303,37 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "required": true,
      "shape": {
       "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CheckImageChangedPayload": {
+  "struct": {
+   "fields": {
+    "fallback": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageFallback"
+      }
+     }
+    },
+    "frame_sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageKind"
      }
     }
    },
@@ -4681,6 +5060,74 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "FirstLayerAlignmentJudgedPayload": {
+  "struct": {
+   "fields": {
+    "correction_px": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "list": {
+        "scalar": "number"
+       },
+       "non_empty": true
+      }
+     }
+    },
+    "frame_sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "match_strength": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "offset_px": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "verdict": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AlignmentJudgedVerdict"
+     }
+    },
+    "view_correction": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ViewCorrection"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "Footprint": {
   "struct": {
    "fields": {
@@ -4851,10 +5298,38 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "ImageFallback": {
+  "struct": {
+   "fields": {
+    "code": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "WholeFrameReasonCode"
+     }
+    },
+    "message": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "ImageId": {
   "alias": {
    "scalar": "string"
   }
+ },
+ "ImageKind": {
+  "enum": [
+   "three_panel",
+   "whole_frame"
+  ]
  },
  "ImageRecord": {
   "struct": {
@@ -5318,6 +5793,37 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "variants": {}
   }
  },
+ "LastCheckImage": {
+  "struct": {
+   "fields": {
+    "at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "fallback": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageFallback"
+      }
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageKind"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "LastPrint": {
   "struct": {
    "fields": {
@@ -5402,6 +5908,24 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
      "shape": {
       "nullable": {
        "ref": "ImageRef"
+      }
+     }
+    },
+    "image_fallback": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageFallback"
+      }
+     }
+    },
+    "image_kind": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageKind"
       }
      }
     },
@@ -7106,6 +7630,59 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    }
   }
  },
+ "PrintAlignment": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "failed": {
+     "fields": {
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "AlignmentFailure"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "passed": {
+     "fields": {
+      "correction_px": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "list": {
+         "scalar": "number"
+        },
+        "non_empty": true
+       }
+      },
+      "offset_px": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "pending": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "unavailable": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
  "PrintEnded": {
   "struct": {
    "fields": {
@@ -7601,6 +8178,53 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
    "accounted",
    "unverified"
   ]
+ },
+ "RecheckCameraAnswer": {
+  "struct": {
+   "fields": {
+    "alignment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintAlignment"
+     }
+    },
+    "frame_path": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "image_fallback": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageFallback"
+      }
+     }
+    },
+    "image_kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageKind"
+     }
+    },
+    "view_correction": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ViewCorrection"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
  },
  "RecoveryAction": {
   "union": {
@@ -8165,6 +8789,38 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
        "ref": "ToolTemperature"
       },
       "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ReferenceLandmark": {
+  "struct": {
+   "fields": {
+    "name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "offset_px": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "number"
+      },
+      "non_empty": true
+     }
+    },
+    "score": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
      }
     }
    },
@@ -10046,6 +10702,15 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
       }
      }
     },
+    "last_check_image": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "LastCheckImage"
+      }
+     }
+    },
     "planned_changes": {
      "paired_with": "",
      "required": false,
@@ -10481,6 +11146,88 @@ export const SHAPES: Readonly<Record<string, unknown>> = JSON.parse(`
     }
    }
   }
+ },
+ "ViewCorrection": {
+  "struct": {
+   "fields": {
+    "landmarks": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ReferenceLandmark"
+      },
+      "non_empty": false
+     }
+    },
+    "matrix": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "list": {
+        "scalar": "number"
+       },
+       "non_empty": true
+      },
+      "non_empty": true
+     }
+    },
+    "model": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ViewModel"
+     }
+    },
+    "residual_px": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ViewModel": {
+  "enum": [
+   "translation",
+   "similarity",
+   "affine",
+   "homography"
+  ]
+ },
+ "ViewOutcome": {
+  "enum": [
+   "unshifted",
+   "refit",
+   "landmarks_not_found",
+   "view_refit_rejected",
+   "frame_mismatch"
+  ]
+ },
+ "WholeFrameReasonCode": {
+  "enum": [
+   "no_print",
+   "no_calibration",
+   "no_stream",
+   "no_position",
+   "no_object",
+   "no_layer",
+   "toolpath_unread",
+   "alignment_pending",
+   "alignment_inconclusive",
+   "alignment_unavailable",
+   "alignment_failed",
+   "landmarks_not_found",
+   "view_refit_rejected",
+   "frame_mismatch",
+   "paused",
+   "refused"
+  ]
  },
  "ZHome": {
   "struct": {
@@ -11459,5 +12206,30 @@ export class GeneratedClient extends GeneratedSurface {
     sending.actor = this.actor;
     sending.reason = reason;
     return await this.call<BedClearAnswer>("POST", target, asked, sending, "BedClearAnswer");
+  }
+
+  /**
+   * Call `recheck_camera` on the configured supervisor.
+   *
+   * Rejects with `Unreachable` when nothing answered, with `Unreadable` when
+   * the answer could not be read, and with `Refused` when the supervisor
+   * said no. A call whose reason is empty is refused here, before a request
+   * is made, and the policy's own refusal arrives as `Rejected`, carrying
+   * the reason, the value asked for and the range allowed.
+   */
+  async recheckCamera(printId: string, reason: string): Promise<RecheckCameraAnswer> {
+    reasonGiven(reason);
+    const target = `/v1/prints/${printId}/camera/recheck`;
+    const asked: Array<[string, string]> = [];
+    const sending: Record<string, unknown> = {};
+    sending.actor = this.actor;
+    sending.reason = reason;
+    return await this.call<RecheckCameraAnswer>(
+      "POST",
+      target,
+      asked,
+      sending,
+      "RecheckCameraAnswer",
+    );
   }
 }

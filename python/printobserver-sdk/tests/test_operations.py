@@ -94,41 +94,44 @@ def test_status_sends_what_it_declares_and_answers_what_was_sent() -> None:
         ': 1.5}], "file_name": "0198f0a1-2b3c-7d4e-8f90-123456789abc"'
         ', "file_origin": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "fi'
         'le_position_bytes": 7, "print_time_left_s": 7, "print_time_s'
-        '": 7, "size_bytes": 7, "state": "operational"}, "planned_cha'
-        'nges": {"changes": [{"color": "0198f0a1-2b3c-7d4e-8f90-12345'
-        '6789abc", "index": 7, "kind": "color_change", "layer": 7, "o'
-        'ffset_bytes": 7, "z_mm": 1.5}], "expected_color": "0198f0a1-'
-        '2b3c-7d4e-8f90-123456789abc", "segments": [{"color": "0198f0'
-        'a1-2b3c-7d4e-8f90-123456789abc", "filament_mm": 1.5, "segmen'
-        't": 7}], "waiting": 7}, "print": {"end_reason": "0198f0a1-2b'
-        '3c-7d4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-'
-        '8f90-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-12'
-        '3456789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
-        'job_print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-'
-        '8f90-123456789abc", "narrowings": [{"adjustable": "0198f0a1-'
-        '2b3c-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min":'
-        ' 1.5}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at":'
-        ' "0198f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id"'
-        ': 7, "state": "operational"}, "printer": {"bed": {"actual_c"'
-        ': {"out_of_range": true, "value": 1.5}, "offset_c": {"out_of'
-        '_range": true, "value": 1.5}, "target_c": {"out_of_range": t'
-        'rue, "value": 1.5}}, "chamber": {"actual_c": {"out_of_range"'
-        ': true, "value": 1.5}, "offset_c": {"out_of_range": true, "v'
-        'alue": 1.5}, "target_c": {"out_of_range": true, "value": 1.5'
-        '}}, "connection": "operational", "fan_percent": {"out_of_ran'
-        'ge": true, "value": 1.5}, "feedrate_factor": {"out_of_range"'
-        ': true, "value": 1.5}, "flowrate_factor": {"out_of_range": t'
-        'rue, "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-'
-        '123456789abc", "tools": [{"actual_c": {"out_of_range": true,'
-        ' "value": 1.5}, "offset_c": {"out_of_range": true, "value": '
-        '1.5}, "target_c": {"out_of_range": true, "value": 1.5}}]}, "'
-        'session": {"close_reason": "0198f0a1-2b3c-7d4e-8f90-12345678'
-        '9abc", "closed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", '
-        '"created_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "harne'
-        'ss_identity": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "last_'
-        'turn_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_id"'
-        ': "0198f0a1-2b3c-7d4e-8f90-123456789abc", "session_name": "0'
-        '198f0a1-2b3c-7d4e-8f90-123456789abc"}}'
+        '": 7, "size_bytes": 7, "state": "operational"}, "last_check_'
+        'image": {"at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "fall'
+        'back": {"code": "no_print", "message": "0198f0a1-2b3c-7d4e-8'
+        'f90-123456789abc"}, "kind": "three_panel"}, "planned_changes'
+        '": {"changes": [{"color": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc", "index": 7, "kind": "color_change", "layer": 7, "offse'
+        't_bytes": 7, "z_mm": 1.5}], "expected_color": "0198f0a1-2b3c'
+        '-7d4e-8f90-123456789abc", "segments": [{"color": "0198f0a1-2'
+        'b3c-7d4e-8f90-123456789abc", "filament_mm": 1.5, "segment": '
+        '7}], "waiting": 7}, "print": {"end_reason": "0198f0a1-2b3c-7'
+        'd4e-8f90-123456789abc", "ended_at": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc", "file_name": "0198f0a1-2b3c-7d4e-8f90-123456'
+        '789abc", "id": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "job_'
+        'print_time_s": 7, "job_started_at": "0198f0a1-2b3c-7d4e-8f90'
+        '-123456789abc", "narrowings": [{"adjustable": "0198f0a1-2b3c'
+        '-7d4e-8f90-123456789abc", "applied": {"max": 1.5, "min": 1.5'
+        '}, "requested": {"max": 1.5, "min": 1.5}}], "opened_at": "01'
+        '98f0a1-2b3c-7d4e-8f90-123456789abc", "provider_print_id": 7,'
+        ' "state": "operational"}, "printer": {"bed": {"actual_c": {"'
+        'out_of_range": true, "value": 1.5}, "offset_c": {"out_of_ran'
+        'ge": true, "value": 1.5}, "target_c": {"out_of_range": true,'
+        ' "value": 1.5}}, "chamber": {"actual_c": {"out_of_range": tr'
+        'ue, "value": 1.5}, "offset_c": {"out_of_range": true, "value'
+        '": 1.5}, "target_c": {"out_of_range": true, "value": 1.5}}, '
+        '"connection": "operational", "fan_percent": {"out_of_range":'
+        ' true, "value": 1.5}, "feedrate_factor": {"out_of_range": tr'
+        'ue, "value": 1.5}, "flowrate_factor": {"out_of_range": true,'
+        ' "value": 1.5}, "observed_at": "0198f0a1-2b3c-7d4e-8f90-1234'
+        '56789abc", "tools": [{"actual_c": {"out_of_range": true, "va'
+        'lue": 1.5}, "offset_c": {"out_of_range": true, "value": 1.5}'
+        ', "target_c": {"out_of_range": true, "value": 1.5}}]}, "sess'
+        'ion": {"close_reason": "0198f0a1-2b3c-7d4e-8f90-123456789abc'
+        '", "closed_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "cre'
+        'ated_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "harness_i'
+        'dentity": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "last_turn'
+        '_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "print_id": "0'
+        '198f0a1-2b3c-7d4e-8f90-123456789abc", "session_name": "0198f'
+        '0a1-2b3c-7d4e-8f90-123456789abc"}}'
     )
 
     with Host(200, answer) as host:
@@ -346,7 +349,9 @@ def test_look_sends_what_it_declares_and_answers_what_was_sent() -> None:
         'eived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source":'
         ' "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "frame": {"id": "0'
         '198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b'
-        '3c-7d4e-8f90-123456789abc"}, "image_note": "0198f0a1-2b3c-7d'
+        '3c-7d4e-8f90-123456789abc"}, "image_fallback": {"code": "no_'
+        'print", "message": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, '
+        '"image_kind": "three_panel", "image_note": "0198f0a1-2b3c-7d'
         '4e-8f90-123456789abc", "image_path": "0198f0a1-2b3c-7d4e-8f9'
         '0-123456789abc", "job": {"completion": {"out_of_range": true'
         ', "value": 1.5}, "error": {"source": "printer", "text": "019'
@@ -406,7 +411,9 @@ def test_printer_look_sends_what_it_declares_and_answers_what_was_sent() -> None
         'eived_at": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "source":'
         ' "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, "frame": {"id": "0'
         '198f0a1-2b3c-7d4e-8f90-123456789abc", "sha256": "0198f0a1-2b'
-        '3c-7d4e-8f90-123456789abc"}, "image_note": "0198f0a1-2b3c-7d'
+        '3c-7d4e-8f90-123456789abc"}, "image_fallback": {"code": "no_'
+        'print", "message": "0198f0a1-2b3c-7d4e-8f90-123456789abc"}, '
+        '"image_kind": "three_panel", "image_note": "0198f0a1-2b3c-7d'
         '4e-8f90-123456789abc", "image_path": "0198f0a1-2b3c-7d4e-8f9'
         '0-123456789abc", "job": {"completion": {"out_of_range": true'
         ', "value": 1.5}, "error": {"source": "printer", "text": "019'
@@ -3424,6 +3431,64 @@ def test_bed_clear_makes_no_request_when_the_reason_is_empty() -> None:
         client = Client(host.address, ACTOR)
         try:
             client.bed_clear("   ")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="a blank reason to be refused")
+
+        equal(host.requests(), 0, describing="what a blank reason sent")
+
+
+def test_recheck_camera_sends_what_it_declares_and_answers_what_was_sent() -> None:
+    """`recheck_camera` sends what it declares and answers what the server sent."""
+    answer = json.loads(
+        '{"alignment": {"verdict": "unavailable"}, "frame_path": "019'
+        '8f0a1-2b3c-7d4e-8f90-123456789abc", "image_fallback": {"code'
+        '": "no_print", "message": "0198f0a1-2b3c-7d4e-8f90-123456789'
+        'abc"}, "image_kind": "three_panel", "view_correction": {"lan'
+        'dmarks": [{"name": "0198f0a1-2b3c-7d4e-8f90-123456789abc", "'
+        'offset_px": [1.5, 1.5], "score": 1.5}], "matrix": [[1.5, 1.5'
+        ', 1.5], [1.5, 1.5, 1.5], [1.5, 1.5, 1.5]], "model": "transla'
+        'tion", "residual_px": 1.5}}'
+    )
+
+    with Host(200, answer) as host:
+        client = Client(host.address, ACTOR)
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = client.recheck_camera(
+            "0198f0a1-2b3c-7d4e-8f90-123456789abc", "a generated walk is asking"
+        )
+        received = host.received()
+
+    equal(received.method, "POST")
+    equal(received.target, "/v1/prints/0198f0a1-2b3c-7d4e-8f90-123456789abc/camera/recheck")
+    equal(
+        json.loads(received.body),
+        json.loads(
+            '{"actor": {"agent": {"session_name": "0198f0a1-2b3c-7d4e-8f9'
+            '0-123456789abc"}}, "reason": "a generated walk is asking"}'
+        ),
+        describing="what this call sent",
+    )
+    equal(answered, answer, describing="what this call answered")
+
+
+def test_recheck_camera_makes_no_request_when_the_reason_is_empty() -> None:
+    """`recheck_camera` refuses a call with no reason before it is made."""
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recheck_camera("0198f0a1-2b3c-7d4e-8f90-123456789abc", "")
+        except NoReasonError:
+            pass
+        else:
+            truth(False, describing="an absent reason to be refused")
+
+        equal(host.requests(), 0, describing="what an absent reason sent")
+    with Host(200, {}) as host:
+        client = Client(host.address, ACTOR)
+        try:
+            client.recheck_camera("0198f0a1-2b3c-7d4e-8f90-123456789abc", "   ")
         except NoReasonError:
             pass
         else:

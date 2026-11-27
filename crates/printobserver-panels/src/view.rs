@@ -23,7 +23,11 @@ use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
 
 use crate::calibration::CameraCalibration;
-use crate::drift::{HIDDEN_BELOW, Located, VIEW_SEARCH_RADIUS_PX, locate_landmarks_within};
+use crate::compose::decode;
+use crate::drift::{
+    HIDDEN_BELOW, Located, VIEW_SEARCH_RADIUS_PX, check_frame, locate_landmarks_within,
+};
+use crate::error::ComposeError;
 
 /// How close two landmarks' offsets must be to count as agreeing, in pixels:
 /// the two that agreed on the first shifted print sat 20 px apart.
@@ -255,7 +259,14 @@ pub fn judge_view(
     frame: &GrayImage,
     correction: Option<&ViewCorrection>,
 ) -> ViewJudgement {
-    let landmarks: Vec<FoundLandmark> = calibration
+    judge_found(calibration, found_landmarks(calibration, frame), correction)
+}
+
+/// Every landmark of a calibration as one grey frame shows it, in its order,
+/// each searched within [`VIEW_SEARCH_RADIUS_PX`].
+#[must_use]
+pub fn found_landmarks(calibration: &CameraCalibration, frame: &GrayImage) -> Vec<FoundLandmark> {
+    calibration
         .landmarks
         .iter()
         .zip(locate_landmarks_within(
@@ -267,7 +278,17 @@ pub fn judge_view(
             name: landmark.name.clone(),
             located,
         })
-        .collect();
+        .collect()
+}
+
+/// Judge a view from landmarks already found on its frame, against the
+/// reference of the correction in force when there is one.
+#[must_use]
+pub fn judge_found(
+    calibration: &CameraCalibration,
+    landmarks: Vec<FoundLandmark>,
+    correction: Option<&ViewCorrection>,
+) -> ViewJudgement {
     let tolerance = calibration.drift_tolerance_px;
     let judged = |outcome: ViewOutcome, reason: Option<String>, landmarks: Vec<FoundLandmark>| {
         ViewJudgement {
@@ -363,3 +384,28 @@ pub const LANDMARKS_NOT_FOUND: &str = "fewer than two of the calibration's landm
 /// Why a frame finding fewer than two of a correction's reference landmarks
 /// again is not drawn on.
 pub const LANDMARKS_NOT_FOUND_AGAIN: &str = "fewer than two of the landmarks this print's first-layer correction was taken against are found in the frame, so whether the camera has moved again is unknown";
+
+/// Every landmark of a calibration as one JPEG frame shows it, once the frame
+/// is held to the calibration's size and stream.
+///
+/// # Errors
+///
+/// [`ComposeError::Undecodable`] for a frame that is no JPEG, and
+/// [`ComposeError::FrameMismatch`] for one of another size or stream than the
+/// calibration's.
+pub fn landmarks_in_frame(
+    calibration: &CameraCalibration,
+    jpeg: &[u8],
+    camera_snapshot_url: &str,
+) -> Result<Vec<FoundLandmark>, ComposeError> {
+    let frame = decode(jpeg)?;
+    check_frame(
+        calibration,
+        [frame.width(), frame.height()],
+        camera_snapshot_url,
+    )?;
+    Ok(found_landmarks(
+        calibration,
+        &image::imageops::grayscale(&frame),
+    ))
+}

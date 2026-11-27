@@ -103,6 +103,7 @@ OPERATION_NAMES: tuple[str, ...] = (
     "recover_home_xy",
     "recover_home_z",
     "bed_clear",
+    "recheck_camera",
 )
 
 
@@ -466,6 +467,43 @@ class AgentStopUnactedPayload(TypedDict):
     summary: str
 
 
+class AlignmentFailureOffset(TypedDict):
+    """The `offset` arm of `AlignmentFailure`.
+
+    The printed first layer lies further from its projection than the
+    calibration allows. No longer written: a frame that does not clearly
+    find the layer is inconclusive, and a verdict file an earlier release
+    left holding this is read as pending.
+    """
+
+    failure: Literal["offset"]
+    # How far, in calibration pixels.
+    offset_px: float
+
+
+class AlignmentFailureResolution(TypedDict):
+    """The `resolution` arm of `AlignmentFailure`.
+
+    The camera's frames are not the calibration's resolution.
+    """
+
+    failure: Literal["resolution"]
+    # The calibration's, `[width, height]`.
+    expected: list[int]
+    # The frame's.
+    got: list[int]
+
+
+# Why a print's alignment failed.
+AlignmentFailure: TypeAlias = (
+    AlignmentFailureOffset | AlignmentFailureResolution | Literal["stream"]
+)
+
+
+# What one judgement of a print's first layer came to.
+AlignmentJudgedVerdict: TypeAlias = Literal["passed", "inconclusive", "failed"]
+
+
 # Who may say the bed is clear: the operator, and no other actor.
 #
 # Its own type rather than `Actor`, so that a record of the agent's or the
@@ -610,6 +648,39 @@ class CameraRetryPayload(TypedDict):
     status: int
 
 
+class CameraViewJudgedPayload(TypedDict):
+    """`CameraViewJudgedPayload`, as the contracts declare it.
+
+    One judgement of a print's camera view, on one frame: one for every
+    judgement, whatever it found and whether or not it repeats the last.
+    """
+
+    # The stored frame it was judged on.
+    frame_sha256: str
+    # What it found.
+    outcome: ViewOutcome
+    # Why the frame may not be drawn on, for the three refusals; null
+    # otherwise.
+    reason: NotRequired[str | None]
+    # The correction in force when the frame was judged; null when none was.
+    view_correction: NotRequired[ViewCorrection | None]
+
+
+class CameraViewRefitPayload(TypedDict):
+    """`CameraViewRefitPayload`, as the contracts declare it.
+
+    A first-layer pass put a correction in force while the landmarks had
+    moved
+    from the calibration: the print's first, or one taken again after the
+    camera moved again.
+    """
+
+    # The stored frame the correction was taken on.
+    frame_sha256: str
+    # The correction now in force.
+    view_correction: ViewCorrection
+
+
 class ChargeKeyPrint(TypedDict):
     """The `print` arm of `ChargeKey`.
 
@@ -695,6 +766,24 @@ class ChargedFilament(TypedDict):
     remaining_before_g: float
     # The spool charged.
     spool_id: SpoolId
+
+
+class CheckImageChangedPayload(TypedDict):
+    """`CheckImageChangedPayload`, as the contracts declare it.
+
+    The image a print's checks are shown changed: its first check's image,
+    and
+    every check whose image kind or fallback code differs from the last
+    one
+    recorded.
+    """
+
+    # Why it was the whole frame; null for the three-panel image.
+    fallback: NotRequired[ImageFallback | None]
+    # The stored frame the check's image was made of.
+    frame_sha256: str
+    # Which image the check was shown.
+    kind: ImageKind
 
 
 class ClearedMark(TypedDict):
@@ -1138,6 +1227,35 @@ class FileTallyRebaselinedPayload(TypedDict):
     origin: str
 
 
+class FirstLayerAlignmentJudgedPayload(TypedDict):
+    """`FirstLayerAlignmentJudgedPayload`, as the contracts declare it.
+
+    One judgement of a print's first-layer alignment, on one frame.
+    """
+
+    # The correction the pass put in force, `[dx, dy]` pixels; null unless
+    # it
+    # passed.
+    correction_px: NotRequired[list[float] | None]
+    # The stored frame it was judged on.
+    frame_sha256: str
+    # The peak smoothed contrast the layer was found at, in grey levels;
+    # null
+    # when it was not searched for.
+    match_strength: NotRequired[float | None]
+    # How far the printed first layer was found from its uncorrected
+    # projection, in calibration pixels; null when it was not searched for.
+    offset_px: NotRequired[float | None]
+    # `clearly_found` for a pass, `covered` or `not_clearly_found` for an
+    # inconclusive judgement, and the failure's own sentence for a failure.
+    reason: str
+    # What it came to.
+    verdict: AlignmentJudgedVerdict
+    # The correction in force when the frame was judged; null before the
+    # print's first pass.
+    view_correction: NotRequired[ViewCorrection | None]
+
+
 class Footprint(TypedDict):
     """`Footprint`, as the contracts declare it.
 
@@ -1238,8 +1356,24 @@ class ImageAnswer(TypedDict):
     record: ImageRecord
 
 
+class ImageFallback(TypedDict):
+    """`ImageFallback`, as the contracts declare it.
+
+    Why a check or a look was shown the whole frame.
+    """
+
+    # The reason, as a code.
+    code: WholeFrameReasonCode
+    # The reason, in the sentence the image's note gives it in.
+    message: str
+
+
 # A lowercase hyphenated version 7 UUID identifying one image.
 ImageId: TypeAlias = str
+
+
+# Which image a check or a look was shown.
+ImageKind: TypeAlias = Literal["three_panel", "whole_frame"]
 
 
 class ImageRecord(TypedDict):
@@ -1475,6 +1609,21 @@ class JobSnapshot(TypedDict):
     state: PrinterState
 
 
+class LastCheckImage(TypedDict):
+    """`LastCheckImage`, as the contracts declare it.
+
+    The image a print's last check was shown, and when its frame was
+    captured.
+    """
+
+    # When the check's frame was captured.
+    at: Timestamp
+    # Why it was the whole frame; null for the three-panel image.
+    fallback: NotRequired[ImageFallback | None]
+    # Which image the check was shown.
+    kind: ImageKind
+
+
 class LastPrint(TypedDict):
     """`LastPrint`, as the contracts declare it.
 
@@ -1527,6 +1676,11 @@ class Look(TypedDict):
     # The frame the camera gave, absent when no camera is configured or it
     # gave none — which the history records as a port failure.
     frame: NotRequired[ImageRef | None]
+    # Why the image at `image_path` is the whole frame; absent for the
+    # three-panel image, with no image, or when what made it gave no reason.
+    image_fallback: NotRequired[ImageFallback | None]
+    # Which image is at `image_path`; absent with no image.
+    image_kind: NotRequired[ImageKind | None]
     # What the image at `image_path` is, and why it is that one, in one
     # line;
     # absent with no image, or when what made it says nothing.
@@ -2507,6 +2661,39 @@ PrintAction: TypeAlias = (
 )
 
 
+class PrintAlignmentPassed(TypedDict):
+    """The `passed` arm of `PrintAlignment`.
+
+    The projected first layer lands on the printed one.
+    """
+
+    verdict: Literal["passed"]
+    # The first-layer correction applied to every later drawing of the
+    # print, `[dx, dy]` calibration pixels: the shift the layer was found
+    # at. `[0, 0]` in a verdict an earlier release wrote.
+    correction_px: NotRequired[list[float]]
+    # How far it lies from it, in calibration pixels.
+    offset_px: float
+
+
+class PrintAlignmentFailed(TypedDict):
+    """The `failed` arm of `PrintAlignment`.
+
+    It does not, or the frames cannot be judged against the calibration.
+    """
+
+    verdict: Literal["failed"]
+    # Why.
+    reason: AlignmentFailure
+
+
+# One print's first-layer alignment verdict, as it is kept under the state
+# directory — which the real-print suite's record reads.
+PrintAlignment: TypeAlias = (
+    PrintAlignmentPassed | PrintAlignmentFailed | Literal["unavailable", "pending"]
+)
+
+
 class PrintEnded(TypedDict):
     """`PrintEnded`, as the contracts declare it.
 
@@ -2766,6 +2953,26 @@ RawBytes: TypeAlias = str
 
 # What became of the prints a file's new tally generation counts.
 RebaselineDisposition: TypeAlias = Literal["accounted", "unverified"]
+
+
+class RecheckCameraAnswer(TypedDict):
+    """`RecheckCameraAnswer`, as the contracts declare it.
+
+    What judging a print's camera again on a fresh frame answers.
+    """
+
+    # The print's first-layer alignment once judged.
+    alignment: PrintAlignment
+    # The absolute path of the fresh frame on this server's own filesystem,
+    # stored with the first record of its judgement.
+    frame_path: str
+    # Why that image would be the whole frame; null for the three-panel
+    # image.
+    image_fallback: NotRequired[ImageFallback | None]
+    # Which image a check of the print would be shown of this frame.
+    image_kind: ImageKind
+    # The correction in force once judged; null when none is.
+    view_correction: NotRequired[ViewCorrection | None]
 
 
 class RecoveryActionRecoverLift(TypedDict):
@@ -3174,6 +3381,22 @@ class RecoveryTemperatures(TypedDict):
     bed: BedTemperature | None
     # Each tool.
     tools: list[ToolTemperature]
+
+
+class ReferenceLandmark(TypedDict):
+    """`ReferenceLandmark`, as the contracts declare it.
+
+    One landmark of a correction's reference: where it was found on the
+    frame
+    the correction was taken on.
+    """
+
+    # The calibration's name for it.
+    name: str
+    # How far from its calibrated place it was found, `[dx, dy]` pixels.
+    offset_px: list[float]
+    # The correlation it was found at.
+    score: float
 
 
 class RejectionReasonOutOfBoundsPayload(TypedDict):
@@ -4411,6 +4634,9 @@ class StatusAnswer(TypedDict):
     interventions: list[Intervention]
     # The job, when a snapshot could be taken.
     job: NotRequired[JobSnapshot | None]
+    # The image the print's last check was shown, when its frame was
+    # captured and why it was the whole frame; null before its first check.
+    last_check_image: NotRequired[LastCheckImage | None]
     # The changes the print's G-code plans, the one the printer waits at and
     # the colour expected where its job stands; absent when the file plans
     # none or could not be read.
@@ -4653,6 +4879,58 @@ UnverifiedReason: TypeAlias = (
 )
 
 
+class ViewCorrection(TypedDict):
+    """`ViewCorrection`, as the contracts declare it.
+
+    How a print's drawings map the calibrated view onto the current frame.
+    """
+
+    # The landmarks found agreeing on the frame the correction was taken on,
+    # which later frames are compared against.
+    landmarks: list[ReferenceLandmark]
+    # Maps a pixel of the calibrated view to the current frame, in
+    # homogeneous coordinates, row by row.
+    matrix: list[list[float]]
+    # The model `matrix` is of.
+    model: ViewModel
+    # The RMS distance between those landmarks' offsets and the correction's
+    # shift, in pixels: how far the landmarks disagree with the part.
+    residual_px: float
+
+
+# The model a `ViewCorrection` maps pixels by. Only `Self::Translation`
+# is ever written.
+ViewModel: TypeAlias = Literal["translation", "similarity", "affine", "homography"]
+
+
+# What one judgement of the view found.
+ViewOutcome: TypeAlias = Literal[
+    "unshifted", "refit", "landmarks_not_found", "view_refit_rejected", "frame_mismatch"
+]
+
+
+# Why a check or a look was shown the whole frame: one code per reason the
+# server gives one.
+WholeFrameReasonCode: TypeAlias = Literal[
+    "no_print",
+    "no_calibration",
+    "no_stream",
+    "no_position",
+    "no_object",
+    "no_layer",
+    "toolpath_unread",
+    "alignment_pending",
+    "alignment_inconclusive",
+    "alignment_unavailable",
+    "alignment_failed",
+    "landmarks_not_found",
+    "view_refit_rejected",
+    "frame_mismatch",
+    "paused",
+    "refused",
+]
+
+
 class ZHome(TypedDict):
     """`ZHome`, as the contracts declare it.
 
@@ -4703,13 +4981,17 @@ EVENT_PAYLOAD_TYPES: dict[str, type] = {
     "camera_degraded": CameraDegradedPayload,
     "camera_look": CameraLookPayload,
     "camera_retry": CameraRetryPayload,
+    "camera_view_judged": CameraViewJudgedPayload,
+    "camera_view_refit": CameraViewRefitPayload,
     "charge_pended": ChargePendedPayload,
+    "check_image_changed": CheckImageChangedPayload,
     "detector_health_changed": DetectorHealthChangedPayload,
     "filament_change_planned_reached": FilamentChangePlannedReachedPayload,
     "filament_change_planned_resumed": FilamentChangePlannedResumedPayload,
     "filament_change_signalled": FilamentChangeSignalledPayload,
     "filament_consumed": FilamentConsumedPayload,
     "file_tally_rebaselined": FileTallyRebaselinedPayload,
+    "first_layer_alignment_judged": FirstLayerAlignmentJudgedPayload,
     "gcode_indexed": GcodeIndexedPayload,
     "intervention_expired": InterventionExpiredPayload,
     "malformed_external_event": MalformedExternalEventPayload,
@@ -4794,8 +5076,26 @@ def payload_of(event: EventRecord, kind: Literal["camera_retry"]) -> CameraRetry
 
 @overload
 def payload_of(
+    event: EventRecord, kind: Literal["camera_view_judged"]
+) -> CameraViewJudgedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["camera_view_refit"]
+) -> CameraViewRefitPayload | None: ...
+
+
+@overload
+def payload_of(
     event: EventRecord, kind: Literal["charge_pended"]
 ) -> ChargePendedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["check_image_changed"]
+) -> CheckImageChangedPayload | None: ...
 
 
 @overload
@@ -4832,6 +5132,12 @@ def payload_of(
 def payload_of(
     event: EventRecord, kind: Literal["file_tally_rebaselined"]
 ) -> FileTallyRebaselinedPayload | None: ...
+
+
+@overload
+def payload_of(
+    event: EventRecord, kind: Literal["first_layer_alignment_judged"]
+) -> FirstLayerAlignmentJudgedPayload | None: ...
 
 
 @overload
@@ -5649,6 +5955,64 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "AlignmentFailure": {
+  "union": {
+   "tag_field": "failure",
+   "variants": {
+    "offset": {
+     "fields": {
+      "offset_px": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "resolution": {
+     "fields": {
+      "expected": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "integer"
+        },
+        "non_empty": true
+       }
+      },
+      "got": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "list": {
+         "scalar": "integer"
+        },
+        "non_empty": true
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "stream": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
+ "AlignmentJudgedVerdict": {
+  "enum": [
+   "passed",
+   "inconclusive",
+   "failed"
+  ]
+ },
  "BedClearActor": {
   "enum": [
    "operator"
@@ -5830,6 +6194,68 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "CameraViewJudgedPayload": {
+  "struct": {
+   "fields": {
+    "frame_sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "outcome": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ViewOutcome"
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "string"
+      }
+     }
+    },
+    "view_correction": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ViewCorrection"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CameraViewRefitPayload": {
+  "struct": {
+   "fields": {
+    "frame_sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "view_correction": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ViewCorrection"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "ChargeKey": {
   "union": {
    "tag_field": "key",
@@ -5971,6 +6397,37 @@ SHAPES: dict[str, object] = json.loads(
      "required": true,
      "shape": {
       "ref": "SpoolId"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "CheckImageChangedPayload": {
+  "struct": {
+   "fields": {
+    "fallback": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageFallback"
+      }
+     }
+    },
+    "frame_sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageKind"
      }
     }
    },
@@ -6697,6 +7154,74 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "FirstLayerAlignmentJudgedPayload": {
+  "struct": {
+   "fields": {
+    "correction_px": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "list": {
+        "scalar": "number"
+       },
+       "non_empty": true
+      }
+     }
+    },
+    "frame_sha256": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "match_strength": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "offset_px": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "scalar": "number"
+      }
+     }
+    },
+    "reason": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "verdict": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "AlignmentJudgedVerdict"
+     }
+    },
+    "view_correction": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ViewCorrection"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "Footprint": {
   "struct": {
    "fields": {
@@ -6867,10 +7392,38 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "ImageFallback": {
+  "struct": {
+   "fields": {
+    "code": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "WholeFrameReasonCode"
+     }
+    },
+    "message": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "ImageId": {
   "alias": {
    "scalar": "string"
   }
+ },
+ "ImageKind": {
+  "enum": [
+   "three_panel",
+   "whole_frame"
+  ]
  },
  "ImageRecord": {
   "struct": {
@@ -7334,6 +7887,37 @@ SHAPES: dict[str, object] = json.loads(
    "variants": {}
   }
  },
+ "LastCheckImage": {
+  "struct": {
+   "fields": {
+    "at": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "Timestamp"
+     }
+    },
+    "fallback": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageFallback"
+      }
+     }
+    },
+    "kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageKind"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
  "LastPrint": {
   "struct": {
    "fields": {
@@ -7418,6 +8002,24 @@ SHAPES: dict[str, object] = json.loads(
      "shape": {
       "nullable": {
        "ref": "ImageRef"
+      }
+     }
+    },
+    "image_fallback": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageFallback"
+      }
+     }
+    },
+    "image_kind": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageKind"
       }
      }
     },
@@ -9122,6 +9724,59 @@ SHAPES: dict[str, object] = json.loads(
    }
   }
  },
+ "PrintAlignment": {
+  "union": {
+   "tag_field": "verdict",
+   "variants": {
+    "failed": {
+     "fields": {
+      "reason": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "ref": "AlignmentFailure"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "passed": {
+     "fields": {
+      "correction_px": {
+       "paired_with": "",
+       "required": false,
+       "shape": {
+        "list": {
+         "scalar": "number"
+        },
+        "non_empty": true
+       }
+      },
+      "offset_px": {
+       "paired_with": "",
+       "required": true,
+       "shape": {
+        "scalar": "number"
+       }
+      }
+     },
+     "payload": null,
+     "unit": false
+    },
+    "pending": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    },
+    "unavailable": {
+     "fields": {},
+     "payload": null,
+     "unit": true
+    }
+   }
+  }
+ },
  "PrintEnded": {
   "struct": {
    "fields": {
@@ -9617,6 +10272,53 @@ SHAPES: dict[str, object] = json.loads(
    "accounted",
    "unverified"
   ]
+ },
+ "RecheckCameraAnswer": {
+  "struct": {
+   "fields": {
+    "alignment": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "PrintAlignment"
+     }
+    },
+    "frame_path": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "image_fallback": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ImageFallback"
+      }
+     }
+    },
+    "image_kind": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ImageKind"
+     }
+    },
+    "view_correction": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "ViewCorrection"
+      }
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
  },
  "RecoveryAction": {
   "union": {
@@ -10181,6 +10883,38 @@ SHAPES: dict[str, object] = json.loads(
        "ref": "ToolTemperature"
       },
       "non_empty": false
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ReferenceLandmark": {
+  "struct": {
+   "fields": {
+    "name": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "string"
+     }
+    },
+    "offset_px": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "scalar": "number"
+      },
+      "non_empty": true
+     }
+    },
+    "score": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
      }
     }
    },
@@ -12062,6 +12796,15 @@ SHAPES: dict[str, object] = json.loads(
       }
      }
     },
+    "last_check_image": {
+     "paired_with": "",
+     "required": false,
+     "shape": {
+      "nullable": {
+       "ref": "LastCheckImage"
+      }
+     }
+    },
     "planned_changes": {
      "paired_with": "",
      "required": false,
@@ -12497,6 +13240,88 @@ SHAPES: dict[str, object] = json.loads(
     }
    }
   }
+ },
+ "ViewCorrection": {
+  "struct": {
+   "fields": {
+    "landmarks": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "ref": "ReferenceLandmark"
+      },
+      "non_empty": false
+     }
+    },
+    "matrix": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "list": {
+       "list": {
+        "scalar": "number"
+       },
+       "non_empty": true
+      },
+      "non_empty": true
+     }
+    },
+    "model": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "ref": "ViewModel"
+     }
+    },
+    "residual_px": {
+     "paired_with": "",
+     "required": true,
+     "shape": {
+      "scalar": "number"
+     }
+    }
+   },
+   "tag_field": "",
+   "variants": {}
+  }
+ },
+ "ViewModel": {
+  "enum": [
+   "translation",
+   "similarity",
+   "affine",
+   "homography"
+  ]
+ },
+ "ViewOutcome": {
+  "enum": [
+   "unshifted",
+   "refit",
+   "landmarks_not_found",
+   "view_refit_rejected",
+   "frame_mismatch"
+  ]
+ },
+ "WholeFrameReasonCode": {
+  "enum": [
+   "no_print",
+   "no_calibration",
+   "no_stream",
+   "no_position",
+   "no_object",
+   "no_layer",
+   "toolpath_unread",
+   "alignment_pending",
+   "alignment_inconclusive",
+   "alignment_unavailable",
+   "alignment_failed",
+   "landmarks_not_found",
+   "view_refit_rejected",
+   "frame_mismatch",
+   "paused",
+   "refused"
+  ]
  },
  "ZHome": {
   "struct": {
@@ -13643,3 +14468,29 @@ class GeneratedClient(GeneratedSurface):
         # `call` has held the answer to the type `operations.json` declares
         # for it, so this cast names that type.
         return cast(BedClearAnswer, answered)
+
+    def recheck_camera(self, print_id: PrintId, reason: str) -> RecheckCameraAnswer:
+        """Call `recheck_camera` on the configured supervisor.
+
+        Raises:
+            NoReasonError: If the reason is absent or is nothing but
+                whitespace.
+            UnreachableError: If nothing answered at the configured
+                address.
+            UnreadableError: If the supervisor answered something this
+                client cannot read.
+            RefusedError: If the supervisor will not do what it was asked.
+            RejectedError: If the policy refused the action. It carries
+                the reason, the value asked for and the range allowed.
+        """
+        reason_given(reason)
+        target = f"/v1/prints/{print_id}/camera/recheck"
+        asked: list[tuple[str, str]] = []
+        sending: dict[str, object] = {}
+        sending["actor"] = self.actor
+        sending["reason"] = reason
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        answered = self.call("POST", target, asked, sending, "RecheckCameraAnswer")
+        # `call` has held the answer to the type `operations.json` declares
+        # for it, so this cast names that type.
+        return cast(RecheckCameraAnswer, answered)

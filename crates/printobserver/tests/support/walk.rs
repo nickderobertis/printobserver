@@ -355,7 +355,8 @@ fn ledger(world: &World) -> Vec<Entry> {
     ]
 }
 
-/// The recovery read, the operator's word that the bed is clear and the seven
+/// The recovery read, the operator's word that the bed is clear, a recheck of
+/// the print's camera — which asks nothing of the machine either — and the seven
 /// recovery actions, each with values no other command drives, asked of an idle machine before anything this
 /// supervisor did trusts Z: the lift reads no position then, and the Z home
 /// is what trusts it before the three moves over the part, each carried out
@@ -371,6 +372,7 @@ fn recovery() -> Vec<Entry> {
     vec![
         named("recover-status", Reports::Operational, vec![]),
         acting("bed-clear", vec![]),
+        acting("recheck-camera", vec![]),
         acting("recover-lift", vec![value("mm", "3")]),
         acting("recover-cool", vec![]),
         acting("recover-fan", vec![value("percent", "37")]),

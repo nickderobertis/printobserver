@@ -31,7 +31,10 @@ from camera_calibration.model import Camera, cross_check
 
 SCHEMA_VERSION = 1
 PATCH_PX = 48
-SEARCH_RADIUS_PX = 48
+SEARCH_RADIUS_PX = 96
+"""How far from its calibrated place each landmark is searched for, in pixels: the
+server searches every landmark this far whatever a file records, the smallest radius
+at which a slightly shifted camera's agreeing landmarks are found on every frame."""
 ALIGNMENT_MAX_OFFSET_PX = 30.0
 CROSS_CHECK_PX = 1e-6
 """How far this tool's projection may lie from OpenCV's before the fit is refused."""

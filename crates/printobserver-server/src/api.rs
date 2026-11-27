@@ -81,7 +81,7 @@ use printobserver_core::{
 use printobserver_core::{CoreError, MAX_LOOK_WAIT_S, Supervisor, effective_bounds};
 use printobserver_types::serde::Deserialize;
 use printobserver_types::serde_json::Value;
-use printobserver_types::{EventId, EventKind, FileName, ImageId, PrintId, Timestamp};
+use printobserver_types::{EventBody, EventId, EventKind, FileName, ImageId, PrintId, Timestamp};
 
 use crate::operations::{Effect, Method, OPERATIONS, Operation, VERSION_PREFIX};
 use crate::server::{CREDENTIAL_ISSUE, OperatorCredential};
@@ -115,6 +115,10 @@ pub struct ApiState {
     pub turns: TurnCredentials,
     /// The broadcast an events read waits on, raised once an event is stored.
     pub stored: crate::events::Stored,
+    /// What makes every check's image and judges every frame of a print,
+    /// which a recheck of a print's camera asks directly; none where nothing
+    /// was installed.
+    pub check_images: Option<Arc<crate::check_images::PanelImages>>,
 }
 
 /// Who one request authenticated as.
@@ -510,6 +514,7 @@ fn route_for(operation: &Operation) -> MethodRouter<ApiState> {
         ("preflight", Method::Get) => get(preflight),
         (crate::operations::RECOVERY_STATUS, Method::Get) => get(recover_status),
         (crate::operations::BED_CLEAR, Method::Post) => post(bed_clear),
+        (crate::operations::RECHECK_CAMERA, Method::Post) => post(recheck_camera),
         (name, method) => panic!(
             "the operation `{name}` is declared as {method} and this router serves no such route"
         ),
@@ -840,6 +845,202 @@ async fn bed_clear(
     }
 }
 
+/// Judge a print's camera again on a fresh frame: its view and its first-layer
+/// alignment at once, a latched verdict included, taking the correction afresh
+/// when the layer is clearly found, and recording each judgement as a check's
+/// are. Nothing is sent to the printer.
+///
+/// The claimed actor is held to the caller before anything is fetched, and a
+/// reason that is absent or blank is refused. While the printer reports the
+/// print paused its bed stands off the plan's height, so only the view is
+/// judged. With no calibration or no camera stream configured there is
+/// nothing to judge a frame against: the fresh frame is kept as a look's is,
+/// and answered as the whole frame for that reason. A camera that gives no
+/// good frame is refused `502`.
+async fn recheck_camera(
+    State(state): State<ApiState>,
+    Extension(caller): Extension<Caller>,
+    PrintPath(print_id): PrintPath,
+    body: Result<Json<Value>, JsonRejection>,
+) -> Response {
+    if let Some(refused) = scope_refused(&caller, print_id) {
+        return refused;
+    }
+    let body = match body {
+        Ok(Json(body)) => body,
+        Err(rejected) => return rejected.into_response(),
+    };
+    let Some(fields) = body.as_object() else {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "the body is not a document carrying an `actor` and a `reason`",
+        );
+    };
+    let actor = match claimed_actor(fields) {
+        Ok(actor) => actor,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    if let Some(refused) = claim_refused(&caller, &actor) {
+        return refused;
+    }
+    let body: BedClearBody = match printobserver_types::serde_json::from_value(body) {
+        Ok(body) => body,
+        Err(error) => {
+            return refusal(
+                StatusCode::BAD_REQUEST,
+                format!("the body is not an `actor` and a `reason`: {error}"),
+            );
+        }
+    };
+    let reason = match reason_of(body.reason.as_deref()) {
+        Ok(reason) => reason,
+        Err(rejected) => return refusal(StatusCode::BAD_REQUEST, rejected),
+    };
+    let Some(images) = state.check_images.clone() else {
+        return refusal(
+            StatusCode::CONFLICT,
+            "nothing judges this server's camera frames",
+        );
+    };
+    let supervisor = Arc::clone(&state.supervisor);
+    let fresh = tokio::task::spawn_blocking(move || {
+        printobserver_core::block_on(supervisor.fresh_view(print_id))
+    })
+    .await;
+    let fresh = match fresh {
+        Ok(Ok(fresh)) => fresh,
+        Ok(Err(error)) => return refusal(core_status(&error), error),
+        Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
+    };
+    let Some((url, image)) = fresh.frame.clone() else {
+        return refusal(
+            StatusCode::BAD_GATEWAY,
+            "the camera gave no good frame to judge",
+        );
+    };
+    let sha256 = hex_sha256(image.bytes.as_slice());
+    let captured_at = image
+        .captured_at
+        .unwrap_or_else(printobserver_types::Timestamp::now);
+    let alignment = if fresh.paused {
+        crate::alignment::AlignmentJudging::Never
+    } else {
+        crate::alignment::AlignmentJudging::Afresh
+    };
+    let judging = Arc::clone(&images);
+    let plan = fresh.plan.clone();
+    let bytes = image.bytes.as_slice().to_vec();
+    let digest = sha256.clone();
+    let judged = tokio::task::spawn_blocking(move || {
+        judging.judge_frame(print_id, &bytes, &digest, plan.as_ref(), alignment)
+    })
+    .await;
+    let judged = match judged {
+        Ok(Some(judged)) => judged,
+        // With no calibration, or no stream it was fitted on, nothing can be
+        // judged of the frame: it is kept as a look's is, and answered as the
+        // whole frame for that reason.
+        Ok(None) => crate::alignment::Judged::nothing_to_judge(
+            images.alignment(print_id),
+            EventBody::of(&printobserver_core::CameraLookPayload {
+                waited_s: 0,
+                delivered: Vec::new(),
+                frame_captured_at: Some(captured_at),
+            })
+            .ok(),
+        ),
+        Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
+    };
+    if let Some(detail) = &judged.unreadable {
+        return refusal(StatusCode::BAD_GATEWAY, detail);
+    }
+    eprintln!(
+        "printobserver: print {print_id}: the camera is judged again for {}: {reason}",
+        claimed(&actor)
+    );
+    // The fresh frame is stored with the first record of its judgement, and
+    // every later record names it.
+    let mut frame = Some((url, image));
+    let mut stored = None;
+    for record in judged.records.clone() {
+        match state
+            .supervisor
+            .record_with_frame(print_id, record, frame.take())
+            .await
+        {
+            Ok(event) => {
+                if stored.is_none() {
+                    stored = event.image;
+                }
+            }
+            Err(error) => return refusal(core_status(&error), error),
+        }
+    }
+    let frame_path = match stored {
+        Some(reference) => match state.images.image(reference.id).await {
+            Ok(printobserver_core::store::ImageLookup::Found { path, .. }) => path,
+            _ => {
+                return refusal(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "the fresh frame was not kept",
+                );
+            }
+        },
+        None => {
+            return refusal(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the fresh frame was not kept",
+            );
+        }
+    };
+    let choosing = Arc::clone(&images);
+    let path = frame_path.clone();
+    let plan = fresh.plan.clone();
+    let paused = fresh.paused;
+    let chosen_judgement = judged.clone();
+    let shown = tokio::task::spawn_blocking(move || {
+        choosing.image_of(
+            print_id,
+            &crate::check_images::Shown {
+                frame: &path,
+                captured_at,
+                made_for: printobserver_core::ImageUse::Look,
+                plan: plan.as_ref(),
+                paused,
+            },
+            Some(&chosen_judgement),
+        )
+    })
+    .await;
+    let shown = match shown {
+        Ok(Ok(shown)) => shown,
+        Ok(Err(error)) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
+        Err(error) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, error),
+    };
+    answer(
+        StatusCode::OK,
+        &crate::wire::RecheckCameraAnswer {
+            frame_path,
+            alignment: judged.alignment,
+            view_correction: judged.correction,
+            image_kind: shown.kind(),
+            image_fallback: shown.fallback,
+        },
+    )
+}
+
+/// A digest as the image store names a frame: lowercase hexadecimal SHA-256.
+fn hex_sha256(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .fold(String::with_capacity(64), |mut text, byte| {
+            use core::fmt::Write as _;
+            let _ = write!(text, "{byte:02x}");
+            text
+        })
+}
+
 /// Everything a recovery is checked against now, and what each action would
 /// meet for the caller.
 async fn recover_status(
@@ -1094,6 +1295,10 @@ async fn status(
             interventions: context.interventions,
             detector: context.detector,
             planned_changes,
+            last_check_image: state
+                .check_images
+                .as_ref()
+                .and_then(|images| images.last_check_image(print_id)),
         },
     )
 }

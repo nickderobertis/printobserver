@@ -13,10 +13,12 @@
 //! received it: the image attached to its standard input, and the situation's
 //! `image` line in its prompt.
 //!
-//! A print's first-layer alignment is decided by the printer watch on its own
-//! clock, so each journey that needs it decided runs the server once to decide
-//! it, with no scheduled check due, and starts it again over the same state —
-//! where the verdict stands while the print is open — before its checks run.
+//! A print's first-layer alignment is judged on its checks' own frames, or on
+//! a fresh one at the operator's recheck of the camera, so each journey that
+//! needs it decided before its checks runs the server once, with no scheduled
+//! check due, rechecks the camera there, and starts it again over the same
+//! state — where the verdict stands while the print is open — before its
+//! checks run.
 
 use core::fmt::Write as _;
 use core::time::Duration;
@@ -47,7 +49,7 @@ use crate::lean_checks::{
 use crate::world::{OPERATOR, SECRET, committed_skill, presenting};
 
 /// The file the scripted instance runs.
-const FILE: &str = "jar-top.gcode";
+pub(crate) const FILE: &str = "jar-top.gcode";
 
 /// How long a journey waits for something the server does on its own clock.
 const PATIENCE: Duration = Duration::from_secs(90);
@@ -81,7 +83,7 @@ fn root() -> PathBuf {
 }
 
 /// A recorded case's frame, from the panels crate's plain fixtures.
-fn frame(case: &str, file: &str) -> Vec<u8> {
+pub(crate) fn frame(case: &str, file: &str) -> Vec<u8> {
     std::fs::read(
         root()
             .join("crates/printobserver-panels/tests/fixtures/frames")
@@ -92,7 +94,7 @@ fn frame(case: &str, file: &str) -> Vec<u8> {
 }
 
 /// A recorded case's slice, from the core's plain fixtures.
-fn slice(name: &str) -> Vec<u8> {
+pub(crate) fn slice(name: &str) -> Vec<u8> {
     std::fs::read(
         root()
             .join("crates/printobserver-core/tests/fixtures/real-prints")
@@ -102,7 +104,7 @@ fn slice(name: &str) -> Vec<u8> {
 }
 
 /// The committed calibration's JSON.
-fn committed() -> Value {
+pub(crate) fn committed() -> Value {
     printobserver_types::serde_json::from_slice(
         &std::fs::read(root().join("tests/real-prints/cameras/core-one-2026-09-27.json"))
             .expect("the committed calibration"),
@@ -196,7 +198,7 @@ fn shifted(bytes: &[u8], by: u32) -> Vec<u8> {
 }
 
 /// A frame's SHA-256, lowercase hexadecimal, as the store names one.
-fn sha256(bytes: &[u8]) -> String {
+pub(crate) fn sha256(bytes: &[u8]) -> String {
     sha2::Sha256::digest(bytes)
         .iter()
         .fold(String::new(), |mut hex, byte| {
@@ -205,7 +207,8 @@ fn sha256(bytes: &[u8]) -> String {
         })
 }
 
-/// The three-panel check image of `current` at `position`, composed here from
+/// The three-panel check image of `current` at `position`, drawn through the
+/// print's `correction` as the server draws a passed print's, composed here from
 /// the index's own answers: the active object at that position, the layer
 /// there read from the spool, the nearest object layer below when that layer
 /// lays supports alone, and `previous`.
@@ -216,7 +219,10 @@ fn expected_composite(
     previous: Option<(&[u8], Timestamp)>,
     url: &str,
     calibration: &CameraCalibration,
+    correction: Option<[f64; 2]>,
 ) -> Vec<u8> {
+    let correction = correction
+        .map(|shift| printobserver_panels::ViewCorrection::translation(shift, Vec::new()));
     let active_object = index.object_at(position).expect("an object is laid there");
     let layer = index.layer_at(position).expect("a layer there");
     let toolpath = index.layer_toolpath(layer).expect("the spool holds it");
@@ -241,14 +247,14 @@ fn expected_composite(
         object_layer_below: below.as_ref(),
         print_z_mm: index.layer_z_mm(layer).expect("a height"),
         calibration,
-        correction: None,
+        correction: correction.as_ref(),
     })
     .expect("the composite composes")
     .jpeg
 }
 
 /// One section of a prompt: the JSON block under its heading.
-fn block_under(prompt: &str, heading: &str) -> Value {
+pub(crate) fn block_under(prompt: &str, heading: &str) -> Value {
     let (_, after) = prompt
         .split_once(heading)
         .unwrap_or_else(|| panic!("the prompt carries no {heading}:\n{prompt}"));
@@ -285,24 +291,24 @@ fn read_handed(seen: &Value) -> Handed {
 }
 
 /// Where the camera is and what it is calibrated by, for one start.
-struct Camera {
-    host: ScriptedHost,
-    calibration: Option<Value>,
+pub(crate) struct Camera {
+    pub(crate) host: ScriptedHost,
+    pub(crate) calibration: Option<Value>,
     /// Whether `[camera] snapshot_url` names it; an alert's frame is fetched
     /// from it either way.
-    snapshot: bool,
+    pub(crate) snapshot: bool,
 }
 
 /// One server over a journey's state, and what watches it.
-struct Started {
-    server: Running,
-    requests: Arc<Requests>,
+pub(crate) struct Started {
+    pub(crate) server: Running,
+    pub(crate) requests: Arc<Requests>,
 }
 
 /// One journey: its state, its scripted instance, and its slice.
-struct Journey {
-    root: TempDir,
-    octoprint: ScriptedOctoPrint,
+pub(crate) struct Journey {
+    pub(crate) root: TempDir,
+    pub(crate) octoprint: ScriptedOctoPrint,
     size: i64,
     installer: &'static str,
     /// The store the last server started over, kept so the next start opens
@@ -313,7 +319,7 @@ struct Journey {
 impl Journey {
     /// A journey over `installer`'s template, the scripted instance running
     /// `bytes` at `position`.
-    fn new(installer: &'static str, bytes: &[u8], position: u64) -> Self {
+    pub(crate) fn new(installer: &'static str, bytes: &[u8], position: u64) -> Self {
         let root = TempDir::new().expect("a journey's own root");
         copy_tree(
             committed_skill().parent().expect("the skill's directory"),
@@ -338,7 +344,7 @@ impl Journey {
     }
 
     /// The job reports `position`.
-    fn at(&self, position: u64) {
+    pub(crate) fn at(&self, position: u64) {
         self.octoprint.reports(
             "Printing",
             JobScript::printing(
@@ -352,7 +358,7 @@ impl Journey {
 
     /// Start the server, checking every `interval_s` seconds, its camera
     /// `camera` and its agent issuing `actions` in each turn.
-    async fn start(&self, camera: &Camera, interval_s: i64, actions: &Value) -> Started {
+    pub(crate) async fn start(&self, camera: &Camera, interval_s: i64, actions: &Value) -> Started {
         let path = configured(
             self.installer,
             &self.root,
@@ -451,7 +457,7 @@ impl Journey {
     }
 
     /// What each run's harness process was handed, in order.
-    fn seen(&self) -> Vec<Value> {
+    pub(crate) fn seen(&self) -> Vec<Value> {
         std::fs::read_to_string(self.root.path().join("seen.json.lines"))
             .unwrap_or_default()
             .lines()
@@ -460,7 +466,7 @@ impl Journey {
     }
 
     /// Wait until `count` runs have been handed their prompt.
-    async fn runs(&self, count: usize) -> Vec<Value> {
+    pub(crate) async fn runs(&self, count: usize) -> Vec<Value> {
         let deadline = tokio::time::Instant::now() + PATIENCE;
         loop {
             let seen = self.seen();
@@ -479,7 +485,7 @@ impl Journey {
 }
 
 /// The print the scripted job is, once the server has adopted it.
-async fn adopted(server: &Running) -> PrintId {
+pub(crate) async fn adopted(server: &Running) -> PrintId {
     let client = presenting(OPERATOR);
     let deadline = tokio::time::Instant::now() + PATIENCE;
     loop {
@@ -527,20 +533,25 @@ async fn stored_digest(server: &Running, print_id: PrintId, event: &Value) -> Va
     stored["image"]["sha256"].clone()
 }
 
-/// Wait until a print's alignment is decided, and answer it.
+/// Judge a print's camera again as the operator, on a fresh frame, and answer
+/// the alignment that left.
 async fn decided(server: &Running, print_id: PrintId) -> PrintAlignment {
-    let deadline = tokio::time::Instant::now() + PATIENCE;
-    loop {
-        let verdict = server.print_alignment(print_id);
-        if verdict != PrintAlignment::Pending {
-            return verdict;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "no alignment was ever decided"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    let response = presenting(OPERATOR)
+        .post(format!(
+            "{}/prints/{print_id}/camera/recheck",
+            server.base_url()
+        ))
+        .json(&json!({ "actor": "operator", "reason": "the first layer is down" }))
+        .send()
+        .await
+        .expect("the server answers");
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "{}",
+        response.text().await.unwrap_or_default()
+    );
+    server.print_alignment(print_id)
 }
 
 /// Post one failure alert about the running job, its frame the camera's, as
@@ -567,7 +578,8 @@ fn captured_at(event: &Value) -> Timestamp {
 }
 
 /// Decide a print's alignment over `first_layer` at `position` with no check
-/// due, then answer the journey's camera calibration and the print.
+/// due, by the operator's recheck of the camera, then answer the print and its
+/// verdict.
 async fn aligned(
     journey: &Journey,
     calibration: &Value,
@@ -602,6 +614,16 @@ fn calibration_at(calibration: &Value, url: &str) -> CameraCalibration {
 struct Plan<'a> {
     index: &'a GcodeIndex,
     position: u64,
+    /// The correction the print's pass put in force.
+    correction: Option<[f64; 2]>,
+}
+
+/// The correction a passed verdict put in force.
+const fn correction_of(verdict: &PrintAlignment) -> Option<[f64; 2]> {
+    match verdict {
+        PrintAlignment::Passed { correction_px, .. } => Some(*correction_px),
+        _ => None,
+    }
 }
 
 /// The print's first scheduled check, held open until it is read so no further
@@ -657,7 +679,8 @@ async fn scheduled_check_and_look(
             &frames[0],
             None,
             &url,
-            &calibrated
+            &calibrated,
+            plan.correction,
         ),
         "{installer}: the scheduled check is its own frame composed at the job's position, panel 3 the first check's placeholder"
     );
@@ -692,6 +715,7 @@ async fn scheduled_check_and_look(
             Some((&frames[0], scheduled_at)),
             &url,
             &calibrated,
+            plan.correction,
         ),
         "{installer}: the look is its own frame composed, the last check's frame as panel 3"
     );
@@ -758,6 +782,7 @@ async fn alert_check_after_a_restart(
             Some((&frames[0], scheduled_at)),
             &url,
             &calibration_at(calibration, &url),
+            plan.correction,
         ),
         "{installer}: the alert's check draws the part layer below its support-only layer, the scheduled check's frame as panel 3"
     );
@@ -802,7 +827,7 @@ async fn a_print_whose_alignment_passed_is_shown_the_three_panel_image() {
         let spool = TempDir::new().expect("a spool directory");
         let index = index_of(&bytes, &spool.path().join("index.gcode"));
         let past_first = position_at(&index, bytes.len(), 0.6);
-        let walls = Plan {
+        let mut walls = Plan {
             index: &index,
             position: position_laying(
                 &index,
@@ -810,10 +835,12 @@ async fn a_print_whose_alignment_passed_is_shown_the_three_panel_image() {
                 position_at(&index, bytes.len(), 5.0),
                 true,
             ),
+            correction: None,
         };
-        let supports = Plan {
+        let mut supports = Plan {
             index: &index,
             position: position_laying(&index, bytes.len(), past_first, false),
+            correction: None,
         };
         let journey = Journey::new(installer, &bytes, past_first);
         let (print_id, verdict) =
@@ -822,6 +849,8 @@ async fn a_print_whose_alignment_passed_is_shown_the_three_panel_image() {
             matches!(verdict, PrintAlignment::Passed { .. }),
             "{installer}: the healthy first layer did not pass: {verdict:?}"
         );
+        walls.correction = correction_of(&verdict);
+        supports.correction = correction_of(&verdict);
         let scheduled_at =
             scheduled_check_and_look(&journey, &walls, &calibration, &frames, print_id).await;
         alert_check_after_a_restart(
@@ -916,6 +945,7 @@ async fn an_alert_is_shown_the_cameras_own_frame_composed_whatever_the_detectors
                 None,
                 &url,
                 &calibration_at(&calibration, &url),
+                correction_of(&verdict),
             ),
             "{installer}: the alert's check is the three-panel image of the camera's own frame"
         );
@@ -1023,8 +1053,10 @@ fn spool_unwritable(state: &Path, print_id: PrintId) {
     std::fs::create_dir_all(&spool).expect("a directory where the spool goes");
 }
 
-/// Stand a file where check images are written, so none can be.
+/// Stand a file where check images are written, so none can be: in place of
+/// the directory the deciding run's recheck wrote its image into.
 fn check_images_unwritable(state: &Path, _: PrintId) {
+    let _ = std::fs::remove_dir_all(state.join(printobserver_server::CHECK_IMAGES_DIRECTORY));
     std::fs::write(
         state.join(printobserver_server::CHECK_IMAGES_DIRECTORY),
         b"",
@@ -1048,6 +1080,11 @@ const fn passed(verdict: &PrintAlignment) -> bool {
 /// Whether a verdict failed.
 const fn failed(verdict: &PrintAlignment) -> bool {
     matches!(verdict, PrintAlignment::Failed { .. })
+}
+
+/// Whether a verdict is still pending, judged again on a later frame.
+const fn pending(verdict: &PrintAlignment) -> bool {
+    matches!(verdict, PrintAlignment::Pending)
 }
 
 /// Whether a verdict is unavailable.
@@ -1185,13 +1222,13 @@ fn configuration_and_frame_cases() -> Vec<WholeFrameCase> {
             ..WHOLE
         },
         WholeFrameCase {
-            name: "alignment failed on its offset",
+            name: "alignment inconclusive on a misplaced projection",
             slice: "jar-top-petg.gcode",
             calibration: Some(moved_calibration),
-            aligned_over: Some(PETG_FIRST_LAYER(failed)),
+            aligned_over: Some(PETG_FIRST_LAYER(pending)),
             position: laying_walls,
             frame: || frame(PETG, FRAMES[0]),
-            says: "first-layer alignment failed: the printed first layer lies",
+            says: "first-layer alignment is inconclusive on the frame judged last",
             shown: ((1280, 720), false),
             ..WHOLE
         },
@@ -1218,7 +1255,7 @@ fn configuration_and_frame_cases() -> Vec<WholeFrameCase> {
             aligned_over: Some(PETG_FIRST_LAYER(passed)),
             position: laying_walls,
             frame: || shifted(&frame(PETG, FRAMES[0]), 20),
-            says: "the camera has moved since it was calibrated",
+            says: "the camera has moved again since this print's first-layer correction was taken",
             shown: ((1280, 720), false),
             ..WHOLE
         },
@@ -1229,7 +1266,7 @@ fn configuration_and_frame_cases() -> Vec<WholeFrameCase> {
             aligned_over: Some(PETG_FIRST_LAYER(passed)),
             position: laying_walls,
             frame: marked_frame,
-            says: "fewer than two of the calibration's landmarks are visible",
+            says: "fewer than two of the landmarks this print's first-layer correction was taken against are found",
             shown: ((1280, 720), true),
             ..WHOLE
         },
@@ -1414,7 +1451,15 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
     let first = read_handed(&journey.runs(1).await[0]);
     assert_eq!(
         first.image,
-        expected_composite(&index, walls, &frames[0], None, &url, &calibrated),
+        expected_composite(
+            &index,
+            walls,
+            &frames[0],
+            None,
+            &url,
+            &calibrated,
+            correction_of(&verdict),
+        ),
         "a record that cannot be read back leaves panel 3 empty"
     );
     assert!(first.note.contains("panel 3 empty"), "{}", first.note);
@@ -1429,7 +1474,15 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
     let second = read_handed(&journey.runs(2).await[1]);
     assert_eq!(
         second.image,
-        expected_composite(&index, walls, &frames[1], None, &url, &calibrated),
+        expected_composite(
+            &index,
+            walls,
+            &frames[1],
+            None,
+            &url,
+            &calibrated,
+            correction_of(&verdict),
+        ),
         "a previous frame gone from the store leaves panel 3 empty"
     );
     assert!(second.note.contains("panel 3 empty"), "{}", second.note);
@@ -1447,7 +1500,15 @@ async fn a_lost_previous_frame_empties_panel_3_and_the_record_goes_with_the_prin
     let third = read_handed(&journey.runs(3).await[2]);
     assert_eq!(
         third.image,
-        expected_composite(&index, walls, &frames[2], None, &url, &calibrated),
+        expected_composite(
+            &index,
+            walls,
+            &frames[2],
+            None,
+            &url,
+            &calibrated,
+            correction_of(&verdict),
+        ),
         "a previous frame that no longer decodes leaves panel 3 empty"
     );
 
@@ -1691,6 +1752,7 @@ fn the_composer_writes_the_image_a_first_check_is_shown() {
             None,
             &inputs.url,
             &calibration_at(&committed(), &inputs.url),
+            None,
         ),
         "the composer's image is the one a print's first check at that position is shown"
     );
