@@ -19,7 +19,7 @@ pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Every operation this client exposes a method for, which is every operation
 /// the server declares and no other.
-pub const OPERATION_NAMES: [&str; 39] = [
+pub const OPERATION_NAMES: [&str; 40] = [
     "prints",
     "status",
     "context",
@@ -59,6 +59,7 @@ pub const OPERATION_NAMES: [&str; 39] = [
     "recover_home_xy",
     "recover_home_z",
     "bed_clear",
+    "recheck_camera",
 ];
 
 /// A field that was sent, null included, as what was sent.
@@ -493,6 +494,48 @@ pub struct AgentStopUnactedPayload {
     pub summary: String,
 }
 
+/// Why a print's alignment failed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "failure")]
+pub enum AlignmentFailure {
+    /// The printed first layer lies further from its projection than the
+    /// calibration allows. No longer written: a frame that does not clearly
+    /// find the layer is inconclusive, and a verdict file an earlier release
+    /// left holding this is read as pending.
+    #[serde(rename = "offset")]
+    Offset {
+        /// How far, in calibration pixels.
+        offset_px: f64,
+    },
+    /// The camera's frames are not the calibration's resolution.
+    #[serde(rename = "resolution")]
+    Resolution {
+        /// The calibration's, `[width, height]`.
+        expected: [i64; 2],
+        /// The frame's.
+        got: [i64; 2],
+    },
+    /// The camera configured is not the stream the calibration was fitted on.
+    #[serde(rename = "stream")]
+    Stream,
+}
+
+/// What one judgement of a print's first layer came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AlignmentJudgedVerdict {
+    /// The first layer is clearly found, and its offset is the print's
+    /// correction from now on.
+    #[serde(rename = "passed")]
+    Passed,
+    /// The frame could not tell; a later check's frame is judged again.
+    #[serde(rename = "inconclusive")]
+    Inconclusive,
+    /// The camera's frames cannot be judged against the calibration, which
+    /// holds for the rest of the print.
+    #[serde(rename = "failed")]
+    Failed,
+}
+
 /// Who may say the bed is clear: the operator, and no other actor.
 ///
 /// Its own type rather than `Actor`, so that a record of the agent's or the
@@ -610,6 +653,35 @@ pub struct CameraRetryPayload {
     pub status: i64,
 }
 
+/// One judgement of a print's camera view, on one frame: one for every
+/// judgement, whatever it found and whether or not it repeats the last.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CameraViewJudgedPayload {
+    /// The stored frame it was judged on.
+    pub frame_sha256: String,
+    /// What it found.
+    pub outcome: ViewOutcome,
+    /// Why the frame may not be drawn on: for the three refusals, and for a
+    /// refit view, whose camera has moved since its calibration; null for an
+    /// unshifted one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// The correction in force when the frame was judged; null when none was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view_correction: Option<ViewCorrection>,
+}
+
+/// A first-layer pass put a correction in force while the landmarks had moved
+/// from the calibration: the print's first, or one taken again after the
+/// camera moved again.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CameraViewRefitPayload {
+    /// The stored frame the correction was taken on.
+    pub frame_sha256: String,
+    /// The correction now in force.
+    pub view_correction: ViewCorrection,
+}
+
 /// The durable identity of one debit, so that a replay can never debit twice.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "key")]
@@ -692,6 +764,20 @@ pub struct ChargedFilament {
     pub remaining_before_g: f64,
     /// The spool charged.
     pub spool_id: SpoolId,
+}
+
+/// The image a print's checks are shown changed: its first check's image, and
+/// every check whose image kind or fallback code differs from the last one
+/// recorded.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CheckImageChangedPayload {
+    /// Why it was the whole frame; null for the three-panel image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<ImageFallback>,
+    /// The stored frame the check's image was made of.
+    pub frame_sha256: String,
+    /// Which image the check was shown.
+    pub kind: ImageKind,
 }
 
 /// One mark a spool command cleared, and the spool it was cleared from.
@@ -1124,6 +1210,36 @@ pub struct FileTallyRebaselinedPayload {
     pub origin: String,
 }
 
+/// One judgement of a print's first-layer alignment, on one frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FirstLayerAlignmentJudgedPayload {
+    /// The correction the pass put in force, `[dx, dy]` pixels; null unless
+    /// it
+    /// passed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction_px: Option<[f64; 2]>,
+    /// The stored frame it was judged on.
+    pub frame_sha256: String,
+    /// The peak smoothed contrast the layer was found at, in grey levels;
+    /// null
+    /// when it was not searched for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_strength: Option<f64>,
+    /// How far the printed first layer was found from its uncorrected
+    /// projection, in calibration pixels; null when it was not searched for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset_px: Option<f64>,
+    /// `clearly_found` for a pass, `covered` or `not_clearly_found` for an
+    /// inconclusive judgement, and the failure's own sentence for a failure.
+    pub reason: String,
+    /// What it came to.
+    pub verdict: AlignmentJudgedVerdict,
+    /// The correction in force when the frame was judged; null before the
+    /// print's first pass.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view_correction: Option<ViewCorrection>,
+}
+
 /// The XY rectangle every extruding move of a file lies inside, in
 /// millimetres.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1214,9 +1330,30 @@ pub struct ImageAnswer {
     pub record: ImageRecord,
 }
 
+/// Why a check or a look was shown the whole frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImageFallback {
+    /// The reason, as a code.
+    pub code: WholeFrameReasonCode,
+    /// The reason, in the sentence the image's note gives it in.
+    pub message: String,
+}
+
 /// A lowercase hyphenated version 7 UUID identifying one image.
 // llmlint: ignore[invalid_states_unrepresentable] See suppressions.toml.
 pub type ImageId = String;
+
+/// Which image a check or a look was shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ImageKind {
+    /// The three panels: the frame with this layer's plan drawn on it, a
+    /// close-up of the part, and the previous check's frame.
+    #[serde(rename = "three_panel")]
+    ThreePanel,
+    /// The camera's frame, scaled whole and uncropped, nothing drawn.
+    #[serde(rename = "whole_frame")]
+    WholeFrame,
+}
 
 /// One image, stored beside the event it arrived with.
 ///
@@ -1421,6 +1558,18 @@ pub struct JobSnapshot {
     pub state: PrinterState,
 }
 
+/// The image a print's last check was shown, and when its frame was captured.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LastCheckImage {
+    /// When the check's frame was captured.
+    pub at: Timestamp,
+    /// Why it was the whole frame; null for the three-panel image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<ImageFallback>,
+    /// Which image the check was shown.
+    pub kind: ImageKind,
+}
+
 /// What the last print laid down, read from its own G-code up to the last
 /// file position recorded for it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1464,6 +1613,13 @@ pub struct Look {
     /// gave none — which the history records as a port failure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame: Option<ImageRef>,
+    /// Why the image at `image_path` is the whole frame; absent for the
+    /// three-panel image, with no image, or when what made it gave no reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_fallback: Option<ImageFallback>,
+    /// Which image is at `image_path`; absent with no image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_kind: Option<ImageKind>,
     /// What the image at `image_path` is, and why it is that one, in one
     /// line;
     /// absent with no image, or when what made it says nothing.
@@ -2378,6 +2534,39 @@ pub enum PrintAction {
     },
 }
 
+/// One print's first-layer alignment verdict, as it is kept under the state
+/// directory — which the real-print suite's record reads.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "verdict")]
+pub enum PrintAlignment {
+    /// Nothing can be checked: no calibration is configured, or the print's
+    /// G-code lays no object.
+    #[serde(rename = "unavailable")]
+    Unavailable,
+    /// The first object layer is not down yet, or no frame of it has been
+    /// judged.
+    #[serde(rename = "pending")]
+    Pending,
+    /// The projected first layer lands on the printed one.
+    #[serde(rename = "passed")]
+    Passed {
+        /// The first-layer correction applied to every later drawing of the
+        /// print, `[dx, dy]` calibration pixels: the shift the layer was
+        /// found
+        /// at. `[0, 0]` in a verdict an earlier release wrote.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        correction_px: Option<[f64; 2]>,
+        /// How far it lies from it, in calibration pixels.
+        offset_px: f64,
+    },
+    /// It does not, or the frames cannot be judged against the calibration.
+    #[serde(rename = "failed")]
+    Failed {
+        /// Why.
+        reason: AlignmentFailure,
+    },
+}
+
 /// One print's end, as its `print_ended` event stored it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintEnded {
@@ -2645,6 +2834,28 @@ pub enum RebaselineDisposition {
     /// loaded spool was marked unverified rather than charged on a guess.
     #[serde(rename = "unverified")]
     Unverified,
+}
+
+/// What judging a print's camera again on a fresh frame answers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecheckCameraAnswer {
+    /// The print's first-layer alignment once judged.
+    pub alignment: PrintAlignment,
+    /// The absolute path of the fresh frame on this server's own filesystem,
+    /// stored with the first record of its judgement. This server always
+    /// answers it; a client that finds it names no file on its own host
+    /// answers why in its place, as it does every image path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_path: Option<String>,
+    /// Why that image would be the whole frame; null for the three-panel
+    /// image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_fallback: Option<ImageFallback>,
+    /// Which image a check of the print would be shown of this frame.
+    pub image_kind: ImageKind,
+    /// The correction in force once judged; null when none is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view_correction: Option<ViewCorrection>,
 }
 
 /// The whole recovery vocabulary, and there is no other.
@@ -2949,6 +3160,18 @@ pub struct RecoveryTemperatures {
     pub bed: Option<BedTemperature>,
     /// Each tool.
     pub tools: Vec<ToolTemperature>,
+}
+
+/// One landmark of a correction's reference: where it was found on the frame
+/// the correction was taken on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReferenceLandmark {
+    /// The calibration's name for it.
+    pub name: String,
+    /// How far from its calibrated place it was found, `[dx, dy]` pixels.
+    pub offset_px: [f64; 2],
+    /// The correlation it was found at.
+    pub score: f64,
 }
 
 /// Why a request was refused.
@@ -3821,6 +4044,10 @@ pub struct StatusAnswer {
     /// The job, when a snapshot could be taken.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub job: Option<JobSnapshot>,
+    /// The image the print's last check was shown, when its frame was
+    /// captured and why it was the whole frame; null before its first check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_check_image: Option<LastCheckImage>,
     /// The changes the print's G-code plans, the one the printer waits at and
     /// the colour expected where its job stands; absent when the file plans
     /// none or could not be read.
@@ -4013,6 +4240,131 @@ pub enum UnverifiedReason {
     },
 }
 
+/// How a print's drawings map the calibrated view onto the current frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewCorrection {
+    /// The landmarks found agreeing on the frame the correction was taken on,
+    /// which later frames are compared against.
+    pub landmarks: Vec<ReferenceLandmark>,
+    /// Maps a pixel of the calibrated view to the current frame, in
+    /// homogeneous coordinates, row by row.
+    pub matrix: [[f64; 3]; 3],
+    /// The model `matrix` is of.
+    pub model: ViewModel,
+    /// The RMS distance between those landmarks' offsets and the correction's
+    /// shift, in pixels: how far the landmarks disagree with the part.
+    pub residual_px: f64,
+}
+
+/// The model a `ViewCorrection` maps pixels by. Only `Self::Translation`
+/// is ever written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ViewModel {
+    /// A shift alone.
+    #[serde(rename = "translation")]
+    Translation,
+    /// A shift, a rotation and one scale.
+    #[serde(rename = "similarity")]
+    Similarity,
+    /// A general linear map and a shift.
+    #[serde(rename = "affine")]
+    Affine,
+    /// A plane-to-plane projective map.
+    #[serde(rename = "homography")]
+    Homography,
+}
+
+/// What one judgement of the view found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ViewOutcome {
+    /// No more than one found landmark sits beyond the calibration's
+    /// tolerance of its calibrated place: one alone is as likely a false
+    /// match
+    /// as a moved camera.
+    #[serde(rename = "unshifted")]
+    Unshifted,
+    /// Landmarks moved from the calibration but agree with the reference of
+    /// the correction in force, so the frame is drawn through it.
+    #[serde(rename = "refit")]
+    Refit,
+    /// Fewer than two landmarks are found, or fewer than two of the
+    /// reference's are found again.
+    #[serde(rename = "landmarks_not_found")]
+    LandmarksNotFound,
+    /// Landmarks moved and no correction is in force, or two or more moved
+    /// beyond the tolerance from the correction's reference: the camera moved
+    /// again.
+    #[serde(rename = "view_refit_rejected")]
+    ViewRefitRejected,
+    /// The frame is not the calibration's size or stream.
+    #[serde(rename = "frame_mismatch")]
+    FrameMismatch,
+}
+
+/// Why a check or a look was shown the whole frame: one code per reason the
+/// server gives one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WholeFrameReasonCode {
+    /// No print is named: a look at the printer.
+    #[serde(rename = "no_print")]
+    NoPrint,
+    /// No camera calibration is configured.
+    #[serde(rename = "no_calibration")]
+    NoCalibration,
+    /// No camera snapshot address is configured.
+    #[serde(rename = "no_stream")]
+    NoStream,
+    /// The print's G-code index gives no file position for the check.
+    #[serde(rename = "no_position")]
+    NoPosition,
+    /// The G-code names no extruded object laid at that point.
+    #[serde(rename = "no_object")]
+    NoObject,
+    /// It names no layer there.
+    #[serde(rename = "no_layer")]
+    NoLayer,
+    /// The layer's planned toolpath could not be read back.
+    #[serde(rename = "toolpath_unread")]
+    ToolpathUnread,
+    /// The print's first layer is not down, or no frame of it has been judged
+    /// yet.
+    #[serde(rename = "alignment_pending")]
+    AlignmentPending,
+    /// The last frame judged could not tell where the first layer lies: the
+    /// toolhead covered the part, or the layer was not clearly found. A later
+    /// check's frame is judged again. No evidence of a defect.
+    #[serde(rename = "alignment_inconclusive")]
+    AlignmentInconclusive,
+    /// The print's G-code lays no object to align.
+    #[serde(rename = "alignment_unavailable")]
+    AlignmentUnavailable,
+    /// The camera's frames cannot be judged against the calibration.
+    #[serde(rename = "alignment_failed")]
+    AlignmentFailed,
+    /// Fewer than two landmarks are found, so whether the camera shifted is
+    /// unknown.
+    #[serde(rename = "landmarks_not_found")]
+    LandmarksNotFound,
+    /// The camera moved since the drawing's correction was taken.
+    #[serde(rename = "view_refit_rejected")]
+    ViewRefitRejected,
+    /// The landmarks show the camera has moved since its calibration, so the
+    /// plan cannot be drawn reliably on its frames: the camera wants
+    /// recalibrating.
+    #[serde(rename = "calibration_stale")]
+    CalibrationStale,
+    /// The frame is not the calibration's size or stream.
+    #[serde(rename = "frame_mismatch")]
+    FrameMismatch,
+    /// The printer reports the print paused, its bed moved off the plan's
+    /// height.
+    #[serde(rename = "paused")]
+    Paused,
+    /// The composer refused the frame for another reason.
+    #[serde(rename = "refused")]
+    Refused,
+}
+
 /// Where the machine homes Z, and whether doing so sweeps the bed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ZHome {
@@ -4083,8 +4435,20 @@ impl EventPayloadKind for CameraRetryPayload {
     const KIND: &'static str = "camera_retry";
 }
 
+impl EventPayloadKind for CameraViewJudgedPayload {
+    const KIND: &'static str = "camera_view_judged";
+}
+
+impl EventPayloadKind for CameraViewRefitPayload {
+    const KIND: &'static str = "camera_view_refit";
+}
+
 impl EventPayloadKind for ChargePendedPayload {
     const KIND: &'static str = "charge_pended";
+}
+
+impl EventPayloadKind for CheckImageChangedPayload {
+    const KIND: &'static str = "check_image_changed";
 }
 
 impl EventPayloadKind for DetectorHealthChangedPayload {
@@ -4109,6 +4473,10 @@ impl EventPayloadKind for FilamentConsumedPayload {
 
 impl EventPayloadKind for FileTallyRebaselinedPayload {
     const KIND: &'static str = "file_tally_rebaselined";
+}
+
+impl EventPayloadKind for FirstLayerAlignmentJudgedPayload {
+    const KIND: &'static str = "first_layer_alignment_judged";
 }
 
 impl EventPayloadKind for GcodeIndexedPayload {
@@ -4228,7 +4596,7 @@ impl EventPayloadKind for UnattendedPrinterActivityPayload {
 }
 
 /// Every kind the server declares a payload type for, in name order.
-pub const EVENT_KINDS: [&str; 45] = [
+pub const EVENT_KINDS: [&str; 49] = [
     "action_executed",
     "action_rejected",
     "action_requested",
@@ -4238,13 +4606,17 @@ pub const EVENT_KINDS: [&str; 45] = [
     "camera_degraded",
     "camera_look",
     "camera_retry",
+    "camera_view_judged",
+    "camera_view_refit",
     "charge_pended",
+    "check_image_changed",
     "detector_health_changed",
     "filament_change_planned_reached",
     "filament_change_planned_resumed",
     "filament_change_signalled",
     "filament_consumed",
     "file_tally_rebaselined",
+    "first_layer_alignment_judged",
     "gcode_indexed",
     "intervention_expired",
     "malformed_external_event",
@@ -5267,6 +5639,31 @@ impl Client {
     pub fn bed_clear(&self, reason: &str) -> Result<BedClearAnswer, ClientError> {
         crate::reason_given(reason)?;
         let target = String::from("/v1/printer/bed_clear");
+        let asked: Vec<(String, String)> = Vec::new();
+        let mut sending = serde_json::Map::new();
+        sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);
+        sending.insert("reason".to_owned(), crate::as_value(&reason)?);
+        let sending = Some(serde_json::Value::Object(sending));
+        self.call("POST", &target, &asked, sending.as_ref())
+    }
+
+    /// Call `recheck_camera` on the configured supervisor.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ClientError` when the supervisor could not be reached, when
+    /// it answered something this client cannot read, when this client
+    /// refuses the call before making it because the reason is empty, and
+    /// when the policy refused the action — which arrives as
+    /// `ClientError::Rejected`, carrying the reason, the value asked for and
+    /// the range allowed.
+    pub fn recheck_camera(
+        &self,
+        print_id: &str,
+        reason: &str,
+    ) -> Result<RecheckCameraAnswer, ClientError> {
+        crate::reason_given(reason)?;
+        let target = format!("/v1/prints/{print_id}/camera/recheck");
         let asked: Vec<(String, String)> = Vec::new();
         let mut sending = serde_json::Map::new();
         sending.insert("actor".to_owned(), crate::as_value(&self.actor())?);

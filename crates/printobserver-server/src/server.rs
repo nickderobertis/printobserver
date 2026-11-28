@@ -520,14 +520,10 @@ impl Server {
         // credential minted for them.
         let turns = TurnCredentials::new(Some(address));
         supervisor.install_turn_authority(Arc::new(turns.clone()));
-        supervisor.install_check_images(Arc::new(crate::check_images::PanelImages::new(
-            &config.state_dir,
-            Arc::clone(&alignments),
-            config
-                .camera_snapshot_url
-                .as_ref()
-                .map(|url| url.as_str().to_owned()),
-        )));
+        let check_images = panel_images(&config, &alignments);
+        supervisor.install_check_images(
+            Arc::clone(&check_images) as Arc<dyn printobserver_core::CheckImages>
+        );
         if let Some(scoring) = scoring_read(&config, &ports.vision)? {
             supervisor.install_scoring_probe(scoring);
         }
@@ -575,6 +571,7 @@ impl Server {
             operator: Arc::new(operator),
             turns,
             stored,
+            check_images: Some(check_images),
         })
         .merge(
             Router::new()
@@ -605,6 +602,22 @@ impl Server {
             alignments,
         })
     }
+}
+
+/// What makes every check's image and judges every frame of a print, over one
+/// state directory's verdicts and the configured camera's stream.
+fn panel_images(
+    config: &ServerConfig,
+    alignments: &Arc<crate::alignment::Alignments>,
+) -> Arc<crate::check_images::PanelImages> {
+    Arc::new(crate::check_images::PanelImages::new(
+        &config.state_dir,
+        Arc::clone(alignments),
+        config
+            .camera_snapshot_url
+            .as_ref()
+            .map(|url| url.as_str().to_owned()),
+    ))
 }
 
 /// The directories this start keeps per-print state in — each open print's
@@ -945,13 +958,14 @@ fn agent_commands() -> Result<Vec<AgentCommand>, StartError> {
         })
 }
 
-/// The reads a turn handed an image runs none of: a fresh look.
+/// The commands a turn handed an image runs none of: a fresh look, and a
+/// recheck of the camera, which takes a fresh frame too.
 ///
 /// A turn carrying a check's image decides on that image. A look there only
 /// stalls the decision, and a later frame can show a part that moved dragged
 /// back under its walls, which the agent then reads as fine. It can also run on
 /// into the moment the print's next turn was due to begin.
-pub const WITHHELD_BESIDE_AN_IMAGE: [&str; 1] = ["look"];
+pub const WITHHELD_BESIDE_AN_IMAGE: [&str; 2] = ["look", "recheck_camera"];
 
 /// [`WITHHELD_BESIDE_AN_IMAGE`] as the agent commands it names.
 fn withheld_beside_an_image() -> Result<Vec<AgentCommand>, StartError> {

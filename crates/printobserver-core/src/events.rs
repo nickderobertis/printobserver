@@ -509,9 +509,11 @@ impl Supervisor {
         let terminal = printer_state
             .clone()
             .filter(|state| TERMINAL_STATES.contains(state));
-        let (image_path, image, frame_captured_at) = self
-            .check_image_for(print, arrival, context.job.as_ref())
+        let paused = printer_state == Some(PrinterState::Paused);
+        let shown = self
+            .check_image_for(print, arrival, context.job.as_ref(), paused)
             .await;
+        let image_path = shown.path;
         let facts = crate::context::turn_facts(&context.for_agent(None));
         let situation = TurnSituation {
             printer_state,
@@ -521,8 +523,10 @@ impl Supervisor {
                 .map(|detection| detection.paused_the_print),
             arrived_while_busy: earlier.into_iter().map(|left| left.event).collect(),
             noticed: noticed_of(event),
-            frame_captured_at,
-            image,
+            frame_captured_at: shown.captured_at,
+            image: shown.note,
+            image_kind: shown.kind,
+            image_fallback: shown.fallback,
         };
         // The turn's credentials are bound to it from here, and revoked the
         // moment it returns — whatever it returned — and when this future is
@@ -681,25 +685,29 @@ impl Supervisor {
     }
 
     /// The image a check of one arrival is shown, the line saying what it is,
-    /// and when the frame it shows was captured, made where the job stood in
-    /// the print's own file: none when the arrival carries no frame.
+    /// which image it is and why, and when the frame it shows was captured,
+    /// made where the job stood in the print's own file: none when the arrival
+    /// carries no frame.
     ///
     /// A detector's alert whose camera frame was had is shown that frame's
     /// three-panel image; where it was not had or not composed, the detector's
-    /// own picture, as any check is shown its frame.
+    /// own picture, as any check is shown its frame. Only the camera's own
+    /// frames are judged against its calibration: a detector's picture is not
+    /// necessarily its stream at its size.
     async fn check_image_for(
         &self,
         print: &PrintRecord,
         arrival: &Arrival,
         job: Option<&JobSnapshot>,
-    ) -> (
-        Option<std::path::PathBuf>,
-        Option<String>,
-        Option<Timestamp>,
-    ) {
+        paused: bool,
+    ) -> CheckShown {
         let event = &arrival.event;
+        let imageless = CheckShown {
+            captured_at: arrival.frame_captured_at,
+            ..CheckShown::default()
+        };
         let Some(reference) = &event.image else {
-            return (None, None, arrival.frame_captured_at);
+            return imageless;
         };
         let plan = self.plan_position(print, job).await;
         if let AlertCameraFrame::Had { image, captured_at } = &arrival.camera_frame {
@@ -710,14 +718,23 @@ impl Supervisor {
                     *captured_at,
                     ImageUse::Check,
                     plan.clone(),
+                    true,
+                    paused,
                 )
                 .await;
             if let Some(shown) = shown.filter(|shown| shown.composite) {
                 self.note_check_frame(print, job, *captured_at);
+                let kind = Some(shown.kind());
                 let note = shown
                     .note
                     .map(|note| format!("{note}; {ALERT_CAMERA_FRAME_NOTE}"));
-                return (Some(shown.path), note, Some(*captured_at));
+                return CheckShown {
+                    kind,
+                    path: Some(shown.path),
+                    note,
+                    fallback: shown.fallback,
+                    captured_at: Some(*captured_at),
+                };
             }
         }
         let captured_at = captured_at_of(event, arrival.frame_captured_at);
@@ -732,16 +749,25 @@ impl Supervisor {
             captured_at,
             ImageUse::Check,
             plan,
+            arrival.detection.is_none(),
+            paused,
         )
         .await
-        .map_or((None, None, arrival.frame_captured_at), |shown| {
+        .map_or(imageless, |shown| {
+            let kind = Some(shown.kind());
             let note = match (shown.note, missing) {
                 (Some(note), Some(why)) => Some(format!(
                     "{note}; the detector's own picture, because the camera gave no frame of its own as the alert arrived: {why}"
                 )),
                 (note, _) => note,
             };
-            (Some(shown.path), note, arrival.frame_captured_at)
+            CheckShown {
+                path: Some(shown.path),
+                note,
+                kind,
+                fallback: shown.fallback,
+                captured_at: arrival.frame_captured_at,
+            }
         })
     }
 
@@ -1232,4 +1258,20 @@ impl printobserver_supervisor_api::TurnAccess for StopAware {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .contains(&self.print_id)
     }
+}
+
+/// What a check of one arrival was shown: the image, the line saying what it
+/// is, which image it is and why, and when its frame was captured.
+#[derive(Debug, Clone, Default)]
+struct CheckShown {
+    /// The image's path.
+    path: Option<std::path::PathBuf>,
+    /// The line saying what it is.
+    note: Option<String>,
+    /// Which image it is.
+    kind: Option<printobserver_supervisor_api::ImageKind>,
+    /// Why it is the whole frame.
+    fallback: Option<printobserver_supervisor_api::ImageFallback>,
+    /// When the frame it shows was captured, when the turn is told.
+    captured_at: Option<Timestamp>,
 }

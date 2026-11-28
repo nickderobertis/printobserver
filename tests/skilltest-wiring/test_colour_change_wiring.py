@@ -225,7 +225,7 @@ def test_the_real_two_colour_print_is_quiet_through_each_wait_and_carries_on(
     """
     quiet_reading: ScriptedRun = {"commands": [HISTORY]}
     _, done = real_replay([QUIET, QUIET, QUIET, QUIET, quiet_reading], tmp_path)
-    truth(REAL not in replayed_case_names(), describing="the case to carry no live replay yet")
+    truth(REAL in replayed_case_names(), describing="the case to carry a live replay")
     equal(
         [point.event_kind for point in done.replayed.points],
         [

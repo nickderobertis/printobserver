@@ -160,6 +160,28 @@ pub struct BedClearAnswer {
     pub detail: String,
 }
 
+/// What judging a print's camera again on a fresh frame answers.
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde")]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct RecheckCameraAnswer {
+    /// The absolute path of the fresh frame on this server's own filesystem,
+    /// stored with the first record of its judgement. This server always
+    /// answers it; a client that finds it names no file on its own host
+    /// answers why in its place, as it does every image path.
+    #[serde(default)]
+    pub frame_path: PathBuf,
+    /// The print's first-layer alignment once judged.
+    pub alignment: crate::alignment::PrintAlignment,
+    /// The correction in force once judged; null when none is.
+    pub view_correction: Option<printobserver_panels::ViewCorrection>,
+    /// Which image a check of the print would be shown of this frame.
+    pub image_kind: printobserver_supervisor_api::ImageKind,
+    /// Why that image would be the whole frame; null for the three-panel
+    /// image.
+    pub image_fallback: Option<printobserver_supervisor_api::ImageFallback>,
+}
+
 /// One request to replace a print's manifest.
 ///
 /// It carries a reason for the same reason every action does: a manifest
@@ -601,6 +623,9 @@ pub struct StatusAnswer {
     /// none or could not be read.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planned_changes: Option<PlannedChanges>,
+    /// The image the print's last check was shown, when its frame was
+    /// captured and why it was the whole frame; null before its first check.
+    pub last_check_image: Option<crate::alignment::LastCheckImage>,
 }
 
 /// What a context read answers.

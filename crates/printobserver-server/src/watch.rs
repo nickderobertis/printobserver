@@ -21,8 +21,9 @@
 //!   observation interval, when `obico.ml_api_url` is configured: the
 //!   detector's status is one a status read made the moment the server is up
 //!   answers from a check, rather than `unchecked` for a whole interval.
-//! * **The first-layer alignment check**, after each read that found a
-//!   print running, until that print has a verdict ([`crate::alignment`]).
+//! * **The sweep of the alignment records** of every print that closed, after
+//!   each read ([`crate::alignment`]). The alignment itself is judged on each
+//!   check's own frame, never on a frame fetched here.
 //!
 //! `send_command` is called here and nowhere else in this program: no
 //! operation, agent or client can reach it.
@@ -190,8 +191,8 @@ fn run_turns(supervisor: &Arc<Supervisor>, turns: Vec<PendingTurn>) {
     }
 }
 
-/// Read the machine once per poll, run what the reads claimed, and rule on
-/// the running print's first-layer alignment once it is due.
+/// Read the machine once per poll, run what the reads claimed, and sweep the
+/// alignment records of every print that closed.
 fn reading(
     weak: Weak<Supervisor>,
     probe: Arc<Probe>,
@@ -216,19 +217,10 @@ fn reading(
             // the machine again.
             if let Ok(Ok(watched)) = watched {
                 run_turns(&supervisor, watched.turns);
-                let checking = Arc::clone(&supervisor);
                 let held = Arc::clone(&alignments);
-                // A check that panicked decided nothing; the next read asks
+                // A sweep that panicked removed nothing; the next read sweeps
                 // again.
-                let _ = tokio::task::spawn_blocking(move || {
-                    block_on(async {
-                        if let Some(active) = watched.active {
-                            let _ = held.check(&checking, active).await;
-                        }
-                        held.sweep().await;
-                    });
-                })
-                .await;
+                let _ = tokio::task::spawn_blocking(move || block_on(held.sweep())).await;
             }
         }
     })

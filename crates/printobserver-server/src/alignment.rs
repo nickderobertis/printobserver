@@ -1,14 +1,39 @@
-//! Each print's first-layer alignment verdict: whether the camera
-//! calibration's projection lands on that print's printed first layer.
+//! Each print's first-layer alignment verdict and its camera view: whether the
+//! camera calibration's projection lands on that print's printed first layer,
+//! and the correction every later drawing of the print goes through.
 //!
-//! A projection can be wrong with the camera unmoved, so each print verifies
-//! it once. The first time the printer watch finds a print's file position
-//! past the end of its first object layer, one frame is fetched from the
-//! camera and [`verify_first_layer_alignment`] rules on it; a fetch that gives
-//! no good frame is tried again at the next read. The verdict is written to
-//! `<state_dir>/alignment/<print id>.json`, so it stands through a restart
-//! while the print is open, and is deleted once the print closes. A print is
-//! checked once, and a failed print stays failed.
+//! A projection can be wrong with the camera unmoved, and a camera that has
+//! shifted a little is ordinary on a real printer, so each print judges its
+//! own. Once the print's first object layer is down, every scheduled check's
+//! own stored frame is judged ([`Alignments::judge`]), at most once a check
+//! and with no camera fetch of its own, until one passes: the layer clearly
+//! found, on a frame the toolhead does not cover
+//! ([`printobserver_panels::judge_first_layer`]). A covered or unclear frame
+//! is inconclusive and the next check's is judged again. A check taken while
+//! the printer reports the print paused is not judged: its bed is lowered off
+//! the plan's height. Only a frame of another size or stream fails, and that
+//! holds for the rest of the print.
+//!
+//! A pass puts the print's correction in force, a translation every later
+//! drawing goes through, kept with the landmarks found agreeing on that frame as
+//! its reference. Its translation is the pass's found shift when the frame
+//! stood within one layer of the first layer
+//! ([`printobserver_panels::alignment::correction_shift`]), and none from a
+//! taller frame, where the search scores the part's body. Every later frame's view is judged against that
+//! reference ([`printobserver_panels::judge_found`]); one showing the camera
+//! moved again sets the alignment back to pending, to take a fresh correction
+//! from a later check. Nothing is kept across prints: a sheet sits a few
+//! millimetres apart from one print to the next.
+//!
+//! Every judgement is written into the print's history, naming the stored
+//! frame it was made on ([`crate::judgements`]).
+//!
+//! The verdict is written to `<state_dir>/alignment/<print id>.json` and the
+//! correction, the last inconclusive reason and the last check's image to
+//! `<state_dir>/camera-view/<print id>.json`, so they stand through a restart
+//! while the print is open, and are deleted once the print closes. A verdict
+//! file an earlier release left failed on its offset is read as pending and
+//! judged again.
 //!
 //! Which check draws the toolpath on its image reads the verdict through
 //! [`Alignments::print_alignment`] and draws only for a print that `Passed`.
@@ -29,16 +54,18 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use printobserver_core::PlanPosition;
 use printobserver_core::store::PrintStore;
-use printobserver_core::{ActiveJob, Supervisor};
-use printobserver_panels::alignment::SEARCH_PX;
 use printobserver_panels::{
-    AlignmentInputs, CameraCalibration, ComposeError, FrameField, verify_first_layer_alignment,
+    AlignmentInputs, CameraCalibration, ComposeError, FirstLayerInputs, FirstLayerVerdict,
+    FrameField, InconclusiveReason, ReferenceLandmark, ViewCorrection, ViewJudgement, ViewOutcome,
+    judge_first_layer, judge_found, landmarks_in_frame,
 };
-use printobserver_types::PrintId;
+use printobserver_supervisor_api::{ImageFallback, ImageKind};
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
+use printobserver_types::{EventBody, EventPayload, PrintId, Timestamp};
 
 /// Why a print's alignment failed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -50,7 +77,9 @@ use printobserver_types::serde::{Deserialize, Serialize};
 #[schemars(crate = "printobserver_types::schemars")]
 pub enum AlignmentFailure {
     /// The printed first layer lies further from its projection than the
-    /// calibration allows.
+    /// calibration allows. No longer written: a frame that does not clearly
+    /// find the layer is inconclusive, and a verdict file an earlier release
+    /// left holding this is read as pending.
     Offset {
         /// How far, in calibration pixels.
         offset_px: f64,
@@ -86,6 +115,11 @@ pub enum PrintAlignment {
     Passed {
         /// How far it lies from it, in calibration pixels.
         offset_px: f64,
+        /// The first-layer correction applied to every later drawing of the
+        /// print, `[dx, dy]` calibration pixels: the shift the layer was found
+        /// at. `[0, 0]` in a verdict an earlier release wrote.
+        #[serde(default)]
+        correction_px: [f64; 2],
     },
     /// It does not, or the frames cannot be judged against the calibration.
     Failed {
@@ -96,7 +130,10 @@ pub enum PrintAlignment {
 
 impl Sample for PrintAlignment {
     fn sample_full() -> Self {
-        Self::Passed { offset_px: 14.5 }
+        Self::Passed {
+            offset_px: 14.6,
+            correction_px: [14.0, 4.0],
+        }
     }
 
     fn sample_minimal() -> Self {
@@ -156,6 +193,9 @@ pub struct Alignments {
     previous_directory: PathBuf,
     /// Where each print's recent checks' frames and heights are kept.
     checked_directory: PathBuf,
+    /// Where each print's correction, last inconclusive reason and last
+    /// check's image are kept.
+    view_directory: PathBuf,
     /// The camera's calibration, when one is configured.
     calibration: Option<Arc<CameraCalibration>>,
     /// The prints, to tell which are open.
@@ -192,6 +232,13 @@ pub fn checked_frames_dir(state_dir: &Path) -> PathBuf {
     state_dir.join("checked-frames")
 }
 
+/// The directory each print's correction, last inconclusive reason and last
+/// check's image are kept in, under a state directory.
+#[must_use]
+pub fn camera_view_dir(state_dir: &Path) -> PathBuf {
+    state_dir.join("camera-view")
+}
+
 impl Alignments {
     /// The verdicts kept under one state directory.
     ///
@@ -209,10 +256,13 @@ impl Alignments {
         std::fs::create_dir_all(&previous_directory)?;
         let checked_directory = checked_frames_dir(state_dir);
         std::fs::create_dir_all(&checked_directory)?;
+        let view_directory = camera_view_dir(state_dir);
+        std::fs::create_dir_all(&view_directory)?;
         Ok(Self {
             directory,
             previous_directory,
             checked_directory,
+            view_directory,
             calibration,
             prints,
         })
@@ -335,100 +385,406 @@ impl Alignments {
         if self.calibration.is_none() {
             return PrintAlignment::Unavailable;
         }
-        std::fs::read(self.path_of(print_id))
+        match std::fs::read(self.path_of(print_id))
             .ok()
             .and_then(|bytes| printobserver_types::serde_json::from_slice(&bytes).ok())
-            .unwrap_or(PrintAlignment::Pending)
+        {
+            // A failure on the offset is what an earlier release wrote for a
+            // frame that did not find the layer, which is now inconclusive.
+            Some(PrintAlignment::Failed {
+                reason: AlignmentFailure::Offset { .. },
+            })
+            | None => PrintAlignment::Pending,
+            Some(verdict) => verdict,
+        }
     }
 
-    /// Rule on the running print's alignment once its first object layer is
-    /// down, when it has no verdict yet. Answers the verdict it wrote, and
-    /// nothing when it wrote none — not yet due, or no good frame came.
-    pub async fn check(
-        &self,
-        supervisor: &Supervisor,
-        active: ActiveJob,
-    ) -> Option<PrintAlignment> {
-        let calibration = self.calibration.as_ref()?;
-        // A verdict file that cannot be read back is no verdict, and is
-        // decided again over it.
-        if self.print_alignment(active.print_id) != PrintAlignment::Pending {
-            return None;
-        }
-        let position = u64::try_from(active.file_position_bytes?).ok()?;
-        let index = supervisor.print_gcode_index(active.print_id).await?;
-        let Some((first, ends)) = index.first_object_layer() else {
-            return self.decide(active.print_id, PrintAlignment::Unavailable);
+    /// Where one print's camera view is kept.
+    fn view_path_of(&self, print_id: PrintId) -> PathBuf {
+        self.view_directory.join(format!("{print_id}.json"))
+    }
+
+    /// One print's camera view as it stands: nothing kept before its first
+    /// judgement, or when the record cannot be read back.
+    fn view_state(&self, print_id: PrintId) -> CameraViewState {
+        std::fs::read(self.view_path_of(print_id))
+            .ok()
+            .and_then(|bytes| printobserver_types::serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep one print's camera view. A record the filesystem refuses is said
+    /// on the log and leaves the one before standing, as
+    /// [`record_check`](Self::record_check) does.
+    fn keep_view_state(&self, print_id: PrintId, state: &CameraViewState) {
+        let Ok(bytes) = printobserver_types::serde_json::to_vec(state) else {
+            return;
         };
-        if position <= ends {
-            return None;
+        if let Err(error) = replace_file(&self.view_path_of(print_id), &bytes) {
+            eprintln!(
+                "printobserver: print {print_id}: its camera view could not be recorded, so a later check reads the one before: {error}"
+            );
         }
-        let first_layer = index.layer_toolpath(first).ok()?;
-        let print_z_mm = index
-            .layer_at(position)
-            .and_then(|layer| index.layer_z_mm(layer))?;
-        let (url, frame) = supervisor.fetch_camera_frame(active.print_id).await?;
-        let verdict = match verify_first_layer_alignment(&AlignmentInputs {
-            frame_jpeg: &frame,
-            camera_snapshot_url: &url,
-            first_layer: &first_layer,
-            print_z_mm,
-            calibration,
-        }) {
-            Ok(found) if found.passed => PrintAlignment::Passed {
-                offset_px: found.offset_px,
-            },
-            Ok(found) => PrintAlignment::Failed {
-                reason: AlignmentFailure::Offset {
-                    offset_px: found.offset_px,
-                },
-            },
-            Err(ComposeError::FrameMismatch {
-                field: FrameField::Resolution,
-                got,
-                ..
-            }) => PrintAlignment::Failed {
-                reason: AlignmentFailure::Resolution {
-                    expected: calibration.image_size_px,
-                    got: size_of(&got),
-                },
-            },
-            Err(ComposeError::FrameMismatch {
-                field: FrameField::Stream,
-                ..
-            }) => PrintAlignment::Failed {
-                reason: AlignmentFailure::Stream,
-            },
-            // A first layer projecting nowhere in the frame is as far from
-            // it as the check looks.
-            Err(ComposeError::OutlineOffFrame) => PrintAlignment::Failed {
-                reason: AlignmentFailure::Offset {
-                    offset_px: f64::from(SEARCH_PX),
-                },
-            },
-            Err(_) => return None,
-        };
-        self.decide(active.print_id, verdict)
     }
 
     /// Keep a verdict, and say it. A verdict the filesystem goes on refusing
-    /// ([`replace_file`]) is
-    /// decided again at the next read rather than lost; no test makes the
-    /// state directory refuse a write, which needs a filesystem made to fail
-    /// beneath a running server, and the retry is the same path a fetch that
-    /// gave no frame takes, which `aligning` proves.
-    fn decide(&self, print_id: PrintId, verdict: PrintAlignment) -> Option<PrintAlignment> {
-        let bytes = printobserver_types::serde_json::to_vec(&verdict).ok()?;
-        replace_file(&self.path_of(print_id), &bytes).ok()?;
-        eprintln!(
-            "printobserver: print {print_id}: first-layer alignment {}",
-            said(&verdict)
-        );
-        Some(verdict)
+    /// ([`replace_file`]) is said on the log and leaves the one before
+    /// standing, so the next check judges again from it.
+    fn decide(&self, print_id: PrintId, verdict: &PrintAlignment) {
+        let Ok(bytes) = printobserver_types::serde_json::to_vec(verdict) else {
+            return;
+        };
+        match replace_file(&self.path_of(print_id), &bytes) {
+            Ok(()) => eprintln!(
+                "printobserver: print {print_id}: first-layer alignment {}",
+                said(verdict)
+            ),
+            Err(error) => eprintln!(
+                "printobserver: print {print_id}: first-layer alignment {} could not be recorded: {error}",
+                said(verdict)
+            ),
+        }
     }
 
-    /// Delete the verdict, the last check's record and the checked frames of
-    /// every print that is not open.
+    /// The correction in force for one print: the one its last pass took, or,
+    /// for a pass an earlier release recorded with no reference, its
+    /// correction held against the calibration's own landmarks where it
+    /// placed them. Nothing unless the print's alignment passed.
+    #[must_use]
+    pub fn correction_in_force(&self, print_id: PrintId) -> Option<ViewCorrection> {
+        let calibration = self.calibration.as_deref()?;
+        let PrintAlignment::Passed { correction_px, .. } = self.print_alignment(print_id) else {
+            return None;
+        };
+        Some(self.view_state(print_id).correction.unwrap_or_else(|| {
+            ViewCorrection::translation(
+                correction_px,
+                calibration
+                    .landmarks
+                    .iter()
+                    .map(|landmark| ReferenceLandmark {
+                        name: landmark.name.clone(),
+                        offset_px: [0.0, 0.0],
+                        score: 1.0,
+                    })
+                    .collect(),
+            )
+        }))
+    }
+
+    /// Why the print's alignment was last left pending, when the frame judged
+    /// last was inconclusive.
+    #[must_use]
+    pub fn inconclusive(&self, print_id: PrintId) -> Option<InconclusiveReason> {
+        self.view_state(print_id).inconclusive
+    }
+
+    /// The image the print's last check was shown, and when its frame was
+    /// captured; nothing before its first check.
+    #[must_use]
+    pub fn last_check_image(&self, print_id: PrintId) -> Option<LastCheckImage> {
+        self.view_state(print_id).last_check_image
+    }
+
+    /// Keep the image one check of a print was shown, and answer the change
+    /// notice owed for it: on the print's first check image, and whenever its
+    /// kind or its fallback's code differs from the last one kept.
+    #[must_use]
+    pub fn note_check_image(
+        &self,
+        print_id: PrintId,
+        shown: LastCheckImage,
+        frame_sha256: &str,
+    ) -> Option<EventBody> {
+        let mut state = self.view_state(print_id);
+        let code = |image: &LastCheckImage| image.fallback.as_ref().map(|fallback| fallback.code);
+        let changed = state
+            .last_check_image
+            .as_ref()
+            .is_none_or(|last| last.kind != shown.kind || code(last) != code(&shown));
+        let notice = changed.then(|| {
+            body_of(&crate::judgements::CheckImageChangedPayload {
+                kind: shown.kind,
+                fallback: shown.fallback.clone(),
+                frame_sha256: frame_sha256.to_owned(),
+            })
+        });
+        state.last_check_image = Some(shown);
+        self.keep_view_state(print_id, &state);
+        notice.flatten()
+    }
+
+    /// Judge one frame of a print — its view always, and its first-layer
+    /// alignment when `judging` asks and the alignment is due — keeping what
+    /// the judgement decided and answering it with the records to append.
+    ///
+    /// The alignment is due on a frame of the configured camera once the
+    /// plan has passed the print's first object layer: while it is pending,
+    /// for [`AlignmentJudging::WhilePending`], and whatever it stands at for
+    /// [`AlignmentJudging::Afresh`], a latched failure included. A frame whose
+    /// view shows the camera moved again since the correction in force was
+    /// taken sets the alignment back to pending, and is not judged for it: a
+    /// later check's frame takes the fresh correction.
+    ///
+    /// Nothing is judged without a calibration, and a frame that is no JPEG is
+    /// answered as such, with nothing recorded.
+    #[must_use]
+    pub fn judge(&self, print_id: PrintId, judging: &Judging<'_>) -> Judged {
+        let Some(calibration) = self.calibration.as_deref() else {
+            return Judged::unjudged(PrintAlignment::Unavailable);
+        };
+        let mut judged = Judged::unjudged(self.print_alignment(print_id));
+        let mut state = self.view_state(print_id);
+        let in_force = self.correction_in_force(print_id);
+        let sha = judging.frame_sha256;
+        let landmarks = match landmarks_in_frame(
+            calibration,
+            judging.frame_jpeg,
+            judging.camera_snapshot_url,
+        ) {
+            Ok(landmarks) => landmarks,
+            Err(error @ ComposeError::FrameMismatch { .. }) => {
+                let reason = error.to_string();
+                judged
+                    .records
+                    .extend(body_of(&crate::judgements::CameraViewJudgedPayload {
+                        frame_sha256: sha.to_owned(),
+                        outcome: ViewOutcome::FrameMismatch,
+                        view_correction: in_force.clone(),
+                        reason: Some(reason.clone()),
+                    }));
+                if Self::alignment_due(&judged.alignment, judging).is_some() {
+                    let failure = failure_of(&error, calibration);
+                    judged.records.extend(body_of(
+                        &crate::judgements::FirstLayerAlignmentJudgedPayload {
+                            verdict: crate::judgements::AlignmentJudgedVerdict::Failed,
+                            offset_px: None,
+                            correction_px: None,
+                            match_strength: None,
+                            reason: failure_sentence(&failure),
+                            frame_sha256: sha.to_owned(),
+                            view_correction: in_force.clone(),
+                        },
+                    ));
+                    judged.alignment = PrintAlignment::Failed { reason: failure };
+                    self.decide(print_id, &judged.alignment);
+                    state.correction = None;
+                    state.inconclusive = None;
+                    self.keep_view_state(print_id, &state);
+                }
+                judged.correction = in_force.filter(|_| judged.alignment.passed());
+                judged.mismatch = Some(reason);
+                return judged;
+            }
+            Err(error) => {
+                judged.unreadable = Some(error.to_string());
+                return judged;
+            }
+        };
+        // A plan laying no object leaves nothing a frame could be judged
+        // against: the verdict file says so, and records nothing.
+        if judging.alignment != AlignmentJudging::Never
+            && judged.alignment == PrintAlignment::Pending
+            && judging
+                .plan
+                .is_some_and(|plan| plan.index.first_object_layer().is_none())
+        {
+            judged.alignment = PrintAlignment::Unavailable;
+            self.decide(print_id, &judged.alignment);
+        }
+        let due = Self::alignment_due(&judged.alignment, judging);
+        let view = match (due, &judged.alignment) {
+            (None, PrintAlignment::Passed { .. }) => {
+                let view = judge_found(calibration, landmarks, in_force.as_ref());
+                if view.outcome == ViewOutcome::ViewRefitRejected {
+                    judged.alignment = PrintAlignment::Pending;
+                    self.decide(print_id, &judged.alignment);
+                    state.correction = None;
+                    state.inconclusive = None;
+                    self.keep_view_state(print_id, &state);
+                    judged.rejected.clone_from(&view.reason);
+                } else {
+                    judged.correction.clone_from(&in_force);
+                }
+                judged
+                    .records
+                    .extend(view_record(sha, &view, in_force.clone()));
+                view
+            }
+            (Some(first), _) => self.judge_alignment(
+                print_id,
+                calibration,
+                landmarks,
+                &first,
+                judging,
+                in_force,
+                &mut state,
+                &mut judged,
+            ),
+            (None, _) => {
+                let view = judge_found(calibration, landmarks, None);
+                judged.records.extend(view_record(sha, &view, None));
+                view
+            }
+        };
+        judged.inconclusive = state.inconclusive;
+        judged.view = Some((view.outcome, view.reason));
+        judged
+    }
+
+    /// Judge the first layer on a frame it is due on, and the frame's view
+    /// against what that leaves in force.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the one judgement's inputs and the two records it updates"
+    )]
+    fn judge_alignment(
+        &self,
+        print_id: PrintId,
+        calibration: &CameraCalibration,
+        landmarks: Vec<printobserver_panels::FoundLandmark>,
+        first: &DueAlignment,
+        judging: &Judging<'_>,
+        in_force: Option<ViewCorrection>,
+        state: &mut CameraViewState,
+        judged: &mut Judged,
+    ) -> ViewJudgement {
+        let sha = judging.frame_sha256;
+        let uncorrected = judge_found(calibration, landmarks.clone(), None);
+        let judgement = judge_first_layer(&FirstLayerInputs {
+            alignment: AlignmentInputs {
+                frame_jpeg: judging.frame_jpeg,
+                camera_snapshot_url: judging.camera_snapshot_url,
+                first_layer: &first.first_layer,
+                print_z_mm: first.print_z_mm,
+                calibration,
+            },
+            nozzle_xy_mm: first.nozzle_xy_mm,
+        });
+        let Ok(judgement) = judgement else {
+            // The frame was decoded and held to the calibration above, so no
+            // refusal is reached here; one that is leaves the alignment as it
+            // stood, judged again on the next check's frame.
+            judged.records.extend(view_record(sha, &uncorrected, None));
+            return uncorrected;
+        };
+        let found = judgement.found;
+        let (verdict, correction_px, reason) = match judgement.verdict {
+            FirstLayerVerdict::Passed => (
+                crate::judgements::AlignmentJudgedVerdict::Passed,
+                found.map(|found| {
+                    printobserver_panels::alignment::correction_shift(
+                        &found,
+                        &first.first_layer,
+                        first.print_z_mm,
+                    )
+                }),
+                "clearly_found".to_owned(),
+            ),
+            FirstLayerVerdict::Inconclusive(why) => (
+                crate::judgements::AlignmentJudgedVerdict::Inconclusive,
+                None,
+                why.as_str().to_owned(),
+            ),
+        };
+        judged.records.extend(body_of(
+            &crate::judgements::FirstLayerAlignmentJudgedPayload {
+                verdict,
+                offset_px: found.map(|found| found.offset_px),
+                correction_px,
+                match_strength: found.map(|found| found.match_strength),
+                reason,
+                frame_sha256: sha.to_owned(),
+                view_correction: in_force,
+            },
+        ));
+        match (judgement.verdict, found) {
+            (FirstLayerVerdict::Passed, Some(found)) => {
+                let shift = printobserver_panels::alignment::correction_shift(
+                    &found,
+                    &first.first_layer,
+                    first.print_z_mm,
+                );
+                eprintln!(
+                    "printobserver: print {print_id}: the first layer was found shifted [{:.0}, {:.0}] px at Z {:.2}, at a contrast of {:.1}; corrected by [{:.0}, {:.0}] px",
+                    found.shift_px[0],
+                    found.shift_px[1],
+                    first.print_z_mm,
+                    found.match_strength,
+                    shift[0],
+                    shift[1]
+                );
+                let correction = ViewCorrection::translation(shift, uncorrected.agreeing());
+                judged.alignment = PrintAlignment::Passed {
+                    offset_px: found.offset_px,
+                    correction_px: shift,
+                };
+                self.decide(print_id, &judged.alignment);
+                state.correction = Some(correction.clone());
+                state.inconclusive = None;
+                self.keep_view_state(print_id, state);
+                if uncorrected.moved(calibration) {
+                    judged
+                        .records
+                        .extend(body_of(&crate::judgements::CameraViewRefitPayload {
+                            frame_sha256: sha.to_owned(),
+                            view_correction: correction.clone(),
+                        }));
+                }
+                let view = judge_found(calibration, landmarks, Some(&correction));
+                judged
+                    .records
+                    .extend(view_record(sha, &view, Some(correction.clone())));
+                judged.correction = Some(correction);
+                view
+            }
+            (FirstLayerVerdict::Inconclusive(why), _) => {
+                // Written even when it was pending already: a reader of the
+                // verdict file learns a frame was judged.
+                judged.alignment = PrintAlignment::Pending;
+                self.decide(print_id, &judged.alignment);
+                state.correction = None;
+                state.inconclusive = Some(why);
+                self.keep_view_state(print_id, state);
+                judged.records.extend(view_record(sha, &uncorrected, None));
+                uncorrected
+            }
+            (FirstLayerVerdict::Passed, None) => {
+                judged.records.extend(view_record(sha, &uncorrected, None));
+                uncorrected
+            }
+        }
+    }
+
+    /// The first layer a frame's judgement scores, when the alignment is due
+    /// on it; nothing otherwise.
+    fn alignment_due(alignment: &PrintAlignment, judging: &Judging<'_>) -> Option<DueAlignment> {
+        let asked = match judging.alignment {
+            AlignmentJudging::Never => false,
+            AlignmentJudging::WhilePending => *alignment == PrintAlignment::Pending,
+            AlignmentJudging::Afresh => true,
+        };
+        if !asked {
+            return None;
+        }
+        let plan = judging.plan?;
+        let index = &plan.index;
+        let position = plan.file_position_bytes;
+        let (first, ends) = index.first_object_layer()?;
+        if position <= ends {
+            return None;
+        }
+        Some(DueAlignment {
+            first_layer: index.layer_toolpath(first).ok()?,
+            print_z_mm: index
+                .layer_at(position)
+                .and_then(|layer| index.layer_z_mm(layer))?,
+            nozzle_xy_mm: index.planned_head_at(position).ok().flatten(),
+        })
+    }
+
+    /// Delete the verdict, the last check's record, the checked frames and the
+    /// camera view of every print that is not open.
     ///
     /// An open print's record still being written — the `.json.part` beside it
     /// that [`replace_file`] renames over it — is its own, and kept: the watch
@@ -459,6 +815,7 @@ impl Alignments {
             &self.directory,
             &self.previous_directory,
             &self.checked_directory,
+            &self.view_directory,
         ] {
             let Ok(entries) = std::fs::read_dir(directory) else {
                 continue;
@@ -588,7 +945,13 @@ fn said(verdict: &PrintAlignment) -> String {
     match verdict {
         PrintAlignment::Unavailable => "unavailable: the G-code lays no object".to_owned(),
         PrintAlignment::Pending => "pending".to_owned(),
-        PrintAlignment::Passed { offset_px } => format!("passed, offset {offset_px:.1} px"),
+        PrintAlignment::Passed {
+            offset_px,
+            correction_px,
+        } => format!(
+            "passed, offset {offset_px:.1} px, corrected by [{:.0}, {:.0}] px",
+            correction_px[0], correction_px[1]
+        ),
         PrintAlignment::Failed {
             reason: AlignmentFailure::Offset { offset_px },
         } => format!("failed, offset {offset_px:.1} px"),
@@ -601,6 +964,209 @@ fn said(verdict: &PrintAlignment) -> String {
         PrintAlignment::Failed {
             reason: AlignmentFailure::Stream,
         } => "failed: the camera is not the stream the calibration was fitted on".to_owned(),
+    }
+}
+
+/// One print's camera view as it is kept.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(crate = "printobserver_types::serde")]
+struct CameraViewState {
+    /// The correction the print's last pass took, with its reference.
+    #[serde(default)]
+    correction: Option<ViewCorrection>,
+    /// Why the frame judged last was inconclusive, while the alignment is
+    /// pending.
+    #[serde(default)]
+    inconclusive: Option<InconclusiveReason>,
+    /// The image the print's last check was shown.
+    #[serde(default)]
+    last_check_image: Option<LastCheckImage>,
+}
+
+/// The image a print's last check was shown, and when its frame was captured.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "printobserver_types::serde", deny_unknown_fields)]
+#[schemars(crate = "printobserver_types::schemars")]
+pub struct LastCheckImage {
+    /// When the check's frame was captured.
+    pub at: Timestamp,
+    /// Which image the check was shown.
+    pub kind: ImageKind,
+    /// Why it was the whole frame; null for the three-panel image.
+    pub fallback: Option<ImageFallback>,
+}
+
+impl Sample for LastCheckImage {
+    fn sample_full() -> Self {
+        Self {
+            at: Timestamp::sample_full(),
+            kind: ImageKind::WholeFrame,
+            fallback: Some(ImageFallback::sample_full()),
+        }
+    }
+
+    fn sample_minimal() -> Self {
+        Self {
+            at: Timestamp::sample_full(),
+            kind: ImageKind::ThreePanel,
+            fallback: None,
+        }
+    }
+}
+
+/// Whether a judgement of a frame judges the print's first-layer alignment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlignmentJudging {
+    /// Never: a look, or a frame not the configured camera's own.
+    Never,
+    /// While the alignment is pending: every scheduled check's frame.
+    WhilePending,
+    /// Whatever it stands at, a latched failure included: the operator's
+    /// recheck of the camera.
+    Afresh,
+}
+
+/// One frame to judge.
+#[derive(Debug, Clone, Copy)]
+pub struct Judging<'a> {
+    /// The frame's bytes.
+    pub frame_jpeg: &'a [u8],
+    /// The stored frame's SHA-256, which every record names.
+    pub frame_sha256: &'a str,
+    /// The stream it is of.
+    pub camera_snapshot_url: &'a str,
+    /// Where the print stood in its plan as it was taken.
+    pub plan: Option<&'a PlanPosition>,
+    /// Whether the first-layer alignment is judged.
+    pub alignment: AlignmentJudging,
+}
+
+/// What one judgement of a frame decided, and the records it owes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Judged {
+    /// The records to append, in order, each naming the frame.
+    pub records: Vec<EventBody>,
+    /// The print's alignment once judged.
+    pub alignment: PrintAlignment,
+    /// The correction the frame may be drawn through, when the alignment
+    /// passed and the view allows it.
+    pub correction: Option<ViewCorrection>,
+    /// The view's outcome and its refusal's reason; nothing when the frame was
+    /// not judged for its view.
+    pub view: Option<(ViewOutcome, Option<String>)>,
+    /// Why the correction in force was given up on this frame: the camera
+    /// moved again.
+    pub rejected: Option<String>,
+    /// Why the frame is not the calibration's size or stream.
+    pub mismatch: Option<String>,
+    /// Why the frame could not be read at all.
+    pub unreadable: Option<String>,
+    /// Why the alignment was left pending, when the frame judged last was
+    /// inconclusive.
+    pub inconclusive: Option<InconclusiveReason>,
+}
+
+impl Judged {
+    /// Nothing that could be judged of a frame — no calibration, or no stream
+    /// it was fitted on — the alignment standing as it is, and the one record
+    /// the frame is kept with.
+    #[must_use]
+    pub fn nothing_to_judge(alignment: PrintAlignment, kept_with: Option<EventBody>) -> Self {
+        Self {
+            records: kept_with.into_iter().collect(),
+            ..Self::unjudged(alignment)
+        }
+    }
+
+    /// Nothing judged, the alignment standing as it is.
+    const fn unjudged(alignment: PrintAlignment) -> Self {
+        Self {
+            records: Vec::new(),
+            alignment,
+            correction: None,
+            view: None,
+            rejected: None,
+            mismatch: None,
+            unreadable: None,
+            inconclusive: None,
+        }
+    }
+}
+
+impl PrintAlignment {
+    /// Whether it passed.
+    #[must_use]
+    pub const fn passed(&self) -> bool {
+        matches!(self, Self::Passed { .. })
+    }
+}
+
+/// What a first-layer judgement due on a frame scores.
+struct DueAlignment {
+    /// The first object layer's toolpath.
+    first_layer: printobserver_core::LayerToolpath,
+    /// The print's height in its plan as the frame was taken.
+    print_z_mm: f64,
+    /// Where the plan has the nozzle then.
+    nozzle_xy_mm: Option<[f64; 2]>,
+}
+
+/// One payload as the body appended for it; nothing for one that will not
+/// render, which no declared payload is.
+fn body_of<P: EventPayload>(payload: &P) -> Option<EventBody> {
+    EventBody::of(payload).ok()
+}
+
+/// The record of one view judgement, its reason the fallback it leads to: a
+/// refit view, its landmarks moved from the calibration, is drawn on no more
+/// than a refused one.
+fn view_record(
+    frame_sha256: &str,
+    view: &ViewJudgement,
+    view_correction: Option<ViewCorrection>,
+) -> Option<EventBody> {
+    let reason = if view.outcome == ViewOutcome::Refit {
+        Some(crate::check_images::CALIBRATION_STALE.to_owned())
+    } else {
+        view.reason.clone()
+    };
+    body_of(&crate::judgements::CameraViewJudgedPayload {
+        frame_sha256: frame_sha256.to_owned(),
+        outcome: view.outcome,
+        view_correction,
+        reason,
+    })
+}
+
+/// The failure a frame refused for its size or stream latches.
+fn failure_of(error: &ComposeError, calibration: &CameraCalibration) -> AlignmentFailure {
+    match error {
+        ComposeError::FrameMismatch {
+            field: FrameField::Resolution,
+            got,
+            ..
+        } => AlignmentFailure::Resolution {
+            expected: calibration.image_size_px,
+            got: size_of(got),
+        },
+        _ => AlignmentFailure::Stream,
+    }
+}
+
+/// A failure in the sentence its record and its fallback give it in.
+#[must_use]
+pub fn failure_sentence(failure: &AlignmentFailure) -> String {
+    match failure {
+        AlignmentFailure::Offset { offset_px } => format!(
+            "the printed first layer lies {offset_px:.1} px from where the calibration projects it"
+        ),
+        AlignmentFailure::Resolution { expected, got } => format!(
+            "the camera's frames are {}x{} and the calibration's {}x{}",
+            got[0], got[1], expected[0], expected[1]
+        ),
+        AlignmentFailure::Stream => {
+            "the camera is not the stream the calibration was fitted on".to_owned()
+        }
     }
 }
 

@@ -205,6 +205,10 @@ def type_of(schema: dict[str, Any] | bool) -> TypeExpr:
         if len(named) != 1 or "null" not in declared:
             msg = f"the type list {declared!r} is not one a property may take"
             raise ContractError(msg)
+        # An optional array, such as a fixed-length pair, carries its item
+        # shape beside the type list: it is the array's own shape, nullable.
+        if named[0] == "array":
+            return Nullable(type_of({**schema, "type": "array"}))
         return Nullable(_scalar(str(named[0])))
     if declared == "array":
         items = schema.get("items")

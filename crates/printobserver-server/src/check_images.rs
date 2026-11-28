@@ -32,7 +32,13 @@ use printobserver_panels::{
 };
 use printobserver_types::{PrintId, Timestamp};
 
-use crate::alignment::{AlignmentFailure, Alignments, CheckedFrame, PreviousCheck, PrintAlignment};
+use printobserver_panels::{InconclusiveReason, ViewCorrection, ViewOutcome};
+use printobserver_supervisor_api::{ImageFallback, WholeFrameReasonCode};
+
+use crate::alignment::{
+    AlignmentFailure, AlignmentJudging, Alignments, CheckedFrame, Judged, Judging, LastCheckImage,
+    PreviousCheck, PrintAlignment, failure_sentence,
+};
 
 /// How many scaled frames this process has begun writing, which names each
 /// write's partial file apart from any other's.
@@ -138,12 +144,61 @@ pub enum WholeFrameReason {
     ToolpathUnread(String),
     /// The print's first-layer alignment is not decided yet.
     AlignmentPending,
+    /// The frame the print's first-layer alignment was last judged on could
+    /// not tell where the layer lies; a later check's is judged again.
+    AlignmentInconclusive(InconclusiveReason),
     /// The print's G-code lays no object to align.
     AlignmentUnavailable,
     /// The print's first-layer alignment failed.
     AlignmentFailed(AlignmentFailure),
+    /// Fewer than two landmarks are found, so whether the camera shifted is
+    /// unknown.
+    LandmarksNotFound(String),
+    /// The camera moved since the print's correction was taken.
+    ViewRefitRejected(String),
+    /// The landmarks show the camera has moved since its calibration, so the
+    /// plan cannot be drawn reliably on its frames, whatever correction a pass
+    /// took: a translation cannot repair a camera that has turned.
+    CalibrationStale,
+    /// The frame is not the calibration's size or stream.
+    FrameMismatch(String),
+    /// The printer reports the print paused, its bed moved off the plan's
+    /// height.
+    Paused,
     /// The composer refused this frame.
     Refused(ComposeError),
+}
+
+impl WholeFrameReason {
+    /// The reason as a code.
+    #[must_use]
+    pub const fn code(&self) -> WholeFrameReasonCode {
+        match self {
+            Self::NoPrint => WholeFrameReasonCode::NoPrint,
+            Self::NoCalibration => WholeFrameReasonCode::NoCalibration,
+            Self::NoStream => WholeFrameReasonCode::NoStream,
+            Self::NoPosition => WholeFrameReasonCode::NoPosition,
+            Self::NoObject => WholeFrameReasonCode::NoObject,
+            Self::NoLayer => WholeFrameReasonCode::NoLayer,
+            Self::ToolpathUnread(_) => WholeFrameReasonCode::ToolpathUnread,
+            Self::AlignmentPending => WholeFrameReasonCode::AlignmentPending,
+            Self::AlignmentInconclusive(_) => WholeFrameReasonCode::AlignmentInconclusive,
+            Self::AlignmentUnavailable => WholeFrameReasonCode::AlignmentUnavailable,
+            Self::AlignmentFailed(_) => WholeFrameReasonCode::AlignmentFailed,
+            Self::LandmarksNotFound(_) | Self::Refused(ComposeError::DriftUnverified) => {
+                WholeFrameReasonCode::LandmarksNotFound
+            }
+            Self::ViewRefitRejected(_) | Self::Refused(ComposeError::CameraMoved { .. }) => {
+                WholeFrameReasonCode::ViewRefitRejected
+            }
+            Self::FrameMismatch(_) | Self::Refused(ComposeError::FrameMismatch { .. }) => {
+                WholeFrameReasonCode::FrameMismatch
+            }
+            Self::CalibrationStale => WholeFrameReasonCode::CalibrationStale,
+            Self::Paused => WholeFrameReasonCode::Paused,
+            Self::Refused(_) => WholeFrameReasonCode::Refused,
+        }
+    }
 }
 
 impl core::fmt::Display for WholeFrameReason {
@@ -169,31 +224,62 @@ impl core::fmt::Display for WholeFrameReason {
             Self::AlignmentPending => formatter.write_str(
                 "the print's first-layer alignment is pending: its first object layer is not down, or no frame of it has been judged yet",
             ),
+            Self::AlignmentInconclusive(why) => write!(
+                formatter,
+                "the print's first-layer alignment is inconclusive on the frame judged last: {}, so a later check's frame is judged again; this is no evidence of a defect",
+                match why {
+                    InconclusiveReason::Covered => "the toolhead covers the part, which sits hidden under the head on this frame: bare sheet beside the head alone is no sign the part is gone, but a part seen moved, loose or in spaghetti is",
+                    InconclusiveReason::NotClearlyFound => "the printed first layer was not clearly found",
+                }
+            ),
             Self::AlignmentUnavailable => {
                 formatter.write_str("the print's G-code lays no object to align")
             }
-            Self::AlignmentFailed(AlignmentFailure::Offset { offset_px }) => write!(
+            Self::AlignmentFailed(failure) => write!(
                 formatter,
-                "the print's first-layer alignment failed: the printed first layer lies {offset_px:.1} px from where the calibration projects it"
+                "the print's first-layer alignment failed: {}",
+                failure_sentence(failure)
             ),
-            Self::AlignmentFailed(AlignmentFailure::Resolution { expected, got }) => write!(
-                formatter,
-                "the print's first-layer alignment failed: the camera's frames are {}x{} and the calibration's {}x{}",
-                got[0], got[1], expected[0], expected[1]
-            ),
-            Self::AlignmentFailed(AlignmentFailure::Stream) => formatter.write_str(
-                "the print's first-layer alignment failed: the camera is not the stream the calibration was fitted on",
+            Self::LandmarksNotFound(reason) | Self::ViewRefitRejected(reason) | Self::FrameMismatch(reason) => {
+                formatter.write_str(reason)
+            }
+            Self::CalibrationStale => formatter.write_str(CALIBRATION_STALE),
+            Self::Paused => formatter.write_str(
+                "the printer reports the print paused, so its bed may stand off the plan's height and nothing is drawn",
             ),
             Self::Refused(error) => error.fmt(formatter),
         }
     }
 }
 
+/// Why a check of a camera that has moved since its calibration is shown the
+/// whole frame.
+pub const CALIBRATION_STALE: &str = "the camera has moved since its calibration, so the outline cannot be drawn reliably; recalibrate this camera";
+
+/// How far the plan may rise, in millimetres, past a frame a check is compared
+/// against before a part not plainly higher on a whole frame shown for the
+/// camera's own sake is grounds to pause. On the two-colour print's stale
+/// camera, the box's rise of 1.8 and 4.0 mm was read by eye as none, and the
+/// healthy print paused; a part that stops growing for longer than this still
+/// is.
+pub const UNSEEN_RISE_BOUND_MM: f64 = 5.0;
+
 /// The line saying a check was shown the whole frame, and why.
+///
+/// A whole frame shown because the camera moved since its calibration, or
+/// because the first layer was not clearly found, carries the bound
+/// [`UNSEEN_RISE_BOUND_MM`] on judging a rise by eye; every other whole frame
+/// keeps the skill's own rule.
 #[must_use]
 pub fn whole_frame_note(reason: &WholeFrameReason) -> String {
+    let bound = match reason {
+        WholeFrameReason::CalibrationStale | WholeFrameReason::AlignmentInconclusive(_) => format!(
+            "; on this frame a part that is not plainly higher is no grounds to pause on its own until the plan's rise since the frame it is compared against exceeds {UNSEEN_RISE_BOUND_MM:.0} mm"
+        ),
+        _ => String::new(),
+    };
     format!(
-        "{WHOLE_FRAME_NOTE}, scaled to fit {WHOLE_FRAME_WIDTH}x{WHOLE_FRAME_HEIGHT} and uncropped, because {reason}"
+        "{WHOLE_FRAME_NOTE}, scaled to fit {WHOLE_FRAME_WIDTH}x{WHOLE_FRAME_HEIGHT} and uncropped, because {reason}{bound}"
     )
 }
 
@@ -283,7 +369,8 @@ pub struct PlanAt<'a> {
 }
 
 /// Compose the three-panel check image of one frame at one file position, as
-/// every check of a print whose alignment passed is shown it: the active
+/// every check of a print whose alignment passed is shown it, through the
+/// print's correction when one is given: the active
 /// object at that position, the layer there — and, when that layer lays
 /// supports alone, the nearest object layer below it — over the frame, with
 /// `previous` as panel 3.
@@ -298,6 +385,7 @@ pub fn compose_at(
     previous: Option<(&[u8], Timestamp)>,
     camera_snapshot_url: &str,
     calibration: &CameraCalibration,
+    correction: Option<&ViewCorrection>,
 ) -> Result<CheckImage, WholeFrameReason> {
     let index = plan.index;
     let position = plan.file_position_bytes;
@@ -330,8 +418,66 @@ pub fn compose_at(
         object_layer_below: below.as_ref(),
         print_z_mm,
         calibration,
+        correction,
     })
     .map_err(WholeFrameReason::Refused)
+}
+
+/// Why a judged frame of a print whose plan places it may not be drawn on.
+///
+/// A frame whose landmarks have moved from the calibration is drawn on not at
+/// all, though they agree with the correction in force: on the first shifted
+/// print the projection stood 1 to 31 px off the part, growing with height and
+/// toward the back, which no translation removes.
+fn refusal_of(judged: &Judged) -> Result<(), WholeFrameReason> {
+    if let Some(reason) = &judged.rejected {
+        return Err(WholeFrameReason::ViewRefitRejected(reason.clone()));
+    }
+    match &judged.alignment {
+        PrintAlignment::Passed { .. } => {}
+        PrintAlignment::Pending => {
+            return Err(judged.inconclusive.map_or(
+                WholeFrameReason::AlignmentPending,
+                WholeFrameReason::AlignmentInconclusive,
+            ));
+        }
+        PrintAlignment::Unavailable => return Err(WholeFrameReason::AlignmentUnavailable),
+        PrintAlignment::Failed { reason } => {
+            return Err(WholeFrameReason::AlignmentFailed(reason.clone()));
+        }
+    }
+    if let Some(reason) = &judged.mismatch {
+        return Err(WholeFrameReason::FrameMismatch(reason.clone()));
+    }
+    let said = |reason: &Option<String>| reason.clone().unwrap_or_default();
+    match &judged.view {
+        Some((ViewOutcome::LandmarksNotFound, reason)) => {
+            Err(WholeFrameReason::LandmarksNotFound(said(reason)))
+        }
+        Some((ViewOutcome::ViewRefitRejected, reason)) => {
+            Err(WholeFrameReason::ViewRefitRejected(said(reason)))
+        }
+        Some((ViewOutcome::FrameMismatch, reason)) => {
+            Err(WholeFrameReason::FrameMismatch(said(reason)))
+        }
+        Some((ViewOutcome::Refit, _)) => Err(WholeFrameReason::CalibrationStale),
+        Some((ViewOutcome::Unshifted, _)) | None => Ok(()),
+    }
+}
+
+/// One judged frame whose image is chosen.
+#[derive(Debug, Clone, Copy)]
+pub struct Shown<'a> {
+    /// Where the stored frame is.
+    pub frame: &'a Path,
+    /// When it was captured.
+    pub captured_at: Timestamp,
+    /// What the image is for.
+    pub made_for: ImageUse,
+    /// Where the print stood in its plan.
+    pub plan: Option<&'a PlanPosition>,
+    /// Whether the printer reported the print paused.
+    pub paused: bool,
 }
 
 /// Every check's image, the three-panel one where it can be trusted and the
@@ -371,21 +517,87 @@ impl PanelImages {
         }
     }
 
+    /// One print's first-layer alignment as it stands.
+    #[must_use]
+    pub fn alignment(&self, print_id: PrintId) -> PrintAlignment {
+        self.alignments.print_alignment(print_id)
+    }
+
+    /// The image one print's last check was shown; nothing before its first.
+    #[must_use]
+    pub fn last_check_image(&self, print_id: PrintId) -> Option<LastCheckImage> {
+        self.alignments.last_check_image(print_id)
+    }
+
     /// The whole frame, with the line saying why.
     fn whole_frame(&self, frame: &Path, reason: &WholeFrameReason) -> Result<ShownImage, String> {
         Ok(ShownImage {
-            path: self.whole.check_image(None, frame)?,
-            note: Some(whole_frame_note(reason)),
-            composite: false,
+            fallback: Some(ImageFallback {
+                code: reason.code(),
+                message: reason.to_string(),
+            }),
+            ..ShownImage::plain(
+                self.whole.check_image(None, frame)?,
+                Some(whole_frame_note(reason)),
+            )
         })
     }
 
-    /// The three-panel image of one request of a print, or why it is shown
-    /// the whole frame instead.
-    fn composite(
+    /// Judge one frame of a print — its view, and its first-layer alignment
+    /// as `alignment` asks — keeping what that decides. Nothing when no
+    /// calibration or no camera stream is configured, which leaves nothing to
+    /// judge a frame against.
+    #[must_use]
+    pub fn judge_frame(
         &self,
         print_id: PrintId,
-        request: &CheckImageRequest<'_>,
+        frame: &[u8],
+        frame_sha256: &str,
+        plan: Option<&PlanPosition>,
+        alignment: AlignmentJudging,
+    ) -> Option<Judged> {
+        self.alignments.calibration()?;
+        let url = self.camera_snapshot_url.as_deref()?;
+        Some(self.alignments.judge(
+            print_id,
+            &Judging {
+                frame_jpeg: frame,
+                frame_sha256,
+                camera_snapshot_url: url,
+                plan,
+                alignment,
+            },
+        ))
+    }
+
+    /// The image one frame of a print is shown once it has been judged: the
+    /// three-panel image where the judgement allows it, and the whole frame
+    /// with the reason otherwise.
+    ///
+    /// # Errors
+    ///
+    /// Why no image could be made at all: the frame unreadable, or the image
+    /// unwritable.
+    pub fn image_of(
+        &self,
+        print_id: PrintId,
+        shown: &Shown<'_>,
+        judged: Option<&Judged>,
+    ) -> Result<ShownImage, String> {
+        let previous = self.alignments.previous_check(print_id);
+        match self.chosen(print_id, shown, judged, previous.as_ref())? {
+            Ok(composite) => Ok(composite),
+            Err(reason) => self.whole_frame(shown.frame, &reason),
+        }
+    }
+
+    /// The three-panel image of one judged frame of a print, or why it is
+    /// shown the whole frame instead.
+    fn chosen(
+        &self,
+        print_id: PrintId,
+        shown: &Shown<'_>,
+        judged: Option<&Judged>,
         previous: Option<&PreviousCheck>,
     ) -> Result<Result<ShownImage, WholeFrameReason>, String> {
         let Some(calibration) = self.alignments.calibration() else {
@@ -394,7 +606,16 @@ impl PanelImages {
         let Some(url) = self.camera_snapshot_url.as_deref() else {
             return Ok(Err(WholeFrameReason::NoStream));
         };
-        let Some(plan) = &request.plan else {
+        if shown.paused {
+            return Ok(Err(WholeFrameReason::Paused));
+        }
+        let Some(judged) = judged else {
+            return Ok(Err(WholeFrameReason::AlignmentPending));
+        };
+        if let Some(detail) = &judged.unreadable {
+            return Err(detail.clone());
+        }
+        let Some(plan) = shown.plan else {
             return Ok(Err(WholeFrameReason::NoPosition));
         };
         let at = PlanAt {
@@ -409,18 +630,11 @@ impl PanelImages {
         if at.index.layer_at(at.file_position_bytes).is_none() {
             return Ok(Err(WholeFrameReason::NoLayer));
         }
-        match self.alignments.print_alignment(print_id) {
-            PrintAlignment::Passed { .. } => {}
-            PrintAlignment::Pending => return Ok(Err(WholeFrameReason::AlignmentPending)),
-            PrintAlignment::Unavailable => {
-                return Ok(Err(WholeFrameReason::AlignmentUnavailable));
-            }
-            PrintAlignment::Failed { reason } => {
-                return Ok(Err(WholeFrameReason::AlignmentFailed(reason)));
-            }
+        if let Err(reason) = refusal_of(judged) {
+            return Ok(Err(reason));
         }
-        let current = std::fs::read(request.frame)
-            .map_err(|error| format!("{} is unreadable: {error}", request.frame.display()))?;
+        let current = std::fs::read(shown.frame)
+            .map_err(|error| format!("{} is unreadable: {error}", shown.frame.display()))?;
         // A previous frame gone from the store, or one that no longer decodes,
         // is one the panel cannot show, which leaves panel 3 empty rather than
         // the check without an image.
@@ -432,10 +646,11 @@ impl PanelImages {
         });
         let composed = match compose_at(
             at,
-            (&current, request.captured_at),
+            (&current, shown.captured_at),
             earlier.as_ref().map(|(bytes, at)| (bytes.as_slice(), *at)),
             url,
             calibration,
+            judged.correction.as_ref(),
         ) {
             Ok(composed) => composed,
             // The current frame was judged whole by the vision port before it
@@ -448,22 +663,21 @@ impl PanelImages {
             )) => return Err(detail),
             Err(reason) => return Ok(Err(reason)),
         };
-        let destination = self.composite_destination(request.frame, previous);
+        let destination = self.composite_destination(shown.frame, previous);
         write_image(&self.whole.directory, &destination, &composed.jpeg)?;
         let mut note = composite_note(
-            request.made_for,
-            request.captured_at,
+            shown.made_for,
+            shown.captured_at,
             earlier.as_ref().map(|(_, at)| *at),
         );
-        if request.made_for == ImageUse::Check
+        if shown.made_for == ImageUse::Check
             && let Some(clause) = self.growth_clause(print_id, plan, &current, url, calibration)
         {
             note.push_str(&clause);
         }
         Ok(Ok(ShownImage {
-            path: destination,
-            note: Some(note),
             composite: true,
+            ..ShownImage::plain(destination, Some(note))
         }))
     }
 
@@ -555,12 +769,46 @@ impl CheckImages for PanelImages {
         let Some(print_id) = request.print_id else {
             return self.whole_frame(request.frame, &WholeFrameReason::NoPrint);
         };
-        let previous = self.alignments.previous_check(print_id);
-        let shown = match self.composite(print_id, request, previous.as_ref())? {
-            Ok(composite) => composite,
-            Err(reason) => self.whole_frame(request.frame, &reason)?,
+        // A check taken while the printer reports the print paused is not
+        // judged: its bed is lowered off the plan's height.
+        let judged = if request.paused {
+            None
+        } else {
+            let alignment = if request.made_for == ImageUse::Check && request.own_camera {
+                AlignmentJudging::WhilePending
+            } else {
+                AlignmentJudging::Never
+            };
+            match std::fs::read(request.frame) {
+                Ok(current) => self.judge_frame(
+                    print_id,
+                    &current,
+                    request.frame_sha256,
+                    request.plan.as_ref(),
+                    alignment,
+                ),
+                Err(error) => {
+                    return Err(format!(
+                        "{} is unreadable: {error}",
+                        request.frame.display()
+                    ));
+                }
+            }
         };
-        if request.made_for == ImageUse::Check {
+        let shown = Shown {
+            frame: request.frame,
+            captured_at: request.captured_at,
+            made_for: request.made_for,
+            plan: request.plan.as_ref(),
+            paused: request.paused,
+        };
+        let mut image = self.image_of(print_id, &shown, judged.as_ref())?;
+        image.records = judged.map(|judged| judged.records).unwrap_or_default();
+        // Only the camera's own frame is a later check's panel 3 or the
+        // reference its growth is measured from: a detector's picture need be
+        // neither the calibration's size nor its stream, and the composer
+        // refuses a previous frame of another size than the current one.
+        if request.made_for == ImageUse::Check && request.own_camera {
             self.alignments.record_check(
                 print_id,
                 &PreviousCheck {
@@ -580,6 +828,17 @@ impl CheckImages for PanelImages {
                 );
             }
         }
-        Ok(shown)
+        if request.made_for == ImageUse::Check {
+            image.records.extend(self.alignments.note_check_image(
+                print_id,
+                LastCheckImage {
+                    at: request.captured_at,
+                    kind: image.kind(),
+                    fallback: image.fallback.clone(),
+                },
+                request.frame_sha256,
+            ));
+        }
+        Ok(image)
     }
 }

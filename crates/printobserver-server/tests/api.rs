@@ -50,6 +50,8 @@ mod compacting;
 // The responder binary this journey runs is built only under the feature this
 // crate's own test target is run with.
 #[cfg(feature = "test-responder")]
+#[path = "journeys/camera_view.rs"]
+mod camera_view;
 #[path = "journeys/composite_checks.rs"]
 mod composite_checks;
 #[path = "journeys/configuration.rs"]

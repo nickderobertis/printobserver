@@ -22,18 +22,21 @@
 //! what lets the client generator resolve a reference to the contracts' own
 //! file rather than to a second copy of it.
 //!
-//! # And the one event kind this crate declares
+//! # And the event kinds this crate declares
 //!
 //! The startup reconciliation is written down by this crate's own `reconcile`
-//! module and nothing else, so its payload's schema — marked with its kind
-//! through [`event_schema_of`] — is written here beside the answer shapes.
+//! module and nothing else, and the records of what it judged of a print's
+//! camera frames by its own `judgements` module, so their payloads' schemas —
+//! each marked with its kind through [`event_schema_of`] — are written here
+//! beside the answer shapes.
 
 #[path = "support/schema_files.rs"]
 mod schema_files;
 
 use printobserver_server::{
-    Answer, Effect, OPERATIONS, Operation, StartupOutcome, StartupReconciliationPayload,
-    VERSION_PREFIX,
+    Answer, CameraViewJudgedPayload, CameraViewRefitPayload, CheckImageChangedPayload, Effect,
+    FirstLayerAlignmentJudgedPayload, OPERATIONS, Operation, StartupOutcome,
+    StartupReconciliationPayload, VERSION_PREFIX,
 };
 use printobserver_types::contract::{Sample as _, schema_of};
 use printobserver_types::serde_json::{Value, json};
@@ -202,6 +205,14 @@ fn answer_schemas() -> Vec<(String, Value)> {
             schema_of::<printobserver_server::BedClearAnswer>(),
         ),
         (
+            "RecheckCameraAnswer.json".to_owned(),
+            schema_of::<printobserver_server::RecheckCameraAnswer>(),
+        ),
+        (
+            "LastCheckImage.json".to_owned(),
+            schema_of::<printobserver_server::LastCheckImage>(),
+        ),
+        (
             "SpoolsAnswer.json".to_owned(),
             schema_of::<printobserver_server::SpoolsAnswer>(),
         ),
@@ -212,7 +223,7 @@ fn answer_schemas() -> Vec<(String, Value)> {
     ]
 }
 
-/// The one event kind this crate declares, and the vocabulary it carries.
+/// The event kinds this crate declares, and the vocabulary they carry.
 fn event_schemas() -> Vec<(String, Value)> {
     vec![
         (
@@ -223,16 +234,113 @@ fn event_schemas() -> Vec<(String, Value)> {
             "StartupOutcome.json".to_owned(),
             schema_of::<StartupOutcome>(),
         ),
+        (
+            "FirstLayerAlignmentJudgedPayload.json".to_owned(),
+            event_schema_of::<FirstLayerAlignmentJudgedPayload>(),
+        ),
+        (
+            "AlignmentJudgedVerdict.json".to_owned(),
+            schema_of::<printobserver_server::AlignmentJudgedVerdict>(),
+        ),
+        (
+            "CameraViewJudgedPayload.json".to_owned(),
+            event_schema_of::<CameraViewJudgedPayload>(),
+        ),
+        (
+            "CameraViewRefitPayload.json".to_owned(),
+            event_schema_of::<CameraViewRefitPayload>(),
+        ),
+        (
+            "CheckImageChangedPayload.json".to_owned(),
+            event_schema_of::<CheckImageChangedPayload>(),
+        ),
     ]
 }
 
+/// Every judgement record this crate writes reads back as itself under its
+/// own kind, with every field the contract states written out — a value
+/// nobody knows as null — and none beside them.
+#[test]
+fn every_judgement_record_round_trips_under_its_kind() {
+    fn round_trip<P>(kind: &str, fields: &[&str])
+    where
+        P: EventPayload
+            + printobserver_types::contract::Sample
+            + PartialEq
+            + core::fmt::Debug
+            + printobserver_types::serde::Serialize
+            + printobserver_types::serde::de::DeserializeOwned,
+    {
+        assert_eq!(P::KIND, kind);
+        let mut samples = vec![P::sample_full(), P::sample_minimal()];
+        samples.extend(P::sample_alternates());
+        for sample in samples {
+            let body = EventBody::of(&sample).expect("it renders");
+            let written = body.payload.as_object().expect("an object").clone();
+            let mut names: Vec<&str> = written.keys().map(String::as_str).collect();
+            names.sort_unstable();
+            let mut expected = fields.to_vec();
+            expected.sort_unstable();
+            assert_eq!(names, expected, "{kind} writes exactly its stated fields");
+            let read: P = body.read::<P>().expect("its kind").expect("it reads back");
+            assert_eq!(read, sample, "{kind}");
+        }
+    }
+    round_trip::<FirstLayerAlignmentJudgedPayload>(
+        "first_layer_alignment_judged",
+        &[
+            "verdict",
+            "offset_px",
+            "correction_px",
+            "match_strength",
+            "reason",
+            "frame_sha256",
+            "view_correction",
+        ],
+    );
+    round_trip::<CameraViewJudgedPayload>(
+        "camera_view_judged",
+        &["frame_sha256", "outcome", "view_correction", "reason"],
+    );
+    round_trip::<CameraViewRefitPayload>("camera_view_refit", &["frame_sha256", "view_correction"]);
+    round_trip::<CheckImageChangedPayload>(
+        "check_image_changed",
+        &["kind", "fallback", "frame_sha256"],
+    );
+}
+
+/// A verdict file an earlier release wrote — passed with no correction, or
+/// failed on its offset — still reads: the pass as corrected by nothing.
+#[test]
+fn an_earlier_release_s_passed_verdict_reads_with_no_correction() {
+    use printobserver_server::PrintAlignment;
+    let read: PrintAlignment = printobserver_types::serde_json::from_value(
+        json!({ "verdict": "passed", "offset_px": 14.5 }),
+    )
+    .expect("an earlier release's pass reads");
+    assert_eq!(
+        read,
+        PrintAlignment::Passed {
+            offset_px: 14.5,
+            correction_px: [0.0, 0.0]
+        }
+    );
+}
+
 /// What this crate keeps under its state directory that another reads: each
-/// print's first-layer alignment verdict, which the real-print suite records.
+/// print's first-layer alignment verdict, which the real-print suite records
+/// and a recheck of the camera answers, and the failure it can carry.
 fn state_schemas() -> Vec<(String, Value)> {
-    vec![(
-        "PrintAlignment.json".to_owned(),
-        schema_of::<printobserver_server::PrintAlignment>(),
-    )]
+    vec![
+        (
+            "PrintAlignment.json".to_owned(),
+            schema_of::<printobserver_server::PrintAlignment>(),
+        ),
+        (
+            "AlignmentFailure.json".to_owned(),
+            schema_of::<printobserver_server::AlignmentFailure>(),
+        ),
+    ]
 }
 
 /// Every alignment verdict the server keeps reads back as itself.

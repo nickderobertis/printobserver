@@ -120,6 +120,35 @@ pub(crate) fn convex_hull(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
     hull
 }
 
+/// How far a point lies outside a convex polygon, in its units: its distance
+/// to the nearest edge, negative when it lies inside.
+pub(crate) fn signed_distance(point: [f64; 2], polygon: &[[f64; 2]]) -> f64 {
+    if polygon.is_empty() {
+        return f64::INFINITY;
+    }
+    let mut nearest = f64::INFINITY;
+    let (mut left, mut right) = (false, false);
+    for (at, a) in polygon.iter().enumerate() {
+        let b = polygon[(at + 1) % polygon.len()];
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let length = dx * dx + dy * dy;
+        let t = if length > 0.0 {
+            (((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        nearest = nearest.min((point[0] - a[0] - t * dx).hypot(point[1] - a[1] - t * dy));
+        let cross = dx * (point[1] - a[1]) - dy * (point[0] - a[0]);
+        left |= cross > 0.0;
+        right |= cross < 0.0;
+    }
+    if polygon.len() >= 3 && !(left && right) {
+        -nearest
+    } else {
+        nearest
+    }
+}
+
 /// Points every `step` pixels along a polygon's edges, each pushed `out`
 /// pixels away from its centre along the edge's outward normal.
 pub(crate) fn band_outside(hull: &[[f64; 2]], out: f64, step: f64) -> Vec<[f64; 2]> {

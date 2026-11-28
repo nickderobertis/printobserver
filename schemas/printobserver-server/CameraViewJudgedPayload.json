@@ -1,0 +1,172 @@
+{
+  "$defs": {
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewCorrection": {
+      "additionalProperties": false,
+      "description": "How a print's drawings map the calibrated view onto the current frame.",
+      "properties": {
+        "landmarks": {
+          "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+          "items": {
+            "$ref": "#/$defs/ReferenceLandmark"
+          },
+          "type": "array"
+        },
+        "matrix": {
+          "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ViewModel",
+          "description": "The model `matrix` is of."
+        },
+        "residual_px": {
+          "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "matrix",
+        "landmarks",
+        "residual_px"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    },
+    "ViewOutcome": {
+      "description": "What one judgement of the view found.",
+      "oneOf": [
+        {
+          "const": "unshifted",
+          "description": "No more than one found landmark sits beyond the calibration's\ntolerance of its calibrated place: one alone is as likely a false match\nas a moved camera.",
+          "type": "string"
+        },
+        {
+          "const": "refit",
+          "description": "Landmarks moved from the calibration but agree with the reference of\nthe correction in force, so the frame is drawn through it.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, or fewer than two of the\nreference's are found again.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "Landmarks moved and no correction is in force, or two or more moved\nbeyond the tolerance from the correction's reference: the camera moved\nagain.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One judgement of a print's camera view, on one frame: one for every\njudgement, whatever it found and whether or not it repeats the last.",
+  "properties": {
+    "frame_sha256": {
+      "description": "The stored frame it was judged on.",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/ViewOutcome",
+      "description": "What it found."
+    },
+    "reason": {
+      "description": "Why the frame may not be drawn on: for the three refusals, and for a\nrefit view, whose camera has moved since its calibration; null for an\nunshifted one.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "view_correction": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ViewCorrection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The correction in force when the frame was judged; null when none was."
+    }
+  },
+  "required": [
+    "frame_sha256",
+    "outcome"
+  ],
+  "title": "CameraViewJudgedPayload",
+  "type": "object",
+  "x-event-kind": "camera_view_judged"
+}

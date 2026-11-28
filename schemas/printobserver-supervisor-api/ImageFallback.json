@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Why a check or a look was shown the whole frame.",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/WholeFrameReasonCode",
+      "description": "The reason, as a code."
+    },
+    "message": {
+      "description": "The reason, in the sentence the image's note gives it in.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "ImageFallback",
+  "type": "object"
+}

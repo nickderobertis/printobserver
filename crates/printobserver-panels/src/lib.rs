@@ -6,7 +6,8 @@
 //! that the camera has not moved since ([`drift`]), the per-print check that
 //! the projection lands on the printed first layer ([`alignment`]), and the
 //! check image's three panels, their colours and their drawing
-//! ([`compose`]), the measurement of whether the parts grew since an earlier
+//! ([`compose`]), whether the view still matches the print's correction
+//! ([`view`]), the measurement of whether the parts grew since an earlier
 //! frame ([`growth`]), and the whole camera frame scaled to a check's bound
 //! ([`whole_frame`]).
 //!
@@ -26,13 +27,21 @@ pub mod error;
 mod geometry;
 pub mod growth;
 mod text;
+pub mod view;
 pub mod whole_frame;
 
-pub use alignment::{AlignmentInputs, AlignmentVerdict, verify_first_layer_alignment};
+pub use alignment::{
+    AlignmentInputs, AlignmentVerdict, FirstLayerInputs, FirstLayerJudgement, FirstLayerVerdict,
+    InconclusiveReason, judge_first_layer, verify_first_layer_alignment,
+};
 pub use calibration::{
     BedPose, CalibrationError, CameraCalibration, Fit, Intrinsics, Landmark, Motion, SCHEMA_VERSION,
 };
 pub use compose::{CheckImage, CheckImageInputs, compose_check_image, is_drawn};
 pub use error::{ComposeError, FrameField};
 pub use growth::{Growth, GrowthInputs, measure_growth};
+pub use view::{
+    FoundLandmark, ReferenceLandmark, ViewCorrection, ViewJudgement, ViewModel, ViewOutcome,
+    found_landmarks, judge_found, judge_view, landmarks_in_frame,
+};
 pub use whole_frame::{WHOLE_FRAME_HEIGHT, WHOLE_FRAME_WIDTH, WholeFrame, whole_frame};

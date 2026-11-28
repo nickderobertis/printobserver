@@ -69,7 +69,9 @@ sliced G-code, not from the STL.
    frame's `gcode`. Name chassis landmarks too: fixed features that never move
    with the bed or the gantry, with texture — screws, brackets, labels. At
    least two must be visible in every frame for the service's drift check to
-   rule; four is better.
+   rule; four is better. The tool writes each landmark's `search_radius_px`
+   as 96; the service searches every landmark at 96 px whatever a file
+   records, so a calibration written at the old 48 needs no refit for it.
 5. **Run the fit**, naming the printable area:
 
    ```console
@@ -119,11 +121,15 @@ sliced G-code, not from the STL.
 7. **Put it in place**: name the file in the service configuration's
    `[camera] calibration` and restart the service, which refuses an invalid
    file at start.
-8. **Re-run the whole procedure whenever the camera moves** — knocked, remounted
-   or re-aimed. The service's drift check refuses to draw from a calibration
-   whose landmarks have moved, and each print's first-layer alignment check
-   refuses one whose projection misses the printed first layer, but neither
-   repairs it.
+8. **Re-run the whole procedure whenever the camera moves far** — knocked,
+   remounted or re-aimed. A small shift is recovered on its own: once a print's
+   first layer is clearly found on a check's frame, its offset becomes that
+   print's correction, and later frames are drawn through it while their
+   landmarks agree with the frame it was taken on. A first layer more than
+   `alignment_max_offset_px` from its projection is never clearly found, and a
+   camera whose landmarks move again mid-print is refused until a fresh
+   correction is taken, so neither repairs a calibration the camera has left
+   behind.
 
 ## The marks file
 
@@ -176,7 +182,7 @@ whole-bed report reads more than 100 px, both on the bed's surface and 40 mm
 below it (245 px and 254 px on the host it was first run on): away from the
 marked parts, refits whose marks moved 0.01 px disagree by that much. A part
 printed far from the marked parts' region may be drawn that far off its place,
-and the first-layer alignment check is what refuses such a print.
+and the first-layer alignment check is what refuses to draw such a print.
 
 **What a plate fit is held to.** The tests generate the 250 x 220 mm plate and
 project its first-layer outlines through `core-one-2026-09-27.json` onto one

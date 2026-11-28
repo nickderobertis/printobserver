@@ -80,6 +80,7 @@ fn compose(
         object_layer_below: None,
         print_z_mm: 10.6,
         calibration: &calibration,
+        correction: None,
     })
     .map(|image| (image.width, image.height, image.close_up_source_rect))
 }

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What one judgement of the view found.",
+  "oneOf": [
+    {
+      "const": "unshifted",
+      "description": "No more than one found landmark sits beyond the calibration's\ntolerance of its calibrated place: one alone is as likely a false match\nas a moved camera.",
+      "type": "string"
+    },
+    {
+      "const": "refit",
+      "description": "Landmarks moved from the calibration but agree with the reference of\nthe correction in force, so the frame is drawn through it.",
+      "type": "string"
+    },
+    {
+      "const": "landmarks_not_found",
+      "description": "Fewer than two landmarks are found, or fewer than two of the\nreference's are found again.",
+      "type": "string"
+    },
+    {
+      "const": "view_refit_rejected",
+      "description": "Landmarks moved and no correction is in force, or two or more moved\nbeyond the tolerance from the correction's reference: the camera moved\nagain.",
+      "type": "string"
+    },
+    {
+      "const": "frame_mismatch",
+      "description": "The frame is not the calibration's size or stream.",
+      "type": "string"
+    }
+  ],
+  "title": "ViewOutcome"
+}

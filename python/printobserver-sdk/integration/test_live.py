@@ -27,7 +27,7 @@ from typing import cast
 
 import pytest
 from live import PATIENCE_SECONDS, Proxy, same
-from printobserver_sdk import Client, RejectedError
+from printobserver_sdk import Client, RefusedError, RejectedError
 from printobserver_sdk.contract import JobManifest
 
 # llmlint: ignore[expensive_tests_stay_behind_their_own_edge] See suppressions.toml.
@@ -242,6 +242,39 @@ def step_printer_look(client: Client, world: Supervisor, proxy: Proxy) -> None:
     equal(seen.status, 200, describing="`printer_look`")
     equal(seen.body, "", describing="what `printer_look` sent")
     same("printer_look", answered, seen.answer)
+
+
+def step_recheck_camera(client: Client, world: Supervisor, proxy: Proxy) -> None:
+    """`recheck_camera`, declined by a real supervisor for want of what it needs."""
+    ready(client, world.print_id, "")
+
+    try:
+        # llmlint: ignore[async_typed_clients_at_boundaries] See suppressions.toml.
+        client.recheck_camera(world.print_id, REASON)
+    except RefusedError as declined:
+        equal(declined.status, 503, describing="`recheck_camera`")
+        equal(
+            declined.detail,
+            "no camera is configured to judge: set the server's `[camera] snapshot_url`",
+            describing="`recheck_camera` declined",
+        )
+        seen = proxy.last()
+        equal(seen.method, "POST", describing="`recheck_camera`")
+        equal(
+            seen.target,
+            f"/v1/prints/{world.print_id}/camera/recheck",
+            describing="`recheck_camera`",
+        )
+        equal(seen.status, 503, describing="`recheck_camera`")
+        sent = json.loads(seen.body)
+        equal(sent["actor"], "operator", describing="who `recheck_camera` acted as")
+        equal(
+            sent["reason"],
+            REASON,
+            describing="the `reason` `recheck_camera` sent",
+        )
+    else:
+        truth(False, describing="`recheck_camera` to be declined")
 
 
 def step_cancel(client: Client, world: Supervisor, proxy: Proxy) -> None:
@@ -1118,6 +1151,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_events(client, world, proxy)
         step_look(client, world, proxy)
         step_printer_look(client, world, proxy)
+        step_recheck_camera(client, world, proxy)
         step_cancel(client, world, proxy)
         step_recover_status(client, world, proxy)
         step_bed_clear(client, world, proxy)
@@ -1150,7 +1184,7 @@ def test_every_method_is_answered_by_a_real_supervisor(
         step_prints(client, world, proxy)
 
         truth(
-            proxy.calls() >= 39,
+            proxy.calls() >= 40,
             describing="every call to have gone through the proxy",
         )
 

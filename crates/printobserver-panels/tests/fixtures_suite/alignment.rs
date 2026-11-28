@@ -7,8 +7,10 @@
 //! beside the threshold.
 
 use printobserver_core::LayerToolpath;
+use printobserver_panels::alignment::{CORRECTION_TAKEN_WITHIN_MM, correction_shift};
 use printobserver_panels::{
-    AlignmentInputs, AlignmentVerdict, BedPose, CameraCalibration, verify_first_layer_alignment,
+    AlignmentInputs, AlignmentVerdict, BedPose, CameraCalibration, FirstLayerInputs,
+    FirstLayerVerdict, InconclusiveReason, judge_first_layer, verify_first_layer_alignment,
 };
 
 use crate::support::{calibration, frame, index, recorded_z, snapshot_url, toolpath};
@@ -52,6 +54,28 @@ fn verdict(
         calibration,
     })
     .expect("the check rules on a calibrated frame")
+}
+
+/// The first-layer judgement of one frame, the nozzle placed nowhere: the
+/// controls test the search's confidence rule, not the coverage test.
+fn judgement(
+    calibration: &CameraCalibration,
+    jpeg: &[u8],
+    first: &LayerToolpath,
+    print_z: f64,
+) -> FirstLayerVerdict {
+    judge_first_layer(&FirstLayerInputs {
+        alignment: AlignmentInputs {
+            frame_jpeg: jpeg,
+            camera_snapshot_url: &snapshot_url(),
+            first_layer: first,
+            print_z_mm: print_z,
+            calibration,
+        },
+        nozzle_xy_mm: None,
+    })
+    .expect("the check rules on a calibrated frame")
+    .verdict
 }
 
 /// How far, on average, a first layer's projection moves between two
@@ -122,6 +146,7 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
     let calibration = calibration();
     let threshold = calibration.alignment_max_offset_px;
     let mut observed = Vec::new();
+    let mut corrected_by_their_shift = 0;
     for (case, past, empty) in CASES {
         let index = index(case);
         let first = toolpath(
@@ -135,12 +160,30 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
         );
 
         let healthy = verdict(&calibration, &frame(case, past), &first, print_z);
-        observed.push(format!("{case}: healthy {:.1} px", healthy.offset_px));
+        observed.push(format!(
+            "{case}: healthy {:.1} px at contrast {:.1}",
+            healthy.offset_px, healthy.match_strength
+        ));
         assert!(
             healthy.passed && healthy.offset_px <= threshold,
             "{case}/{past}: offset {:.1} px against a threshold of {threshold} px; it should pass",
             healthy.offset_px
         );
+        assert_eq!(
+            judgement(&calibration, &frame(case, past), &first, print_z),
+            FirstLayerVerdict::Passed
+        );
+        let shift = correction_shift(&healthy, &first, print_z);
+        let within = print_z - f64::from(first.z_mm) <= CORRECTION_TAKEN_WITHIN_MM + 1e-6;
+        let expected = if within { healthy.shift_px } else { [0.0, 0.0] };
+        assert!(
+            (shift[0] - expected[0]).hypot(shift[1] - expected[1]) < 1e-9,
+            "{case}: a pass {:.1} mm above its first layer corrects by {expected:?}, not {shift:?}",
+            print_z - f64::from(first.z_mm)
+        );
+        if within {
+            corrected_by_their_shift += 1;
+        }
 
         let bare = verdict(&calibration, &frame(case, empty), &first, print_z);
         observed.push(format!("{case}: empty bed {:.1} px", bare.offset_px));
@@ -148,6 +191,11 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
             !bare.passed,
             "{case}/{empty} (an empty bed): offset {:.1} px against a threshold of {threshold} px; it should fail",
             bare.offset_px
+        );
+        assert_eq!(
+            judgement(&calibration, &frame(case, empty), &first, print_z),
+            FirstLayerVerdict::Inconclusive(InconclusiveReason::NotClearlyFound),
+            "{case}/{empty}: an empty bed is not clearly found"
         );
 
         let wrong = moved_by(&calibration, &first, print_z, 49.0);
@@ -166,6 +214,88 @@ fn a_healthy_first_layer_passes_an_empty_bed_and_a_moved_projection_fail() {
             "{case}/{past} with the projection moved {moved:.1} px: offset {:.1} px against a threshold of {threshold} px; it should fail",
             off.offset_px
         );
+        assert_eq!(
+            judgement(&wrong, &frame(case, past), &first, print_z),
+            FirstLayerVerdict::Inconclusive(InconclusiveReason::NotClearlyFound),
+            "{case}/{past}: a projection moved {moved:.1} px is not clearly found"
+        );
     }
+    assert!(
+        corrected_by_their_shift > 0,
+        "no healthy first layer was judged within one layer of itself: {observed:#?}"
+    );
+    eprintln!("{observed:#?}");
+}
+
+/// Each verified healthy first layer is larger than the toolhead can hide, so
+/// it is judged on the image score alone and passes as it always did, with the
+/// plan's nozzle where it was — though that nozzle lies within the coverage
+/// margin of the layer's projected hull, which on the small box would call it
+/// covered.
+#[test]
+fn a_first_layer_larger_than_the_toolhead_hides_is_judged_on_the_image_score() {
+    use printobserver_panels::alignment::{
+        TOOLHEAD_HIDES_MM, TOOLHEAD_MARGIN_PX, first_layer_span_mm, nozzle_from_first_layer_px,
+    };
+    let calibration = calibration();
+    let box_index = index("two-colour-planned-change");
+    let box_first = toolpath(
+        "two-colour-planned-change",
+        box_index.first_object_layer().expect("a first layer").0,
+    );
+    let box_span = first_layer_span_mm(&box_first);
+    assert!(
+        box_span <= TOOLHEAD_HIDES_MM,
+        "the box's first layer spans {box_span:.1} mm, which the toolhead can hide"
+    );
+    let mut observed = Vec::new();
+    let mut within_the_margin = 0;
+    for (case, past, _) in CASES {
+        let index = index(case);
+        let (layer, ends) = index.first_object_layer().expect("a first object layer");
+        let first = toolpath(case, layer);
+        let span = first_layer_span_mm(&first);
+        assert!(
+            span > TOOLHEAD_HIDES_MM,
+            "{case}: its first layer spans {span:.1} mm"
+        );
+        let print_z = recorded_z(case, past);
+        // Where the plan had the nozzle as the frame was taken, or, for a
+        // frame recording no position, as the first layer ended.
+        let position = crate::support::recorded_position_if_any(case, past).unwrap_or(ends + 1);
+        let nozzle = index
+            .planned_head_at(position)
+            .expect("the spool reads back");
+        let jpeg = frame(case, past);
+        let url = snapshot_url();
+        let inputs = FirstLayerInputs {
+            alignment: AlignmentInputs {
+                frame_jpeg: &jpeg,
+                camera_snapshot_url: &url,
+                first_layer: &first,
+                print_z_mm: print_z,
+                calibration: &calibration,
+            },
+            nozzle_xy_mm: nozzle,
+        };
+        let distance = nozzle_from_first_layer_px(&inputs).expect("both project");
+        if distance <= TOOLHEAD_MARGIN_PX {
+            within_the_margin += 1;
+        }
+        let judged = judge_first_layer(&inputs).expect("the check rules on a calibrated frame");
+        observed.push(format!(
+            "{case}: {span:.1} mm, nozzle {distance:.1} px from the layer, {:?}",
+            judged.verdict
+        ));
+        assert_eq!(
+            judged.verdict,
+            FirstLayerVerdict::Passed,
+            "{case}/{past}: {observed:#?}"
+        );
+    }
+    assert!(
+        within_the_margin > 0,
+        "no healthy first layer had its nozzle within the margin, so none shows the gate: {observed:#?}"
+    );
     eprintln!("{observed:#?}");
 }

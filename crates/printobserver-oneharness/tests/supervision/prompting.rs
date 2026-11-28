@@ -84,6 +84,11 @@ fn knowing_everything(print_id: PrintId) -> TurnSituation {
         noticed: Some("print_ended: the print ended interrupted".to_owned()),
         frame_captured_at: None,
         image: Some("the whole camera frame, because no calibration is configured".to_owned()),
+        image_kind: Some(printobserver_supervisor_api::ImageKind::WholeFrame),
+        image_fallback: Some(printobserver_supervisor_api::ImageFallback {
+            code: printobserver_supervisor_api::WholeFrameReasonCode::NoCalibration,
+            message: "no camera calibration is configured".to_owned(),
+        }),
     }
 }
 

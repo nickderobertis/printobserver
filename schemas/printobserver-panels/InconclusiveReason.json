@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a first layer was not clearly found on a frame.",
+  "oneOf": [
+    {
+      "const": "covered",
+      "description": "The toolhead stands over the part.",
+      "type": "string"
+    },
+    {
+      "const": "not_clearly_found",
+      "description": "The layer is not found within the threshold at the contrast it needs:\nan empty bed, a layer found at the search's edge, or one projecting\nnowhere in the frame.",
+      "type": "string"
+    }
+  ],
+  "title": "InconclusiveReason"
+}

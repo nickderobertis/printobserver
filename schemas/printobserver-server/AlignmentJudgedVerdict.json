@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What one judgement of a print's first layer came to.",
+  "oneOf": [
+    {
+      "const": "passed",
+      "description": "The first layer is clearly found, and its offset is the print's\ncorrection from now on.",
+      "type": "string"
+    },
+    {
+      "const": "inconclusive",
+      "description": "The frame could not tell; a later check's frame is judged again.",
+      "type": "string"
+    },
+    {
+      "const": "failed",
+      "description": "The camera's frames cannot be judged against the calibration, which\nholds for the rest of the print.",
+      "type": "string"
+    }
+  ],
+  "title": "AlignmentJudgedVerdict"
+}

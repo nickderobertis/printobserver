@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+  "oneOf": [
+    {
+      "const": "translation",
+      "description": "A shift alone.",
+      "type": "string"
+    },
+    {
+      "const": "similarity",
+      "description": "A shift, a rotation and one scale.",
+      "type": "string"
+    },
+    {
+      "const": "affine",
+      "description": "A general linear map and a shift.",
+      "type": "string"
+    },
+    {
+      "const": "homography",
+      "description": "A plane-to-plane projective map.",
+      "type": "string"
+    }
+  ],
+  "title": "ViewModel"
+}

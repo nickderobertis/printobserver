@@ -40,10 +40,10 @@ fn commands_carrying_a_path() -> Vec<(String, &'static str)> {
         .collect()
 }
 
-/// Whether one command's path is to a frame a look took, rather than to the
-/// image an alert arrived with.
+/// Whether one command's path is to a frame the camera gave it — a look's, or
+/// a recheck of the camera's — rather than to the image an alert arrived with.
 fn takes_a_frame(command: &str) -> bool {
-    command == "look"
+    command == "look" || command == "recheck-camera"
 }
 
 /// The file one command's answer names, and the digest its bytes must have.
@@ -135,9 +135,13 @@ pub fn a_path_that_names_no_file_here_is_its_own_failure(world: &World) {
 /// the image is still one the caller can take.
 fn the_rest_of_the_answer_is_printed(ran: &Ran, command: &str, field: &str) {
     let said = super::answers::labelled(&ran.out);
+    // What the rest is differs by answer: a look's and a context's carry the
+    // print, an image read its record, and a recheck of the camera the
+    // alignment it judged.
     assert!(
-        said.keys()
-            .any(|at| at.contains("print") || at.contains("record")),
+        said.keys().any(|at| {
+            at.contains("print") || at.contains("record") || at.starts_with("alignment.")
+        }),
         "`{command}` printed none of the rest of the answer it did receive: {}",
         ran.out
     );

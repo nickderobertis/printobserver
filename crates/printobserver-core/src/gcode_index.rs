@@ -539,6 +539,45 @@ impl GcodeIndex {
         })
     }
 
+    /// Where the plan has the nozzle in X and Y, in bed millimetres, once the
+    /// file has been read up to `file_position_bytes`: the last place a whole
+    /// line moved it to, read from the layer's byte range of the print's
+    /// spool. Nothing before the file's first layer.
+    ///
+    /// # Errors
+    ///
+    /// As [`layer_toolpath`](Self::layer_toolpath)'s, for the layer holding the
+    /// position.
+    pub fn planned_head_at(
+        &self,
+        file_position_bytes: u64,
+    ) -> Result<Option<[f64; 2]>, SpoolError> {
+        use std::io::{Read as _, Seek as _, SeekFrom};
+
+        let Some(layer) = self.layer_at(file_position_bytes) else {
+            return Ok(None);
+        };
+        let held = &self.layers[layer.0];
+        let path = self.spool.as_ref().ok_or(SpoolError::NoSpool)?;
+        let io = |error: std::io::Error| SpoolError::Io {
+            detail: error.to_string(),
+        };
+        let end = file_position_bytes.min(self.layer_end(layer.0));
+        let length = usize::try_from(end.saturating_sub(held.at)).map_err(|_| SpoolError::Io {
+            detail: "a layer too long to hold".to_owned(),
+        })?;
+        let mut file = std::fs::File::open(path).map_err(io)?;
+        file.seek(SeekFrom::Start(held.at)).map_err(io)?;
+        let mut bytes = vec![0; length];
+        file.read_exact(&mut bytes).map_err(io)?;
+        let mut builder = IndexBuilder::reading_layer(self.type_names.clone(), held.head);
+        // A line the position stops inside is one the printer has not
+        // finished, so only whole lines move the head.
+        let _ = builder.take(&bytes);
+        let [x, y, _] = builder.at;
+        Ok(Some([x, y]))
+    }
+
     /// The most extrusion types any one layer lays material under, and the
     /// file position just past that layer's `;LAYER_CHANGE`: where the plan
     /// names the most.

@@ -132,6 +132,31 @@ pub const TWO_COLOUR_FILE: &str = "two-colour.gcode";
 pub const TWO_COLOUR: &[u8] =
     include_bytes!("../../../printobserver-core/tests/fixtures/planned-changes/two-colour.gcode");
 
+/// The world whose stood-in machine runs the 2026-11-26 two-colour box's
+/// slice, as `OctoPrint` printed it, its two colour changes made comments of
+/// the same length so that no planned change interposes a check and every
+/// byte offset stays the print's; a journey moves the job through it by
+/// [`Machine::stands_at`].
+pub const TWO_COLOUR_BOX: &str = "two-colour-box";
+
+/// The name the [`TWO_COLOUR_BOX`] machine runs its slice under.
+pub const TWO_COLOUR_BOX_FILE: &str = "two-colour-box.gcode";
+
+/// The box's slice, its colour changes made comments.
+fn two_colour_box() -> Vec<u8> {
+    include_bytes!("../../../printobserver-core/tests/fixtures/real-prints/two-colour-box.gcode")
+        .split(|byte| *byte == b'\n')
+        .map(|line| {
+            if line == b"M600" {
+                b";600".as_slice()
+            } else {
+                line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(&b'\n')
+}
+
 /// What is on the far side of the printer port.
 pub enum Printer {
     /// A socket answering the documents a machine answers.
@@ -316,6 +341,9 @@ impl World {
                 STOOD_IN => Printer::StoodIn(Machine::start()),
                 PLANNED_CHANGES => {
                     Printer::StoodIn(Machine::running(TWO_COLOUR_FILE, TWO_COLOUR.to_vec()))
+                }
+                TWO_COLOUR_BOX => {
+                    Printer::StoodIn(Machine::running(TWO_COLOUR_BOX_FILE, two_colour_box()))
                 }
                 SCRIPTED => crate::scripted::scripted(),
                 other => panic!("there is no `{other}` world to open"),

@@ -65,6 +65,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use printobserver_printer_api::{JobSnapshot, PrinterSnapshot, PrinterState};
+use printobserver_supervisor_api::{ImageFallback, ImageKind};
 use printobserver_types::contract::Sample;
 use printobserver_types::schemars::JsonSchema;
 use printobserver_types::serde::{Deserialize, Serialize};
@@ -107,6 +108,13 @@ pub struct Look {
     /// absent with no image, or when what made it says nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_note: Option<String>,
+    /// Which image is at `image_path`; absent with no image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_kind: Option<ImageKind>,
+    /// Why the image at `image_path` is the whole frame; absent for the
+    /// three-panel image, with no image, or when what made it gave no reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_fallback: Option<ImageFallback>,
     /// The printer's state now, absent when it could not be read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printer: Option<PrinterSnapshot>,
@@ -130,6 +138,12 @@ impl Sample for Look {
                  so there is no plan to draw on it"
                     .to_owned(),
             ),
+            image_kind: Some(ImageKind::WholeFrame),
+            image_fallback: Some(ImageFallback {
+                code: printobserver_supervisor_api::WholeFrameReasonCode::NoPrint,
+                message: "no print is named, so there is no planned toolpath to draw on it"
+                    .to_owned(),
+            }),
             printer: Some(PrinterSnapshot::sample_full()),
             job: Some(JobSnapshot::sample_full()),
             detector_paused: true,
@@ -143,6 +157,8 @@ impl Sample for Look {
             frame: None,
             image_path: None,
             image_note: None,
+            image_kind: None,
+            image_fallback: None,
             printer: None,
             job: None,
             detector_paused: false,
@@ -261,17 +277,17 @@ impl Supervisor {
             self.gcode_indexes()
                 .note_look(print.id, captured, position, self.clock().now());
         }
-        let detector_paused = self.detector_paused(print.id)
-            && printer
-                .as_ref()
-                .is_some_and(|taken| taken.connection == PrinterState::Paused);
+        let paused = printer
+            .as_ref()
+            .is_some_and(|taken| taken.connection == PrinterState::Paused);
+        let detector_paused = self.detector_paused(print.id) && paused;
         let plan = if print.ended_at.is_none() {
             self.plan_position(&print, job.as_ref()).await
         } else {
             None
         };
         Ok(self
-            .answered(event, arrived, printer, job, detector_paused, plan)
+            .answered(event, arrived, printer, job, detector_paused, plan, paused)
             .await)
     }
 
@@ -297,12 +313,19 @@ impl Supervisor {
         let event = self.write_with_frame(None, &payload, fetched).await?;
         let printer = self.read_snapshot().await.ok();
         let job = self.read_job().await.ok();
+        let paused = printer
+            .as_ref()
+            .is_some_and(|taken| taken.connection == PrinterState::Paused);
         Ok(self
-            .answered(event, Vec::new(), printer, job, false, None)
+            .answered(event, Vec::new(), printer, job, false, None, paused)
             .await)
     }
 
     /// The answer to one look, its frame's path read off the store.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each is one part of the answer the look gathered"
+    )]
     async fn answered(
         &self,
         event: EventRecord,
@@ -311,6 +334,7 @@ impl Supervisor {
         job: Option<JobSnapshot>,
         detector_paused: bool,
         plan: Option<crate::check_image::PlanPosition>,
+        paused: bool,
     ) -> Look {
         let frame = event.image.clone();
         let shown = match &frame {
@@ -322,19 +346,25 @@ impl Supervisor {
                     captured_at,
                     crate::check_image::ImageUse::Look,
                     plan,
+                    true,
+                    paused,
                 )
                 .await
             }
             None => None,
         };
-        let (image_path, image_note) =
-            shown.map_or((None, None), |shown| (Some(shown.path), shown.note));
+        let image_kind = shown.as_ref().map(crate::check_image::ShownImage::kind);
+        let (image_path, image_note, image_fallback) = shown.map_or((None, None, None), |shown| {
+            (Some(shown.path), shown.note, shown.fallback)
+        });
         Look {
             event,
             arrived,
             frame,
             image_path,
             image_note,
+            image_kind,
+            image_fallback,
             printer,
             job,
             detector_paused,
@@ -370,6 +400,40 @@ impl Supervisor {
         }
     }
 
+    /// One good frame from the configured camera, kept unstored, with the URL
+    /// it came from: fetched as a look fetches one, retried and judged alike.
+    /// Nothing when no camera is configured or no good frame came. A record
+    /// written with it ([`record_with_frame`](Self::record_with_frame)) stores
+    /// it.
+    pub async fn fetch_camera_image(&self, print_id: PrintId) -> Option<(String, FetchedImage)> {
+        match self.fetch_configured_frame(Some(print_id)).await? {
+            (url, Frame::Good(image)) => Some((url, image)),
+            _ => None,
+        }
+    }
+
+    /// Append one record the server made to a print's history, through the
+    /// frame-carrying write every check and look is written with: with a frame
+    /// fetched for it, which is stored with the record, or with none, when the
+    /// record names a frame already stored.
+    ///
+    /// # Errors
+    ///
+    /// The store's own error when the record could not be written down.
+    pub async fn record_with_frame(
+        &self,
+        print_id: PrintId,
+        body: EventBody,
+        frame: Option<(String, FetchedImage)>,
+    ) -> Result<EventRecord, CoreError> {
+        self.write_body_with_frame(
+            Some(print_id),
+            body,
+            frame.map(|(url, image)| (url, Frame::Good(image))),
+        )
+        .await
+    }
+
     /// When a fetched frame was captured: what its source says, or now.
     pub(crate) fn frame_captured_at(&self, fetched: Option<&(String, Frame)>) -> Option<Timestamp> {
         match fetched {
@@ -400,6 +464,18 @@ impl Supervisor {
         payload: &P,
         fetched: Option<(String, Frame)>,
     ) -> Result<EventRecord, CoreError> {
+        self.write_body_with_frame(print_id, EventBody::of(payload)?, fetched)
+            .await
+    }
+
+    /// [`write_with_frame`](Self::write_with_frame) of a body already
+    /// rendered.
+    pub(crate) async fn write_body_with_frame(
+        &self,
+        print_id: Option<PrintId>,
+        body: EventBody,
+        fetched: Option<(String, Frame)>,
+    ) -> Result<EventRecord, CoreError> {
         let draft = |body: EventBody| EventDraft {
             print_id,
             source: crate::kinds::system_source(),
@@ -407,7 +483,6 @@ impl Supervisor {
             body,
             raw: None,
         };
-        let body = EventBody::of(payload)?;
         let Some((url, fetched)) = fetched else {
             return Ok(self.stores().events.append_event(draft(body)).await?);
         };

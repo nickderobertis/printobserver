@@ -12,7 +12,7 @@ contracts do not declare.
 
 ## The schema set
 
-218 types. The set is every type any crate declares under
+234 types. The set is every type any crate declares under
 `schemas/<crate>/`, keyed by type name across every declaring crate: the
 contract crate's shared vocabulary, the request and answer shapes the port
 crates own, each domain's event payloads — marked with `x-event-kind`, the
@@ -9031,6 +9031,118 @@ Declared by `printobserver-core`.
 }
 ```
 
+### AlignmentFailure
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a print's alignment failed.",
+  "oneOf": [
+    {
+      "description": "The printed first layer lies further from its projection than the\ncalibration allows. No longer written: a frame that does not clearly\nfind the layer is inconclusive, and a verdict file an earlier release\nleft holding this is read as pending.",
+      "properties": {
+        "failure": {
+          "const": "offset",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far, in calibration pixels.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "failure",
+        "offset_px"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "The camera's frames are not the calibration's resolution.",
+      "properties": {
+        "expected": {
+          "description": "The calibration's, `[width, height]`.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "failure": {
+          "const": "resolution",
+          "type": "string"
+        },
+        "got": {
+          "description": "The frame's.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "failure",
+        "expected",
+        "got"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "The camera configured is not the stream the calibration was fitted on.",
+      "properties": {
+        "failure": {
+          "const": "stream",
+          "type": "string"
+        }
+      },
+      "required": [
+        "failure"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "AlignmentFailure"
+}
+```
+
+### AlignmentJudgedVerdict
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What one judgement of a print's first layer came to.",
+  "oneOf": [
+    {
+      "const": "passed",
+      "description": "The first layer is clearly found, and its offset is the print's\ncorrection from now on.",
+      "type": "string"
+    },
+    {
+      "const": "inconclusive",
+      "description": "The frame could not tell; a later check's frame is judged again.",
+      "type": "string"
+    },
+    {
+      "const": "failed",
+      "description": "The camera's frames cannot be judged against the calibration, which\nholds for the rest of the print.",
+      "type": "string"
+    }
+  ],
+  "title": "AlignmentJudgedVerdict"
+}
+```
+
 ### BedClearActor
 
 Declared by `printobserver-core`.
@@ -9450,6 +9562,316 @@ Declared by `printobserver-core`.
 }
 ```
 
+### CameraViewJudgedPayload
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewCorrection": {
+      "additionalProperties": false,
+      "description": "How a print's drawings map the calibrated view onto the current frame.",
+      "properties": {
+        "landmarks": {
+          "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+          "items": {
+            "$ref": "#/$defs/ReferenceLandmark"
+          },
+          "type": "array"
+        },
+        "matrix": {
+          "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ViewModel",
+          "description": "The model `matrix` is of."
+        },
+        "residual_px": {
+          "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "matrix",
+        "landmarks",
+        "residual_px"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    },
+    "ViewOutcome": {
+      "description": "What one judgement of the view found.",
+      "oneOf": [
+        {
+          "const": "unshifted",
+          "description": "No more than one found landmark sits beyond the calibration's\ntolerance of its calibrated place: one alone is as likely a false match\nas a moved camera.",
+          "type": "string"
+        },
+        {
+          "const": "refit",
+          "description": "Landmarks moved from the calibration but agree with the reference of\nthe correction in force, so the frame is drawn through it.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, or fewer than two of the\nreference's are found again.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "Landmarks moved and no correction is in force, or two or more moved\nbeyond the tolerance from the correction's reference: the camera moved\nagain.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One judgement of a print's camera view, on one frame: one for every\njudgement, whatever it found and whether or not it repeats the last.",
+  "properties": {
+    "frame_sha256": {
+      "description": "The stored frame it was judged on.",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/ViewOutcome",
+      "description": "What it found."
+    },
+    "reason": {
+      "description": "Why the frame may not be drawn on: for the three refusals, and for a\nrefit view, whose camera has moved since its calibration; null for an\nunshifted one.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "view_correction": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ViewCorrection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The correction in force when the frame was judged; null when none was."
+    }
+  },
+  "required": [
+    "frame_sha256",
+    "outcome"
+  ],
+  "title": "CameraViewJudgedPayload",
+  "type": "object",
+  "x-event-kind": "camera_view_judged"
+}
+```
+
+### CameraViewRefitPayload
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewCorrection": {
+      "additionalProperties": false,
+      "description": "How a print's drawings map the calibrated view onto the current frame.",
+      "properties": {
+        "landmarks": {
+          "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+          "items": {
+            "$ref": "#/$defs/ReferenceLandmark"
+          },
+          "type": "array"
+        },
+        "matrix": {
+          "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ViewModel",
+          "description": "The model `matrix` is of."
+        },
+        "residual_px": {
+          "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "matrix",
+        "landmarks",
+        "residual_px"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A first-layer pass put a correction in force while the landmarks had moved\nfrom the calibration: the print's first, or one taken again after the\ncamera moved again.",
+  "properties": {
+    "frame_sha256": {
+      "description": "The stored frame the correction was taken on.",
+      "type": "string"
+    },
+    "view_correction": {
+      "$ref": "#/$defs/ViewCorrection",
+      "description": "The correction now in force."
+    }
+  },
+  "required": [
+    "frame_sha256",
+    "view_correction"
+  ],
+  "title": "CameraViewRefitPayload",
+  "type": "object",
+  "x-event-kind": "camera_view_refit"
+}
+```
+
 ### ChargeKey
 
 Declared by `printobserver-core`.
@@ -9816,6 +10238,172 @@ Declared by `printobserver-core`.
   ],
   "title": "ChargedFilament",
   "type": "object"
+}
+```
+
+### CheckImageChangedPayload
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The image a print's checks are shown changed: its first check's image, and\nevery check whose image kind or fallback code differs from the last one\nrecorded.",
+  "properties": {
+    "fallback": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageFallback"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Why it was the whole frame; null for the three-panel image."
+    },
+    "frame_sha256": {
+      "description": "The stored frame the check's image was made of.",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ImageKind",
+      "description": "Which image the check was shown."
+    }
+  },
+  "required": [
+    "kind",
+    "frame_sha256"
+  ],
+  "title": "CheckImageChangedPayload",
+  "type": "object",
+  "x-event-kind": "check_image_changed"
 }
 ```
 
@@ -13263,6 +13851,202 @@ Declared by `printobserver-core`.
 }
 ```
 
+### FirstLayerAlignmentJudgedPayload
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "AlignmentJudgedVerdict": {
+      "description": "What one judgement of a print's first layer came to.",
+      "oneOf": [
+        {
+          "const": "passed",
+          "description": "The first layer is clearly found, and its offset is the print's\ncorrection from now on.",
+          "type": "string"
+        },
+        {
+          "const": "inconclusive",
+          "description": "The frame could not tell; a later check's frame is judged again.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The camera's frames cannot be judged against the calibration, which\nholds for the rest of the print.",
+          "type": "string"
+        }
+      ]
+    },
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewCorrection": {
+      "additionalProperties": false,
+      "description": "How a print's drawings map the calibrated view onto the current frame.",
+      "properties": {
+        "landmarks": {
+          "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+          "items": {
+            "$ref": "#/$defs/ReferenceLandmark"
+          },
+          "type": "array"
+        },
+        "matrix": {
+          "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ViewModel",
+          "description": "The model `matrix` is of."
+        },
+        "residual_px": {
+          "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "matrix",
+        "landmarks",
+        "residual_px"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One judgement of a print's first-layer alignment, on one frame.",
+  "properties": {
+    "correction_px": {
+      "description": "The correction the pass put in force, `[dx, dy]` pixels; null unless it\npassed.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "frame_sha256": {
+      "description": "The stored frame it was judged on.",
+      "type": "string"
+    },
+    "match_strength": {
+      "description": "The peak smoothed contrast the layer was found at, in grey levels; null\nwhen it was not searched for.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "offset_px": {
+      "description": "How far the printed first layer was found from its uncorrected\nprojection, in calibration pixels; null when it was not searched for.",
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "reason": {
+      "description": "`clearly_found` for a pass, `covered` or `not_clearly_found` for an\ninconclusive judgement, and the failure's own sentence for a failure.",
+      "type": "string"
+    },
+    "verdict": {
+      "$ref": "#/$defs/AlignmentJudgedVerdict",
+      "description": "What it came to."
+    },
+    "view_correction": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ViewCorrection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The correction in force when the frame was judged; null before the\nprint's first pass."
+    }
+  },
+  "required": [
+    "verdict",
+    "reason",
+    "frame_sha256"
+  ],
+  "title": "FirstLayerAlignmentJudgedPayload",
+  "type": "object",
+  "x-event-kind": "first_layer_alignment_judged"
+}
+```
+
 ### Footprint
 
 Declared by `printobserver-printer-api`.
@@ -13837,6 +14621,126 @@ Declared by `printobserver-server`.
 }
 ```
 
+### ImageFallback
+
+Declared by `printobserver-supervisor-api`.
+
+```json
+{
+  "$defs": {
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Why a check or a look was shown the whole frame.",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/WholeFrameReasonCode",
+      "description": "The reason, as a code."
+    },
+    "message": {
+      "description": "The reason, in the sentence the image's note gives it in.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "ImageFallback",
+  "type": "object"
+}
+```
+
 ### ImageId
 
 Declared by `printobserver-types`.
@@ -13849,6 +14753,30 @@ Declared by `printobserver-types`.
   "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
   "title": "ImageId",
   "type": "string"
+}
+```
+
+### ImageKind
+
+Declared by `printobserver-supervisor-api`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Which image a check or a look was shown.",
+  "oneOf": [
+    {
+      "const": "three_panel",
+      "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+      "type": "string"
+    },
+    {
+      "const": "whole_frame",
+      "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+      "type": "string"
+    }
+  ],
+  "title": "ImageKind"
 }
 ```
 
@@ -13987,6 +14915,30 @@ Declared by `printobserver-types`.
   ],
   "title": "ImageRef",
   "type": "object"
+}
+```
+
+### InconclusiveReason
+
+Declared by `printobserver-panels`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a first layer was not clearly found on a frame.",
+  "oneOf": [
+    {
+      "const": "covered",
+      "description": "The toolhead stands over the part.",
+      "type": "string"
+    },
+    {
+      "const": "not_clearly_found",
+      "description": "The layer is not found within the threshold at the contrast it needs:\nan empty bed, a layer found at the search's edge, or one projecting\nnowhere in the frame.",
+      "type": "string"
+    }
+  ],
+  "title": "InconclusiveReason"
 }
 ```
 
@@ -14789,6 +15741,177 @@ Declared by `printobserver-printer-api`.
 }
 ```
 
+### LastCheckImage
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An instant in UTC, as an RFC 3339 string with a zero offset.",
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The image a print's last check was shown, and when its frame was captured.",
+  "properties": {
+    "at": {
+      "$ref": "#/$defs/Timestamp",
+      "description": "When the check's frame was captured."
+    },
+    "fallback": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageFallback"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Why it was the whole frame; null for the three-panel image."
+    },
+    "kind": {
+      "$ref": "#/$defs/ImageKind",
+      "description": "Which image the check was shown."
+    }
+  },
+  "required": [
+    "at",
+    "kind"
+  ],
+  "title": "LastCheckImage",
+  "type": "object"
+}
+```
+
 ### LastPrint
 
 Declared by `printobserver-core`.
@@ -15048,12 +16171,46 @@ Declared by `printobserver-core`.
       },
       "type": "object"
     },
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
     "ImageId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one image.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "ImageId",
       "type": "string"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
     },
     "ImageRef": {
       "additionalProperties": false,
@@ -15385,6 +16542,96 @@ Declared by `printobserver-core`.
         "length_mm"
       ],
       "type": "object"
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -15415,6 +16662,28 @@ Declared by `printobserver-core`.
         }
       ],
       "description": "The frame the camera gave, absent when no camera is configured or it\ngave none \u2014 which the history records as a port failure."
+    },
+    "image_fallback": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageFallback"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Why the image at `image_path` is the whole frame; absent for the\nthree-panel image, with no image, or when what made it gave no reason."
+    },
+    "image_kind": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageKind"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Which image is at `image_path`; absent with no image."
     },
     "image_note": {
       "description": "What the image at `image_path` is, and why it is that one, in one line;\nabsent with no image, or when what made it says nothing.",
@@ -25673,7 +26942,7 @@ Declared by `printobserver-server`.
       "description": "Why a print's alignment failed.",
       "oneOf": [
         {
-          "description": "The printed first layer lies further from its projection than the\ncalibration allows.",
+          "description": "The printed first layer lies further from its projection than the\ncalibration allows. No longer written: a frame that does not clearly\nfind the layer is inconclusive, and a verdict file an earlier release\nleft holding this is read as pending.",
           "properties": {
             "failure": {
               "const": "offset",
@@ -25776,6 +27045,20 @@ Declared by `printobserver-server`.
     {
       "description": "The projected first layer lands on the printed one.",
       "properties": {
+        "correction_px": {
+          "default": [
+            0.0,
+            0.0
+          ],
+          "description": "The first-layer correction applied to every later drawing of the\nprint, `[dx, dy]` calibration pixels: the shift the layer was found\nat. `[0, 0]` in a verdict an earlier release wrote.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
         "offset_px": {
           "description": "How far it lies from it, in calibration pixels.",
           "format": "double",
@@ -29832,6 +31115,442 @@ Declared by `printobserver-core`.
 }
 ```
 
+### RecheckCameraAnswer
+
+Declared by `printobserver-server`.
+
+```json
+{
+  "$defs": {
+    "AlignmentFailure": {
+      "description": "Why a print's alignment failed.",
+      "oneOf": [
+        {
+          "description": "The printed first layer lies further from its projection than the\ncalibration allows. No longer written: a frame that does not clearly\nfind the layer is inconclusive, and a verdict file an earlier release\nleft holding this is read as pending.",
+          "properties": {
+            "failure": {
+              "const": "offset",
+              "type": "string"
+            },
+            "offset_px": {
+              "description": "How far, in calibration pixels.",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "failure",
+            "offset_px"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The camera's frames are not the calibration's resolution.",
+          "properties": {
+            "expected": {
+              "description": "The calibration's, `[width, height]`.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "failure": {
+              "const": "resolution",
+              "type": "string"
+            },
+            "got": {
+              "description": "The frame's.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "required": [
+            "failure",
+            "expected",
+            "got"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The camera configured is not the stream the calibration was fitted on.",
+          "properties": {
+            "failure": {
+              "const": "stream",
+              "type": "string"
+            }
+          },
+          "required": [
+            "failure"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
+    },
+    "PrintAlignment": {
+      "description": "One print's first-layer alignment verdict, as it is kept under the state\ndirectory \u2014 which the real-print suite's record reads.",
+      "oneOf": [
+        {
+          "description": "Nothing can be checked: no calibration is configured, or the print's\nG-code lays no object.",
+          "properties": {
+            "verdict": {
+              "const": "unavailable",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The first object layer is not down yet, or no frame of it has been\njudged.",
+          "properties": {
+            "verdict": {
+              "const": "pending",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The projected first layer lands on the printed one.",
+          "properties": {
+            "correction_px": {
+              "default": [
+                0.0,
+                0.0
+              ],
+              "description": "The first-layer correction applied to every later drawing of the\nprint, `[dx, dy]` calibration pixels: the shift the layer was found\nat. `[0, 0]` in a verdict an earlier release wrote.",
+              "items": {
+                "format": "double",
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "offset_px": {
+              "description": "How far it lies from it, in calibration pixels.",
+              "format": "double",
+              "type": "number"
+            },
+            "verdict": {
+              "const": "passed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "offset_px"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "It does not, or the frames cannot be judged against the calibration.",
+          "properties": {
+            "reason": {
+              "$ref": "#/$defs/AlignmentFailure",
+              "description": "Why."
+            },
+            "verdict": {
+              "const": "failed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewCorrection": {
+      "additionalProperties": false,
+      "description": "How a print's drawings map the calibrated view onto the current frame.",
+      "properties": {
+        "landmarks": {
+          "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+          "items": {
+            "$ref": "#/$defs/ReferenceLandmark"
+          },
+          "type": "array"
+        },
+        "matrix": {
+          "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ViewModel",
+          "description": "The model `matrix` is of."
+        },
+        "residual_px": {
+          "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "matrix",
+        "landmarks",
+        "residual_px"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What judging a print's camera again on a fresh frame answers.",
+  "properties": {
+    "alignment": {
+      "$ref": "#/$defs/PrintAlignment",
+      "description": "The print's first-layer alignment once judged."
+    },
+    "frame_path": {
+      "default": "",
+      "description": "The absolute path of the fresh frame on this server's own filesystem,\nstored with the first record of its judgement. This server always\nanswers it; a client that finds it names no file on its own host\nanswers why in its place, as it does every image path.",
+      "type": "string"
+    },
+    "image_fallback": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageFallback"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Why that image would be the whole frame; null for the three-panel\nimage."
+    },
+    "image_kind": {
+      "$ref": "#/$defs/ImageKind",
+      "description": "Which image a check of the print would be shown of this frame."
+    },
+    "view_correction": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ViewCorrection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The correction in force once judged; null when none is."
+    }
+  },
+  "required": [
+    "alignment",
+    "image_kind"
+  ],
+  "title": "RecheckCameraAnswer",
+  "type": "object"
+}
+```
+
 ### RecoveryAction
 
 Declared by `printobserver-core`.
@@ -33495,6 +35214,46 @@ Declared by `printobserver-core`.
     "tools"
   ],
   "title": "RecoveryTemperatures",
+  "type": "object"
+}
+```
+
+### ReferenceLandmark
+
+Declared by `printobserver-panels`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+  "properties": {
+    "name": {
+      "description": "The calibration's name for it.",
+      "type": "string"
+    },
+    "offset_px": {
+      "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "score": {
+      "description": "The correlation it was found at.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "name",
+    "offset_px",
+    "score"
+  ],
+  "title": "ReferenceLandmark",
   "type": "object"
 }
 ```
@@ -43864,6 +45623,40 @@ Declared by `printobserver-server`.
       },
       "type": "object"
     },
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
+    },
     "Intervention": {
       "additionalProperties": false,
       "description": "One adjustment made for a bounded time.\n\n`prior_value` is read from the printer snapshot taken before the change, and\nis absent when the printer reported none \u2014 in which case expiry restores\nnothing and the outcome says so rather than guessing a default.",
@@ -44119,6 +45912,36 @@ Declared by `printobserver-server`.
       },
       "required": [
         "state"
+      ],
+      "type": "object"
+    },
+    "LastCheckImage": {
+      "additionalProperties": false,
+      "description": "The image a print's last check was shown, and when its frame was captured.",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "When the check's frame was captured."
+        },
+        "fallback": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageFallback"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it was the whole frame; null for the three-panel image."
+        },
+        "kind": {
+          "$ref": "#/$defs/ImageKind",
+          "description": "Which image the check was shown."
+        }
+      },
+      "required": [
+        "at",
+        "kind"
       ],
       "type": "object"
     },
@@ -44629,6 +46452,96 @@ Declared by `printobserver-server`.
         "length_mm"
       ],
       "type": "object"
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -44655,6 +46568,17 @@ Declared by `printobserver-server`.
         }
       ],
       "description": "The job, when a snapshot could be taken."
+    },
+    "last_check_image": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LastCheckImage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The image the print's last check was shown, when its frame was\ncaptured and why it was the whole frame; null before its first check."
     },
     "planned_changes": {
       "anyOf": [
@@ -45387,12 +47311,46 @@ Declared by `printobserver-supervisor-api`.
       "title": "EventSource",
       "type": "string"
     },
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
     "ImageId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one image.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "ImageId",
       "type": "string"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
     },
     "ImageRef": {
       "additionalProperties": false,
@@ -45526,6 +47484,28 @@ Declared by `printobserver-supervisor-api`.
             "null"
           ]
         },
+        "image_fallback": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageFallback"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why the attached image is the whole frame; absent for the three-panel\nimage, when no image is attached, or when what made it gave no reason."
+        },
+        "image_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which image is attached to the prompt; absent when none is."
+        },
         "noticed": {
           "default": null,
           "description": "What the printer watch noticed that prompted this turn \u2014 how the print\nended, what the printer did on its own after it, that the camera gave\nno usable frame, that the failure detector stopped answering \u2014 in\nwords beginning with the event's kind; null when the turn was prompted\nby anything else.",
@@ -45548,6 +47528,96 @@ Declared by `printobserver-supervisor-api`.
         }
       },
       "type": "object"
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -45693,12 +47763,46 @@ Declared by `printobserver-supervisor-api`.
       "title": "EventSource",
       "type": "string"
     },
+    "ImageFallback": {
+      "additionalProperties": false,
+      "description": "Why a check or a look was shown the whole frame.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/WholeFrameReasonCode",
+          "description": "The reason, as a code."
+        },
+        "message": {
+          "description": "The reason, in the sentence the image's note gives it in.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
     "ImageId": {
       "description": "A lowercase hyphenated version 7 UUID identifying one image.",
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}$",
       "title": "ImageId",
       "type": "string"
+    },
+    "ImageKind": {
+      "description": "Which image a check or a look was shown.",
+      "oneOf": [
+        {
+          "const": "three_panel",
+          "description": "The three panels: the frame with this layer's plan drawn on it, a\nclose-up of the part, and the previous check's frame.",
+          "type": "string"
+        },
+        {
+          "const": "whole_frame",
+          "description": "The camera's frame, scaled whole and uncropped, nothing drawn.",
+          "type": "string"
+        }
+      ]
     },
     "ImageRef": {
       "additionalProperties": false,
@@ -45785,6 +47889,96 @@ Declared by `printobserver-supervisor-api`.
       "format": "date-time",
       "title": "Timestamp",
       "type": "string"
+    },
+    "WholeFrameReasonCode": {
+      "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+      "oneOf": [
+        {
+          "const": "no_print",
+          "description": "No print is named: a look at the printer.",
+          "type": "string"
+        },
+        {
+          "const": "no_calibration",
+          "description": "No camera calibration is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_stream",
+          "description": "No camera snapshot address is configured.",
+          "type": "string"
+        },
+        {
+          "const": "no_position",
+          "description": "The print's G-code index gives no file position for the check.",
+          "type": "string"
+        },
+        {
+          "const": "no_object",
+          "description": "The G-code names no extruded object laid at that point.",
+          "type": "string"
+        },
+        {
+          "const": "no_layer",
+          "description": "It names no layer there.",
+          "type": "string"
+        },
+        {
+          "const": "toolpath_unread",
+          "description": "The layer's planned toolpath could not be read back.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_pending",
+          "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_inconclusive",
+          "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_unavailable",
+          "description": "The print's G-code lays no object to align.",
+          "type": "string"
+        },
+        {
+          "const": "alignment_failed",
+          "description": "The camera's frames cannot be judged against the calibration.",
+          "type": "string"
+        },
+        {
+          "const": "landmarks_not_found",
+          "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+          "type": "string"
+        },
+        {
+          "const": "view_refit_rejected",
+          "description": "The camera moved since the drawing's correction was taken.",
+          "type": "string"
+        },
+        {
+          "const": "calibration_stale",
+          "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+          "type": "string"
+        },
+        {
+          "const": "frame_mismatch",
+          "description": "The frame is not the calibration's size or stream.",
+          "type": "string"
+        },
+        {
+          "const": "paused",
+          "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+          "type": "string"
+        },
+        {
+          "const": "refused",
+          "description": "The composer refused the frame for another reason.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -45832,6 +48026,28 @@ Declared by `printobserver-supervisor-api`.
         "string",
         "null"
       ]
+    },
+    "image_fallback": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageFallback"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Why the attached image is the whole frame; absent for the three-panel\nimage, when no image is attached, or when what made it gave no reason."
+    },
+    "image_kind": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageKind"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Which image is attached to the prompt; absent when none is."
     },
     "noticed": {
       "default": null,
@@ -46421,6 +48637,289 @@ Declared by `printobserver-core`.
     }
   ],
   "title": "UnverifiedReason"
+}
+```
+
+### ViewCorrection
+
+Declared by `printobserver-panels`.
+
+```json
+{
+  "$defs": {
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "How a print's drawings map the calibrated view onto the current frame.",
+  "properties": {
+    "landmarks": {
+      "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+      "items": {
+        "$ref": "#/$defs/ReferenceLandmark"
+      },
+      "type": "array"
+    },
+    "matrix": {
+      "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+      "items": {
+        "items": {
+          "format": "double",
+          "type": "number"
+        },
+        "maxItems": 3,
+        "minItems": 3,
+        "type": "array"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    },
+    "model": {
+      "$ref": "#/$defs/ViewModel",
+      "description": "The model `matrix` is of."
+    },
+    "residual_px": {
+      "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "model",
+    "matrix",
+    "landmarks",
+    "residual_px"
+  ],
+  "title": "ViewCorrection",
+  "type": "object"
+}
+```
+
+### ViewModel
+
+Declared by `printobserver-panels`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+  "oneOf": [
+    {
+      "const": "translation",
+      "description": "A shift alone.",
+      "type": "string"
+    },
+    {
+      "const": "similarity",
+      "description": "A shift, a rotation and one scale.",
+      "type": "string"
+    },
+    {
+      "const": "affine",
+      "description": "A general linear map and a shift.",
+      "type": "string"
+    },
+    {
+      "const": "homography",
+      "description": "A plane-to-plane projective map.",
+      "type": "string"
+    }
+  ],
+  "title": "ViewModel"
+}
+```
+
+### ViewOutcome
+
+Declared by `printobserver-panels`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What one judgement of the view found.",
+  "oneOf": [
+    {
+      "const": "unshifted",
+      "description": "No more than one found landmark sits beyond the calibration's\ntolerance of its calibrated place: one alone is as likely a false match\nas a moved camera.",
+      "type": "string"
+    },
+    {
+      "const": "refit",
+      "description": "Landmarks moved from the calibration but agree with the reference of\nthe correction in force, so the frame is drawn through it.",
+      "type": "string"
+    },
+    {
+      "const": "landmarks_not_found",
+      "description": "Fewer than two landmarks are found, or fewer than two of the\nreference's are found again.",
+      "type": "string"
+    },
+    {
+      "const": "view_refit_rejected",
+      "description": "Landmarks moved and no correction is in force, or two or more moved\nbeyond the tolerance from the correction's reference: the camera moved\nagain.",
+      "type": "string"
+    },
+    {
+      "const": "frame_mismatch",
+      "description": "The frame is not the calibration's size or stream.",
+      "type": "string"
+    }
+  ],
+  "title": "ViewOutcome"
+}
+```
+
+### WholeFrameReasonCode
+
+Declared by `printobserver-supervisor-api`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Why a check or a look was shown the whole frame: one code per reason the\nserver gives one.",
+  "oneOf": [
+    {
+      "const": "no_print",
+      "description": "No print is named: a look at the printer.",
+      "type": "string"
+    },
+    {
+      "const": "no_calibration",
+      "description": "No camera calibration is configured.",
+      "type": "string"
+    },
+    {
+      "const": "no_stream",
+      "description": "No camera snapshot address is configured.",
+      "type": "string"
+    },
+    {
+      "const": "no_position",
+      "description": "The print's G-code index gives no file position for the check.",
+      "type": "string"
+    },
+    {
+      "const": "no_object",
+      "description": "The G-code names no extruded object laid at that point.",
+      "type": "string"
+    },
+    {
+      "const": "no_layer",
+      "description": "It names no layer there.",
+      "type": "string"
+    },
+    {
+      "const": "toolpath_unread",
+      "description": "The layer's planned toolpath could not be read back.",
+      "type": "string"
+    },
+    {
+      "const": "alignment_pending",
+      "description": "The print's first layer is not down, or no frame of it has been judged\nyet.",
+      "type": "string"
+    },
+    {
+      "const": "alignment_inconclusive",
+      "description": "The last frame judged could not tell where the first layer lies: the\ntoolhead covered the part, or the layer was not clearly found. A later\ncheck's frame is judged again. No evidence of a defect.",
+      "type": "string"
+    },
+    {
+      "const": "alignment_unavailable",
+      "description": "The print's G-code lays no object to align.",
+      "type": "string"
+    },
+    {
+      "const": "alignment_failed",
+      "description": "The camera's frames cannot be judged against the calibration.",
+      "type": "string"
+    },
+    {
+      "const": "landmarks_not_found",
+      "description": "Fewer than two landmarks are found, so whether the camera shifted is\nunknown.",
+      "type": "string"
+    },
+    {
+      "const": "view_refit_rejected",
+      "description": "The camera moved since the drawing's correction was taken.",
+      "type": "string"
+    },
+    {
+      "const": "calibration_stale",
+      "description": "The landmarks show the camera has moved since its calibration, so the\nplan cannot be drawn reliably on its frames: the camera wants\nrecalibrating.",
+      "type": "string"
+    },
+    {
+      "const": "frame_mismatch",
+      "description": "The frame is not the calibration's size or stream.",
+      "type": "string"
+    },
+    {
+      "const": "paused",
+      "description": "The printer reports the print paused, its bed moved off the plan's\nheight.",
+      "type": "string"
+    },
+    {
+      "const": "refused",
+      "description": "The composer refused the frame for another reason.",
+      "type": "string"
+    }
+  ],
+  "title": "WholeFrameReasonCode"
 }
 ```
 
@@ -48963,6 +51462,53 @@ Declared by `printobserver-server`.
         {
           "answer": "success",
           "type": "BedClearAnswer"
+        }
+      ]
+    },
+    {
+      "accepts": "application/json",
+      "answers": "application/json",
+      "effect": "write",
+      "image_path_field": "frame_path",
+      "method": "POST",
+      "name": "recheck_camera",
+      "parameters": [
+        {
+          "kind": "text",
+          "located": "path",
+          "name": "print_id",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        },
+        {
+          "kind": "structured",
+          "located": "body",
+          "name": "actor",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "$ref": "#/$defs/Actor"
+          }
+        },
+        {
+          "kind": "text",
+          "located": "body",
+          "name": "reason",
+          "repeated": false,
+          "required": true,
+          "shape": {
+            "type": "string"
+          }
+        }
+      ],
+      "path": "/v1/prints/{print_id}/camera/recheck",
+      "responses": [
+        {
+          "answer": "success",
+          "type": "RecheckCameraAnswer"
         }
       ]
     }

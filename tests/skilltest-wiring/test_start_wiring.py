@@ -42,7 +42,9 @@ LOOK = ["printobserver", "look", "--json"]
 
 
 #: The rule a supervision turn handed its event's image is not given.
-WITHHELD_BESIDE_AN_IMAGE = "Bash(printobserver look:*)"
+#: The commands a turn handed an image runs none of: a fresh look, and a recheck of
+#: the camera, which takes a fresh frame too.
+WITHHELD_BESIDE_AN_IMAGE = ("Bash(printobserver look:*)", "Bash(printobserver recheck-camera:*)")
 
 
 def manifest(material: str, sheet: str | None) -> str:
@@ -194,15 +196,16 @@ def test_the_conversation_has_the_skill_and_a_supervision_turns_permissions(
     ).turns[0]
     supervision = turn["arguments"]
     equal(
-        [rule for rule in agent_rules() if rule != WITHHELD_BESIDE_AN_IMAGE],
+        [rule for rule in agent_rules() if rule not in WITHHELD_BESIDE_AN_IMAGE],
         [word for word in supervision if word.startswith("Bash(")],
     )
-    contains(" ".join(agent_rules()), WITHHELD_BESIDE_AN_IMAGE)
+    for withheld in WITHHELD_BESIDE_AN_IMAGE:
+        contains(" ".join(agent_rules()), withheld)
     # Beyond a supervision turn's, the skill tool, for the one skill installed, and the
     # look a turn handed an image is not allowed.
     granted = tail[tail.index("--allowedTools") + 1 : len(harness_arguments())]
     supervision_granted = supervision[supervision.index("--allowedTools") + 1 :]
-    beyond = {"Skill(printobserver)", WITHHELD_BESIDE_AN_IMAGE}
+    beyond = {"Skill(printobserver)", *WITHHELD_BESIDE_AN_IMAGE}
     equal(
         [rule for rule in granted if rule not in beyond],
         supervision_granted[: len(granted) - len(beyond)],

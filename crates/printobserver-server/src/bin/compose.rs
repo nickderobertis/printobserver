@@ -103,6 +103,7 @@ fn composed(asked: &Asked) -> Result<String, String> {
         None,
         url.as_str(),
         calibration,
+        None,
     );
     let _ = std::fs::remove_file(&spool);
     let image = image.map_err(|reason| format!("no check image: {reason}"))?;

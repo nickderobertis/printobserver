@@ -14,4 +14,5 @@ mod composite;
 mod drift;
 mod growth;
 mod placement;
+mod recovery;
 mod support;

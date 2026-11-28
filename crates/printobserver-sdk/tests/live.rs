@@ -291,6 +291,56 @@ fn step_printer_look(client: &Client, world: &supervisor::Supervisor, proxy: &li
     live::same("printer_look", &answered, &seen.answer);
 }
 
+/// `recheck_camera`, declined by a real supervisor for want of what it needs.
+fn step_recheck_camera(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
+    ready(client, &world.print_id, "");
+
+    let declined = client
+        .recheck_camera(&world.print_id, REASON)
+        .expect_err("`recheck_camera` is declined by this world's supervisor");
+
+    let ClientError::Refused { status, detail } = declined else {
+        panic!(
+            "`recheck_camera`: the refusal did not arrive in the server's own words: {declined:?}"
+        );
+    };
+    assert_eq!(status, 503, "`recheck_camera`");
+    assert_eq!(
+        detail, "no camera is configured to judge: set the server's `[camera] snapshot_url`",
+        "`recheck_camera`"
+    );
+    let seen = proxy.last();
+    assert_eq!(seen.method, "POST", "`recheck_camera`");
+    assert_eq!(
+        seen.target,
+        format!(
+            "/v1/prints/{print_id}/camera/recheck",
+            print_id = world.print_id
+        ),
+        "`recheck_camera`"
+    );
+    assert_eq!(seen.status, 503, "`recheck_camera`");
+    let answered: serde_json::Value =
+        serde_json::from_str(&seen.answer).expect("the supervisor answered a document");
+    assert_eq!(
+        answered["error"],
+        "no camera is configured to judge: set the server's `[camera] snapshot_url`",
+        "`recheck_camera`"
+    );
+    let sent: serde_json::Value =
+        serde_json::from_str(&seen.body).expect("the supervisor received a document");
+    assert_eq!(
+        sent["actor"],
+        serde_json::json!("operator"),
+        "`recheck_camera`"
+    );
+    assert_eq!(
+        sent["reason"],
+        serde_json::to_value(REASON).expect("a value renders"),
+        "`recheck_camera` sent another `reason`"
+    );
+}
+
 /// `cancel`, answered by a real supervisor.
 fn step_cancel(client: &Client, world: &supervisor::Supervisor, proxy: &live::Proxy) {
     ready(client, &world.print_id, "printing");
@@ -1936,6 +1986,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_events(&client, &world, &proxy);
     step_look(&client, &world, &proxy);
     step_printer_look(&client, &world, &proxy);
+    step_recheck_camera(&client, &world, &proxy);
     step_cancel(&client, &world, &proxy);
     step_recover_status(&client, &world, &proxy);
     step_bed_clear(&client, &world, &proxy);
@@ -1967,7 +2018,7 @@ fn every_method_is_answered_by_a_real_supervisor() {
     step_retire_spool(&client, &world, &proxy);
     step_prints(&client, &world, &proxy);
 
-    assert!(proxy.calls() >= 39, "every call went through the proxy");
+    assert!(proxy.calls() >= 40, "every call went through the proxy");
     standing.stop();
 }
 

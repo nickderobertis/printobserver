@@ -38,7 +38,7 @@ from contract_codegen.naming import (
     pascal,
     rust_identifier,
 )
-from contract_codegen.walk import ABSENT, EventStep, LiveStep
+from contract_codegen.walk import ABSENT, DECLINED_STATUS, EventStep, LiveStep
 
 #: The line a generated refusal test reads the range allowed through.
 ALLOWED_RANGE = "        rejection.allowed.as_ref().map(|range| (range.min, range.max)),"
@@ -1126,6 +1126,9 @@ def emit_live(contract: Contract) -> str:
         if step.refused:
             lines += _live_refused_step(step, call, spelled, carried)
             continue
+        if step.declined:
+            lines += _live_declined_step(step, call, spelled, carried)
+            continue
         lines += [
             f"/// `{step.name}`, answered by a real supervisor.",
             f"fn step_{step.name}(",
@@ -1317,6 +1320,41 @@ def _live_refused_step(step: LiveStep, call: str, spelled: str, carried: bool) -
         "}",
         "",
     ]
+    return lines
+
+
+def _live_declined_step(step: LiveStep, call: str, spelled: str, carried: bool) -> list[str]:
+    """One step of the real walk the server declines in its own error shape."""
+    said = json.dumps(step.declined)
+    lines = [
+        f"/// `{step.name}`, declined by a real supervisor for want of what it needs.",
+        f"fn step_{step.name}(",
+        "    client: &Client,",
+        "    world: &supervisor::Supervisor,",
+        "    proxy: &live::Proxy,",
+        *(["    manifest: &printobserver_sdk::JobManifest,"] if carried else []),
+        ") {",
+        f'    ready(client, &world.print_id, "{step.state}");',
+        "",
+        f"    let declined = client.{spelled}({call})",
+        f'        .expect_err("`{step.name}` is declined by this world\'s supervisor");',
+        "",
+        "    let ClientError::Refused { status, detail } = declined else {",
+        f"        panic!(\"`{step.name}`: the refusal did not arrive in the server's own words: "
+        '{declined:?}");',
+        "    };",
+        f'    assert_eq!(status, {DECLINED_STATUS}, "`{step.name}`");',
+        f'    assert_eq!(detail, {said}, "`{step.name}`");',
+        "    let seen = proxy.last();",
+        f'    assert_eq!(seen.method, "{step.method}", "`{step.name}`");',
+        f'    assert_eq!(seen.target, {_live_target(step)}, "`{step.name}`");',
+        f'    assert_eq!(seen.status, {DECLINED_STATUS}, "`{step.name}`");',
+        "    let answered: serde_json::Value =",
+        '        serde_json::from_str(&seen.answer).expect("the supervisor answered a document");',
+        f'    assert_eq!(answered["error"], {said}, "`{step.name}`");',
+    ]
+    lines.extend(_live_body_assertions(step))
+    lines += ["}", ""]
     return lines
 
 

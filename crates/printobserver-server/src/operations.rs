@@ -7,12 +7,12 @@
 //! [`SpoolCommand`](printobserver_core::SpoolCommand) and of
 //! [`RecoveryAction`](printobserver_core::RecoveryAction) the contracts
 //! declare, and the recovery read beside the last ([`RECOVERY_STATUS`]),
-//! plus fifteen operations beside them — the prints listing, status, context,
+//! plus sixteen operations beside them — the prints listing, status, context,
 //! image materialization, history, the event log followed in the order it was
 //! stored, a fresh look at a print and one at the printer, the manifest's read
 //! and write, the four reads of the spool ledger: the spools, one spool, the
-//! printer's own history and a filament check — and the operator's word that
-//! the bed is clear, and nothing else. The router is built by folding
+//! printer's own history and a filament check — the operator's word that the
+//! bed is clear, and a recheck of a print's camera, and nothing else. The router is built by folding
 //! over this array rather than by writing routes out, so the set served and the
 //! set declared are one thing; and this crate's own tier derives the required
 //! set from the contracts' own `PrintAction` rather than from a list of its
@@ -552,6 +552,7 @@ impl Operation {
             ("look" | "printer_look", _) => schema_for!(crate::wire::LookAnswer),
             ("manifest_get" | "manifest_set", _) => schema_for!(crate::wire::ManifestAnswer),
             (BED_CLEAR, _) => schema_for!(crate::wire::BedClearAnswer),
+            (RECHECK_CAMERA, _) => schema_for!(crate::wire::RecheckCameraAnswer),
             (name, _) => panic!("the operation `{name}` has no declared answer shape"),
         };
         schema.to_value()
@@ -919,7 +920,7 @@ pub fn command_for(operation: &str) -> String {
 }
 
 /// Every public operation this server serves, and there is no other.
-pub const OPERATIONS: [Operation; 39] = [
+pub const OPERATIONS: [Operation; 40] = [
     // Takes nothing: it is how a caller finds the identifier every other
     // print-specific operation takes.
     // llmlint: ignore[names_match_behavior] suppressions.toml has the reason.
@@ -1182,26 +1183,55 @@ pub const OPERATIONS: [Operation; 39] = [
         printer_wide: None,
         mints_print: false,
     },
+    // Judges a print's camera again on a fresh frame — its view and its
+    // first-layer alignment, a latched verdict included — and asks nothing of
+    // the machine.
+    Operation {
+        name: RECHECK_CAMERA,
+        method: Method::Post,
+        path: "/prints/{print_id}/camera/recheck",
+        effect: Effect::Write,
+        accepts: Some(MEDIA_TYPE),
+        answers: MEDIA_TYPE,
+        query: &[],
+        body: &[
+            Declared {
+                shape: Some("Actor"),
+                ..Declared::once("actor", true, ValueKind::Structured)
+            },
+            Declared::once("reason", true, ValueKind::Text),
+        ],
+        image_path_field: Some(RECHECK_FRAME_PATH_FIELD),
+        printer_wide: None,
+        mints_print: false,
+    },
 ];
 
 /// The operator's word that the bed is clear, recorded beside the recovery
 /// vocabulary it is decided into.
 pub const BED_CLEAR: &str = "bed_clear";
 
+/// A print's camera judged again on a fresh frame.
+pub const RECHECK_CAMERA: &str = "recheck_camera";
+
+/// The field a recheck of the camera carries its fresh frame's own path in.
+pub const RECHECK_FRAME_PATH_FIELD: &str = "frame_path";
+
 /// The read beside the recovery vocabulary: what every recovery action is
 /// checked against now, and what each would meet.
 pub const RECOVERY_STATUS: &str = "recover_status";
 
-/// The fifteen operations this server serves beside the vocabularies.
+/// The sixteen operations this server serves beside the vocabularies.
 ///
-/// Thirteen of them read, one writes a manifest and one records the operator's
-/// word that the bed is clear, neither of which asks anything of the machine;
+/// Thirteen of them read, one writes a manifest, one records the operator's
+/// word that the bed is clear and one judges a print's camera again on a fresh
+/// frame, none of which asks anything of the machine;
 /// what they have in common is that none of them is an action, a spool command
 /// or a recovery action the contracts declare. A look writes its own record into the
 /// print's history — or the printer's, for a look at the printer — as every
 /// read of the camera is kept, and asks nothing of the machine either; a
 /// filament check records nothing at all.
-pub const BESIDE_THE_ACTIONS: [&str; 15] = [
+pub const BESIDE_THE_ACTIONS: [&str; 16] = [
     "prints",
     "status",
     "context",
@@ -1217,6 +1247,7 @@ pub const BESIDE_THE_ACTIONS: [&str; 15] = [
     "printer_history",
     "preflight",
     BED_CLEAR,
+    RECHECK_CAMERA,
 ];
 
 /// The look at the printer with no print named, which `look` is asked as when

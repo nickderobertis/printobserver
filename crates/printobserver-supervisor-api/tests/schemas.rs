@@ -18,9 +18,9 @@
 mod schema_files;
 
 use printobserver_supervisor_api::{
-    AgentAssessment, Confidence, Disposition, SessionPhase, SupervisionSession,
-    SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload, TurnOutcome, TurnRequest,
-    TurnSituation,
+    AgentAssessment, Confidence, Disposition, ImageFallback, ImageKind, SessionPhase,
+    SupervisionSession, SupervisionSessionClosedPayload, SupervisionSessionOpenedPayload,
+    TurnOutcome, TurnRequest, TurnSituation, WholeFrameReasonCode,
 };
 use printobserver_types::contract::{Sample as _, TypeContract, schema_of};
 use printobserver_types::serde_json::{Value, json};
@@ -75,6 +75,15 @@ fn session_vocabulary() -> Vec<TypeContract> {
     ]
 }
 
+/// Which image a check was shown and why, each with its canonical values.
+fn image_vocabulary() -> Vec<TypeContract> {
+    vec![
+        TypeContract::of::<ImageKind>("ImageKind"),
+        TypeContract::of::<ImageFallback>("ImageFallback"),
+        TypeContract::of::<WholeFrameReasonCode>("WholeFrameReasonCode"),
+    ]
+}
+
 /// The field the contract states, as a name, what it is, and whether it is
 /// required.
 fn field(name: &str, descriptor: &str, required: bool) -> WireField {
@@ -107,6 +116,7 @@ fn generated() -> Vec<(String, Value)> {
         assessment_vocabulary()
             .into_iter()
             .chain(session_vocabulary())
+            .chain(image_vocabulary())
             .map(|entry| (format!("{}.json", entry.name), entry.schema())),
     );
     entries
@@ -147,6 +157,8 @@ fn turn_situation_carries_exactly_the_stated_fields() {
         field("detector_warned", "boolean", false),
         field("frame_captured_at", "Timestamp", false),
         field("image", "string", false),
+        field("image_fallback", "ImageFallback", false),
+        field("image_kind", "ImageKind", false),
         field("noticed", "string", false),
         field("printer_state", "PrinterState", false),
     ];
@@ -427,4 +439,52 @@ fn the_session_round_trips_and_holds_the_wire_rules() {
             "print_id accepted {refused}"
         );
     }
+}
+
+/// Which image a check was shown round-trips its canonical values, spells
+/// every reason code in snake case, and refuses a value of no declared type.
+#[test]
+fn the_image_vocabulary_round_trips_and_spells_its_codes_in_snake_case() {
+    for entry in image_vocabulary() {
+        for value in entry.samples() {
+            let round = entry
+                .round_trip(value.clone())
+                .unwrap_or_else(|error| panic!("{}: {error}", entry.name));
+            assert_eq!(round, value, "{} does not survive a round trip", entry.name);
+        }
+        assert!(
+            entry
+                .round_trip(json!({ "printobserver": "no type declares this field" }))
+                .is_err(),
+            "{} accepted a value of no declared type",
+            entry.name
+        );
+    }
+    let codes: Vec<Value> = std::iter::once(WholeFrameReasonCode::sample_full())
+        .chain(WholeFrameReasonCode::sample_alternates())
+        .map(|code| printobserver_types::serde_json::to_value(code).expect("a code renders"))
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            "alignment_inconclusive",
+            "no_print",
+            "no_calibration",
+            "no_stream",
+            "no_position",
+            "no_object",
+            "no_layer",
+            "toolpath_unread",
+            "alignment_pending",
+            "alignment_unavailable",
+            "alignment_failed",
+            "landmarks_not_found",
+            "view_refit_rejected",
+            "calibration_stale",
+            "frame_mismatch",
+            "paused",
+            "refused",
+        ]
+        .map(Value::from)
+    );
 }

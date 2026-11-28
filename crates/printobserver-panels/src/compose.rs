@@ -27,6 +27,7 @@ use crate::drift::{check_drift, check_frame};
 use crate::error::ComposeError;
 use crate::geometry::project_toolpath;
 use crate::text::draw_text;
+use crate::view::ViewCorrection;
 
 /// A panel's width.
 pub const PANEL_WIDTH: u32 = 1024;
@@ -106,6 +107,11 @@ pub struct CheckImageInputs<'a> {
     pub print_z_mm: f64,
     /// The printer's calibration.
     pub calibration: &'a CameraCalibration,
+    /// The correction every drawn pixel goes through, taken from this print's
+    /// own first layer. With one, the caller has judged the frame's view
+    /// against its reference, and the composer judges no drift of its own;
+    /// with none, the composer refuses a frame the drift check refuses.
+    pub correction: Option<&'a ViewCorrection>,
 }
 
 /// The composed check image.
@@ -145,7 +151,9 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
     let current = decode(inputs.current_jpeg)?;
     let size = [current.width(), current.height()];
     check_frame(inputs.calibration, size, inputs.camera_snapshot_url)?;
-    check_drift(inputs.calibration, &image::imageops::grayscale(&current))?;
+    if inputs.correction.is_none() {
+        check_drift(inputs.calibration, &image::imageops::grayscale(&current))?;
+    }
     let previous = inputs
         .previous
         .map(|(jpeg, at)| decode(jpeg).map(|frame| (frame, at)))
@@ -160,12 +168,7 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
         )?;
     }
 
-    let projector = inputs.calibration.projector();
-    let drawn = project_toolpath(&projector, inputs.toolpath, inputs.print_z_mm);
-    let below = inputs
-        .object_layer_below
-        .map(|layer| project_toolpath(&projector, layer, inputs.print_z_mm))
-        .unwrap_or_default();
+    let (drawn, below) = drawn_pieces(inputs);
     let rect = close_up_rect(inputs, size);
     let in_frame = |[x, y]: [f64; 2]| {
         (0.0..f64::from(size[0])).contains(&x) && (0.0..f64::from(size[1])).contains(&y)
@@ -238,6 +241,36 @@ pub fn compose_check_image(inputs: &CheckImageInputs<'_>) -> Result<CheckImage, 
         height: IMAGE_HEIGHT,
         close_up_source_rect: rect,
     })
+}
+
+/// The current layer's toolpath and, when it lays supports alone, the object
+/// layer below, projected and taken through the correction when there is one.
+fn drawn_pieces(
+    inputs: &CheckImageInputs<'_>,
+) -> (
+    Vec<crate::geometry::Projected>,
+    Vec<crate::geometry::Projected>,
+) {
+    let projector = inputs.calibration.projector();
+    let corrected = |mut pieces: Vec<crate::geometry::Projected>| {
+        if let Some(correction) = inputs.correction {
+            for piece in &mut pieces {
+                piece.from = correction.apply(piece.from);
+                piece.to = correction.apply(piece.to);
+            }
+        }
+        pieces
+    };
+    let drawn = corrected(project_toolpath(
+        &projector,
+        inputs.toolpath,
+        inputs.print_z_mm,
+    ));
+    let below = inputs
+        .object_layer_below
+        .map(|layer| corrected(project_toolpath(&projector, layer, inputs.print_z_mm)))
+        .unwrap_or_default();
+    (drawn, below)
 }
 
 /// A pixel row as the drawing calls take it.
@@ -317,6 +350,7 @@ fn close_up_rect(inputs: &CheckImageInputs<'_>, size: [u32; 2]) -> Option<[u32; 
             ]
         })
         .flatten()
+        .map(|pixel| inputs.correction.map_or(pixel, |c| c.apply(pixel)))
         .collect();
     let first = points.first()?;
     let (mut x0, mut y0, mut x1, mut y1) = (first[0], first[1], first[0], first[1]);

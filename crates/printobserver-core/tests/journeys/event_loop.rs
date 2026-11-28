@@ -836,11 +836,10 @@ impl printobserver_core::CheckImages for RecordingCheckImages {
                 made_for: request.made_for,
                 position: request.plan.as_ref().map(|plan| plan.file_position_bytes),
             });
-        Ok(printobserver_core::ShownImage {
-            path: request.frame.to_path_buf(),
-            note: Some("the stored frame, as recorded".to_owned()),
-            composite: false,
-        })
+        Ok(printobserver_core::ShownImage::plain(
+            request.frame.to_path_buf(),
+            Some("the stored frame, as recorded".to_owned()),
+        ))
     }
 }
 

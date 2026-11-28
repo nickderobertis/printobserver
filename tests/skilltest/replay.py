@@ -225,9 +225,9 @@ SUPPORT_TYPES = (b"Support material", b"Support material interface")
 #: The checking interval of the server started only to decide a print's alignment
 #: before the first event, so that no check is due while it runs.
 DECIDING_INTERVAL_S = 3600
-#: How long the replay stands where the job passed its first layer for the printer
-#: watch to decide the print's alignment there: past one of its reads, the installer's
-#: fifteen-second poll, and the frame the decision fetches.
+#: How long the replay waits, where the job passed its first layer, for the server to
+#: open the print whose camera it then rechecks there: past one of the watch's reads,
+#: the installer's fifteen-second poll.
 PASSING_WAIT_S = 25
 
 
@@ -661,9 +661,13 @@ def check_image(note: str) -> CheckImage:
 #: Why the server shows a print's check the whole frame when no calibration is configured.
 NO_CALIBRATION = "no camera calibration is configured"
 #: Why a print's check is shown the whole frame when no calibration is configured, its
-#: frames are of another size than the calibration, or its alignment refused the
-#: projection: the server's own wording, of its own reason and of the alignment's and
-#: the composer's refusals.
+#: frames are of another size than the calibration, its alignment refused the
+#: projection, or its landmarks are not found or show the camera moved again: the
+#: server's own wording, of its own reason and of the alignment's, the view's and the
+#: composer's refusals. A covered part's inconclusive alignment is not among them: the
+#: toolhead over a small part legitimately leaves it to a later check. Nor is a stale
+#: calibration, which a case keeps on purpose to prove a camera that has moved is
+#: shown the whole frame rather than an outline drawn off its part.
 CALIBRATION_FALLBACKS = (
     re.compile(re.escape(NO_CALIBRATION)),
     re.compile(
@@ -675,6 +679,18 @@ CALIBRATION_FALLBACKS = (
         r"the print's first-layer alignment failed: the printed first layer lies \S+ px"
         r" from where the calibration projects it"
     ),
+    re.compile(
+        re.escape("fewer than two of the calibration's landmarks are found in the frame") + r".*"
+    ),
+    re.compile(
+        re.escape(
+            "fewer than two of the landmarks this print's first-layer correction was taken"
+            " against are found in the frame"
+        )
+        + r".*"
+    ),
+    re.compile(r"the camera has moved again since this print's first-layer correction was taken.*"),
+    re.compile(r"the camera has shifted since it was calibrated, .*"),
 )
 
 
@@ -1611,19 +1627,34 @@ class Replay:
         return None
 
     def _stand_passing(self, passing: doubles.Passing, short_of: Moment) -> None:
-        """Stand at the passing frame, short of an event's position, until the server decides.
+        """Stand at the passing frame, short of an event's position, and recheck the camera there.
 
         The job stands no further than the event it comes before, and past the first
-        layer, as it did: the server decides on its next read, or [`PASSING_WAIT_S`]
-        passes.
+        layer, as it did. The server judges a print's alignment on its checks' own
+        frames, so the frame the live watch decided on is judged as an operator's
+        recheck of the camera judges one: a fresh frame, taken there, at once. A frame
+        that does not clearly find the layer leaves the alignment pending, and the
+        print's checks judge it again on their own frames.
         """
         ends = self.first_layer_end or 0
         position = min(passing.position, short_of.file_position_bytes)
         with self.timeline.lock:
             self.timeline.pass_at(passing._replace(position=max(position, ends + 1)))
         deadline = time.monotonic() + PASSING_WAIT_S
-        while time.monotonic() < deadline and not any((self.state / "alignment").glob("*.json")):
+        while not self._prints():
+            if time.monotonic() > deadline:
+                msg = f"the server opened no print within {PASSING_WAIT_S} s"
+                raise ReplayError(msg)
             time.sleep(0.25)
+        self._client(
+            "recheck-camera",
+            "--print-id",
+            self._print_id(),
+            "--actor",
+            '"operator"',
+            "--reason",
+            "The first layer is down: judging the camera on it.",
+        )
         self._read_alignment()
 
     def _pass_the_first_layer(self, upcoming: Moment) -> None:

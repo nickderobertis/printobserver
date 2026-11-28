@@ -138,6 +138,19 @@ REPLAYS = {
     ],
     "under-extrusion-lace": ["carry-on-healthy-before-fault", "porous-walls"],
     "fan-cut-bridge": ["carry-on-healthy-before-fault", "bridge-sagging-uncooled"],
+    "two-colour-planned-change": [
+        "carry-on-with-the-head-over-the-part",
+        "carry-on-before-the-first-change",
+        "quiet-through-the-white-wait-and-on-at-its-resume",
+        "white-judged-expected-once-visible",
+        "quiet-through-the-black-wait-and-on-at-its-resume",
+        "black-judged-expected-once-visible",
+    ],
+    "two-colour-wrong-spool-at-change": [
+        "carry-on-before-the-first-change",
+        "carried-on-from-the-change-to-red",
+        "white-seen-where-red-is-planned",
+    ],
     "jar-top-petg-healthy": [
         "carry-on-004-other",
         "outside-first-layer",
@@ -1201,13 +1214,13 @@ def test_a_first_layer_down_before_the_first_event_is_decided_before_it(scratch:
 
 
 def test_a_frame_away_from_the_print_height_is_never_the_one_aligned_on(scratch: Path) -> None:
-    """The alignment is decided on the first frame past the first layer showing the bed in place.
+    """A frame away from the print height is passed over, and the checks judge the layer.
 
     The case marks the frame just past its first layer, taken before its first event,
     as one whose bed is not where its progress puts it, as a parked toolhead leaves
-    it. The replay passes over it, so nothing is decided before the first event; the
-    server decides on the next frame past the layer, which falls between the first
-    two events, and the camera is asked for it right after the first check's own.
+    it. The replay passes over it, so nothing is judged before the first event; the
+    server then judges the first layer on the first check's own frame, so the camera
+    is asked for nothing beside the checks' own.
     """
     case = read_case(TIMELINE_CASE)
     first, second = case.moments[:2]
@@ -1233,8 +1246,8 @@ def test_a_frame_away_from_the_print_height_is_never_the_one_aligned_on(scratch:
         ),
     )
     done = mock_replay(away, [{"commands": [CONTEXT]}], scratch, gcode=gcode)
-    equal(done.replayed.fetches[:2], [first.event_image, case.frames[past[1]].file])
-    truth(done.replayed.alignment is not None, describing="the verdict decided on that frame")
+    equal(done.replayed.fetches[:2], [first.event_image, second.event_image])
+    truth(done.replayed.alignment is not None, describing="the verdict the first check judged")
 
 
 def test_a_frame_a_case_says_is_away_from_the_print_height_is_read_so() -> None:
@@ -2619,19 +2632,27 @@ def test_a_print_with_no_first_layer_frame_is_composed_on_the_alignment_its_case
     equal(calibration_fallbacks(notes), {})
 
 
-def test_deciding_alignment_on_a_frame_far_above_the_first_layer_is_a_fallback_the_suite_fails(
+def test_deciding_alignment_on_a_frame_far_above_the_first_layer_leaves_every_check_inconclusive(
     scratch: Path,
 ) -> None:
-    """The same print with no alignment recorded: decided on its 14 mm frame, it is refused."""
+    """The same print with no alignment recorded: judged on its 14 mm frame, never passed.
+
+    The part standing over its first layer pulls the score off a right projection, so
+    no frame clearly finds the layer: every check is shown the whole frame because the
+    alignment is inconclusive, and judged again on the next frame. That is no fallback
+    for want of a fitting calibration, which is why such a case records the alignment
+    its marks were proven at instead.
+    """
     case = replace(read_case(UNSEEN_FIRST_LAYER), no_first_layer_frame_offset_px=None)
-    fell_back = calibration_fallbacks(
-        _checks_shown(case, _its_first_frame, scratch, "fan-cut-test.gcode")
-    )
-    equal(set(fell_back), {moment.id for moment in case.moments})
-    truth(
-        all("the printed first layer lies" in why for why in fell_back.values()),
-        describing=f"each refused on the offset: {fell_back}",
-    )
+    notes = _checks_shown(case, _its_first_frame, scratch, "fan-cut-test.gcode")
+    equal(calibration_fallbacks(notes), {})
+    for check, note in notes.items():
+        shown = check_image(note)
+        equal(shown["kind"], "whole_frame", describing=f"{check}: {note}")
+        contains(
+            shown["why"] or "",
+            "the print's first-layer alignment is inconclusive on the frame judged last",
+        )
 
 
 def test_a_recorded_alignment_is_refused_on_a_print_that_keeps_its_first_layer_frame(

@@ -192,7 +192,7 @@ schema with an `x-event-kind` marker through `event_schema_of`, and the
 generated clients' kind-to-payload tables are produced from the marker — with
 `just check-repo`'s `generated-clients` check red when a generated copy parts
 from what the schema set writes, and the codegen refusing two schemas under one
-kind name. Forty-five kinds are
+kind name. Forty-nine kinds are
 declared today, each by its owner: `printobserver-core` writes
 `action_requested`, `action_executed`, `action_rejected`,
 `intervention_expired`, `agent_assessment`, `agent_stop_unacted`,
@@ -214,7 +214,9 @@ bed is clear, `bed_clear_asserted`, which carry no print;
 `obico_printer_notification`; `printobserver-vision-api` declares
 `malformed_external_event`; `printobserver-supervisor-api` declares
 `supervision_session_opened` and `supervision_session_closed`; and
-`printobserver-server` writes `startup_reconciliation`. That count and that
+`printobserver-server` writes `startup_reconciliation`, and the records of what
+it judged of a print's camera frames, `first_layer_alignment_judged`,
+`camera_view_judged`, `camera_view_refit` and `check_image_changed`. That count and that
 list are held to the checked-in schemas by `crates/printobserver-server/tests/documented.rs`,
 which fails when a kind is declared or removed without them. **A reader handles a
 kind it does not know**: it carries the record through, filters by the kind's

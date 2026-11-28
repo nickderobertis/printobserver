@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+  "properties": {
+    "name": {
+      "description": "The calibration's name for it.",
+      "type": "string"
+    },
+    "offset_px": {
+      "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+      "items": {
+        "format": "double",
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "score": {
+      "description": "The correlation it was found at.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "name",
+    "offset_px",
+    "score"
+  ],
+  "title": "ReferenceLandmark",
+  "type": "object"
+}

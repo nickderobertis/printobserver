@@ -46,15 +46,19 @@ The rules the real-print suite is held to, and why.
   `image` line, and the alignment verdict the server kept for the print.
 - **Every print's checks get the image the latest code builds.** A live test fails
   any case's check shown the whole frame because no calibration is configured, its
-  frames are not the calibration's size, or the print's alignment refused it; no
-  case is exempt.
-- **The watch sees the job pass its first layer, as it did live.** The live watch
-  decides alignment on the frame it takes as the first layer goes down; a replay
-  jumping between events would show it the next event's frame instead. So the
-  replay stands at the first recorded observation frame past that layer, passing
-  over one the case marks `not_at_print_height` — between
-  two events while the ended turn still holds the print, or, when it precedes the
-  first event, in a start of the server with no check due — until it decides.
+  frames are not the calibration's size, the print's alignment refused it, or its
+  landmarks are not found or show the camera moved again; no case is exempt. A
+  covered part's inconclusive alignment is not among them, nor a stale calibration
+  a case keeps on purpose (`calibration_stale`).
+- **The camera is rechecked as the job passes its first layer.** The live watch
+  of the release a case was recorded under decided alignment on the frame it
+  took as the first layer went down; the server now judges it on its checks'
+  own frames, so the replay stands at the first recorded observation frame past
+  that layer, passing over one the case marks `not_at_print_height` — between
+  two events while the ended turn still holds the print, or, when it precedes
+  the first event, in a start of the server with no check due — and runs the
+  operator's `recheck-camera` there. A frame that does not clearly find the
+  layer leaves the alignment pending for the checks to judge.
 - **A case keeping no frame of its first layer records its alignment instead**
   (`no_first_layer_frame`): its first frame stands far above the layer the check
   scores, where the part's body pulls the score off a right projection. The replay

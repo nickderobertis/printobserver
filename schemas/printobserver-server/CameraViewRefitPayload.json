@@ -1,0 +1,124 @@
+{
+  "$defs": {
+    "ReferenceLandmark": {
+      "additionalProperties": false,
+      "description": "One landmark of a correction's reference: where it was found on the frame\nthe correction was taken on.",
+      "properties": {
+        "name": {
+          "description": "The calibration's name for it.",
+          "type": "string"
+        },
+        "offset_px": {
+          "description": "How far from its calibrated place it was found, `[dx, dy]` pixels.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "score": {
+          "description": "The correlation it was found at.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "offset_px",
+        "score"
+      ],
+      "type": "object"
+    },
+    "ViewCorrection": {
+      "additionalProperties": false,
+      "description": "How a print's drawings map the calibrated view onto the current frame.",
+      "properties": {
+        "landmarks": {
+          "description": "The landmarks found agreeing on the frame the correction was taken on,\nwhich later frames are compared against.",
+          "items": {
+            "$ref": "#/$defs/ReferenceLandmark"
+          },
+          "type": "array"
+        },
+        "matrix": {
+          "description": "Maps a pixel of the calibrated view to the current frame, in\nhomogeneous coordinates, row by row.",
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ViewModel",
+          "description": "The model `matrix` is of."
+        },
+        "residual_px": {
+          "description": "The RMS distance between those landmarks' offsets and the correction's\nshift, in pixels: how far the landmarks disagree with the part.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "model",
+        "matrix",
+        "landmarks",
+        "residual_px"
+      ],
+      "type": "object"
+    },
+    "ViewModel": {
+      "description": "The model a [`ViewCorrection`] maps pixels by. Only [`Self::Translation`]\nis ever written.",
+      "oneOf": [
+        {
+          "const": "translation",
+          "description": "A shift alone.",
+          "type": "string"
+        },
+        {
+          "const": "similarity",
+          "description": "A shift, a rotation and one scale.",
+          "type": "string"
+        },
+        {
+          "const": "affine",
+          "description": "A general linear map and a shift.",
+          "type": "string"
+        },
+        {
+          "const": "homography",
+          "description": "A plane-to-plane projective map.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A first-layer pass put a correction in force while the landmarks had moved\nfrom the calibration: the print's first, or one taken again after the\ncamera moved again.",
+  "properties": {
+    "frame_sha256": {
+      "description": "The stored frame the correction was taken on.",
+      "type": "string"
+    },
+    "view_correction": {
+      "$ref": "#/$defs/ViewCorrection",
+      "description": "The correction now in force."
+    }
+  },
+  "required": [
+    "frame_sha256",
+    "view_correction"
+  ],
+  "title": "CameraViewRefitPayload",
+  "type": "object",
+  "x-event-kind": "camera_view_refit"
+}

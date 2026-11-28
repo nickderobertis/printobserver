@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "../src/client.ts";
 import type { JobManifest } from "../src/contract.ts";
-import { Rejected } from "../src/surface.ts";
+import { Refused, Rejected } from "../src/surface.ts";
 import { Recording, ready, same } from "./live.ts";
 import { SETUP_TIMEOUT_MS, Standing, type Supervisor } from "./world.ts";
 
@@ -188,6 +188,31 @@ async function stepPrinterLook(client: Client, proxy: Recording) {
   expect(seen.status).toBe(200);
   expect(seen.body).toBe("");
   same("printer_look", answered, seen.answer);
+}
+
+/** `recheck_camera`, declined by a real supervisor for want of what it needs. */
+async function stepRecheckCamera(client: Client, proxy: Recording) {
+  await ready(client, world.print_id, "");
+
+  const declined = await client
+    .recheckCamera(world.print_id, REASON)
+    .catch((raised: unknown) => raised);
+
+  expect(declined).toBeInstanceOf(Refused);
+  if (!(declined instanceof Refused)) {
+    throw new Error("`recheck_camera`: the refusal arrived in no words of the server");
+  }
+  expect(declined.status).toBe(503);
+  expect(declined.detail).toBe(
+    "no camera is configured to judge: set the server's `[camera] snapshot_url`",
+  );
+  const seen = proxy.last();
+  expect(seen.method).toBe("POST");
+  expect(seen.target).toBe(`/v1/prints/${world.print_id}/camera/recheck`);
+  expect(seen.status).toBe(503);
+  const sent = JSON.parse(seen.body);
+  expect(sent.actor).toBe("operator");
+  expect(sent.reason).toEqual(REASON);
 }
 
 /** `cancel`, answered by a real supervisor. */
@@ -754,6 +779,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepEvents(client, proxy);
   await stepLook(client, proxy);
   await stepPrinterLook(client, proxy);
+  await stepRecheckCamera(client, proxy);
   await stepCancel(client, proxy);
   await stepRecoverStatus(client, proxy);
   await stepBedClear(client, proxy);
@@ -785,7 +811,7 @@ test("every method is answered by a real supervisor", async () => {
   await stepRetireSpool(client, proxy);
   await stepPrints(client, proxy);
 
-  expect(proxy.calls()).toBeGreaterThanOrEqual(39);
+  expect(proxy.calls()).toBeGreaterThanOrEqual(40);
 }, 900_000);
 
 /** `cancel`, refused by a real supervisor's own policy. */

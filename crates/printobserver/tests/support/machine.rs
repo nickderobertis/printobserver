@@ -56,7 +56,7 @@
 
 use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use printobserver_types::serde_json::{Map as JsonMap, Value, json};
@@ -190,6 +190,9 @@ pub struct Machine {
     reported: Arc<Mutex<Reporting>>,
     /// How it answers what it is asked.
     answering: Arc<Mutex<Answering>>,
+    /// How many requests it has been sent that ask it to do something rather
+    /// than to say something: every one whose body names what it asks.
+    pub commanded: Arc<AtomicUsize>,
 }
 
 impl Machine {
@@ -216,6 +219,7 @@ impl Machine {
             stands_at: Arc::new(AtomicU64::new(0)),
             reported: Arc::new(Mutex::new(Reporting::default())),
             answering: Arc::new(Mutex::new(Answering::default())),
+            commanded: Arc::new(AtomicUsize::new(0)),
         };
         let serving = machine.clone();
         std::thread::spawn(move || {
@@ -232,6 +236,7 @@ impl Machine {
                         &machine.answering,
                         running,
                         machine.address,
+                        &machine.commanded,
                     );
                 });
             }
@@ -368,6 +373,7 @@ fn answer(
     answering: &Mutex<Answering>,
     running: Option<(&Held, u64)>,
     address: SocketAddr,
+    commanded: &AtomicUsize,
 ) {
     let file = running.map(|(file, _)| file);
     let Some(request) = read_request(&mut stream) else {
@@ -377,6 +383,16 @@ fn answer(
     let mut first = head.lines().next().unwrap_or_default().split_whitespace();
     let method = first.next().unwrap_or_default().to_owned();
     let target = first.next().unwrap_or_default().to_owned();
+    // A request asking for something names it in its body: a session's
+    // sign-in, which names nothing, asks the machine to do nothing.
+    if method == "POST"
+        && head
+            .split_once("\r\n\r\n")
+            .and_then(|(_, body)| printobserver_types::serde_json::from_str::<Value>(body).ok())
+            .is_some_and(|asked| !words_in(&asked).is_empty())
+    {
+        commanded.fetch_add(1, Ordering::SeqCst);
+    }
 
     let how = *answering.lock().expect("how it answers");
     if how.unreachable {
