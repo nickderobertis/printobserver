@@ -541,10 +541,7 @@ async fn stored_digest(server: &Running, print_id: PrintId, event: &Value) -> Va
 /// the alignment that left.
 async fn decided(server: &Running, print_id: PrintId) -> PrintAlignment {
     let response = presenting(OPERATOR)
-        .post(format!(
-            "{}/prints/{print_id}/camera/recheck",
-            server.base_url()
-        ))
+        .post(crate::aligning::recheck_url(server, print_id))
         .json(&json!({ "actor": "operator", "reason": "the first layer is down" }))
         .send()
         .await

@@ -610,7 +610,9 @@ async fn a_granted_agent_parks_on_the_operators_word() {
 /// Nobody but the operator gives the word: the agent claiming its own actor,
 /// a turn claiming the operator, the operator claiming the agent, and anybody
 /// claiming the system are each refused, and nothing is recorded; a reason
-/// that is blank is refused too.
+/// that is blank is refused `400` too, and so is a body that is not JSON, and
+/// one that is not a document or whose reason is not text, which this
+/// server's own error shape says.
 #[tokio::test(flavor = "multi_thread")]
 async fn nobody_but_the_operator_gives_the_word() {
     let bench = Bench::start(|_| {}).await;
@@ -633,6 +635,38 @@ async fn nobody_but_the_operator_gives_the_word() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{answer:#}");
+    let unread = bench
+        .client
+        .post(format!("{}/printer/bed_clear", bench.server.base_url()))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body("{\"actor\": \"operator\", \"reason\":")
+        .send()
+        .await
+        .expect("the server answers");
+    assert_eq!(
+        unread.status(),
+        StatusCode::BAD_REQUEST,
+        "a body that is not JSON"
+    );
+    for (body, says, what) in [
+        (
+            json!(["operator", REASON]),
+            "the body is not a document carrying an `actor` and a `reason`",
+            "a body that is not a document",
+        ),
+        (
+            json!({ "actor": "operator", "reason": 7 }),
+            "the body is not an `actor` and a `reason`",
+            "a reason that is not text",
+        ),
+    ] {
+        let (status, answer) = bench
+            .post_as(&bench.client, "/printer/bed_clear", &body)
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{what}: {answer:#}");
+        let error = answer["error"].as_str().unwrap_or_default();
+        assert!(error.starts_with(says), "{what}: {answer:#}");
+    }
     assert!(bench.of_kind("bed_clear_asserted").await.is_empty());
     bench.agent.release_turns();
 }

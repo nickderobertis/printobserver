@@ -712,7 +712,7 @@ fn every_operation_beside_the_vocabulary_is_driven_somewhere() {
     covered.push("events");
     covered.extend(crate::spooling::DRIVEN_THERE);
     covered.extend(crate::bed_clear::DRIVEN_THERE);
-    covered.extend(crate::camera_view::DRIVEN_THERE);
+    covered.extend(crate::aligning::DRIVEN_THERE);
     covered.sort_unstable();
     let mut declared: Vec<&str> = printobserver_server::BESIDE_THE_ACTIONS.to_vec();
     declared.sort_unstable();

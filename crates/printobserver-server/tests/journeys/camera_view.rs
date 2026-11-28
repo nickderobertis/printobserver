@@ -32,10 +32,6 @@ use crate::composite_checks::{
 use crate::lean_checks::handed;
 use crate::world::{OPERATOR, presenting};
 
-/// The operation beside the action vocabulary these journeys and `aligning`'s
-/// drive: the operator's recheck of a print's camera.
-pub const DRIVEN_THERE: [&str; 1] = [printobserver_server::RECHECK_CAMERA];
-
 /// The installer whose template the journeys run.
 const INSTALLER: &str = "scripts/install.sh";
 

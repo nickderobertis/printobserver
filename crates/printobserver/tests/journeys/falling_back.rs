@@ -78,6 +78,17 @@ struct Fallback {
     /// Whether the reason comes on after the print's checks were shown the
     /// three-panel image.
     after_three_panel: bool,
+    /// What the camera shows from the world's start until the reason ends,
+    /// when that is not the healthy first layer.
+    ///
+    /// A reason the camera's frame alone brings on before any pass is put in
+    /// front of it from the start rather than at the onset. The machine prints
+    /// from the world's start, so every check before the onset captured a
+    /// frame; and a check is drawn where its turn reads the job, which on a
+    /// slow host is after the onset moved it past the first layer. A first
+    /// layer captured before the onset and judged there passes the alignment,
+    /// which then holds for every later frame of the print.
+    shows_from_start: Option<fn() -> Vec<u8>>,
     onset: fn(&mut Stage),
     /// End it, so the next check is shown the three-panel image.
     clears: fn(&mut Stage),
@@ -242,10 +253,13 @@ fn camera_section(stage_camera: &str, calibration: &std::path::Path) -> Value {
     })
 }
 
-/// Stand one row's world up, the job at the start of its file and the
-/// machine idle.
+/// Stand one row's world up, the job printing at the start of its file and
+/// the camera showing what the row shows it from the start.
 fn staged(row: &Fallback) -> Stage {
-    let camera = Camera::showing(frame(FIRST_LAYER));
+    let camera = Camera::showing(
+        row.shows_from_start
+            .map_or_else(|| frame(FIRST_LAYER), |shown| shown()),
+    );
     let held = TempDir::new().expect("a directory for the calibration");
     let calibration = held.path().join("calibration.json");
     let mut written = committed();
@@ -480,6 +494,21 @@ fn printing_past_first(stage: &mut Stage) {
     stage.world.wants(Reports::Printing);
 }
 
+/// The same printer's bare bed.
+fn bare_bed() -> Vec<u8> {
+    frame(BARE_BED)
+}
+
+/// Another printer's frame.
+fn other_stream() -> Vec<u8> {
+    frame(OTHER_STREAM)
+}
+
+/// The first layer seen by a camera knocked past its drift tolerance.
+fn knocked_out() -> Vec<u8> {
+    knocked(20)
+}
+
 fn first_layer_again(stage: &mut Stage) {
     stage.camera.shows(frame(FIRST_LAYER));
 }
@@ -507,6 +536,7 @@ fn before_any_pass() -> Vec<Fallback> {
                     .remove("calibration");
             },
             after_three_panel: false,
+            shows_from_start: None,
             onset: printing_past_first,
             clears: |stage| {
                 let calibration = stage.calibration.display().to_string();
@@ -521,6 +551,7 @@ fn before_any_pass() -> Vec<Fallback> {
             says: "names no extruded object laid at this point",
             configured: as_installed,
             after_three_panel: false,
+            shows_from_start: None,
             onset: |stage| {
                 stage.at(200);
                 stage.world.wants(Reports::Printing);
@@ -533,6 +564,7 @@ fn before_any_pass() -> Vec<Fallback> {
             says: "first-layer alignment is pending",
             configured: as_installed,
             after_three_panel: false,
+            shows_from_start: None,
             onset: |stage| {
                 stage.at(stage.before_first);
                 stage.world.wants(Reports::Printing);
@@ -545,10 +577,8 @@ fn before_any_pass() -> Vec<Fallback> {
             says: "the printed first layer was not clearly found",
             configured: as_installed,
             after_three_panel: false,
-            onset: |stage| {
-                stage.camera.shows(frame(BARE_BED));
-                printing_past_first(stage);
-            },
+            shows_from_start: Some(bare_bed),
+            onset: printing_past_first,
             clears: first_layer_again,
         },
         Fallback {
@@ -557,10 +587,8 @@ fn before_any_pass() -> Vec<Fallback> {
             says: "the print's first-layer alignment failed",
             configured: as_installed,
             after_three_panel: false,
-            onset: |stage| {
-                stage.camera.shows(frame(OTHER_STREAM));
-                printing_past_first(stage);
-            },
+            shows_from_start: Some(other_stream),
+            onset: printing_past_first,
             // A failure is latched: the camera put right is judged again only
             // when the operator asks.
             clears: |stage| {
@@ -587,10 +615,8 @@ fn before_any_pass() -> Vec<Fallback> {
             says: "the camera has moved since its calibration, so the outline cannot be drawn reliably; recalibrate this camera",
             configured: as_installed,
             after_three_panel: false,
-            onset: |stage| {
-                stage.camera.shows(knocked(20));
-                printing_past_first(stage);
-            },
+            shows_from_start: Some(knocked_out),
+            onset: printing_past_first,
             clears: first_layer_again,
         },
     ]
@@ -612,6 +638,7 @@ fn before_any_pass_by_camera_or_slice() -> Vec<Fallback> {
                     .remove("snapshot_url");
             },
             after_three_panel: false,
+            shows_from_start: None,
             // With no camera address the periodic checks take no frame, so
             // the check is the detector's alert, carrying the camera's frame.
             onset: |stage| {
@@ -638,6 +665,7 @@ fn before_any_pass_by_camera_or_slice() -> Vec<Fallback> {
             says: "names no layer at this point",
             configured: as_installed,
             after_three_panel: false,
+            shows_from_start: None,
             // The start G-code names the part before the first layer begins.
             onset: |stage| {
                 let named = stage.first_where("naming a part before any layer", |index, at| {
@@ -654,6 +682,7 @@ fn before_any_pass_by_camera_or_slice() -> Vec<Fallback> {
             says: "lays no object to align",
             configured: as_installed,
             after_three_panel: false,
+            shows_from_start: None,
             onset: printing_past_first,
             clears: |stage| {
                 let ended = stage.world.print_id();
@@ -694,6 +723,7 @@ fn after_a_pass() -> Vec<Fallback> {
             says: "could not be read from the print's spool",
             configured: as_installed,
             after_three_panel: true,
+            shows_from_start: None,
             onset: |stage| {
                 let spool = stage.spool();
                 std::fs::remove_file(&spool).expect("the print's spool is there");
@@ -711,6 +741,7 @@ fn after_a_pass() -> Vec<Fallback> {
             says: "fewer than two of the landmarks",
             configured: as_installed,
             after_three_panel: true,
+            shows_from_start: None,
             onset: |stage| stage.camera.shows(landmarks_hidden()),
             clears: first_layer_again,
         },
@@ -724,6 +755,7 @@ fn after_a_pass() -> Vec<Fallback> {
                 document["supervisor"]["observation_interval_s"] = json!(3);
             },
             after_three_panel: true,
+            shows_from_start: None,
             onset: |stage| stage.camera.shows(knocked(20)),
             clears: first_layer_again,
         },
@@ -733,6 +765,7 @@ fn after_a_pass() -> Vec<Fallback> {
             says: "the frame's resolution is 1280x720",
             configured: as_installed,
             after_three_panel: true,
+            shows_from_start: None,
             onset: |stage| stage.camera.shows(frame(OTHER_STREAM)),
             clears: first_layer_again,
         },
@@ -742,6 +775,7 @@ fn after_a_pass() -> Vec<Fallback> {
             says: "the printer reports the print paused",
             configured: as_installed,
             after_three_panel: true,
+            shows_from_start: None,
             onset: |stage| stage.world.wants(Reports::Paused),
             clears: |stage| stage.world.wants(Reports::Printing),
         },
@@ -759,6 +793,7 @@ fn after_a_pass_by_job_or_slice() -> Vec<Fallback> {
             says: "gives no file position for this check",
             configured: as_installed,
             after_three_panel: true,
+            shows_from_start: None,
             onset: |stage| {
                 stage
                     .machine()
@@ -778,6 +813,7 @@ fn after_a_pass_by_job_or_slice() -> Vec<Fallback> {
             says: "nothing of the planned geometry lands in the frame",
             configured: as_installed,
             after_three_panel: true,
+            shows_from_start: None,
             onset: |stage| {
                 let out = stage.first_where("laying the part out of view", |index, at| {
                     index.object_at(at) == Some(1)
