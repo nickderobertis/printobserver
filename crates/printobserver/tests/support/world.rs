@@ -362,7 +362,7 @@ impl World {
                 TWO_COLOUR_BOX => {
                     Printer::StoodIn(Machine::running(TWO_COLOUR_BOX_FILE, two_colour_box()))
                 }
-                JAR_TOP => Printer::StoodIn(Machine::running(JAR_TOP_FILE, jar_top())),
+                JAR_TOP => return Self::jar_top_sliced(jar_top(), skill, harness, edit),
                 SCRIPTED => crate::scripted::scripted(),
                 other => panic!("there is no `{other}` world to open"),
             },
@@ -391,6 +391,28 @@ impl World {
             None,
             |_| {},
             Some(database),
+        )
+    }
+
+    /// The [`JAR_TOP`] world as [`World::configured`] opens it, its machine
+    /// running `bytes` under the jar top's file name: the slice as another
+    /// slicer, or another setting, wrote it.
+    ///
+    /// # Panics
+    ///
+    /// The same as [`World::open`].
+    pub fn jar_top_sliced(
+        bytes: Vec<u8>,
+        skill: &Path,
+        harness: Option<&Path>,
+        edit: impl FnOnce(&mut Value),
+    ) -> Self {
+        Self::over(
+            Printer::StoodIn(Machine::running(JAR_TOP_FILE, bytes)),
+            skill,
+            harness,
+            edit,
+            None,
         )
     }
 
@@ -616,6 +638,11 @@ impl World {
     /// Its image names a port nothing listens on, so fetching it fails at once
     /// and is recorded.
     pub fn post_a_failure_alert(&self, obico_print_id: i64) -> String {
+        self.post_a_failure_alert_showing(obico_print_id, "http://127.0.0.1:9/snapshot.jpg")
+    }
+
+    /// The same, its image the snapshot at `image_url`.
+    pub fn post_a_failure_alert_showing(&self, obico_print_id: i64, image_url: &str) -> String {
         use std::io::{Read as _, Write as _};
 
         let mut alert: Value = printobserver_types::serde_json::from_str(include_str!(
@@ -623,7 +650,7 @@ impl World {
         ))
         .expect("the committed sample is JSON");
         alert["print"]["id"] = json!(obico_print_id);
-        alert["img_url"] = json!("http://127.0.0.1:9/snapshot.jpg");
+        alert["img_url"] = json!(image_url);
         let body = alert.to_string();
         let address = self.proxy.address;
         let mut stream =
@@ -1085,7 +1112,7 @@ impl World {
     ///
     /// Panics when the listing is refused or is not a list of prints, and
     /// when a print is still open after every look, naming it.
-    fn no_print_is_open(&self) {
+    pub fn no_print_is_open(&self) {
         let mut open = Vec::new();
         for _ in 0..SETTLING_ROUNDS * SETTLING_POLLS {
             let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))

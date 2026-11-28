@@ -10,27 +10,26 @@
 //! `printobserver-panels`' fixtures — the row puts in front of it. Checks come
 //! every second, as the periodic observation the supervisor schedules itself.
 //! A row brings its reason on the way it comes on a real print — the job
-//! somewhere, a frame, the printer paused, a spool gone, a calibration missing
-//! — and then ends it the way an operator or the print would, and reads the
-//! print's status after each, three ways: this program's labelled lines, its
-//! `--json` document, and the supervisor's own HTTP answer.
+//! somewhere, a frame, the printer paused, a spool gone, a calibration or a
+//! camera address missing, a job read naming no position, a slice laying a
+//! part beyond the camera's view or naming no feature types — and then ends
+//! it the way an operator or the print would, and reads the print's status
+//! after each, three ways: this program's labelled lines, its `--json`
+//! document, and the supervisor's own HTTP answer.
 //!
-//! A reason no row drives is one whose condition no check of a print can end
-//! while the print runs, or that no check of a print is ever given:
-//! `no_print`, which a check of a print never is; `no_layer`,
-//! `alignment_unavailable` and `no_position`, which the print's own G-code and
-//! job fix for its whole life; `no_stream`, a server configured with no
-//! camera address, whose periodic checks take no frame at all; and `refused`,
-//! the composer's own refusal no frame or plan here provokes. The status reads
-//! every reason from the same record, so a row for each would test that
-//! record again rather than another path to it.
+//! Every reason a print's status can carry has a row. `no_print` has none:
+//! a check of no print is kept under no print, so no print's status carries
+//! it. `alignment_unavailable` is the print's own slice laying nothing the
+//! alignment matches, which lasts the print's whole life, so it ends the way
+//! it does on a real printer: that print ends, and the next one runs the file
+//! sliced again.
 
 use std::io::{Read as _, Write as _};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use printobserver_core::gcode_index::index_of;
+use printobserver_core::gcode_index::{GcodeIndex, index_of};
 use printobserver_types::serde_json::{Value, json};
 use tempfile::TempDir;
 
@@ -60,10 +59,18 @@ const OTHER_STREAM: &str = "fan-cut-bridge/01-healthy-before-fault-p41.jpg";
 
 const REASON: &str = "the camera was put back where its calibration has it";
 
+/// The `Obico` print the world's own print carries.
+const OBICO_PRINT_ID: i64 = 4211;
+
+/// The height the jar top's slice ends at, in millimetres.
+const JAR_TOP_TOP_MM: &str = "44.6";
+
 /// One reason a check of a print is shown the plain frame, how a print comes
 /// to it and how it ends.
 struct Fallback {
     code: &'static str,
+    /// The slice the machine runs.
+    slice: fn() -> Vec<u8>,
     /// Words the reason's message carries.
     says: &'static str,
     /// The supervisor's configuration as this row edits it before it starts.
@@ -85,6 +92,10 @@ struct Stage {
     past_first: u64,
     /// A position inside the first object layer, before it is down.
     before_first: u64,
+    /// The index of the slice the machine runs.
+    index: GcodeIndex,
+    /// How many bytes that slice is.
+    size: u64,
     /// Holds the calibration file.
     _held: TempDir,
 }
@@ -99,6 +110,14 @@ impl Stage {
 
     fn at(&self, position: u64) {
         self.machine().stands_at.store(position, Ordering::SeqCst);
+    }
+
+    /// The first position, stepping through the slice, where `wanted` holds.
+    fn first_where(&self, what: &str, wanted: impl Fn(&GcodeIndex, u64) -> bool) -> u64 {
+        (0..self.size)
+            .step_by(20)
+            .find(|position| wanted(&self.index, *position))
+            .unwrap_or_else(|| panic!("the slice has no position {what}"))
     }
 
     /// Where the print's G-code is spooled.
@@ -176,6 +195,46 @@ fn landmarks_hidden() -> Vec<u8> {
     })
 }
 
+/// The jar top's slice as a slicer writing no feature types writes it: every
+/// layer extrudes, and none says it lays the part.
+fn untyped() -> Vec<u8> {
+    let text = String::from_utf8(jar_top()).expect("the slice is text");
+    text.split_inclusive('\n')
+        .filter(|line| !line.starts_with(";TYPE:"))
+        .collect::<String>()
+        .into_bytes()
+}
+
+/// The jar top's slice with two layers laid after its last: a second part
+/// the plan places beyond what the camera sees, and then the jar top's own
+/// last layer once more, above it.
+fn with_a_part_out_of_view() -> Vec<u8> {
+    let text = String::from_utf8(jar_top()).expect("the slice is text");
+    let last = text.rfind(";LAYER_CHANGE\n").expect("a last layer");
+    let ends = last + text[last..].find("M486 S-1\n").expect("the part's end");
+    let out_of_view = "\
+;LAYER_CHANGE
+;Z:44.8
+;HEIGHT:0.2
+M486 S1
+G1 Z44.8 F720
+G1 X-400 Y-400 F21000
+;TYPE:External perimeter
+G1 X-390 Y-400 E1
+G1 X-390 Y-390 E1
+G1 X-400 Y-390 E1
+G1 X-400 Y-400 E1
+M486 S-1
+";
+    let again = text[last..ends].replacen(&format!(";Z:{JAR_TOP_TOP_MM}\n"), ";Z:45\n", 1);
+    format!(
+        "{}{out_of_view}M486 S0\n{again}{}",
+        &text[..ends],
+        &text[ends..]
+    )
+    .into_bytes()
+}
+
 fn camera_section(stage_camera: &str, calibration: &std::path::Path) -> Value {
     json!({
         "snapshot_url": stage_camera,
@@ -193,14 +252,14 @@ fn staged(row: &Fallback) -> Stage {
     written["camera_snapshot_url"] = json!(camera.url());
     std::fs::write(&calibration, written.to_string()).expect("the calibration is written");
     let section = camera_section(&camera.url(), &calibration);
-    let world = World::configured(JAR_TOP, &committed_skill(), None, |document| {
+    let bytes = (row.slice)();
+    let index = index_of(&[&bytes]);
+    let size = u64::try_from(bytes.len()).expect("a size");
+    let world = World::jar_top_sliced(bytes, &committed_skill(), None, |document| {
         document["camera"] = section;
         document["supervisor"]["observation_interval_s"] = json!(1);
         (row.configured)(document);
     });
-    let bytes = jar_top();
-    let index = index_of(&[&bytes]);
-    let size = u64::try_from(bytes.len()).expect("a size");
     let past_first = (0..size)
         .step_by(500)
         .find(|position| {
@@ -211,13 +270,17 @@ fn staged(row: &Fallback) -> Stage {
         })
         .expect("a layer above the first")
         + 100;
-    let before_first = index.first_object_layer().expect("a first layer").1 - 50;
+    let before_first = index
+        .first_object_layer()
+        .map_or(past_first, |(_, ends)| ends - 50);
     Stage {
         world,
         camera,
         calibration,
         past_first,
         before_first,
+        index,
+        size,
         _held: held,
     }
 }
@@ -424,7 +487,9 @@ fn first_layer_again(stage: &mut Stage) {
 /// Every reason a row drives, with how it comes on and how it ends.
 fn fallbacks() -> Vec<Fallback> {
     let mut rows = before_any_pass();
+    rows.extend(before_any_pass_by_camera_or_slice());
     rows.extend(after_a_pass());
+    rows.extend(after_a_pass_by_job_or_slice());
     rows
 }
 
@@ -432,6 +497,7 @@ fn fallbacks() -> Vec<Fallback> {
 fn before_any_pass() -> Vec<Fallback> {
     vec![
         Fallback {
+            slice: jar_top,
             code: "no_calibration",
             says: "no camera calibration is configured",
             configured: |document| {
@@ -450,6 +516,7 @@ fn before_any_pass() -> Vec<Fallback> {
             },
         },
         Fallback {
+            slice: jar_top,
             code: "no_object",
             says: "names no extruded object laid at this point",
             configured: as_installed,
@@ -461,6 +528,7 @@ fn before_any_pass() -> Vec<Fallback> {
             clears: |stage| stage.at(stage.past_first),
         },
         Fallback {
+            slice: jar_top,
             code: "alignment_pending",
             says: "first-layer alignment is pending",
             configured: as_installed,
@@ -472,6 +540,7 @@ fn before_any_pass() -> Vec<Fallback> {
             clears: |stage| stage.at(stage.past_first),
         },
         Fallback {
+            slice: jar_top,
             code: "alignment_inconclusive",
             says: "the printed first layer was not clearly found",
             configured: as_installed,
@@ -483,6 +552,7 @@ fn before_any_pass() -> Vec<Fallback> {
             clears: first_layer_again,
         },
         Fallback {
+            slice: jar_top,
             code: "alignment_failed",
             says: "the print's first-layer alignment failed",
             configured: as_installed,
@@ -512,6 +582,7 @@ fn before_any_pass() -> Vec<Fallback> {
             },
         },
         Fallback {
+            slice: jar_top,
             code: "calibration_stale",
             says: "the camera has moved since its calibration, so the outline cannot be drawn reliably; recalibrate this camera",
             configured: as_installed,
@@ -525,11 +596,100 @@ fn before_any_pass() -> Vec<Fallback> {
     ]
 }
 
+/// The reasons a print's checks are given before their first layer is
+/// aligned by the camera's configuration, or by where the print's own slice
+/// stands.
+fn before_any_pass_by_camera_or_slice() -> Vec<Fallback> {
+    vec![
+        Fallback {
+            slice: jar_top,
+            code: "no_stream",
+            says: "no camera snapshot address is configured",
+            configured: |document| {
+                document["camera"]
+                    .as_object_mut()
+                    .expect("a camera section")
+                    .remove("snapshot_url");
+            },
+            after_three_panel: false,
+            // With no camera address the periodic checks take no frame, so
+            // the check is the detector's alert, carrying the camera's frame.
+            onset: |stage| {
+                printing_past_first(stage);
+                let answered = stage
+                    .world
+                    .post_a_failure_alert_showing(OBICO_PRINT_ID, &stage.camera.url());
+                assert_eq!(
+                    answered.split_whitespace().nth(1),
+                    Some("202"),
+                    "the ingress takes the alert: {answered}"
+                );
+            },
+            clears: |stage| {
+                let url = stage.camera.url();
+                restarted(&mut stage.world, |document| {
+                    document["camera"]["snapshot_url"] = json!(url);
+                });
+            },
+        },
+        Fallback {
+            slice: jar_top,
+            code: "no_layer",
+            says: "names no layer at this point",
+            configured: as_installed,
+            after_three_panel: false,
+            // The start G-code names the part before the first layer begins.
+            onset: |stage| {
+                let named = stage.first_where("naming a part before any layer", |index, at| {
+                    index.object_at(at).is_some() && index.layer_at(at).is_none()
+                });
+                stage.at(named);
+                stage.world.wants(Reports::Printing);
+            },
+            clears: |stage| stage.at(stage.past_first),
+        },
+        Fallback {
+            slice: untyped,
+            code: "alignment_unavailable",
+            says: "lays no object to align",
+            configured: as_installed,
+            after_three_panel: false,
+            onset: printing_past_first,
+            clears: |stage| {
+                let ended = stage.world.print_id();
+                stage.world.wants(Reports::Operational);
+                stage.world.no_print_is_open();
+                *stage.machine().file_bytes.lock().expect("the file's bytes") =
+                    std::sync::Arc::new(jar_top());
+                stage.world.wants(Reports::Printing);
+                let next = next_print(&stage.world, &ended);
+                stage.world.follows(&next);
+            },
+        },
+    ]
+}
+
+/// Wait until the supervisor holds a print open other than `ended`, the job
+/// run again being a print of its own, and answer it.
+fn next_print(world: &World, ended: &str) -> String {
+    let deadline = Instant::now() + PATIENCE;
+    let mut listing = Value::Null;
+    while Instant::now() < deadline {
+        listing = running::read(world, &["prints"]);
+        if let Some(active) = listing["active"].as_str().filter(|active| *active != ended) {
+            return active.to_owned();
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    panic!("the file sliced again never ran as a print of its own: {listing}");
+}
+
 /// The reasons a print's checks are given after they were shown the
 /// three-panel image.
 fn after_a_pass() -> Vec<Fallback> {
     vec![
         Fallback {
+            slice: jar_top,
             code: "toolpath_unread",
             says: "could not be read from the print's spool",
             configured: as_installed,
@@ -546,6 +706,7 @@ fn after_a_pass() -> Vec<Fallback> {
             },
         },
         Fallback {
+            slice: jar_top,
             code: "landmarks_not_found",
             says: "fewer than two of the landmarks",
             configured: as_installed,
@@ -554,6 +715,7 @@ fn after_a_pass() -> Vec<Fallback> {
             clears: first_layer_again,
         },
         Fallback {
+            slice: jar_top,
             code: "view_refit_rejected",
             says: "the camera has moved again since this print's first-layer correction was taken",
             // The next check after this one judges the moved camera afresh,
@@ -566,6 +728,7 @@ fn after_a_pass() -> Vec<Fallback> {
             clears: first_layer_again,
         },
         Fallback {
+            slice: jar_top,
             code: "frame_mismatch",
             says: "the frame's resolution is 1280x720",
             configured: as_installed,
@@ -574,12 +737,67 @@ fn after_a_pass() -> Vec<Fallback> {
             clears: first_layer_again,
         },
         Fallback {
+            slice: jar_top,
             code: "paused",
             says: "the printer reports the print paused",
             configured: as_installed,
             after_three_panel: true,
             onset: |stage| stage.world.wants(Reports::Paused),
             clears: |stage| stage.world.wants(Reports::Printing),
+        },
+    ]
+}
+
+/// The reasons a print's checks are given after they were shown the
+/// three-panel image, by what the job reports or where its slice lays the
+/// part.
+fn after_a_pass_by_job_or_slice() -> Vec<Fallback> {
+    vec![
+        Fallback {
+            slice: jar_top,
+            code: "no_position",
+            says: "gives no file position for this check",
+            configured: as_installed,
+            after_three_panel: true,
+            onset: |stage| {
+                stage
+                    .machine()
+                    .reports_position
+                    .store(false, Ordering::SeqCst);
+            },
+            clears: |stage| {
+                stage
+                    .machine()
+                    .reports_position
+                    .store(true, Ordering::SeqCst);
+            },
+        },
+        Fallback {
+            slice: with_a_part_out_of_view,
+            code: "refused",
+            says: "nothing of the planned geometry lands in the frame",
+            configured: as_installed,
+            after_three_panel: true,
+            onset: |stage| {
+                let out = stage.first_where("laying the part out of view", |index, at| {
+                    index.object_at(at) == Some(1)
+                        && index
+                            .layer_at(at)
+                            .and_then(|layer| index.layer_z_mm(layer))
+                            .is_some_and(|z| (z - 44.8).abs() < 1e-6)
+                });
+                stage.at(out + 40);
+            },
+            clears: |stage| {
+                let back = stage.first_where("laying the jar top again above it", |index, at| {
+                    index
+                        .layer_at(at)
+                        .and_then(|layer| index.layer_z_mm(layer))
+                        .is_some_and(|z| (z - 45.0).abs() < 1e-6)
+                        && index.object_at(at) == Some(0)
+                });
+                stage.at(back + 2000);
+            },
         },
     ]
 }
