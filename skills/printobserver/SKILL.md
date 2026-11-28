@@ -23,7 +23,7 @@ Commands: [the command surface](reference/command-surface.md),
    Asking is acting, taken or refused: never look after it.
 6. **Your answer's disposition records the check,** with what you saw: stop with any pause;
    watch after a setting or unsure while printing; else continue, false alarms included. Your
-   summary quotes a whole frame's code and message exactly at its code's first check, never later.
+   summary quotes a whole frame's code and message exactly at its code's first check only.
 
 Name no configuration: the environment names it. Give an actor only where a command's usage asks who.
 
@@ -70,7 +70,7 @@ resume, strands off the part, from the purge or wipe area, are waste, never a pa
 round or growing over the part or nozzle stays a defect. New layers plainly not the expected
 colour, with no planned change under them, are a wrong spool or reload: a clear defect, never
 watched; pause now, naming the spool and file to check. Walls below are older layers. On a whole
-frame, colour off plan is watched until new layers since the change pass 5 mm.
+frame, colour off plan is at least watched till new layers since the change pass 5 mm.
 
 ## When the detector has already paused the print
 
