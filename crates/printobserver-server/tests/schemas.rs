@@ -360,6 +360,35 @@ fn every_alignment_verdict_round_trips() {
     }
 }
 
+/// The image a print's last check was shown, as the status answers it, reads
+/// back as itself: the whole frame with the reason it was shown, and the
+/// three-panel image, whose reason is an explicit null rather than absent.
+#[test]
+fn every_last_check_image_round_trips() {
+    use printobserver_server::LastCheckImage;
+    for image in [
+        LastCheckImage::sample_full(),
+        LastCheckImage::sample_minimal(),
+    ] {
+        let written = printobserver_types::serde_json::to_value(&image).expect("it serializes");
+        let read: LastCheckImage =
+            printobserver_types::serde_json::from_value(written.clone()).expect("it reads back");
+        assert_eq!(read, image, "{written}");
+    }
+    let three_panel = printobserver_types::serde_json::to_value(LastCheckImage::sample_minimal())
+        .expect("it serializes");
+    assert_eq!(three_panel["kind"], json!("three_panel"), "{three_panel}");
+    assert_eq!(
+        three_panel.get("fallback"),
+        Some(&Value::Null),
+        "the three-panel image says its fallback is null rather than leaving it out: {three_panel}"
+    );
+    assert!(
+        LastCheckImage::sample_full().fallback.is_some(),
+        "the whole frame is shown for a reason"
+    );
+}
+
 /// Everything this crate writes into its own schema directory.
 fn generated() -> Vec<(String, Value)> {
     let mut entries = answer_schemas();

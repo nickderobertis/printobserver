@@ -731,3 +731,96 @@ async fn another_stream_fails_an_off_frame_layer_is_inconclusive_and_a_bad_fetch
     );
     assert_eq!(flaky.camera.exchanges().len(), 2);
 }
+
+/// Post one JSON body as the operator, and answer the status and the error the
+/// server's own shape carries, empty when it carries none.
+async fn posted(world: &World, url: &str, body: &Value) -> (reqwest::StatusCode, String, Value) {
+    let response = world
+        .client
+        .post(url)
+        .json(body)
+        .send()
+        .await
+        .expect("the server answers");
+    let status = response.status();
+    let answer = response.json::<Value>().await.unwrap_or(Value::Null);
+    let error = answer["error"].as_str().unwrap_or_default().to_owned();
+    (status, error, answer)
+}
+
+/// A recheck the server cannot read is refused before the camera is asked: a
+/// path naming no print id, a body that is not JSON, one that is not a
+/// document, one whose reason is not text, and a print the store does not hold
+/// are each refused, and no frame is fetched and nothing is judged.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_recheck_the_server_cannot_read_is_refused_before_the_camera_is_asked() {
+    let bytes = slice("jar-top-petg.gcode");
+    let journey = start(
+        &bytes,
+        vec![Scripted::frame(frame(
+            "jar-top-petg-healthy",
+            "agent-007-obs-121230-p01.3.jpg",
+        ))],
+        Some(as_committed),
+    )
+    .await;
+    let world = &journey.world;
+    let print_id = adopted(world).await;
+    let url = recheck_url(&world.server, print_id);
+    let asked = serde_json::json!({ "actor": "operator", "reason": "the camera was nudged" });
+    let fetched = journey.camera.exchanges().len();
+
+    let unnamed = url.replace(&print_id.to_string(), "not-a-print");
+    let (status, error, answer) = posted(world, &unnamed, &asked).await;
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{answer}");
+    assert!(
+        error.contains("a print is named by its id, a UUID"),
+        "a path naming no print says what to pass: {answer}"
+    );
+
+    let unread = world
+        .client
+        .post(&url)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body("{\"actor\": \"operator\", \"reason\":")
+        .send()
+        .await
+        .expect("the server answers");
+    assert_eq!(
+        unread.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "a body that is not JSON"
+    );
+
+    for (body, says, what) in [
+        (
+            serde_json::json!(["operator", "the camera was nudged"]),
+            "the body is not a document carrying an `actor` and a `reason`",
+            "a body that is not a document",
+        ),
+        (
+            serde_json::json!({ "actor": "operator", "reason": 7 }),
+            "the body is not an `actor` and a `reason`",
+            "a reason that is not text",
+        ),
+    ] {
+        let (status, error, answer) = posted(world, &url, &body).await;
+        assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{what}: {answer}");
+        assert!(error.starts_with(says), "{what}: {answer}");
+    }
+
+    let absent = PrintId::new();
+    let (status, error, answer) = posted(world, &recheck_url(&world.server, absent), &asked).await;
+    assert_eq!(status, reqwest::StatusCode::NOT_FOUND, "{answer}");
+    assert_eq!(error, format!("there is no print {absent}"), "{answer}");
+
+    assert_eq!(
+        journey.camera.exchanges().len(),
+        fetched,
+        "a refused recheck asked the camera for a frame"
+    );
+    assert!(
+        judgements(world, print_id).await.is_empty(),
+        "a refused recheck judged the print"
+    );
+}
