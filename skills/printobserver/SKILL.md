@@ -43,10 +43,10 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 
 - **Panels:** 1 the frame with this layer's planned toolpath (grey: the part under a support-only
   layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
-  check. Panel 1's lines are plan, not plastic. A part off its drawn walls, bare sheet inside
-  them, or moved since 3 came loose. An outline or new layers head or gantry cover, or too thin to
-  see, are hidden: judged next check, not paused. A whole frame for an inconclusive alignment is
-  no evidence of a defect.
+  check. Panel 1's lines are plan, not plastic. A part off its drawn walls, bare sheet inside them,
+  or moved since 3 came loose. An outline or new layers under the head or gantry, or too small or
+  thin to see, are hidden: judged next check, not paused. A whole frame for an inconclusive
+  alignment or stale calibration is no evidence of a defect.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.
@@ -64,15 +64,14 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
 
 ## A planned colour change
 
-Each check, compare new material's colour in panel 2 with the plan's: panel 1 draws walls red.
-At a planned change the printer waits for a person (`filament_change_planned_reached`): no check
-runs, and asking anything is refused. The check after, `filament_change_planned_resumed`, names
-the colour expected from its layer and the one before: expect it from there up; carry on.
-Just after it, strands off the part, at or trailing from the purge or wipe area, are waste,
-never a pause; one on, round or growing over the part or nozzle stays a defect.
-New layers plainly not the expected colour, with no planned change at or just under them, are a
-wrong spool or reload: a clear defect, never watched; pause now, naming the spool and file to
-check. Older layers' colour is no wrong colour.
+Each check, compare new layers' colour in panel 2 with the plan's: panel 1 draws walls red. A
+planned change waits for a person; the check after, `filament_change_planned_resumed`, names the
+colour expected from its layer and the one before: expected from there up; carry on. Just after a
+resume, strands off the part, from the purge or wipe area, are waste, never a pause; one wound
+round or growing over the part or nozzle stays a defect. New layers plainly not the expected
+colour, with no planned change under them, are a wrong spool or reload: a clear defect, never
+watched; pause now, naming the spool and file to check. Walls below are older layers. On a whole
+frame, colour is no grounds to pause until new layers since the change pass 5 mm.
 
 ## When the detector has already paused the print
 
