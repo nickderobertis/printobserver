@@ -21,7 +21,7 @@ use std::sync::Arc;
 use printobserver_core::{GcodeIndex, IndexBuilder};
 use printobserver_panels::{BedPose, CameraCalibration};
 use printobserver_printer_api::{GcodeSink as _, PrinterState};
-use printobserver_server::{AlignmentFailure, PrintAlignment};
+use printobserver_server::{AlignmentFailure, PrintAlignment, Running};
 use printobserver_types::PrintId;
 use printobserver_types::serde_json::{self, Value};
 use tempfile::TempDir;
@@ -30,6 +30,24 @@ use crate::agent::StandInAgent;
 use crate::camera_host::{Scripted, ScriptedHost};
 use crate::printer::RecordingPrinter;
 use crate::world::{World, set};
+
+/// The operation beside the action vocabulary these journeys drive, as
+/// `composite_checks`' do: the operator's recheck of a print's camera. Each of
+/// them reaches it at [`recheck_url`].
+pub const DRIVEN_THERE: [&str; 1] = [printobserver_server::RECHECK_CAMERA];
+
+/// Where the operator's recheck of one print's camera is served, as the server
+/// declares the operation [`DRIVEN_THERE`] names.
+pub fn recheck_url(server: &Running, print_id: PrintId) -> String {
+    let [recheck] = DRIVEN_THERE;
+    let declared =
+        printobserver_server::operation(recheck).unwrap_or_else(|| panic!("`{recheck}` is served"));
+    format!(
+        "{}{}",
+        server.base_url(),
+        declared.path.replace("{print_id}", &print_id.to_string())
+    )
+}
 
 /// The file the printer runs, as every journey here names it.
 const FILE: &str = "plate.gcode";
@@ -235,10 +253,7 @@ async fn adopted(world: &World) -> PrintId {
 async fn recheck(world: &World, print_id: PrintId) -> (reqwest::StatusCode, Value) {
     let response = world
         .client
-        .post(format!(
-            "{}/prints/{print_id}/camera/recheck",
-            world.server.base_url()
-        ))
+        .post(recheck_url(&world.server, print_id))
         .json(&serde_json::json!({ "actor": "operator", "reason": "the camera was nudged" }))
         .send()
         .await
