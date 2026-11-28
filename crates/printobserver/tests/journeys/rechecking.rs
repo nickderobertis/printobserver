@@ -35,7 +35,7 @@ const FOUND: (&str, u64) = ("134401-periodic_observation.jpg", 51_973);
 const LATER: (&str, u64) = ("152804-periodic_observation.jpg", 74_248);
 
 /// The repository's root.
-fn root() -> PathBuf {
+pub fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
@@ -68,7 +68,7 @@ fn landmarks_hidden(bytes: &[u8]) -> Vec<u8> {
 }
 
 /// The committed calibration's JSON.
-fn committed() -> Value {
+pub fn committed() -> Value {
     printobserver_types::serde_json::from_slice(
         &std::fs::read(root().join("tests/real-prints/cameras/core-one-2026-09-27.json"))
             .expect("the committed calibration"),
@@ -99,14 +99,14 @@ fn calibration_landmarks() -> Vec<(u32, u32)> {
 
 /// A camera on the loopback address answering every request with the frame
 /// a journey last put in front of it.
-struct Camera {
+pub struct Camera {
     address: SocketAddr,
     showing: Arc<Mutex<Vec<u8>>>,
 }
 
 impl Camera {
     /// Start one showing `frame`.
-    fn showing(frame: Vec<u8>) -> Self {
+    pub fn showing(frame: Vec<u8>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
         let address = listener.local_addr().expect("the bound address");
         let showing = Arc::new(Mutex::new(frame));
@@ -131,12 +131,12 @@ impl Camera {
     }
 
     /// Put `frame` in front of it.
-    fn shows(&self, frame: Vec<u8>) {
+    pub fn shows(&self, frame: Vec<u8>) {
         *self.showing.lock().expect("the frame shown") = frame;
     }
 
     /// Where it answers.
-    fn url(&self) -> String {
+    pub fn url(&self) -> String {
         format!("http://{}/api/frame.jpeg", self.address)
     }
 }
