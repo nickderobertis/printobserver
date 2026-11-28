@@ -4630,6 +4630,12 @@ reason = "The mock writes what the replay reads of Claude Code's transcript, whi
 [[suppression]]
 rule = "contracts_have_one_source_or_a_drift_gate"
 file = "tests/skilltest-wiring/mock_turn.py"
+site = "lines.append({\"type\": \"user\", \"message\": {\"content\": [{\"type\": \"text\", \"text\": prompt}]}})"
+reason = "The mock writes the prompt into its transcript in the one shape `replay.RunReport` reads a prompt's situation from, and Claude Code publishes no schema for its transcript. `tests/skilltest/test_replay.py` is the drift gate over the real harness: a live point carrying `states_image_fallback` fails, saying its check gave no reason, when that read comes back empty, which is what a moved prompt reads as."
+
+[[suppression]]
+rule = "contracts_have_one_source_or_a_drift_gate"
+file = "tests/skilltest-wiring/mock_turn.py"
 site = "lines: list[dict[str, Any]] = []"
 reason = "The mock writes what the replay reads of Claude Code's transcript and result, which have no published schema to reconcile with. `tests/skilltest/test_replay.py` is the drift gate over the real harness: it fails any live turn whose usage, models or commands come back empty, so a format the mock alone still spoke is caught at the next live run."
 

@@ -44,7 +44,8 @@ use crate::world::{
 use super::rechecking::{Camera, committed, root};
 use super::running;
 
-/// How long a row waits for the checks it needs.
+/// A row waits on several checks a second apart, each composing an image,
+/// which a slow host takes seconds over.
 const PATIENCE: Duration = Duration::from_secs(90);
 
 /// The healthy first layer, which the calibration draws on unshifted.
@@ -57,13 +58,11 @@ const BARE_BED: &str = "jar-top-petg-healthy/agent-001-obs-120024-p00.0.jpg";
 /// on.
 const OTHER_STREAM: &str = "fan-cut-bridge/01-healthy-before-fault-p41.jpg";
 
-/// The reason the operator's recheck gives.
 const REASON: &str = "the camera was put back where its calibration has it";
 
 /// One reason a check of a print is shown the plain frame, how a print comes
 /// to it and how it ends.
 struct Fallback {
-    /// The reason's code.
     code: &'static str,
     /// Words the reason's message carries.
     says: &'static str,
@@ -72,7 +71,6 @@ struct Fallback {
     /// Whether the reason comes on after the print's checks were shown the
     /// three-panel image.
     after_three_panel: bool,
-    /// Bring the reason on.
     onset: fn(&mut Stage),
     /// End it, so the next check is shown the three-panel image.
     clears: fn(&mut Stage),
@@ -82,7 +80,6 @@ struct Fallback {
 struct Stage {
     world: World,
     camera: Camera,
-    /// Where the calibration file is.
     calibration: PathBuf,
     /// A position just past the first layer.
     past_first: u64,
@@ -93,7 +90,6 @@ struct Stage {
 }
 
 impl Stage {
-    /// The stood-in machine.
     fn machine(&self) -> &Machine {
         let Printer::StoodIn(machine) = &self.world.printer else {
             panic!("the {JAR_TOP} world is not a stood-in machine");
@@ -101,7 +97,6 @@ impl Stage {
         machine
     }
 
-    /// Put the job at `position`.
     fn at(&self, position: u64) {
         self.machine().stands_at.store(position, Ordering::SeqCst);
     }
@@ -117,7 +112,6 @@ impl Stage {
     }
 }
 
-/// A recorded frame.
 fn frame(file: &str) -> Vec<u8> {
     std::fs::read(
         root()
@@ -127,7 +121,6 @@ fn frame(file: &str) -> Vec<u8> {
     .expect("the recorded frame is there")
 }
 
-/// A frame decoded, changed and encoded again.
 fn changed(bytes: &[u8], change: impl FnOnce(&mut image::RgbImage)) -> Vec<u8> {
     let mut decoded = image::load_from_memory(bytes).expect("a frame").to_rgb8();
     change(&mut decoded);
@@ -183,7 +176,6 @@ fn landmarks_hidden() -> Vec<u8> {
     })
 }
 
-/// The camera section naming the camera and the calibration.
 fn camera_section(stage_camera: &str, calibration: &std::path::Path) -> Value {
     json!({
         "snapshot_url": stage_camera,
@@ -417,7 +409,6 @@ fn falls_back(stage: &Stage, row: &Fallback) {
     );
 }
 
-/// Nothing changes about the configuration.
 const fn as_installed(_: &mut Value) {}
 
 /// The job past its first layer and printing.
@@ -426,7 +417,6 @@ fn printing_past_first(stage: &mut Stage) {
     stage.world.wants(Reports::Printing);
 }
 
-/// The camera shows the first layer again.
 fn first_layer_again(stage: &mut Stage) {
     stage.camera.shows(frame(FIRST_LAYER));
 }

@@ -450,6 +450,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
     lines: list[dict[str, Any]] = []
     if scripted.get("keeps_prompt"):
+        # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         lines.append({"type": "user", "message": {"content": [{"type": "text", "text": prompt}]}})
     if scripted.get("compact"):
         # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
