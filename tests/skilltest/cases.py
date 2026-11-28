@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -181,6 +182,10 @@ class Moment:
     #: On an end milestone whose recording ends before the last layer, how many layers
     #: before it the case's last frame, which it is handed, was taken.
     frame_layers_before_milestone: int | None = None
+    #: Whether the check's answer tells the person why its image is the whole frame:
+    #: true at the first check given that reason, false at a later one, none to leave
+    #: what it says unjudged.
+    states_image_fallback: bool | None = None
 
     @property
     def is_outside(self) -> bool:
@@ -211,6 +216,43 @@ class Moment:
             )
             broken.append(f"it met no accepted outcome of {accepted}")
         return "; ".join(broken) or None
+
+    def report_verdict(
+        self, assessment: Mapping[str, object] | None, fallback_code: str | None
+    ) -> str | None:
+        """Why the answer fails what this point asks it to say of a whole frame, if it does.
+
+        `fallback_code` is the `image_fallback` code the check's situation gave. The
+        server's code is the reason the person is told, so the code itself is what the
+        answer is held to: in its summary at the first check given it, and in none of
+        its words at a later one.
+        """
+        if self.states_image_fallback is None:
+            return None
+        if fallback_code is None:
+            return "it was to be judged on its whole frame's reason, and its check gave none"
+        if assessment is None:
+            return "it answered no assessment to tell the person anything in"
+        if self.states_image_fallback:
+            summary = assessment.get("summary")
+            if isinstance(summary, str) and fallback_code in summary:
+                return None
+            return f"its summary does not name the whole frame's reason `{fallback_code}`"
+        said = [
+            name
+            for name in REPORTED_FIELDS
+            if isinstance(assessment.get(name), str) and fallback_code in str(assessment[name])
+        ]
+        if said:
+            return (
+                f"its {' and '.join(said)} named the whole frame's reason `{fallback_code}` "
+                "again, which an earlier check already told the person"
+            )
+        return None
+
+
+#: The assessment's words a person reads, which a repeated reason is looked for in.
+REPORTED_FIELDS = ("summary", "did", "why")
 
 
 def _event_id(scenario: dict[str, Any]) -> EventId | None:
@@ -451,6 +493,7 @@ def read_case(name: str, replay: tuple[str, ...] | None = None) -> Case:
             if "milestone" in scenarios[entry]
             else None,
             frame_layers_before_milestone=scenarios[entry].get("frame_layers_before_milestone"),
+            states_image_fallback=scenarios[entry].get("states_image_fallback"),
         )
         for entry in (replay if replay is not None else document["assertions"].get("replay", ()))
     )

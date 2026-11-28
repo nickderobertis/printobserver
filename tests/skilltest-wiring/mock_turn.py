@@ -93,6 +93,10 @@ class ScriptedRun(TypedDict):
     #: Each model call the run streams, by its usage; one carrying `usage` by default.
     calls: NotRequired[list[dict[str, int]]]
     disposition: NotRequired[Disposition]
+    #: What the run's assessment says in its summary, its run's number by default.
+    summary: NotRequired[str]
+    #: Whether the transcript keeps the prompt the run was handed, as Claude Code's does.
+    keeps_prompt: NotRequired[bool]
     #: How long the turn takes beyond its commands, in seconds.
     stall_s: NotRequired[float]
     #: Files the turn opens with its file tool.
@@ -217,6 +221,7 @@ def _filled(word: str, prompt: str) -> str:
     event = re.search(r'"id": ?"([^"]+)"', prompt)
     file = re.search(r"start the print (\S+),", prompt)
     frame = re.search(r"as it is now is (\S+?)\. ", prompt)
+    fallback = re.search(r'"image_fallback": ?\{"code": ?"([^"]+)"', prompt)
     if "{new_print}" in word:
         word = word.replace("{new_print}", NEW_PRINT)
     for placeholder, found in (
@@ -225,6 +230,7 @@ def _filled(word: str, prompt: str) -> str:
         ("{event}", event),
         ("{file}", file),
         ("{frame}", frame),
+        ("{fallback}", fallback),
     ):
         if placeholder in word:
             if found is None:
@@ -414,7 +420,7 @@ def main(script_path: str, arguments: list[str]) -> int:
     looked = _looked(ran)
     assessment: Assessment = {
         **ASSESSMENT,
-        "summary": f"scripted run {number}",
+        "summary": _filled(scripted.get("summary", f"scripted run {number}"), filling),
         "disposition": scripted.get("disposition", "continue"),
     }
     seen: Seen = {
@@ -443,6 +449,8 @@ def main(script_path: str, arguments: list[str]) -> int:
     transcript.mkdir(parents=True, exist_ok=True)
     # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
     lines: list[dict[str, Any]] = []
+    if scripted.get("keeps_prompt"):
+        lines.append({"type": "user", "message": {"content": [{"type": "text", "text": prompt}]}})
     if scripted.get("compact"):
         # llmlint: ignore[contracts_have_one_source_or_a_drift_gate] See suppressions.toml.
         lines.append({"type": "system", "subtype": "compact_boundary"})

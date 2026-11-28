@@ -2488,6 +2488,59 @@ def test_the_image_a_check_was_shown_is_read_off_the_prompt_a_real_check_is_hand
     contains(shown["why"] or "", "G-code index gives no file position")
 
 
+def test_a_whole_frames_reason_is_judged_by_what_the_answer_tells_the_person(
+    scratch: Path,
+) -> None:
+    """The code the real server's situation gives is what an answer is held to naming.
+
+    The check is shown the whole frame for want of a position, as above; the
+    situation's `image_fallback` code is read off its prompt, and a point asking its
+    answer to state the reason passes on a summary naming that code and fails on one
+    that does not, while a point asking it not to repeat the reason fails on the code
+    named anywhere the person reads.
+    """
+    case = read_case("jar-top-wrong-material-first-layer-detach")
+
+    def judged(summary: str, run: str, *, states: bool) -> str | None:
+        first, *rest = case.moments
+        marked = replace(case, moments=(replace(first, states_image_fallback=states), *rest))
+        directory = scratch / run
+        directory.mkdir()
+        done = mock_replay(
+            marked, [{"commands": [CONTEXT], "summary": summary, "keeps_prompt": True}], directory
+        )
+        point = done.replayed.points[0]
+        equal(point.image_fallback_code, "no_position", describing=f"{run}: the situation's code")
+        return point.why_not
+
+    told = "the camera frame is the whole frame: no_position, no file position for this check"
+    equal(judged(told, "stated", states=True), None)
+    contains(
+        judged("printing normally", "unstated", states=True) or "",
+        "its summary does not name the whole frame's reason `no_position`",
+    )
+    contains(
+        judged(told, "repeated", states=False) or "",
+        "its summary named the whole frame's reason `no_position` again",
+    )
+    equal(judged("printing normally", "not-repeated", states=False), None)
+
+
+def test_a_whole_frames_reason_is_judged_only_where_a_point_asks() -> None:
+    """Unasked, nothing an answer says of its image is judged; asked of no whole frame, it fails."""
+    moment = read_case("jar-top-wrong-material-first-layer-detach").moments[0]
+    assessment = {"summary": "no_position", "did": "nothing", "why": "no_position"}
+    equal(moment.report_verdict(assessment, "no_position"), None)
+    asked = replace(moment, states_image_fallback=True)
+    contains(asked.report_verdict(assessment, None) or "", "its check gave none")
+    contains(asked.report_verdict(None, "no_position") or "", "answered no assessment")
+    contains(
+        replace(moment, states_image_fallback=False).report_verdict(assessment, "no_position")
+        or "",
+        "its summary and why named",
+    )
+
+
 def test_the_composers_image_line_reads_as_the_composite(tmp_path: Path) -> None:
     """The server's own composition says its image's line, which reads as the composite.
 

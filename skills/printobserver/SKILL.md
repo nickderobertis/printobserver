@@ -21,9 +21,9 @@ Commands: [the command surface](reference/command-surface.md),
 4. **Decide.** By the order below, saying how sure.
 5. **To act, ask for the change, then answer.** Give a reason, and a duration if temporary.
    Asking is acting, taken or refused: never look after it.
-6. **Your answer's disposition records the check,** with what you saw and a whole frame's
-   reason: stop with any pause; watch after a setting or unsure while printing; else continue,
-   false alarms included.
+6. **Your answer's disposition records the check,** with what you saw: stop with any pause;
+   watch after a setting or unsure while printing; else continue, false alarms included. Your summary
+   names a whole frame's code and message at that code's first check only.
 
 Name no configuration: the environment names it. Give an actor only where a command's usage asks who.
 
@@ -45,8 +45,7 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
   layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
   check. Panel 1's lines are plan, not plastic. A part off its drawn walls, bare sheet inside them,
   or moved since 3 came loose. An outline or new layers under the head or gantry, or too small or
-  thin to see, are hidden: judged next check, not paused. A whole frame for an inconclusive
-  alignment or stale calibration is no evidence of a defect.
+  thin to see, are hidden: judged next check, not paused. A whole frame is no sign of a defect.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.

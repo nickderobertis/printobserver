@@ -646,6 +646,8 @@ class CheckImage(TypedDict):
     #: Why the whole frame rather than the three-panel image; none for the composite.
     why: str | None
     note: str
+    #: The situation's `image_fallback` code; absent from a record kept before it was read.
+    code: NotRequired[str | None]
 
 
 def check_image(note: str) -> CheckImage:
@@ -959,6 +961,8 @@ class DecisionPoint:
     calls: list[CallUsage] = field(default_factory=list)
     facts_bytes: int | None = None
     image_note: str | None = None
+    #: The situation's `image_fallback` code, when its image is the whole frame for one.
+    image_fallback_code: str | None = None
     #: Whether the server wrote down that the turn answered `stop` and stopped nothing.
     stopped_nothing: bool = False
     #: When the server kept its event.
@@ -976,7 +980,10 @@ class DecisionPoint:
         """Why this decision point failed, or nothing when it passed."""
         if self.failure:
             return f"the turn failed: {self.failure}"
-        reasons = [self.moment.verdict(self.requests)]
+        reasons = [
+            self.moment.verdict(self.requests),
+            self.moment.report_verdict(self.assessment, self.image_fallback_code),
+        ]
         if self.stopped_nothing:
             reasons.append("it answered stop and asked for no pause, so nothing stopped the print")
         looked = looked_after_acting(self.commands)
@@ -1003,7 +1010,9 @@ class DecisionPoint:
             "calls": self.calls,
             "check_class": self.check_class,
             "facts_bytes": self.facts_bytes,
-            "image": check_image(self.image_note) if self.image_note is not None else None,
+            "image": {**check_image(self.image_note), "code": self.image_fallback_code}
+            if self.image_note is not None
+            else None,
             "wait": self.wait,
             "follows_compaction": self.follows_compaction,
         }
@@ -1319,16 +1328,28 @@ def _block_under(text: str, heading: str) -> str | None:
     return block if found and fence and closed else None
 
 
-def _image_line(situation: str | None) -> str | None:
-    """The situation's line saying which image its prompt carried, when it says one."""
+def _situation(situation: str | None) -> dict[str, Any]:
+    """A prompt's situation block as a document, or an empty one where it is none."""
     if situation is None:
-        return None
+        return {}
     try:
         document = json.loads(situation)
     except json.JSONDecodeError:
-        return None
-    line = document.get("image") if isinstance(document, dict) else None
+        return {}
+    return document if isinstance(document, dict) else {}
+
+
+def _image_line(situation: str | None) -> str | None:
+    """The situation's line saying which image its prompt carried, when it says one."""
+    line = _situation(situation).get("image")
     return line if isinstance(line, str) else None
+
+
+def _fallback_code(situation: str | None) -> str | None:
+    """The situation's `image_fallback` code: why its image is the whole frame, if it says."""
+    fallback = _situation(situation).get("image_fallback")
+    code = fallback.get("code") if isinstance(fallback, dict) else None
+    return code if isinstance(code, str) else None
 
 
 @dataclass
@@ -1351,6 +1372,8 @@ class RunReport:
     facts_bytes: int | None = None
     #: The situation's line saying which image the turn's prompt carried.
     image_note: str | None = None
+    #: The situation's `image_fallback` code.
+    image_fallback_code: str | None = None
 
     def take(self, lines: list[dict[str, Any]]) -> None:
         """Read one run's output and transcript into this turn's report."""
@@ -1410,6 +1433,7 @@ class RunReport:
                     self.facts_bytes = len(facts.encode("utf-8"))
                     situation = _block_under(text, SITUATION_HEADING)
                     self.image_note = _image_line(situation)
+                    self.image_fallback_code = _fallback_code(situation)
             case _:
                 pass
 
@@ -2281,6 +2305,7 @@ class Replay:
             looks=sum(1 for event in during if event["kind"] == CAMERA_LOOK),
             facts_bytes=report.facts_bytes,
             image_note=report.image_note,
+            image_fallback_code=report.image_fallback_code,
             stopped_nothing=any(event["kind"] == STOP_UNACTED for event in answered),
             arrived_at=trigger["received_at"],
         )
