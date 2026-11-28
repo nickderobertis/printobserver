@@ -104,7 +104,7 @@ fn the_default_timeline_read_walks_an_index_over_five_years_of_history() {
         .execute_batch(&history_statement())
         .expect("the history is written");
     transaction.commit().expect("the history commits");
-    let (events, timeline): (u64, u64) = connection
+    let (events, timeline): (i64, i64) = connection
         .query_row(
             &format!(
                 "SELECT COUNT(*), SUM(kind IN ({})) FROM events",
@@ -119,7 +119,10 @@ fn the_default_timeline_read_walks_an_index_over_five_years_of_history() {
         )
         .expect("the history counts");
     assert_eq!(
-        (events, timeline),
+        (
+            u64::try_from(events).expect("a row count is never negative"),
+            u64::try_from(timeline).expect("a row count is never negative"),
+        ),
         (EVENTS, EVENTS / 100 * TIMELINE_PER_HUNDRED)
     );
 
