@@ -712,9 +712,15 @@ fn every_operation_beside_the_vocabulary_is_driven_somewhere() {
     covered.push("events");
     covered.extend(crate::spooling::DRIVEN_THERE);
     covered.extend(crate::bed_clear::DRIVEN_THERE);
+    // `camera_view` runs the responder binary built only under
+    // `test-responder`, so without that feature the one operation it drives
+    // is driven by nothing compiled, and is left out of the declared set.
+    #[cfg(feature = "test-responder")]
     covered.extend(crate::camera_view::DRIVEN_THERE);
     covered.sort_unstable();
     let mut declared: Vec<&str> = printobserver_server::BESIDE_THE_ACTIONS.to_vec();
+    #[cfg(not(feature = "test-responder"))]
+    declared.retain(|operation| *operation != printobserver_server::RECHECK_CAMERA);
     declared.sort_unstable();
     assert_eq!(
         covered, declared,
