@@ -279,8 +279,8 @@ scenario has:
   `schemas/printobserver-server/operations.json`;
 - `states_image_fallback`, optional, on a check its server shows the whole frame
   for a reason: `true` at the first check given that reason, whose assessment's
-  summary must name the reason's code, and `false` at a later one, whose summary,
-  `did` and `why` must not name it again.
+  summary must name the reason's code and quote its message, and `false` at a later
+  one, whose summary, `did` and `why` must name neither again.
 
 How a run is judged:
 

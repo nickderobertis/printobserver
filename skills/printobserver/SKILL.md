@@ -45,7 +45,7 @@ a part anywhere new or back exactly: one off its own place or moved since 3 move
   layer); 2 a close-up, nothing drawn: every colour in it, red included, is plastic; 3 the last
   check. Panel 1's lines are plan, not plastic. A part off its drawn walls, bare sheet inside them,
   or moved since 3 came loose. An outline or new layers under the head or gantry, or too small or
-  thin to see, are hidden: judged next check, not paused. A whole frame is no sign of a defect.
+  thin to see, are hidden: judged next check, not paused. A whole frame alone is no reason to act.
 - **The plan** sets shape and place, not quality; the frame shows layers below too: a support,
   bridge or overhang listed is designed, and supports, bridges and infill look open and straight.
   Rough, porous or strung material is a defect even where planned: judge it in the close-up.

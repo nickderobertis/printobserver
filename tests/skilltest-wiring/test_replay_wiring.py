@@ -2494,12 +2494,13 @@ def test_a_whole_frames_reason_is_judged_by_what_the_answer_tells_the_person(
     """The code the real server's situation gives is what an answer is held to naming.
 
     The check is shown the whole frame for want of a position, as above; the
-    situation's `image_fallback` code is read off its prompt, and a point asking its
-    answer to state the reason passes on a summary naming that code and fails on one
-    that does not, while a point asking it not to repeat the reason fails on the code
-    named anywhere the person reads.
+    situation's `image_fallback` code and message are read off its prompt; a point
+    asking its answer to state the reason passes on a summary naming both and fails
+    on one missing either, while a point asking it not to repeat the reason fails on
+    either named anywhere the person reads.
     """
     case = read_case("jar-top-wrong-material-first-layer-detach")
+    message = "the print's G-code index gives no file position for this check"
 
     def judged(summary: str, run: str, *, states: bool) -> str | None:
         first, *rest = case.moments
@@ -2510,17 +2511,29 @@ def test_a_whole_frames_reason_is_judged_by_what_the_answer_tells_the_person(
             marked, [{"commands": [CONTEXT], "summary": summary, "keeps_prompt": True}], directory
         )
         point = done.replayed.points[0]
-        equal(point.image_fallback_code, "no_position", describing=f"{run}: the situation's code")
+        equal(
+            (point.image_fallback_code, point.image_fallback_message),
+            ("no_position", message),
+            describing=f"{run}: the situation's code and message",
+        )
         return point.why_not
 
-    told = "the camera frame is the whole frame: no_position, no file position for this check"
+    told = "whole frame, {fallback}: {fallback_message}"
     equal(judged(told, "stated", states=True), None)
     contains(
+        judged("whole frame, {fallback}", "code-alone", states=True) or "",
+        f"its summary does not name the whole frame's `{message}`",
+    )
+    contains(
         judged("printing normally", "unstated", states=True) or "",
-        "its summary does not name the whole frame's reason `no_position`",
+        f"its summary does not name the whole frame's `no_position` or `{message}`",
     )
     contains(
         judged(told, "repeated", states=False) or "",
+        "its summary named the whole frame's reason `no_position` again",
+    )
+    contains(
+        judged("still {fallback_message}", "message-repeated", states=False) or "",
         "its summary named the whole frame's reason `no_position` again",
     )
     equal(judged("printing normally", "not-repeated", states=False), None)
@@ -2529,14 +2542,19 @@ def test_a_whole_frames_reason_is_judged_by_what_the_answer_tells_the_person(
 def test_a_whole_frames_reason_is_judged_only_where_a_point_asks() -> None:
     """Unasked, nothing an answer says of its image is judged; asked of no whole frame, it fails."""
     moment = read_case("jar-top-wrong-material-first-layer-detach").moments[0]
-    assessment = {"summary": "no_position", "did": "nothing", "why": "no_position"}
-    equal(moment.report_verdict(assessment, "no_position"), None)
+    fallback = ("no_position", "no file position for this check")
+    assessment = {
+        "summary": "No_Position:  no file\nposition for this check",
+        "did": "nothing",
+        "why": "no_position",
+    }
+    equal(moment.report_verdict(assessment, fallback), None)
     asked = replace(moment, states_image_fallback=True)
+    equal(asked.report_verdict(assessment, fallback), None, describing="spacing and case")
     contains(asked.report_verdict(assessment, None) or "", "its check gave none")
-    contains(asked.report_verdict(None, "no_position") or "", "answered no assessment")
+    contains(asked.report_verdict(None, fallback) or "", "answered no assessment")
     contains(
-        replace(moment, states_image_fallback=False).report_verdict(assessment, "no_position")
-        or "",
+        replace(moment, states_image_fallback=False).report_verdict(assessment, fallback) or "",
         "its summary and why named",
     )
 

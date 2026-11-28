@@ -222,6 +222,7 @@ def _filled(word: str, prompt: str) -> str:
     file = re.search(r"start the print (\S+),", prompt)
     frame = re.search(r"as it is now is (\S+?)\. ", prompt)
     fallback = re.search(r'"image_fallback": ?\{"code": ?"([^"]+)"', prompt)
+    fallback_message = re.search(r'"image_fallback": ?\{[^}]*"message": ?"([^"]+)"', prompt)
     if "{new_print}" in word:
         word = word.replace("{new_print}", NEW_PRINT)
     for placeholder, found in (
@@ -230,6 +231,7 @@ def _filled(word: str, prompt: str) -> str:
         ("{event}", event),
         ("{file}", file),
         ("{frame}", frame),
+        ("{fallback_message}", fallback_message),
         ("{fallback}", fallback),
     ):
         if placeholder in word:

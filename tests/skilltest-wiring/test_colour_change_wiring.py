@@ -227,7 +227,10 @@ def test_the_real_two_colour_print_is_quiet_through_each_wait_and_carries_on(
     # given the stale calibration tells the person it, as the skill asks, and no later
     # one repeats it.
     kept: ScriptedRun = {**QUIET, "keeps_prompt": True}
-    telling: ScriptedRun = {**kept, "summary": "carrying on; the whole frame, for {fallback}"}
+    telling: ScriptedRun = {
+        **kept,
+        "summary": "carrying on; whole frame, {fallback}: {fallback_message}",
+    }
     quiet_reading: ScriptedRun = {**kept, "commands": [HISTORY]}
     _, done = real_replay([kept, kept, telling, kept, quiet_reading], tmp_path)
     truth(REAL in replayed_case_names(), describing="the case to carry a live replay")

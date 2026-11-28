@@ -218,37 +218,49 @@ class Moment:
         return "; ".join(broken) or None
 
     def report_verdict(
-        self, assessment: Mapping[str, object] | None, fallback_code: str | None
+        self,
+        assessment: Mapping[str, object] | None,
+        fallback: tuple[str, str] | None,
     ) -> str | None:
         """Why the answer fails what this point asks it to say of a whole frame, if it does.
 
-        `fallback_code` is the `image_fallback` code the check's situation gave. The
-        server's code is the reason the person is told, so the code itself is what the
-        answer is held to: in its summary at the first check given it, and in none of
-        its words at a later one.
+        `fallback` is the `image_fallback` code and message the check's situation gave.
+        They are what the person is told, so they are what the answer is held to: both
+        in its summary at the first check given that code, and neither in any of its
+        words at a later one. The message is compared with its spacing and case
+        flattened, as a quotation wrapped or capitalised says the same thing.
         """
         if self.states_image_fallback is None:
             return None
-        if fallback_code is None:
+        if fallback is None:
             return "it was to be judged on its whole frame's reason, and its check gave none"
         if assessment is None:
             return "it answered no assessment to tell the person anything in"
+        code, message = fallback
+
+        def names(field: str, said: str) -> bool:
+            words = assessment.get(field)
+            return isinstance(words, str) and _flat(said) in _flat(words)
+
         if self.states_image_fallback:
-            summary = assessment.get("summary")
-            if isinstance(summary, str) and fallback_code in summary:
+            missing = [f"`{said}`" for said in (code, message) if not names("summary", said)]
+            if not missing:
                 return None
-            return f"its summary does not name the whole frame's reason `{fallback_code}`"
-        said = [
-            name
-            for name in REPORTED_FIELDS
-            if isinstance(assessment.get(name), str) and fallback_code in str(assessment[name])
+            return f"its summary does not name the whole frame's {' or '.join(missing)}"
+        repeated = [
+            field for field in REPORTED_FIELDS if names(field, code) or names(field, message)
         ]
-        if said:
+        if repeated:
             return (
-                f"its {' and '.join(said)} named the whole frame's reason `{fallback_code}` "
+                f"its {' and '.join(repeated)} named the whole frame's reason `{code}` "
                 "again, which an earlier check already told the person"
             )
         return None
+
+
+def _flat(text: str) -> str:
+    """Text with its runs of whitespace made one space and its case folded."""
+    return " ".join(text.split()).casefold()
 
 
 #: The assessment's words a person reads, which a repeated reason is looked for in.

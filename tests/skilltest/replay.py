@@ -963,6 +963,8 @@ class DecisionPoint:
     image_note: str | None = None
     #: The situation's `image_fallback` code, when its image is the whole frame for one.
     image_fallback_code: str | None = None
+    #: The situation's `image_fallback` message, beside that code.
+    image_fallback_message: str | None = None
     #: Whether the server wrote down that the turn answered `stop` and stopped nothing.
     stopped_nothing: bool = False
     #: When the server kept its event.
@@ -982,7 +984,12 @@ class DecisionPoint:
             return f"the turn failed: {self.failure}"
         reasons = [
             self.moment.verdict(self.requests),
-            self.moment.report_verdict(self.assessment, self.image_fallback_code),
+            self.moment.report_verdict(
+                self.assessment,
+                (self.image_fallback_code, self.image_fallback_message)
+                if self.image_fallback_code is not None and self.image_fallback_message
+                else None,
+            ),
         ]
         if self.stopped_nothing:
             reasons.append("it answered stop and asked for no pause, so nothing stopped the print")
@@ -1345,11 +1352,11 @@ def _image_line(situation: str | None) -> str | None:
     return line if isinstance(line, str) else None
 
 
-def _fallback_code(situation: str | None) -> str | None:
-    """The situation's `image_fallback` code: why its image is the whole frame, if it says."""
+def _fallback(situation: str | None, field: str) -> str | None:
+    """One field of the situation's `image_fallback`: why its image is the whole frame."""
     fallback = _situation(situation).get("image_fallback")
-    code = fallback.get("code") if isinstance(fallback, dict) else None
-    return code if isinstance(code, str) else None
+    said = fallback.get(field) if isinstance(fallback, dict) else None
+    return said if isinstance(said, str) else None
 
 
 @dataclass
@@ -1372,8 +1379,9 @@ class RunReport:
     facts_bytes: int | None = None
     #: The situation's line saying which image the turn's prompt carried.
     image_note: str | None = None
-    #: The situation's `image_fallback` code.
+    #: The situation's `image_fallback` code and message.
     image_fallback_code: str | None = None
+    image_fallback_message: str | None = None
 
     def take(self, lines: list[dict[str, Any]]) -> None:
         """Read one run's output and transcript into this turn's report."""
@@ -1433,7 +1441,8 @@ class RunReport:
                     self.facts_bytes = len(facts.encode("utf-8"))
                     situation = _block_under(text, SITUATION_HEADING)
                     self.image_note = _image_line(situation)
-                    self.image_fallback_code = _fallback_code(situation)
+                    self.image_fallback_code = _fallback(situation, "code")
+                    self.image_fallback_message = _fallback(situation, "message")
             case _:
                 pass
 
@@ -2306,6 +2315,7 @@ class Replay:
             facts_bytes=report.facts_bytes,
             image_note=report.image_note,
             image_fallback_code=report.image_fallback_code,
+            image_fallback_message=report.image_fallback_message,
             stopped_nothing=any(event["kind"] == STOP_UNACTED for event in answered),
             arrived_at=trigger["received_at"],
         )
