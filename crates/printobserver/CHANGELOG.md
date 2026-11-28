@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.17.0](https://github.com/nickderobertis/printobserver/compare/v0.16.1...v0.17.0) - 2026-11-28
+
+### Added
+
+- *(status)* show the operator when check images fall back to the plain frame, and why ([#411](https://github.com/nickderobertis/printobserver/pull/411))
+- *(supervisor)* recover camera alignment and drift from a shifted view, and say why when the plain frame is shown ([#397](https://github.com/nickderobertis/printobserver/pull/397))
+
+### Fixed
+
+- *(test)* gate the server journeys on their feature again and drive the inconclusive fallback deterministically ([#412](https://github.com/nickderobertis/printobserver/pull/412))
 ## [0.16.1](https://github.com/nickderobertis/printobserver/compare/v0.16.0...v0.16.1) - 2026-11-26
 
 ### Added
