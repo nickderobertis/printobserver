@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any, Literal, NewType, NotRequired, Protocol, TextIO, TypedDict, cast, get_args
 
 import doubles
-from cases import REPO, Case, Moment, Request, instant, read_case
+from cases import REPO, Case, ImageFallback, Moment, Request, instant, read_case
 from jsonschema import Draft202012Validator
 from repo_checks import platforms
 from repo_checks.checks_real_prints import pointer
@@ -986,7 +986,7 @@ class DecisionPoint:
             self.moment.verdict(self.requests),
             self.moment.report_verdict(
                 self.assessment,
-                (self.image_fallback_code, self.image_fallback_message)
+                ImageFallback(self.image_fallback_code, self.image_fallback_message)
                 if self.image_fallback_code is not None and self.image_fallback_message
                 else None,
             ),

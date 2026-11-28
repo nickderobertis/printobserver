@@ -220,7 +220,7 @@ class Moment:
     def report_verdict(
         self,
         assessment: Mapping[str, object] | None,
-        fallback: tuple[str, str] | None,
+        fallback: ImageFallback | None,
     ) -> str | None:
         """Why the answer fails what this point asks it to say of a whole frame, if it does.
 
@@ -261,6 +261,13 @@ class Moment:
 def _flat(text: str) -> str:
     """Text with its runs of whitespace made one space and its case folded."""
     return " ".join(text.split()).casefold()
+
+
+class ImageFallback(NamedTuple):
+    """Why a check's image is the whole frame, as its situation's `image_fallback` says."""
+
+    code: str
+    message: str
 
 
 #: The assessment's words a person reads, which a repeated reason is looked for in.

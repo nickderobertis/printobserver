@@ -37,6 +37,7 @@ from cases import (
     CASES,
     REPO,
     Case,
+    ImageFallback,
     MachineState,
     Milestone,
     Moment,
@@ -2542,7 +2543,7 @@ def test_a_whole_frames_reason_is_judged_by_what_the_answer_tells_the_person(
 def test_a_whole_frames_reason_is_judged_only_where_a_point_asks() -> None:
     """Unasked, nothing an answer says of its image is judged; asked of no whole frame, it fails."""
     moment = read_case("jar-top-wrong-material-first-layer-detach").moments[0]
-    fallback = ("no_position", "no file position for this check")
+    fallback = ImageFallback("no_position", "no file position for this check")
     assessment = {
         "summary": "No_Position:  no file\nposition for this check",
         "did": "nothing",
