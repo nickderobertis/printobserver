@@ -146,6 +146,11 @@ REPLAYS = {
         "quiet-through-the-black-wait-and-on-at-its-resume",
         "black-judged-expected-once-visible",
     ],
+    "two-colour-wrong-spool-at-change": [
+        "carry-on-before-the-first-change",
+        "carried-on-from-the-change-to-red",
+        "white-seen-where-red-is-planned",
+    ],
     "jar-top-petg-healthy": [
         "carry-on-004-other",
         "outside-first-layer",

@@ -1,0 +1,5 @@
+--- tests/real-prints/two-colour-planned-change/two-colour-box.gcode
++++ tests/real-prints/two-colour-wrong-spool-at-change/two-colour-box.gcode
+@@ -1722,1 +1722,1 @@
+-;COLOR_CHANGE,T0,#FFFFFF
++;COLOR_CHANGE,T0,#FF0000

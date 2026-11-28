@@ -27,6 +27,7 @@ it.
 | `petg-printer-reset-nozzle-on-part` | Obico's false alarm over an infill floor; then the printer reset with the nozzle on a part and heated it on its own | warned once | acknowledged `watch` | watch the warning; after the reset, send nothing and tell a person |
 | `bed-and-sheet-check` | the bed before prints and after a few, clear or not, with which sheet is on | n/a | n/a | start only on a clear bed with the right sheet for the material |
 | `two-colour-planned-change` | a black-white-black box with two colour changes the G-code plans; each loaded with the planned colour | silent | quiet through each wait; carried on after each change, judging each new colour expected once the part showed | carry on; never pause for a planned change |
+| `two-colour-wrong-spool-at-change` | derived: the same print with its first planned change renamed red, so 2.8 mm of the white loaded there shows where red is planned, on a stale calibration's whole frame | n/a | n/a | pause or watch, under 5 mm of it; never cancel or adjust |
 
 Each directory holds one case:
 
@@ -158,7 +159,11 @@ each of whose bed frames is in `bed-and-sheet-check`.
 slice of a 20 mm box with two planned colour changes, black to white at Z 4 and
 back to black at Z 8, supervised by printobserver v0.16.0. A person loaded the
 planned colour at both changes, so it has no wrong-colour decision point; the
-derived `bubbler-colour-change-off-plan` covers that.
+derived `bubbler-colour-change-off-plan` covers that on the three-panel image,
+and `two-colour-wrong-spool-at-change`, its first change renamed red, records
+that wrong spool on this print's whole frame. A whole frame's colour is no
+grounds to pause until 5 mm of new layers, and its 2.8 mm accepts a pause or a
+watch; no frame of the print shows the wrong band past 5 mm.
 
 - Its six `agent-*` pictures are 6 of the 19 its history records: the check at
   13:14 with the head over the part, the check before the first change, each

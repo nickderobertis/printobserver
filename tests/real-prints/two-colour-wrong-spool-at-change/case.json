@@ -1,0 +1,203 @@
+{
+  "case": "two-colour-wrong-spool-at-change",
+  "camera_calibration": "../cameras/core-one-2026-09-27.json",
+  "printer": "Prusa CORE One, 0.6 mm nozzle, Buddy camera via go2rtc (1920x1080), smooth PEI sheet",
+  "printed_on": "2026-11-26, 13:07 to 15:29, as two-colour-planned-change; derived 2026-11-27",
+  "times": "local, UTC-6",
+  "derived_from": "two-colour-planned-change, a black-white-black box printed with two planned colour changes: its G-code with the first change's colour renamed red, and one of its own frames, unaltered",
+  "part": "a 20 x 20 x 12 mm open-topped box with 10% infill, in PLA: black to Z 4, then white from Z 4, as printed",
+  "verdict": "derived failure: the spool loaded at a planned change is the wrong colour, 2.8 mm of white where the G-code plans red, seen only on the whole frame a stale calibration gives",
+  "fault": {
+    "kind": "a wrong spool loaded at a planned colour change",
+    "how": "fault.diff renames the slice's first planned change, at layer 20 (Z 4), from #FFFFFF to #FF0000 on its `;COLOR_CHANGE` line, the one line it changes, so every byte position stays the print's. The G-code then plans red from Z 4 to its change back to #000000 at layer 40 (Z 8), while the frame shows the white a person loaded there",
+    "planned_change_at_z_mm": 4.0,
+    "planned_colour": "#FF0000",
+    "seen_colour": "#FFFFFF"
+  },
+  "what_it_looks_like": "the box's low walls black to Z 4 and plainly white above, 2.8 mm up to the frame's Z 6.8, with its open cross-hatched infill, beside the head at the sheet's centre; the camera has moved since its calibration, so the check is handed the whole frame",
+  "fixable_by_the_agent": false,
+  "expected_agent_action": {
+    "operation": "pause, or acknowledge the check as watch",
+    "why": "the skill holds a whole frame's colour as no grounds to pause until new layers since the change pass 5 mm, because on this print's whole frames the thin new black after the second change reads as white and was paused on as a wrong colour; the white here is 2.8 mm, so the case documents a plain-frame wrong spool without claiming it is caught below 5 mm: a pause or a watch is accepted, and cancelling or adjusting anything never is. The wrong band ends at the second planned change at Z 8, 4 mm above the first, so no frame of this print shows it past 5 mm"
+  },
+  "frames": [
+    {
+      "file": "frame-133618-p25.2.jpg",
+      "time": "2026-11-26 13:36:18",
+      "progress_pct": 25.2,
+      "z_mm": 2.8,
+      "label": "layer 14, Z 2.8, black, a minute before the planned change at Z 4: the print head stands over the centre of the sheet and hides the small black box under it; healthy. A byte-for-byte copy of ../two-colour-planned-change/agent-133618-obs-l14.jpg."
+    },
+    {
+      "file": "frame-134200-p34.1.jpg",
+      "time": "2026-11-26 13:42:00",
+      "progress_pct": 34.1,
+      "z_mm": 4.8,
+      "label": "layer 24, Z 4.8, four layers past the planned change at Z 4: the server's check as the print carries on from it; the head stands over the part and hides it, so its new colour cannot be seen. A byte-for-byte copy of ../two-colour-planned-change/agent-134200-resumed-white-l24.jpg."
+    },
+    {
+      "file": "frame-134401-p44.7.jpg",
+      "time": "2026-11-26 13:44:01",
+      "progress_pct": 44.7,
+      "z_mm": 6.8,
+      "label": "layer 34, Z 6.8: the box in view beside the head, black low walls under 2.8 mm of plainly white walls with open cross-hatched infill, in its place at the sheet's centre; the slice this case plants names red from Z 4, so the white is a defect. A byte-for-byte copy of ../two-colour-planned-change/agent-134401-obs-white-l34.jpg."
+    }
+  ],
+  "sources": {
+    "gcode": "the printed G-code is ../two-colour-planned-change/two-colour-box.gcode with fault.diff applied: the diff is committed alone, and the replay makes the file from that G-code",
+    "service_config": "../service-config.toml",
+    "frames": "frame-133618-p25.2.jpg, frame-134200-p34.1.jpg and frame-134401-p44.7.jpg are ../two-colour-planned-change/agent-133618-obs-l14.jpg, ../two-colour-planned-change/agent-134200-resumed-white-l24.jpg and ../two-colour-planned-change/agent-134401-obs-white-l34.jpg"
+  },
+  "assertions": {
+    "replay": [
+      "carry-on-before-the-first-change",
+      "carried-on-from-the-change-to-red",
+      "white-seen-where-red-is-planned"
+    ],
+    "scenarios": [
+      {
+        "id": "carry-on-before-the-first-change",
+        "at": "2026-11-26T13:36:18",
+        "file_position_bytes": 29280,
+        "file_position_source": "progress",
+        "summary": "A periodic observation at layer 14 in the black, a minute before the printer reaches its first planned colour change, with the head hiding the part; the agent should carry on and change nothing.",
+        "trigger": "periodic_observation",
+        "event_image": "frame-133618-p25.2.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          []
+        ],
+        "never": [
+          {
+            "operation": "pause"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          },
+          {
+            "operation": "acknowledge-failure",
+            "args": {
+              "disposition": "stop"
+            }
+          }
+        ]
+      },
+      {
+        "id": "carried-on-from-the-change-to-red",
+        "at": "2026-11-26T13:42:00",
+        "file_position_bytes": 39617,
+        "file_position_source": "progress",
+        "summary": "The server's check as the print carries on from the planned change at Z 4, which names red; the head hides the part, so its new colour cannot be seen yet; the agent may carry on, or pause if it already sees the wrong colour.",
+        "trigger": "planned_change_resumed",
+        "event_image": "frame-134200-p34.1.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [],
+          [
+            {
+              "operation": "pause"
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          }
+        ]
+      },
+      {
+        "id": "white-seen-where-red-is-planned",
+        "at": "2026-11-26T13:44:01",
+        "file_position_bytes": 51944,
+        "file_position_source": "progress",
+        "summary": "A periodic observation on the whole frame shows the box's new layers plainly white from the planned change at Z 4, 2.8 mm of them, where the G-code names red; below 5 mm of new layers a whole frame's colour is no grounds to pause, so the agent may pause or watch, and never cancels or adjusts.",
+        "trigger": "periodic_observation",
+        "event_image": "frame-134401-p44.7.jpg",
+        "printer_state": "printing",
+        "detector_warned": null,
+        "detector_paused_the_print": null,
+        "looks": [],
+        "accept_any_of": [
+          [
+            {
+              "operation": "pause"
+            }
+          ],
+          [
+            {
+              "operation": "acknowledge-failure",
+              "args": {
+                "disposition": "watch"
+              }
+            }
+          ]
+        ],
+        "never": [
+          {
+            "operation": "resume"
+          },
+          {
+            "operation": "cancel"
+          },
+          {
+            "operation": "set-fan-percent"
+          },
+          {
+            "operation": "set-feedrate-factor"
+          },
+          {
+            "operation": "set-flowrate-factor"
+          },
+          {
+            "operation": "set-tool-target-c"
+          },
+          {
+            "operation": "set-bed-target-c"
+          }
+        ]
+      }
+    ]
+  }
+}
