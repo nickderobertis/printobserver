@@ -79,6 +79,8 @@ mod documenting;
 mod durations;
 #[path = "journeys/failures.rs"]
 mod failures;
+#[path = "journeys/falling_back.rs"]
+mod falling_back;
 #[path = "journeys/finding.rs"]
 mod finding;
 #[path = "journeys/first_starting.rs"]
@@ -212,6 +214,18 @@ fn the_operators_word_that_the_bed_is_clear_is_honoured_until_a_print_starts() {
 #[test]
 fn a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why() {
     rechecking::a_recheck_judges_a_fresh_frame_and_each_look_says_which_image_and_why();
+}
+
+/// `printobserver status` says, for every reason a check of a print can fall
+/// back to the plain camera frame for, that it has, the reason and its
+/// message, in its labelled lines, its `--json` document and the supervisor's
+/// own answer, and says nothing of it once the three-panel image is back.
+///
+/// A world per reason, over the healthy jar top's slice and the committed
+/// calibration that draws on it unshifted.
+#[test]
+fn the_status_says_while_checks_are_shown_the_plain_frame_and_why() {
+    falling_back::the_status_says_while_checks_are_shown_the_plain_frame_and_why();
 }
 
 /// `printobserver recheck-camera` against a supervisor with no camera is

@@ -142,6 +142,23 @@ pub const TWO_COLOUR_BOX: &str = "two-colour-box";
 /// The name the [`TWO_COLOUR_BOX`] machine runs its slice under.
 pub const TWO_COLOUR_BOX_FILE: &str = "two-colour-box.gcode";
 
+/// The world whose stood-in machine runs the healthy PETG jar top's slice,
+/// the print the committed camera calibration draws on unshifted; a journey
+/// moves the job through it by [`Machine::stands_at`].
+pub const JAR_TOP: &str = "jar-top";
+
+/// The name the [`JAR_TOP`] machine runs its slice under.
+pub const JAR_TOP_FILE: &str = "jar-top.gcode";
+
+/// The jar top's slice, the core crate's committed fixture.
+pub fn jar_top() -> Vec<u8> {
+    std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../printobserver-core/tests/fixtures/real-prints/jar-top-petg.gcode"),
+    )
+    .expect("the jar top's slice is there")
+}
+
 /// The box's slice, its colour changes made comments.
 fn two_colour_box() -> Vec<u8> {
     include_bytes!("../../../printobserver-core/tests/fixtures/real-prints/two-colour-box.gcode")
@@ -235,9 +252,9 @@ pub struct World {
     /// The skill the supervisor is configured with.
     skill: PathBuf,
     /// The supervisor, running.
-    server: Child,
+    pub(crate) server: Child,
     /// What the supervisor has printed, read as it prints it.
-    said: std::sync::Mutex<announced::Stream>,
+    pub(crate) said: std::sync::Mutex<announced::Stream>,
     /// The harness whose turns hold their print, when this world's supervisor
     /// runs one ([`HOLDING_TURNS`]).
     held: Option<HeldTurns>,
@@ -345,6 +362,7 @@ impl World {
                 TWO_COLOUR_BOX => {
                     Printer::StoodIn(Machine::running(TWO_COLOUR_BOX_FILE, two_colour_box()))
                 }
+                JAR_TOP => return Self::jar_top_sliced(jar_top(), skill, harness, edit),
                 SCRIPTED => crate::scripted::scripted(),
                 other => panic!("there is no `{other}` world to open"),
             },
@@ -373,6 +391,28 @@ impl World {
             None,
             |_| {},
             Some(database),
+        )
+    }
+
+    /// The [`JAR_TOP`] world as [`World::configured`] opens it, its machine
+    /// running `bytes` under the jar top's file name: the slice as another
+    /// slicer, or another setting, wrote it.
+    ///
+    /// # Panics
+    ///
+    /// The same as [`World::open`].
+    pub fn jar_top_sliced(
+        bytes: Vec<u8>,
+        skill: &Path,
+        harness: Option<&Path>,
+        edit: impl FnOnce(&mut Value),
+    ) -> Self {
+        Self::over(
+            Printer::StoodIn(Machine::running(JAR_TOP_FILE, bytes)),
+            skill,
+            harness,
+            edit,
+            None,
         )
     }
 
@@ -420,16 +460,7 @@ impl World {
             || no_harness.as_os_str().to_owned(),
             |path| path.as_os_str().to_owned(),
         );
-        let mut server = Command::new(env!("CARGO_BIN_EXE_printobserver"))
-            .arg("server")
-            .arg("--config")
-            .arg(&configuration)
-            .env("PATH", &search)
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("the command that runs the supervisor runs");
-        let (address, said) =
-            announced::serving(&mut server, "the command that runs the supervisor");
+        let (server, address, said) = supervising(&configuration, &search);
         let (print_id, image_id, event_id) = seeded_first.unwrap_or_else(|| seed(&state, &file));
         let proxy = Proxy::in_front_of(address);
 
@@ -607,6 +638,11 @@ impl World {
     /// Its image names a port nothing listens on, so fetching it fails at once
     /// and is recorded.
     pub fn post_a_failure_alert(&self, obico_print_id: i64) -> String {
+        self.post_a_failure_alert_showing(obico_print_id, "http://127.0.0.1:9/snapshot.jpg")
+    }
+
+    /// The same, its image the snapshot at `image_url`.
+    pub fn post_a_failure_alert_showing(&self, obico_print_id: i64, image_url: &str) -> String {
         use std::io::{Read as _, Write as _};
 
         let mut alert: Value = printobserver_types::serde_json::from_str(include_str!(
@@ -614,7 +650,7 @@ impl World {
         ))
         .expect("the committed sample is JSON");
         alert["print"]["id"] = json!(obico_print_id);
-        alert["img_url"] = json!("http://127.0.0.1:9/snapshot.jpg");
+        alert["img_url"] = json!(image_url);
         let body = alert.to_string();
         let address = self.proxy.address;
         let mut stream =
@@ -1076,7 +1112,7 @@ impl World {
     ///
     /// Panics when the listing is refused or is not a list of prints, and
     /// when a print is still open after every look, naming it.
-    fn no_print_is_open(&self) {
+    pub fn no_print_is_open(&self) {
         let mut open = Vec::new();
         for _ in 0..SETTLING_ROUNDS * SETTLING_POLLS {
             let read = Command::new(env!("CARGO_BIN_EXE_printobserver"))
@@ -1690,6 +1726,25 @@ pub fn server_value(state: &Path, printer: &Printer, skill: &Path) -> Value {
             },
         },
     })
+}
+
+/// Start the supervisor over the configuration at `configuration`, with
+/// `search` as the whole of its path, and answer it once it has said where it
+/// serves.
+pub fn supervising(
+    configuration: &Path,
+    search: &std::ffi::OsStr,
+) -> (Child, std::net::SocketAddr, announced::Stream) {
+    let mut server = Command::new(env!("CARGO_BIN_EXE_printobserver"))
+        .arg("server")
+        .arg("--config")
+        .arg(configuration)
+        .env("PATH", search)
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the command that runs the supervisor runs");
+    let (address, said) = announced::serving(&mut server, "the command that runs the supervisor");
+    (server, address, said)
 }
 
 /// One JSON document, as the TOML the supervisor reads it in.

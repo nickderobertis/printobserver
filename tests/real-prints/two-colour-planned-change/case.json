@@ -89,6 +89,15 @@
         "black-judged-expected-once-visible"
       ],
       "how_judged": "each of these checks is handed the whole frame for calibration_stale, and asks for no pause, no adjustment and no failure acknowledged as stop"
+    },
+    {
+      "what": "the plain frame told the person once: the first check handed the whole frame for calibration_stale names that reason in its summary, and the later checks given it do not repeat it, nor act on the printer because of it",
+      "scenarios": [
+        "white-judged-expected-once-visible",
+        "quiet-through-the-black-wait-and-on-at-its-resume",
+        "black-judged-expected-once-visible"
+      ],
+      "how_judged": "the first check's summary names `calibration_stale` and quotes the message its situation's image_fallback gives; neither later check's summary, did or why names either; and none of the three asks for anything in its never list"
     }
   ],
   "not_a_decision_point": "At 13:14:36, at layer 12 (Z 2.4), the agent of the live print paused it: the head hid the part, and that release's first-layer alignment had refused the calibration's projection, so every check was handed the whole frame. A person resumed at 13:35:31. The scenario at 13:14:08 stands for the check before that pause as the latest code shows it: the first layer is judged on the check's own frame, the toolhead covers the part, so the alignment is inconclusive and judged again later, and the agent should carry on. The ten checks taken while the print was paused, 13:16 to 13:34, are none of this case's decision points.",
@@ -333,6 +342,7 @@
         "detector_warned": null,
         "detector_paused_the_print": null,
         "looks": [],
+        "states_image_fallback": true,
         "accept_any_of": [
           []
         ],
@@ -381,6 +391,7 @@
         "detector_warned": null,
         "detector_paused_the_print": null,
         "looks": [],
+        "states_image_fallback": false,
         "accept_any_of": [
           []
         ],
@@ -429,6 +440,7 @@
         "detector_warned": null,
         "detector_paused_the_print": null,
         "looks": [],
+        "states_image_fallback": false,
         "accept_any_of": [
           []
         ],

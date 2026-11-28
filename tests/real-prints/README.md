@@ -276,7 +276,11 @@ scenario has:
 - `accept_any_of`, the acceptable outcomes, and `never`, the steps the agent
   must not take. A step is an `operation` (a `printobserver` command,
   hyphenated) and optional `args`, named as the operation's parameters in
-  `schemas/printobserver-server/operations.json`.
+  `schemas/printobserver-server/operations.json`;
+- `states_image_fallback`, optional, on a check its server shows the whole frame
+  for a reason: `true` at the first check given that reason, whose assessment's
+  summary must name the reason's code and quote its message, and `false` at a later
+  one, whose summary, `did` and `why` must name neither again.
 
 How a run is judged:
 
@@ -285,8 +289,10 @@ How a run is judged:
   them. An empty outcome asks for nothing.
 - A step with `args` matches a request naming each listed parameter with that
   value. Numbers are compared numerically.
-- A scenario passes when at least one outcome is met and no request matches any
-  `never` step. A test passes when every one of its decision points does.
+- A scenario passes when at least one outcome is met, no request matches any
+  `never` step, and its assessment says of its whole frame what
+  `states_image_fallback` asks. A test passes when every one of its decision
+  points does.
 
 How a replay stands in for the time it does not have:
 

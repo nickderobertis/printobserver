@@ -167,6 +167,10 @@
           "type": "integer",
           "minimum": 1
         },
+        "states_image_fallback": {
+          "description": "Whether the check's assessment tells the person why its image is the whole frame. True at the first check the server gives a reason: its summary names the `image_fallback` code the check's situation gave and quotes its message. False at a later check given that same reason: none of its summary, did and why names that code or that message again. Absent leaves what the assessment says of it unjudged. Only a check its situation gives an `image_fallback` may say either.",
+          "type": "boolean"
+        },
         "event_id": {
           "description": "Present exactly when the trigger is recorded_alert: the id of an obico_failure_alert event in this case's printobserver-history.json.",
           "type": "string"

@@ -223,8 +223,16 @@ def test_the_real_two_colour_print_is_quiet_through_each_wait_and_carries_on(
     The last check reads the server's own history, in which nothing a turn writes
     falls between a change reached and its resumption.
     """
-    quiet_reading: ScriptedRun = {"commands": [HISTORY]}
-    _, done = real_replay([QUIET, QUIET, QUIET, QUIET, quiet_reading], tmp_path)
+    # Each turn keeps its prompt, so its whole frame's reason is read; the first check
+    # given the stale calibration tells the person it, as the skill asks, and no later
+    # one repeats it.
+    kept: ScriptedRun = {**QUIET, "keeps_prompt": True}
+    telling: ScriptedRun = {
+        **kept,
+        "summary": "carrying on; whole frame, {fallback}: {fallback_message}",
+    }
+    quiet_reading: ScriptedRun = {**kept, "commands": [HISTORY]}
+    _, done = real_replay([kept, kept, telling, kept, quiet_reading], tmp_path)
     truth(REAL in replayed_case_names(), describing="the case to carry a live replay")
     equal(
         [point.event_kind for point in done.replayed.points],
